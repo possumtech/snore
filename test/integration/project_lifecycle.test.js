@@ -11,6 +11,7 @@ describe("Project Lifecycle Integration", () => {
 	const projectPath = "/tmp/test-project";
 
 	before(async () => {
+		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 		await fs.unlink(dbPath).catch(() => {});
 		db = await SqlRite.open({
 			path: dbPath,
@@ -22,6 +23,7 @@ describe("Project Lifecycle Integration", () => {
 	after(async () => {
 		if (db) await db.close();
 		await fs.unlink(dbPath).catch(() => {});
+		await fs.rm(projectPath, { recursive: true, force: true }).catch(() => {});
 	});
 
 	it("should create a project and a session on init", async () => {

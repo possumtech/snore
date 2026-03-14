@@ -1,5 +1,7 @@
 import ModelAgent from "../agent/ModelAgent.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
+import ProjectContext from "../core/ProjectContext.js";
+import RepoMap from "../core/RepoMap.js";
 
 export default class ClientConnection {
 	#ws;
@@ -9,6 +11,7 @@ export default class ClientConnection {
 	#context = {
 		projectId: null,
 		sessionId: null,
+		projectPath: null,
 	};
 
 	constructor(ws, db) {
@@ -37,14 +40,21 @@ export default class ClientConnection {
 					);
 					this.#context.projectId = result.projectId;
 					this.#context.sessionId = result.sessionId;
+					this.#context.projectPath = params.projectPath;
 					break;
 
 				case "getModels":
 					result = await this.#modelAgent.getModels();
 					break;
 
+				case "getFiles":
+					if (!this.#context.projectPath) {
+						throw new Error("Project not initialized. Call 'init' first.");
+					}
+					result = await this.#projectAgent.getFiles(this.#context.projectPath);
+					break;
+
 				case "startJob":
-					// params: { type, config, parentJobId }
 					if (!this.#context.sessionId) {
 						throw new Error("Session not initialized. Call 'init' first.");
 					}

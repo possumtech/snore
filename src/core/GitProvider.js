@@ -1,5 +1,5 @@
-import git from "isomorphic-git";
 import fs from "node:fs";
+import git from "isomorphic-git";
 
 export default class GitProvider {
 	/**

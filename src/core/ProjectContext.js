@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import GitProvider from "./GitProvider.js";
 import FsProvider from "./FsProvider.js";
+import GitProvider from "./GitProvider.js";
 
 export const FileState = {
 	INVISIBLE: "invisible",
@@ -77,7 +77,8 @@ export default class ProjectContext {
 		// 2. Git Status
 		if (this.#isGit) {
 			if (this.#trackedFiles.has(relPath)) return FileState.MAPPABLE;
-			if (await GitProvider.isIgnored(this.#root, relPath)) return FileState.IGNORED;
+			if (await GitProvider.isIgnored(this.#root, relPath))
+				return FileState.IGNORED;
 			return FileState.INVISIBLE;
 		}
 

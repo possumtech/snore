@@ -55,11 +55,50 @@ CREATE TABLE IF NOT EXISTS turns (
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Repo Map Tables
+CREATE TABLE IF NOT EXISTS repo_map_files (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
+	, path TEXT NOT NULL
+	, hash TEXT
+	, size INTEGER DEFAULT 0
+	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, UNIQUE (project_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS repo_map_tags (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
+	, name TEXT NOT NULL
+	, type TEXT NOT NULL
+	, params TEXT
+	, line INTEGER
+	, source TEXT DEFAULT 'hd'
+);
+
+CREATE TABLE IF NOT EXISTS repo_map_references (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
+	, symbol_name TEXT NOT NULL
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_session_id ON jobs (session_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id ON jobs (parent_job_id);
 CREATE INDEX IF NOT EXISTS idx_turns_job_id ON turns (job_id);
+
+CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_id
+ON repo_map_files (project_id);
+
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id
+ON repo_map_tags (file_id);
+
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name
+ON repo_map_tags (name);
+
+CREATE INDEX IF NOT EXISTS idx_repo_map_references_file_id
+ON repo_map_references (file_id);
 
 -- Initial Data for testing
 INSERT OR IGNORE INTO projects (id, path, name)

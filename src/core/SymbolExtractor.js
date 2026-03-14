@@ -1,8 +1,8 @@
 import Parser from "tree-sitter";
+import CSS from "tree-sitter-css";
+import HTML from "tree-sitter-html";
 import JavaScript from "tree-sitter-javascript";
 import TypeScript from "tree-sitter-typescript";
-import HTML from "tree-sitter-html";
-import CSS from "tree-sitter-css";
 
 export default class SymbolExtractor {
 	#parser;
@@ -39,10 +39,13 @@ export default class SymbolExtractor {
 
 		this.#queries.html = new Parser.Query(HTML, `(element) @tag`.trim());
 
-		this.#queries.css = new Parser.Query(CSS, `
+		this.#queries.css = new Parser.Query(
+			CSS,
+			`
 (class_selector) @class
 (id_selector) @id
-    `.trim());
+    `.trim(),
+		);
 	}
 
 	/**
@@ -63,18 +66,28 @@ export default class SymbolExtractor {
 			const references = new Set();
 
 			for (const capture of captures) {
-				if (["class", "function", "method", "tag", "id"].includes(capture.name)) {
+				if (
+					["class", "function", "method", "tag", "id"].includes(capture.name)
+				) {
 					let name = "";
 					let params = "";
 					for (let i = 0; i < capture.node.childCount; i++) {
 						const child = capture.node.child(i);
-						if (["identifier", "property_identifier", "tag_name", "class_name", "id_name"].includes(child.type)) {
+						if (
+							[
+								"identifier",
+								"property_identifier",
+								"tag_name",
+								"class_name",
+								"id_name",
+							].includes(child.type)
+						) {
 							name = child.text;
 						} else if (child.type === "formal_parameters") {
 							params = child.text;
 						}
 					}
-					
+
 					if (name) {
 						definitions.push({
 							type: capture.name,
@@ -87,7 +100,11 @@ export default class SymbolExtractor {
 					// For call_expression and new_expression, find the identifier
 					// We'll search depth-first for the first identifier
 					const findIdentifier = (node) => {
-						if (node.type === "identifier" || node.type === "property_identifier") return node.text;
+						if (
+							node.type === "identifier" ||
+							node.type === "property_identifier"
+						)
+							return node.text;
 						for (let i = 0; i < node.childCount; i++) {
 							const result = findIdentifier(node.child(i));
 							if (result) return result;

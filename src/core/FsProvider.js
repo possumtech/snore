@@ -9,7 +9,11 @@ export default class FsProvider {
 	 * @param {string[]} ignores - List of directory names to ignore.
 	 * @returns {string[]} - List of relative file paths.
 	 */
-	static listFiles(root, currentDir = root, ignores = ["node_modules", ".git", ".venv"]) {
+	static listFiles(
+		root,
+		currentDir = root,
+		ignores = ["node_modules", ".git", ".venv"],
+	) {
 		const files = [];
 		const items = readdirSync(currentDir, { withFileTypes: true });
 

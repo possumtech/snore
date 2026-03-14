@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import ProjectContext from "../core/ProjectContext.js";
+import RepoMap from "../core/RepoMap.js";
 
 export default class ProjectAgent {
 	#db;
@@ -29,6 +31,11 @@ export default class ProjectAgent {
 
 		const actualProjectId = projects[0].id;
 
+		// Initialize RepoMap
+		const ctx = await ProjectContext.open(projectPath);
+		const repoMap = new RepoMap(ctx, this.#db, actualProjectId);
+		await repoMap.updateIndex();
+
 		// Use the prepared create_session method
 		await this.#db.create_session.run({
 			id: sessionId,
@@ -40,6 +47,22 @@ export default class ProjectAgent {
 			projectId: actualProjectId,
 			sessionId,
 		};
+	}
+
+	async getFiles(projectPath) {
+		const ctx = await ProjectContext.open(projectPath);
+		const mappable = await ctx.getMappableFiles();
+		const results = [];
+
+		for (const relPath of mappable) {
+			const state = await ctx.resolveState(relPath);
+			results.push({
+				path: relPath,
+				state,
+			});
+		}
+
+		return results;
 	}
 
 	async startJob(sessionId, jobConfig) {
