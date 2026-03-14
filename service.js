@@ -3,10 +3,7 @@ import SocketServer from "./src/socket/SocketServer.js";
 
 async function main() {
 	// sqlrite uses 'path' for the db file and 'dir' for the sql files/migrations
-	// It doesn't seem to have a separate 'migrate' method in the async version,
-	// it appears to initialize from the dir automatically if they are migrations.
-	// However, looking at the source, it just prepares methods.
-	const db = new SqlRite({
+	const db = await SqlRite.open({
 		path: "snore.db",
 		dir: ["migrations", "src"],
 	});

@@ -141,3 +141,4 @@ vite.config.ts.timestamp-*
 # snore
 snore.db*
 AGENTS.md
+.venv/

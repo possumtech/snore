@@ -13,7 +13,7 @@ describe("E2E Flow: getModels", () => {
 
 	before(async () => {
 		await fs.unlink(dbPath).catch(() => {});
-		db = new SqlRite({
+		db = await SqlRite.open({
 			path: dbPath,
 			dir: ["migrations", "src"],
 		});
@@ -22,8 +22,8 @@ describe("E2E Flow: getModels", () => {
 	});
 
 	after(async () => {
-		await server.close();
-		await db.close();
+		if (server) await server.close();
+		if (db) await db.close();
 		await fs.unlink(dbPath).catch(() => {});
 	});
 

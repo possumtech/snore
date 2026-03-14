@@ -24,7 +24,9 @@
 	"scripts": {
 		"start": "node --env-file-if-exists=.env.example --env-file-if-exists=.env service.js",
 		"dev": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.dev --watch service.js",
-		"lint": "biome check . --fix --unsafe",
+		"lint": "biome check . --fix --unsafe && npm run lint:sql",
+		"lint:sql": ". .venv/bin/activate && sqlfluff lint .",
+		"fix:sql": ". .venv/bin/activate && sqlfluff fix . --force",
 		"test": "npm run lint && npm run test:unit && npm run test:intg && npm run test:e2e",
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test src/**/*.test.js",
 		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test test/integration/**/*.test.js",
@@ -34,7 +36,7 @@
 		"@biomejs/biome": "^2.4.6"
 	},
 	"dependencies": {
-		"@possumtech/sqlrite": "^1.0.2",
+		"@possumtech/sqlrite": "^2.0.3",
 		"ws": "^8.19.0"
 	}
 }

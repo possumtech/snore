@@ -9,14 +9,14 @@ describe("Database Integration", () => {
 
 	before(async () => {
 		await fs.unlink(dbPath).catch(() => {});
-		db = new SqlRite({
+		db = await SqlRite.open({
 			path: dbPath,
 			dir: ["migrations", "src"],
 		});
 	});
 
 	after(async () => {
-		await db.close();
+		if (db) await db.close();
 		await fs.unlink(dbPath).catch(() => {});
 	});
 
