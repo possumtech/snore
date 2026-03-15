@@ -1,11 +1,13 @@
 import ModelAgent from "../agent/ModelAgent.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
+import HookRegistry from "../core/HookRegistry.js";
 
 export default class ClientConnection {
 	#ws;
 	#db;
 	#projectAgent;
 	#modelAgent;
+	#hooks;
 	#context = {
 		projectId: null,
 		sessionId: null,
@@ -17,6 +19,7 @@ export default class ClientConnection {
 		this.#db = db;
 		this.#projectAgent = new ProjectAgent(db);
 		this.#modelAgent = new ModelAgent(db);
+		this.#hooks = HookRegistry.instance;
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
 	}
@@ -31,8 +34,20 @@ export default class ClientConnection {
 	async #handleMessage(data) {
 		let id = null;
 		try {
-			const message = JSON.parse(data.toString());
-			const { method, params, id: msgId } = message;
+			// 1. Filter raw message data before parsing
+			const rawMessage = await this.#hooks.applyFilters(
+				"socket_message_raw",
+				data,
+			);
+
+			const message = JSON.parse(rawMessage.toString());
+
+			// 2. Filter parsed RPC request
+			const {
+				method,
+				params,
+				id: msgId,
+			} = await this.#hooks.applyFilters("rpc_request", message);
 			id = msgId;
 
 			let result;
@@ -58,17 +73,10 @@ export default class ClientConnection {
 					break;
 
 				case "getFiles":
-					if (!this.#context.projectPath) {
-						throw new Error("Project not initialized. Call 'init' first.");
-					}
 					result = await this.#projectAgent.getFiles(this.#context.projectPath);
 					break;
 
 				case "updateFiles":
-					if (!this.#context.projectId) {
-						throw new Error("Project not initialized. Call 'init' first.");
-					}
-					// params: { files: [{ path, visibility }] }
 					result = await this.#projectAgent.updateFiles(
 						this.#context.projectId,
 						params.files,
@@ -76,9 +84,6 @@ export default class ClientConnection {
 					break;
 
 				case "startJob":
-					if (!this.#context.sessionId) {
-						throw new Error("Session not initialized. Call 'init' first.");
-					}
 					result = await this.#projectAgent.startJob(
 						this.#context.sessionId,
 						params,
@@ -86,9 +91,6 @@ export default class ClientConnection {
 					break;
 
 				case "ask":
-					if (!this.#context.sessionId) {
-						throw new Error("Session not initialized. Call 'init' first.");
-					}
 					result = await this.#projectAgent.ask(
 						this.#context.sessionId,
 						params.model,
@@ -101,9 +103,16 @@ export default class ClientConnection {
 					throw new Error(`Method '${method}' not found.`);
 			}
 
+			// 3. Filter RPC result before sending
+			const finalResult = await this.#hooks.applyFilters(
+				"rpc_response_result",
+				result,
+				{ method, id },
+			);
+
 			this.#send({
 				jsonrpc: "2.0",
-				result,
+				result: finalResult,
 				id,
 			});
 		} catch (error) {

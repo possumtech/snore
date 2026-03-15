@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import HookRegistry from "../core/HookRegistry.js";
 import OpenRouterClient from "../core/OpenRouterClient.js";
 import ProjectContext from "../core/ProjectContext.js";
 import RepoMap from "../core/RepoMap.js";
@@ -6,10 +7,12 @@ import RepoMap from "../core/RepoMap.js";
 export default class ProjectAgent {
 	#db;
 	#client;
+	#hooks;
 
 	constructor(db) {
 		this.#db = db;
 		this.#client = new OpenRouterClient(process.env.OPENROUTER_API_KEY);
+		this.#hooks = HookRegistry.instance;
 	}
 
 	async #getVisibilityMap(projectId) {
@@ -49,7 +52,9 @@ export default class ProjectAgent {
 			client_id: clientId,
 		});
 
-		return { projectId, sessionId };
+		const result = { projectId, sessionId };
+		await this.#hooks.doAction("project_initialized", result);
+		return result;
 	}
 
 	async getFiles(projectPath) {
@@ -83,17 +88,30 @@ export default class ProjectAgent {
 		const repoMap = new RepoMap(ctx, this.#db, projectId);
 		await repoMap.updateIndex();
 
+		await this.#hooks.doAction("files_updated", { projectId, files });
 		return { status: "ok" };
 	}
 
 	async startJob(sessionId, jobConfig) {
 		const jobId = crypto.randomUUID();
+
+		// Filter job config before creation
+		const config = await this.#hooks.applyFilters("job_config", jobConfig, {
+			sessionId,
+		});
+
 		await this.#db.create_job.run({
 			id: jobId,
 			session_id: sessionId,
-			parent_job_id: jobConfig.parentJobId || null,
-			type: jobConfig.type,
-			config: JSON.stringify(jobConfig.config || {}),
+			parent_job_id: config.parentJobId || null,
+			type: config.type,
+			config: JSON.stringify(config.config || {}),
+		});
+
+		await this.#hooks.doAction("job_started", {
+			jobId,
+			sessionId,
+			type: config.type,
 		});
 		return jobId;
 	}
@@ -119,32 +137,60 @@ export default class ProjectAgent {
 
 		const perspective = await repoMap.renderPerspective(activeFiles);
 
-		const systemPrompt = `You are SNORE Agent. Project Map:\n\n${JSON.stringify(perspective, null, 2)}`;
+		// Filter system prompt
+		const baseSystemPrompt = `You are SNORE Agent. Project Map:\n\n${JSON.stringify(perspective, null, 2)}`;
+		const systemPrompt = await this.#hooks.applyFilters(
+			"system_prompt",
+			baseSystemPrompt,
+			{ project, sessionId },
+		);
+
 		const messages = [
 			{ role: "system", content: systemPrompt },
 			{ role: "user", content: prompt },
 		];
 
+		// Filter messages before sending to LLM
+		const finalMessages = await this.#hooks.applyFilters(
+			"llm_messages",
+			messages,
+			{ model, sessionId },
+		);
+
 		await this.#db.create_turn.run({
 			job_id: jobId,
 			sequence_number: 0,
-			payload: JSON.stringify(messages),
+			payload: JSON.stringify(finalMessages),
 			usage: null,
 		});
 
 		const targetModel = process.env[`SNORE_MODEL_${model}`] || model;
-		const result = await this.#client.completion(messages, targetModel);
+		const result = await this.#client.completion(finalMessages, targetModel);
 
 		const responseMessage = result.choices?.[0]?.message;
+
+		// Filter response message
+		const finalResponse = await this.#hooks.applyFilters(
+			"llm_response",
+			responseMessage,
+			{ model, sessionId, jobId },
+		);
+
 		await this.#db.create_turn.run({
 			job_id: jobId,
 			sequence_number: 1,
-			payload: JSON.stringify(responseMessage),
+			payload: JSON.stringify(finalResponse),
 			usage: JSON.stringify(result.usage),
 		});
 
 		await this.#db.update_job_status.run({ id: jobId, status: "completed" });
 
-		return { jobId, response: responseMessage?.content };
+		await this.#hooks.doAction("ask_completed", {
+			jobId,
+			sessionId,
+			response: finalResponse,
+		});
+
+		return { jobId, response: finalResponse?.content };
 	}
 }

@@ -24,6 +24,7 @@
 	"scripts": {
 		"start": "node --env-file-if-exists=.env.example --env-file-if-exists=.env service.js",
 		"dev": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.dev --watch service.js",
+		"debug": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.debug --inspect service.js",
 		"lint": "biome check src test migrations --fix --unsafe && npm run lint:sql",
 		"lint:sql": ". .venv/bin/activate && sqlfluff lint .",
 		"fix:sql": ". .venv/bin/activate && sqlfluff fix . --force",
