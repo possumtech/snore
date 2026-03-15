@@ -34,21 +34,25 @@ export default class ClientConnection {
 	async #handleMessage(data) {
 		let id = null;
 		try {
-			// 1. Filter raw message data before parsing
 			const rawMessage = await this.#hooks.applyFilters(
 				"socket_message_raw",
 				data,
 			);
-
 			const message = JSON.parse(rawMessage.toString());
 
-			// 2. Filter parsed RPC request
 			const {
 				method,
 				params,
 				id: msgId,
 			} = await this.#hooks.applyFilters("rpc_request", message);
 			id = msgId;
+
+			await this.#hooks.emitEvent("rpc_started", {
+				method,
+				params,
+				id,
+				sessionId: this.#context.sessionId,
+			});
 
 			let result;
 
@@ -73,10 +77,14 @@ export default class ClientConnection {
 					break;
 
 				case "getFiles":
+					if (!this.#context.projectPath)
+						throw new Error("Project not initialized.");
 					result = await this.#projectAgent.getFiles(this.#context.projectPath);
 					break;
 
 				case "updateFiles":
+					if (!this.#context.projectId)
+						throw new Error("Project not initialized.");
 					result = await this.#projectAgent.updateFiles(
 						this.#context.projectId,
 						params.files,
@@ -84,6 +92,8 @@ export default class ClientConnection {
 					break;
 
 				case "startJob":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
 					result = await this.#projectAgent.startJob(
 						this.#context.sessionId,
 						params,
@@ -91,6 +101,8 @@ export default class ClientConnection {
 					break;
 
 				case "ask":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
 					result = await this.#projectAgent.ask(
 						this.#context.sessionId,
 						params.model,
@@ -103,7 +115,6 @@ export default class ClientConnection {
 					throw new Error(`Method '${method}' not found.`);
 			}
 
-			// 3. Filter RPC result before sending
 			const finalResult = await this.#hooks.applyFilters(
 				"rpc_response_result",
 				result,
@@ -115,12 +126,19 @@ export default class ClientConnection {
 				result: finalResult,
 				id,
 			});
+
+			await this.#hooks.emitEvent("rpc_completed", {
+				method,
+				id,
+				result: finalResult,
+			});
 		} catch (error) {
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },
 				id: id || null,
 			});
+			await this.#hooks.emitEvent("rpc_error", { id, error });
 		}
 	}
 

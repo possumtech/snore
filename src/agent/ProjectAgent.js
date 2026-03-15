@@ -29,6 +29,12 @@ export default class ProjectAgent {
 	}
 
 	async init(projectPath, projectName, clientId) {
+		await this.#hooks.emitEvent("project_init_started", {
+			projectPath,
+			projectName,
+			clientId,
+		});
+
 		const actualProjectId = crypto.randomUUID();
 		const sessionId = crypto.randomUUID();
 
@@ -50,8 +56,8 @@ export default class ProjectAgent {
 		});
 
 		const result = { projectId, sessionId };
-		await this.#hooks.doAction("project_initialized", {
-			projectId,
+		await this.#hooks.emitEvent("project_init_completed", {
+			...result,
 			projectPath,
 			db: this.#db,
 		});
@@ -73,6 +79,8 @@ export default class ProjectAgent {
 	}
 
 	async updateFiles(projectId, files) {
+		await this.#hooks.emitEvent("files_update_started", { projectId, files });
+
 		for (const f of files) {
 			await this.#db.upsert_repo_map_file.run({
 				project_id: projectId,
@@ -84,13 +92,13 @@ export default class ProjectAgent {
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-
-		await this.#hooks.doAction("files_updated", {
+		await this.#hooks.emitEvent("files_update_completed", {
 			projectId,
 			projectPath: project.path,
 			files,
 			db: this.#db,
 		});
+
 		return { status: "ok" };
 	}
 
@@ -109,7 +117,7 @@ export default class ProjectAgent {
 			config: JSON.stringify(config.config || {}),
 		});
 
-		await this.#hooks.doAction("job_started", {
+		await this.#hooks.emitEvent("job_started", {
 			jobId,
 			sessionId,
 			type: config.type,
@@ -118,6 +126,13 @@ export default class ProjectAgent {
 	}
 
 	async ask(sessionId, model, prompt, activeFiles = []) {
+		await this.#hooks.emitEvent("ask_started", {
+			sessionId,
+			model,
+			prompt,
+			activeFiles,
+		});
+
 		const sessions = await this.#db.get_session_by_id.all({ id: sessionId });
 		const project = await this.#db.get_project_by_id.get({
 			id: sessions[0].project_id,
@@ -158,7 +173,14 @@ export default class ProjectAgent {
 		});
 
 		const targetModel = process.env[`SNORE_MODEL_${model}`] || model;
+
+		await this.#hooks.emitEvent("llm_request_started", {
+			jobId,
+			model: targetModel,
+			messages: finalMessages,
+		});
 		const result = await this.#client.completion(finalMessages, targetModel);
+		await this.#hooks.emitEvent("llm_request_completed", { jobId, result });
 
 		const responseMessage = result.choices?.[0]?.message;
 
@@ -174,7 +196,6 @@ export default class ProjectAgent {
 			total_tokens: 0,
 		};
 
-		// Ensure we pass 0 instead of undefined to satisfy SQLite NOT NULL
 		await this.#db.create_turn.run({
 			job_id: jobId,
 			sequence_number: 1,
@@ -195,7 +216,7 @@ export default class ProjectAgent {
 		}
 		turnObj.assistant.meta.add(usage);
 
-		await this.#hooks.doAction("ask_completed", {
+		await this.#hooks.emitEvent("ask_completed", {
 			jobId,
 			sessionId,
 			model: targetModel,

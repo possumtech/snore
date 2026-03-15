@@ -5,20 +5,23 @@ import RepoMap from "../../core/RepoMap.js";
 
 export default class RepoMapPlugin {
 	static register(hooks) {
-		hooks.addAction(
-			"project_initialized",
+		hooks.addEvent(
+			"project_init_completed",
 			async ({ projectId, projectPath, db }) => {
 				if (!db) return;
 				await RepoMapPlugin.#updateIndex(db, projectId, projectPath);
 			},
 		);
 
-		hooks.addAction("files_updated", async ({ projectId, projectPath, db }) => {
-			if (!db) return;
-			await RepoMapPlugin.#updateIndex(db, projectId, projectPath);
-		});
+		hooks.addEvent(
+			"files_update_completed",
+			async ({ projectId, projectPath, db }) => {
+				if (!db) return;
+				await RepoMapPlugin.#updateIndex(db, projectId, projectPath);
+			},
+		);
 
-		hooks.addAction(
+		hooks.addEvent(
 			"TURN_CONTEXT_FILES",
 			async (slot, { project, activeFiles, db }) => {
 				if (!project || !db) return;
@@ -53,7 +56,7 @@ export default class RepoMapPlugin {
 			},
 		);
 
-		hooks.addAction("TURN_SYSTEM_PROMPT", async (slot) => {
+		hooks.addEvent("TURN_SYSTEM_PROMPT", async (slot) => {
 			slot.add("You are an assistant.", 5);
 		});
 	}

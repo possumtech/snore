@@ -2,25 +2,33 @@ import { writeFileSync } from "node:fs";
 
 export default class DebugLoggerPlugin {
 	static register(hooks) {
-		// Event Logging
-		hooks.addAction(
-			"project_initialized",
+		hooks.addEvent("project_init_started", async ({ projectPath }) => {
+			console.log(`[EVENT] Project Init Started: ${projectPath}`);
+		});
+
+		hooks.addEvent(
+			"project_init_completed",
 			async ({ projectId, projectPath }) => {
 				console.log(
-					`[EVENT] Project Initialized: ${projectId} at ${projectPath}`,
+					`[EVENT] Project Init Completed: ${projectId} at ${projectPath}`,
 				);
 			},
 		);
 
-		hooks.addAction("job_started", async ({ jobId, type }) => {
+		hooks.addEvent("job_started", async ({ jobId, type }) => {
 			console.log(`[EVENT] Job Started: ${jobId} (Type: ${type})`);
 		});
 
+		hooks.addEvent("ask_started", async ({ sessionId, model }) => {
+			console.log(
+				`[EVENT] Ask Started: Session ${sessionId} (Model: ${model})`,
+			);
+		});
+
 		// CLEAN XML AUDIT: Write the full <turn> document to a file
-		hooks.addAction("ask_completed", async ({ turn }) => {
+		hooks.addEvent("ask_completed", async ({ turn }) => {
 			if (process.env.SNORE_DEBUG !== "true") return;
 
-			// Allow overriding the audit file for tests
 			const auditFile = process.env.SNORE_AUDIT_FILE || "audit_last_turn.xml";
 			try {
 				const xml = turn.toXml();
