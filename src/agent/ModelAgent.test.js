@@ -8,10 +8,10 @@ describe("ModelAgent", () => {
 	});
 
 	it("should return a list of models from the database and environment", async () => {
-		process.env.SNORE_MODEL_TEST_ALIAS = "gpt-4o";
+		process.env.SNORE_MODEL_TEST_ALIAS = "target-model";
 
 		const mockModels = [
-			{ id: "test-model", name: "Test Model", description: "A test model" },
+			{ id: "db-model", name: "DB Model", description: "A db model" },
 		];
 		const mockDb = {
 			get_models: {
@@ -22,11 +22,11 @@ describe("ModelAgent", () => {
 		const agent = new ModelAgent(mockDb);
 		const models = await agent.getModels();
 
-		assert.ok(models.some((m) => m.id === "test-model"));
+		assert.ok(models.some((m) => m.id === "db-model"));
 		assert.ok(models.some((m) => m.id === "TEST_ALIAS"));
 
 		const alias = models.find((m) => m.id === "TEST_ALIAS");
-		assert.strictEqual(alias.target, "gpt-4o");
+		assert.strictEqual(alias.target, "target-model");
 
 		delete process.env.SNORE_MODEL_TEST_ALIAS;
 	});

@@ -20,18 +20,22 @@ describe("E2E Bedrock: getOpenRouterModels (LIVE)", () => {
 	});
 
 	after(async () => {
-		client.close();
-		await tserver.stop();
-		await tdb.cleanup();
+		if (client) client.close();
+		if (tserver) await tserver.stop();
+		if (tdb) await tdb.cleanup();
 	});
 
 	it("should fetch real models from OpenRouter via RPC", async () => {
 		const models = await client.call("getOpenRouterModels");
 		assert.ok(Array.isArray(models), "Should return an array of models");
-		assert.ok(models.length > 100, "Should see a large list of live models");
+
+		// DYNAMIC VERIFICATION: Ensure our default model exists in the live list
+		const defaultModel = process.env.SNORE_DEFAULT_MODEL;
+		const found = models.some((m) => m.id === defaultModel);
+
 		assert.ok(
-			models.some((m) => m.id.includes("gpt-4o")),
-			"Should include gpt-4o in live list",
+			found,
+			`Live model list should contain the default model: ${defaultModel}`,
 		);
 	});
 });

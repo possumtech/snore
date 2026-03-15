@@ -10,6 +10,9 @@ describe("ProjectAgent Unit", () => {
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+		process.env.SNORE_DEFAULT_MODEL = "test-model";
+		process.env.SNORE_HTTP_REFERER = "http://test";
+		process.env.SNORE_X_TITLE = "Test";
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 	});
 
@@ -81,6 +84,14 @@ describe("ProjectAgent Unit", () => {
 			},
 			create_job: { run: mock.fn() },
 			get_project_repo_map: { all: mock.fn(async () => []) },
+			get_repo_map_file: { get: mock.fn(async () => null) },
+			upsert_repo_map_file: {
+				run: mock.fn(),
+				get: mock.fn(async () => ({ id: "f1" })),
+			},
+			clear_repo_map_file_data: { run: mock.fn() },
+			insert_repo_map_tag: { run: mock.fn() },
+			insert_repo_map_ref: { run: mock.fn() },
 			get_file_references: { all: mock.fn(async () => []) },
 			create_turn: { run: mock.fn() },
 			update_job_status: { run: mock.fn() },
@@ -95,7 +106,11 @@ describe("ProjectAgent Unit", () => {
 		}));
 
 		const agent = new ProjectAgent(mockDb);
-		const result = await agent.ask("sess-1", "gpt-4o", "Capital?");
+		const result = await agent.ask(
+			"sess-1",
+			process.env.SNORE_DEFAULT_MODEL,
+			"Capital?",
+		);
 		assert.strictEqual(result.response, "Paris");
 	});
 });

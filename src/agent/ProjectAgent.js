@@ -12,9 +12,6 @@ export default class ProjectAgent {
 		this.#client = new OpenRouterClient(process.env.OPENROUTER_API_KEY);
 	}
 
-	/**
-	 * Internal: Load visibility map from DB for a project
-	 */
 	async #getVisibilityMap(projectId) {
 		const files = await this.#db.get_project_repo_map.all({
 			project_id: projectId,
@@ -39,8 +36,6 @@ export default class ProjectAgent {
 		const projects = await this.#db.get_project_by_path.all({
 			path: projectPath,
 		});
-		if (!projects?.length)
-			throw new Error(`Failed to create/fetch project at ${projectPath}`);
 		const projectId = projects[0].id;
 
 		const visibilityMap = await this.#getVisibilityMap(projectId);
@@ -61,9 +56,6 @@ export default class ProjectAgent {
 		const projects = await this.#db.get_project_by_path.all({
 			path: projectPath,
 		});
-		if (!projects?.length)
-			throw new Error(`Project not found at ${projectPath}`);
-
 		const visibilityMap = await this.#getVisibilityMap(projects[0].id);
 		const ctx = await ProjectContext.open(projectPath, visibilityMap);
 		const mappable = await ctx.getMappableFiles();
@@ -74,12 +66,8 @@ export default class ProjectAgent {
 		return results;
 	}
 
-	/**
-	 * Core Command: Explicitly manage file mapping
-	 */
 	async updateFiles(projectId, files) {
 		for (const f of files) {
-			// visibility: 'active', 'read_only', 'mappable', 'ignored'
 			await this.#db.upsert_repo_map_file.run({
 				project_id: projectId,
 				path: f.path,
@@ -89,7 +77,6 @@ export default class ProjectAgent {
 			});
 		}
 
-		// Trigger indexing for newly added files
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		const visibilityMap = await this.#getVisibilityMap(projectId);
 		const ctx = await ProjectContext.open(project.path, visibilityMap);
@@ -113,9 +100,6 @@ export default class ProjectAgent {
 
 	async ask(sessionId, model, prompt, activeFiles = []) {
 		const sessions = await this.#db.get_session_by_id.all({ id: sessionId });
-		if (!sessions?.length)
-			throw new Error(`SNORE Error: Session ${sessionId} not found`);
-
 		const project = await this.#db.get_project_by_id.get({
 			id: sessions[0].project_id,
 		});
@@ -131,6 +115,8 @@ export default class ProjectAgent {
 		const visibilityMap = await this.#getVisibilityMap(project.id);
 		const ctx = await ProjectContext.open(project.path, visibilityMap);
 		const repoMap = new RepoMap(ctx, this.#db, project.id);
+		await repoMap.updateIndex();
+
 		const perspective = await repoMap.renderPerspective(activeFiles);
 
 		const systemPrompt = `You are SNORE Agent. Project Map:\n\n${JSON.stringify(perspective, null, 2)}`;

@@ -6,6 +6,7 @@ describe("ClientConnection", () => {
 	before(() => {
 		process.env.OPENROUTER_API_KEY = "test-key";
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+		process.env.SNORE_DEFAULT_MODEL = "test-model";
 	});
 
 	const createMocks = () => {
@@ -83,7 +84,7 @@ describe("ClientConnection", () => {
 		const conn = new ClientConnection(ws, db);
 		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
 		const response = await runMethod(conn, ws, "ask", {
-			model: "gpt-4o",
+			model: process.env.SNORE_DEFAULT_MODEL,
 			prompt: "Capital?",
 		});
 		assert.strictEqual(response.result.response, "Paris");

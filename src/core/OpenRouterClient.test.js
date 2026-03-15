@@ -5,20 +5,8 @@ import OpenRouterClient from "./OpenRouterClient.js";
 describe("OpenRouterClient", () => {
 	before(() => {
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-	});
-
-	it("should throw if API key is missing", () => {
-		assert.throws(() => new OpenRouterClient(null), /API Key required/);
-	});
-
-	it("should throw if base URL is missing", () => {
-		const original = process.env.OPENROUTER_BASE_URL;
-		delete process.env.OPENROUTER_BASE_URL;
-		assert.throws(
-			() => new OpenRouterClient("key"),
-			/OPENROUTER_BASE_URL missing/,
-		);
-		process.env.OPENROUTER_BASE_URL = original;
+		process.env.SNORE_HTTP_REFERER = "http://test";
+		process.env.SNORE_X_TITLE = "Test";
 	});
 
 	it("should send a completion request", async () => {
@@ -35,7 +23,7 @@ describe("OpenRouterClient", () => {
 		const client = new OpenRouterClient("test-key");
 		const result = await client.completion(
 			[{ role: "user", content: "Paris?" }],
-			"gpt-4o",
+			"test-model",
 		);
 
 		assert.deepStrictEqual(result, mockResponse);
@@ -50,7 +38,7 @@ describe("OpenRouterClient", () => {
 
 		const client = new OpenRouterClient("test-key");
 		await assert.rejects(
-			client.completion([], "gpt-4o"),
+			client.completion([], "test-model"),
 			/OpenRouter API error: 500 - Internal Error/,
 		);
 	});

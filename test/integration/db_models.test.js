@@ -1,31 +1,30 @@
 import assert from "node:assert";
-import fs from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
-import SqlRite from "@possumtech/sqlrite";
+import TestDb from "../helpers/TestDb.js";
 
-describe("Database Integration", () => {
-	let db;
-	const dbPath = "test_integration.db";
+describe("Database Integration: Models", () => {
+	let tdb;
 
 	before(async () => {
-		await fs.unlink(dbPath).catch(() => {});
-		db = await SqlRite.open({
-			path: dbPath,
-			dir: ["migrations", "src"],
-		});
+		tdb = await TestDb.create("db_models");
 	});
 
 	after(async () => {
-		if (db) await db.close();
-		await fs.unlink(dbPath).catch(() => {});
+		if (tdb) await tdb.cleanup();
 	});
 
-	it("should have the get_models method prepared from src/agent/get_models.sql", async () => {
-		const models = await db.get_models.all();
-		assert.ok(Array.isArray(models));
-		assert.ok(models.length >= 2);
+	it("should allow inserting and retrieving models", async () => {
+		await tdb.db.insert_model.run({
+			id: "test-model",
+			name: "Test Model",
+			description: "A model for testing",
+		});
 
-		const gpt4o = models.find((m) => m.id === "gpt-4o");
-		assert.strictEqual(gpt4o.name, "GPT-4o");
+		const models = await tdb.db.get_models.all();
+		assert.ok(Array.isArray(models));
+		assert.ok(models.some((m) => m.id === "test-model"));
+
+		const m = models.find((m) => m.id === "test-model");
+		assert.strictEqual(m.name, "Test Model");
 	});
 });

@@ -5,15 +5,6 @@ CREATE TABLE IF NOT EXISTS models (
 	, description TEXT
 );
 
-INSERT OR IGNORE INTO models (id, name, description)
-VALUES
-('gpt-4o', 'GPT-4o', 'OpenAI flagship model'),
-(
-	'claude-3-5-sonnet-latest'
-	, 'Claude 3.5 Sonnet'
-	, 'Anthropic performance model'
-);
-
 CREATE TABLE IF NOT EXISTS projects (
 	id TEXT PRIMARY KEY
 	, path TEXT UNIQUE NOT NULL

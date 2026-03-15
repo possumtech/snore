@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { getEncoding } from "js-tiktoken";
 import SymbolExtractor from "./SymbolExtractor.js";
@@ -26,6 +26,10 @@ export default class RepoMap {
 
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
+
+			// Gracefully skip files that exist in Git/VisibilityMap but are missing on disk
+			if (!existsSync(fullPath)) continue;
+
 			const content = readFileSync(fullPath, "utf8");
 			const size = content.length;
 			const hash = crypto.createHash("sha256").update(content).digest("hex");
@@ -78,7 +82,10 @@ export default class RepoMap {
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#generateCtags(ctagsQueue);
 			for (const result of ctagsResults) {
-				const size = readFileSync(join(this.#ctx.root, result.path)).length;
+				const fullPath = join(this.#ctx.root, result.path);
+				if (!existsSync(fullPath)) continue;
+
+				const size = readFileSync(fullPath).length;
 				const visibility = await this.#ctx.resolveState(result.path);
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
