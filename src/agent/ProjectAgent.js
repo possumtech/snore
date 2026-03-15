@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import HookRegistry from "../core/HookRegistry.js";
 import OpenRouterClient from "../core/OpenRouterClient.js";
 import ProjectContext from "../core/ProjectContext.js";
-import RepoMap from "../core/RepoMap.js";
 
 export default class ProjectAgent {
 	#db;
@@ -41,11 +40,6 @@ export default class ProjectAgent {
 		});
 		const projectId = projects[0].id;
 
-		const visibilityMap = await this.#getVisibilityMap(projectId);
-		const ctx = await ProjectContext.open(projectPath, visibilityMap);
-		const repoMap = new RepoMap(ctx, this.#db, projectId);
-		await repoMap.updateIndex();
-
 		await this.#db.create_session.run({
 			id: sessionId,
 			project_id: projectId,
@@ -53,7 +47,11 @@ export default class ProjectAgent {
 		});
 
 		const result = { projectId, sessionId };
-		await this.#hooks.doAction("project_initialized", result);
+		await this.#hooks.doAction("project_initialized", {
+			projectId,
+			projectPath,
+			db: this.#db,
+		});
 		return result;
 	}
 
@@ -83,12 +81,13 @@ export default class ProjectAgent {
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		const visibilityMap = await this.#getVisibilityMap(projectId);
-		const ctx = await ProjectContext.open(project.path, visibilityMap);
-		const repoMap = new RepoMap(ctx, this.#db, projectId);
-		await repoMap.updateIndex();
 
-		await this.#hooks.doAction("files_updated", { projectId, files });
+		await this.#hooks.doAction("files_updated", {
+			projectId,
+			projectPath: project.path,
+			files,
+			db: this.#db,
+		});
 		return { status: "ok" };
 	}
 
@@ -130,19 +129,12 @@ export default class ProjectAgent {
 			config: JSON.stringify({ model, activeFiles }),
 		});
 
-		const visibilityMap = await this.#getVisibilityMap(project.id);
-		const ctx = await ProjectContext.open(project.path, visibilityMap);
-		const repoMap = new RepoMap(ctx, this.#db, project.id);
-		await repoMap.updateIndex();
-
-		const perspective = await repoMap.renderPerspective(activeFiles);
-
 		// Filter system prompt
-		const baseSystemPrompt = `You are SNORE Agent. Project Map:\n\n${JSON.stringify(perspective, null, 2)}`;
+		const baseSystemPrompt = "You are SNORE Agent.";
 		const systemPrompt = await this.#hooks.applyFilters(
 			"system_prompt",
 			baseSystemPrompt,
-			{ project, sessionId },
+			{ project, sessionId, activeFiles, db: this.#db },
 		);
 
 		const messages = [

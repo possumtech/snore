@@ -1,5 +1,6 @@
 import SqlRite from "@possumtech/sqlrite";
 import SocketServer from "./src/socket/SocketServer.js";
+import { registerCorePlugins } from "./src/plugins/index.js";
 
 async function main() {
 	const dbPath = process.env.SNORE_DB_PATH || "snore.db";
@@ -7,6 +8,9 @@ async function main() {
 		path: dbPath,
 		dir: ["migrations", "src"],
 	});
+
+	// Register internal hooks & filters
+	registerCorePlugins();
 
 	const port = Number.parseInt(process.env.PORT);
 	const server = new SocketServer(db, { port });
