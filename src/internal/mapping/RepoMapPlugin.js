@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import ProjectContext from "../core/ProjectContext.js";
-import RepoMap from "../core/RepoMap.js";
+import ProjectContext from "../../core/ProjectContext.js";
+import RepoMap from "../../core/RepoMap.js";
 
 export default class RepoMapPlugin {
 	static register(hooks) {
@@ -41,7 +41,6 @@ export default class RepoMapPlugin {
 						mode: f.mode,
 					};
 
-					// If the file is Active, read its full content from disk
 					if (f.mode === "hot" && activeFiles.includes(f.path)) {
 						const fullPath = join(project.path, f.path);
 						if (existsSync(fullPath)) {
@@ -55,7 +54,7 @@ export default class RepoMapPlugin {
 		);
 
 		hooks.addAction("TURN_SYSTEM_PROMPT", async (slot) => {
-			slot.add("You are SNORE Agent.", 5);
+			slot.add("You are an assistant.", 5);
 		});
 	}
 

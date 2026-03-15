@@ -14,10 +14,11 @@ describe("Slot", () => {
 
 	it("should handle object content for files", () => {
 		const slot = new Slot();
-		slot.add({ path: "file.js", content: "code" }, 10);
+		slot.add({ path: "file.js", content: "code", status: "active" }, 10);
 
 		const xml = slot.serializeFiles();
-		assert.ok(xml.includes('<file path="file.js">code</file>'));
+		assert.ok(/<file path="file.js" status="active">/.test(xml));
+		assert.ok(/code/.test(xml));
 	});
 
 	it("should filter out empty fragments", () => {

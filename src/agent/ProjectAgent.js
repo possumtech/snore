@@ -152,6 +152,9 @@ export default class ProjectAgent {
 			sequence_number: 0,
 			payload: JSON.stringify(finalMessages),
 			usage: null,
+			prompt_tokens: 0,
+			completion_tokens: 0,
+			total_tokens: 0,
 		});
 
 		const targetModel = process.env[`SNORE_MODEL_${model}`] || model;
@@ -165,22 +168,39 @@ export default class ProjectAgent {
 			{ model, sessionId, jobId },
 		);
 
+		const usage = result.usage || {
+			prompt_tokens: 0,
+			completion_tokens: 0,
+			total_tokens: 0,
+		};
+
+		// Ensure we pass 0 instead of undefined to satisfy SQLite NOT NULL
 		await this.#db.create_turn.run({
 			job_id: jobId,
 			sequence_number: 1,
 			payload: JSON.stringify(finalResponse),
-			usage: JSON.stringify(result.usage),
+			usage: JSON.stringify(usage),
+			prompt_tokens: usage.prompt_tokens || 0,
+			completion_tokens: usage.completion_tokens || 0,
+			total_tokens: usage.total_tokens || 0,
 		});
 
 		await this.#db.update_job_status.run({ id: jobId, status: "completed" });
+
+		if (responseMessage?.reasoning_content) {
+			turnObj.assistant.reasoning.add(responseMessage.reasoning_content);
+		}
+		if (finalResponse?.content) {
+			turnObj.assistant.content.add(finalResponse.content);
+		}
+		turnObj.assistant.meta.add(usage);
 
 		await this.#hooks.doAction("ask_completed", {
 			jobId,
 			sessionId,
 			model: targetModel,
-			request: finalMessages,
-			response: finalResponse,
-			usage: result.usage,
+			turn: turnObj,
+			usage,
 		});
 
 		return { jobId, response: finalResponse?.content };

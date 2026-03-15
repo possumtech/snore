@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS turns (
 	, sequence_number INTEGER NOT NULL
 	, payload JSON NOT NULL
 	, usage JSON
+	, prompt_tokens INTEGER DEFAULT 0
+	, completion_tokens INTEGER DEFAULT 0
+	, total_tokens INTEGER DEFAULT 0
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

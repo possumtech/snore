@@ -13,13 +13,6 @@ export default class Slot {
 		return [...this.#fragments];
 	}
 
-	get length() {
-		return this.#fragments.length;
-	}
-
-	/**
-	 * Returns true if the slot has non-empty content
-	 */
 	get hasContent() {
 		if (this.#fragments.length === 0) return false;
 		return this.toString().trim().length > 0;
@@ -28,7 +21,9 @@ export default class Slot {
 	toString() {
 		return this.#fragments
 			.map((f) =>
-				typeof f.content === "string" ? f.content : JSON.stringify(f.content),
+				typeof f.content === "string"
+					? f.content
+					: JSON.stringify(f.content, null, 2),
 			)
 			.filter(Boolean)
 			.join("\n");
@@ -37,35 +32,52 @@ export default class Slot {
 	/**
 	 * Specialized serializer for file objects
 	 */
-	serializeFiles() {
+	serializeFiles(indentStr = "") {
 		if (this.#fragments.length === 0) return "";
 
+		const innerIndent = `${indentStr}\t`;
 		const xml = this.#fragments
 			.map((f) => {
 				const file = f.content;
-				const parts = [`<file path="${file.path}"`];
+				const status = file.status || file.mode || "unknown";
 
-				// Only include symbols if they exist and are non-empty
 				const hasSymbols =
 					Array.isArray(file.symbols) && file.symbols.length > 0;
 				const hasContent =
 					typeof file.content === "string" && file.content.length > 0;
 
 				if (!hasSymbols && !hasContent) {
-					parts.push(" />");
-					return parts.join("");
+					return `${innerIndent}<file path="${file.path}" status="${status}" />`;
 				}
 
-				parts.push(">");
-				if (hasSymbols)
-					parts.push(`<symbols>${JSON.stringify(file.symbols)}</symbols>`);
-				if (hasContent) parts.push(file.content);
-				parts.push("</file>");
+				const parts = [
+					`${innerIndent}<file path="${file.path}" status="${status}">`,
+				];
 
-				return parts.join("");
+				if (hasSymbols) {
+					parts.push(`${innerIndent}\t<symbols>`);
+					const json = JSON.stringify(file.symbols, null, 2);
+					const indentedJson = json
+						.split("\n")
+						.map((line) => `${innerIndent}\t\t${line}`)
+						.join("\n");
+					parts.push(indentedJson);
+					parts.push(`${innerIndent}\t</symbols>`);
+				}
+
+				if (hasContent) {
+					const indentedContent = file.content
+						.split("\n")
+						.map((line) => `${innerIndent}\t${line}`)
+						.join("\n");
+					parts.push(indentedContent);
+				}
+
+				parts.push(`${innerIndent}</file>`);
+				return parts.join("\n");
 			})
 			.join("\n");
 
-		return xml ? `<files>\n${xml}\n</files>` : "";
+		return xml ? `${indentStr}<files>\n${xml}\n${indentStr}</files>` : "";
 	}
 }

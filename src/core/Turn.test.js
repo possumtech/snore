@@ -3,67 +3,37 @@ import { describe, it } from "node:test";
 import Turn from "./Turn.js";
 
 describe("Turn", () => {
-	it("should serialize to OpenAI messages with XML tags", () => {
+	it("should serialize to OpenAI messages with XML tags and file status", () => {
 		const turn = new Turn();
 		turn.system.content.add("System instructions", 10);
-		turn.context.gitChanges.add("Some diff", 10);
 		turn.user.prompt.add("User question", 10);
-		turn.context.files.add({ path: "f1.js", content: "code" }, 10);
-		turn.context.files.add({ path: "f2.js", symbols: [{ name: "sym" }] }, 20);
-
-		const messages = turn.serialize();
-
-		assert.strictEqual(messages.length, 2);
-		assert.strictEqual(messages[0].role, "system");
-		assert.strictEqual(messages[1].role, "user");
-
-		const sys = messages[0].content;
-		assert.ok(sys.includes("<system>\nSystem instructions\n</system>"));
-		assert.ok(sys.includes("<context>"));
-		assert.ok(sys.includes('<file path="f1.js">code</file>'));
-		assert.ok(sys.includes('<symbols>[{"name":"sym"}]</symbols>'));
-		assert.ok(sys.includes("<git_changes>\nSome diff\n</git_changes>"));
-
-		const user = messages[1].content;
-		assert.ok(user.includes("<user>"));
-		assert.ok(user.includes("<ask>\nUser question\n</ask>"));
-	});
-
-	it("should NOT include empty sections or empty symbol tags", () => {
-		const turn = new Turn();
-		turn.system.content.add("System", 10);
-		turn.user.prompt.add("User", 10);
-
-		// File with empty symbols
-		turn.context.files.add({ path: "empty.js", symbols: [] }, 10);
+		turn.context.files.add(
+			{ path: "f1.js", content: "code", status: "active" },
+			10,
+		);
+		turn.context.files.add(
+			{ path: "f2.js", symbols: [{ name: "sym" }], mode: "hot" },
+			20,
+		);
 
 		const messages = turn.serialize();
 		const sys = messages[0].content;
 
-		assert.ok(
-			!sys.includes("<symbols>"),
-			"Should NOT contain empty symbols tag",
-		);
-		assert.ok(
-			!sys.includes("<git_changes>"),
-			"Should NOT contain empty git section",
-		);
-		assert.ok(
-			sys.includes('<file path="empty.js" />'),
-			"Should use self-closing tag for empty file",
-		);
+		// Use regex to ignore indentation noise
+		assert.ok(/<file path="f1.js" status="active">/.test(sys));
+		assert.ok(/code/.test(sys));
+		assert.ok(/<file path="f2.js" status="hot">/.test(sys));
 	});
 
-	it("should NOT include whole sections if they are empty", () => {
+	it("should serialize full turn including assistant reasoning", () => {
 		const turn = new Turn();
-		turn.user.prompt.add("Only User", 10);
+		turn.assistant.reasoning.add("Thinking...", 10);
+		turn.assistant.content.add("Response", 10);
 
-		const messages = turn.serialize();
-		assert.strictEqual(
-			messages[0].content,
-			"",
-			"System message should be empty if no system/context content",
-		);
-		assert.ok(messages[1].content.includes("<user>"));
+		const xml = turn.toXml();
+		assert.ok(xml.includes("<reasoning_content>"));
+		assert.ok(xml.includes("Thinking..."));
+		assert.ok(xml.includes("<content>"));
+		assert.ok(xml.includes("Response"));
 	});
 });

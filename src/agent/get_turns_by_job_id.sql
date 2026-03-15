@@ -5,6 +5,9 @@ SELECT
 	, sequence_number
 	, payload
 	, usage
+	, prompt_tokens
+	, completion_tokens
+	, total_tokens
 	, created_at
 FROM turns
 WHERE job_id = :job_id

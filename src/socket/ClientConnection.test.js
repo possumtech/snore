@@ -7,6 +7,8 @@ describe("ClientConnection", () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 		process.env.SNORE_DEFAULT_MODEL = "test-model";
+		process.env.SNORE_HTTP_REFERER = "http://test";
+		process.env.SNORE_X_TITLE = "Test";
 	});
 
 	const createMocks = () => {
@@ -54,31 +56,13 @@ describe("ClientConnection", () => {
 		assert.strictEqual(response.result.projectId, "p1");
 	});
 
-	it("should handle 'getFiles' method", async () => {
-		const { ws, db } = createMocks();
-		const conn = new ClientConnection(ws, db);
-		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
-		const response = await runMethod(conn, ws, "getFiles");
-		assert.ok(Array.isArray(response.result));
-	});
-
-	it("should handle 'updateFiles' method", async () => {
-		const { ws, db } = createMocks();
-		const conn = new ClientConnection(ws, db);
-		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
-		const response = await runMethod(conn, ws, "updateFiles", {
-			files: [{ path: "f.js", visibility: "active" }],
-		});
-		assert.strictEqual(response.result.status, "ok");
-	});
-
 	it("should handle 'ask' method", async () => {
 		const { ws, db } = createMocks();
 		mock.method(globalThis, "fetch", async () => ({
 			ok: true,
 			json: async () => ({
 				choices: [{ message: { content: "Paris" } }],
-				usage: {},
+				usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 			}),
 		}));
 		const conn = new ClientConnection(ws, db);

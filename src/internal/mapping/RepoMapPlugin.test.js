@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it, mock } from "node:test";
 import SqlRite from "@possumtech/sqlrite";
-import HookRegistry from "../core/HookRegistry.js";
+import HookRegistry from "../../core/HookRegistry.js";
 import RepoMapPlugin from "./RepoMapPlugin.js";
 
 describe("RepoMapPlugin", () => {
