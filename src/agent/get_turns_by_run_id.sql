@@ -1,7 +1,7 @@
--- PREP: get_turns_by_job_id
+-- PREP: get_turns_by_run_id
 SELECT
 	id
-	, job_id
+	, run_id
 	, sequence_number
 	, payload
 	, usage
@@ -10,5 +10,7 @@ SELECT
 	, total_tokens
 	, created_at
 FROM turns
-WHERE job_id = :job_id
-ORDER BY sequence_number ASC;
+WHERE
+	run_id = :run_id
+ORDER BY
+	sequence_number ASC;

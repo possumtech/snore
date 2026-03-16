@@ -44,8 +44,8 @@ SNORE is infinitely extensible. Create a JavaScript file in `src/internal/` or `
 export default class MyPlugin {
     static register(hooks) {
         // Handle a Lifecycle Event
-        hooks.ask.completed.on(async ({ jobId, turn }) => {
-            console.log(`Job ${jobId} finished.`);
+        hooks.ask.completed.on(async ({ runId, turn }) => {
+            console.log(`Run ${runId} finished.`);
         });
 
         // Participate in the XML Pipeline

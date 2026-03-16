@@ -47,7 +47,7 @@ export default class ClientConnection {
 		this.#hooks.editor.diff.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("editor/diff", {
-					id: payload.id,
+					runId: payload.runId,
 					file: payload.file,
 					patch: payload.patch,
 				});
@@ -120,13 +120,36 @@ export default class ClientConnection {
 					);
 					break;
 
-				case "startJob":
+				case "startRun":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
-					result = await this.#projectAgent.startJob(
+					result = await this.#projectAgent.startRun(
 						this.#context.sessionId,
 						params,
 					);
+					break;
+
+				case "run/affirm":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					// Typically here we would commit files or finalize the state in the DB
+					// For now, just mark the run as completed
+					await this.#db.update_run_status.run({
+						id: params.runId,
+						status: "completed",
+					});
+					result = { status: "ok" };
+					break;
+
+				case "run/abort":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					// Typically here we would revert files or cancel the state in the DB
+					await this.#db.update_run_status.run({
+						id: params.runId,
+						status: "aborted",
+					});
+					result = { status: "ok" };
 					break;
 
 				case "ask":
@@ -137,6 +160,7 @@ export default class ClientConnection {
 						params.model,
 						params.prompt,
 						params.activeFiles || [],
+						params.runId,
 					);
 					break;
 
@@ -148,6 +172,7 @@ export default class ClientConnection {
 						params.model,
 						params.prompt,
 						params.activeFiles || [],
+						params.runId,
 					);
 					break;
 

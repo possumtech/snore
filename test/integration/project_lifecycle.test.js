@@ -69,7 +69,7 @@ describe("Project Lifecycle Integration", () => {
 			"gpt-4o",
 			"Capital of France?",
 		);
-		assert.strictEqual(result.response, "Paris");
-		assert.ok(result.jobId);
+		assert.strictEqual(result.choices[0].message.content, "Paris");
+		assert.ok(result.id);
 	});
 });

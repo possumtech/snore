@@ -38,9 +38,9 @@ describe("ClientConnection", () => {
 			get_project_repo_map: { all: mock.fn(async () => []) },
 			get_models: { all: mock.fn(async () => []) },
 			get_file_references: { all: mock.fn(async () => []) },
-			create_job: { run: mock.fn() },
+			create_run: { run: mock.fn() },
 			create_turn: { run: mock.fn() },
-			update_job_status: { run: mock.fn() },
+			update_run_status: { run: mock.fn() },
 		};
 		return { ws, db };
 	};
@@ -76,6 +76,6 @@ describe("ClientConnection", () => {
 			model: "m",
 			prompt: "p",
 		});
-		assert.strictEqual(response.result.response, "Paris");
+		assert.strictEqual(response.result.choices[0].message.content, "Paris");
 	});
 });

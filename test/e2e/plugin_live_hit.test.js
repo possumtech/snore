@@ -45,9 +45,10 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 			prompt: "What is the IDENTITY_KEY? (Answer with only the key)",
 		});
 
+		const content = askResult.choices[0].message.content;
 		assert.ok(
-			askResult.response.includes("ALBATROSS-99"),
-			`Plugin injection not found. Got: ${askResult.response}`,
+			content.includes("ALBATROSS-99"),
+			`Plugin injection not found. Got: ${content}`,
 		);
 	});
 });

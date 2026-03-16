@@ -95,7 +95,7 @@ describe("ProjectAgent Unit", () => {
 			get_project_by_id: {
 				get: mock.fn(async () => ({ id: "p1", path: projectPath })),
 			},
-			create_job: { run: mock.fn() },
+			create_run: { run: mock.fn() },
 			get_project_repo_map: { all: mock.fn(async () => []) },
 			get_file_references: { all: mock.fn(async () => []) },
 			get_repo_map_file: { get: mock.fn(async () => null) },
@@ -107,7 +107,7 @@ describe("ProjectAgent Unit", () => {
 			insert_repo_map_tag: { run: mock.fn() },
 			insert_repo_map_ref: { run: mock.fn() },
 			create_turn: { run: mock.fn() },
-			update_job_status: { run: mock.fn() },
+			update_run_status: { run: mock.fn() },
 		};
 
 		mock.method(globalThis, "fetch", async () => ({
@@ -124,6 +124,6 @@ describe("ProjectAgent Unit", () => {
 			process.env.SNORE_DEFAULT_MODEL,
 			"Capital?",
 		);
-		assert.strictEqual(result.response, "Paris");
+		assert.strictEqual(result.choices[0].message.content, "Paris");
 	});
 });

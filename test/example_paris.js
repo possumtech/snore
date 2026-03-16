@@ -65,7 +65,7 @@ ws.on("message", (data) => {
 		console.log("----------------------------");
 		console.log(msg.result.response);
 		console.log("----------------------------");
-		console.log("Job ID:", msg.result.jobId);
+		console.log("Run ID:", msg.result.id);
 
 		console.log("\nTest Complete. Closing.");
 		ws.close();

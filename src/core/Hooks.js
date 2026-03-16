@@ -36,6 +36,10 @@ export default function createHooks(debug = false) {
 					return (value, ...args) =>
 						registry.applyFilters(path.join("."), value, ...args);
 				}
+				if (prop === "addFilter") {
+					return (callback, priority) =>
+						registry.addFilter(path.join("."), callback, priority);
+				}
 				if (prop === "emit") {
 					return (...args) => registry.emitEvent(path.join("."), ...args);
 				}

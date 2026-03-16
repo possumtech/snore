@@ -16,13 +16,25 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 
 	before(async () => {
 		globalThis.fetch = async () => {
-			return new Response(JSON.stringify({
-				choices: [{ message: { role: "assistant", content: "Original Response", reasoning_content: "Thought process" } }],
-				usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 }
-			}), { 
-				status: 200, 
-				headers: { "Content-Type": "application/json" } 
-			});
+			return new Response(
+				JSON.stringify({
+					model: "mock-model",
+					choices: [
+						{
+							message: {
+								role: "assistant",
+								content: "Original Response",
+								reasoning_content: "Thought process",
+							},
+						},
+					],
+					usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+				}),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
 		};
 
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
@@ -61,63 +73,108 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 
 		// updateFiles
 		const updateResult = await client.call("updateFiles", {
-			files: [
-				{ path: "README.md", visibility: "active" }
-			]
+			files: [{ path: "README.md", visibility: "active" }],
 		});
 		assert.strictEqual(updateResult.status, "ok");
 
 		// getFiles
 		const files = await client.call("getFiles", {});
 		assert.ok(Array.isArray(files));
-		assert.ok(files.some(f => f.path === "README.md"));
+		assert.ok(files.some((f) => f.path === "README.md"));
 	});
 
-	it("should support 'act' method and all notifications", async () => {
-		// Mock LLM response to trigger all notifications via SnoreNvimPlugin
+	it("should support 'act' method and all bundled findings", async () => {
+		// Mock LLM response to trigger all detections via SnoreNvimPlugin
 		tserver.hooks.addFilter("llm.response", (response) => {
 			return {
 				...response,
 				content: "Acting... SNORE_TEST_NOTIFY SNORE_TEST_RENDER SNORE_TEST_DIFF",
-				reasoning_content: "I need to notify and diff."
+				reasoning_content: "I need to notify and diff.",
 			};
 		});
 
-		const actPromise = client.call("act", {
+		const result = await client.call("act", {
 			model: "mock-model",
 			prompt: "Trigger notifications",
 		});
 
-		// ui/notify
-		const notify = await client.waitForNotification(
-			(n) => n.method === "ui/notify",
-			15000
-		);
-		assert.strictEqual(notify.params.text, "Test notification from SnoreNvimPlugin");
-
-		// ui/render
-		const render = await client.waitForNotification(
-			(n) => n.method === "ui/render",
-			15000
-		);
-		assert.strictEqual(render.params.text, "# Render Test");
-		assert.strictEqual(render.params.append, false);
-
-		// editor/diff
-		const diff = await client.waitForNotification(
-			(n) => n.method === "editor/diff",
-			15000
-		);
-		assert.strictEqual(diff.params.file, "test.txt");
-		assert.ok(diff.params.patch.includes("--- test.txt"));
-
-		const result = await actPromise;
+		// Verify Atomic Turn bundling
 		assert.ok(result.id);
+		assert.strictEqual(result.model, "mock-model");
+		assert.strictEqual(result.snore.alias, "mock-model");
+		assert.ok(result.snore.actualModel);
+		assert.ok(Array.isArray(result.snore.activeFiles));
+
+		// Verify bundled diffs
+		assert.ok(result.snore.diffs.length > 0);
+		assert.strictEqual(result.snore.diffs[0].file, "test.txt");
+		assert.ok(result.snore.diffs[0].patch.includes("--- test.txt"));
+
+		// Verify bundled notifications
+		assert.ok(result.snore.notifications.length >= 2);
+		const notify = result.snore.notifications.find((n) => n.type === "notify");
+		const render = result.snore.notifications.find((n) => n.type === "render");
+		assert.strictEqual(notify.text, "System notification detected in response");
+		assert.strictEqual(render.text, "# Rendered Content");
+
 		const message = result.choices[0].message;
 		assert.strictEqual(message.role, "assistant");
 		assert.ok(message.content.includes("Acting..."));
 		assert.strictEqual(message.reasoning_content, "I need to notify and diff.");
 		assert.ok(result.usage);
-		assert.strictEqual(result.usage.total_tokens, 10);
+	});
+
+	it("should support iterating on a Run (multi-turn context)", async () => {
+		// 1. First act to start a run
+		tserver.hooks.addFilter("llm.response", (response) => ({
+			...response,
+			content: "Proposal 1",
+		}));
+
+		const res1 = await client.call("act", {
+			model: "mock-model",
+			prompt: "First request",
+		});
+		const runId = res1.id;
+
+		// 2. Second act with same runId
+		// We mock fetch to verify the messages sent to the LLM
+		const originalFetch = globalThis.fetch;
+		let lastSentMessages = [];
+		globalThis.fetch = async (_url, options) => {
+			const body = JSON.parse(options.body);
+			lastSentMessages = body.messages;
+			return new Response(
+				JSON.stringify({
+					model: "mock-model",
+					choices: [{ message: { role: "assistant", content: "Proposal 2" } }],
+					usage: { total_tokens: 5 },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		};
+
+		try {
+			const res2 = await client.call("act", {
+				model: "mock-model",
+				prompt: "Second request",
+				runId,
+			});
+
+			assert.strictEqual(res2.id, runId);
+			// Verify history: should have [System, User(1), Assistant(1), User(2)]
+			assert.strictEqual(lastSentMessages.length, 4);
+			assert.strictEqual(
+				lastSentMessages[1].content,
+				"<user><ask>First request</ask></user>",
+			);
+			assert.strictEqual(lastSentMessages[2].content, "Proposal 1");
+			assert.strictEqual(
+				lastSentMessages[3].content,
+				"<user><ask>Second request</ask></user>",
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });

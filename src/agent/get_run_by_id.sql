@@ -1,11 +1,12 @@
--- PREP: get_job_by_id
+-- PREP: get_run_by_id
 SELECT
 	id
 	, session_id
-	, parent_job_id
+	, parent_run_id
 	, type
 	, status
 	, config
 	, created_at
-FROM jobs
-WHERE id = :id;
+FROM runs
+WHERE
+	id = :id;

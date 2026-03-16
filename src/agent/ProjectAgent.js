@@ -115,58 +115,113 @@ export default class ProjectAgent {
 		return { status: "ok" };
 	}
 
-	async startJob(sessionId, jobConfig) {
-		const jobId = crypto.randomUUID();
+	async startRun(sessionId, runConfig) {
+		const runId = crypto.randomUUID();
 
-		const config = await this.#hooks.job.config.filter(jobConfig, {
+		const config = await this.#hooks.run.config.filter(runConfig, {
 			sessionId,
 		});
 
-		await this.#db.create_job.run({
-			id: jobId,
+		await this.#db.create_run.run({
+			id: runId,
 			session_id: sessionId,
-			parent_job_id: config.parentJobId || null,
+			parent_run_id: config.parentRunId || null,
 			type: config.type,
 			config: JSON.stringify(config.config || {}),
 		});
 
-		await this.#hooks.job.started.emit({
-			jobId,
+		await this.#hooks.run.started.emit({
+			runId,
 			sessionId,
 			type: config.type,
 		});
-		return jobId;
+		return runId;
 	}
 
-	async ask(sessionId, model, prompt, activeFiles = []) {
-		return this.#executeJob("ask", sessionId, model, prompt, activeFiles);
+	async ask(sessionId, model, prompt, activeFiles = [], runId = null) {
+		return this.#executeRun(
+			"ask",
+			sessionId,
+			model,
+			prompt,
+			activeFiles,
+			runId,
+		);
 	}
 
-	async act(sessionId, model, prompt, activeFiles = []) {
-		return this.#executeJob("act", sessionId, model, prompt, activeFiles);
+	async act(sessionId, model, prompt, activeFiles = [], runId = null) {
+		return this.#executeRun(
+			"act",
+			sessionId,
+			model,
+			prompt,
+			activeFiles,
+			runId,
+		);
 	}
 
-	async #executeJob(type, sessionId, model, prompt, activeFiles = []) {
+	async #executeRun(
+		type,
+		sessionId,
+		model,
+		prompt,
+		activeFiles = [],
+		runId = null,
+	) {
 		const hook = type === "ask" ? this.#hooks.ask : this.#hooks.act;
 		await hook.started.emit({
 			sessionId,
 			model,
 			prompt,
 			activeFiles,
+			runId,
 		});
 
 		const sessions = await this.#db.get_session_by_id.all({ id: sessionId });
 		const project = await this.#db.get_project_by_id.get({
 			id: sessions[0].project_id,
 		});
-		const jobId = crypto.randomUUID();
 
-		await this.#db.create_job.run({
-			id: jobId,
-			session_id: sessionId,
-			type,
-			config: JSON.stringify({ model, activeFiles }),
-		});
+		let currentRunId = runId;
+		let sequenceOffset = 0;
+		const historyMessages = [];
+
+		if (currentRunId) {
+			const existingRun = await this.#db.get_run_by_id.get({
+				id: currentRunId,
+			});
+			if (!existingRun || existingRun.session_id !== sessionId) {
+				throw new Error(`Run '${currentRunId}' not found in this session.`);
+			}
+			const previousTurns = await this.#db.get_turns_by_run_id.all({
+				run_id: currentRunId,
+			});
+			// History logic:
+			// Sequence 0 was the initial system+user.
+			// Subsequent turns follow.
+			// We want to reconstruct the conversation history.
+			for (const turn of previousTurns) {
+				const payload = JSON.parse(turn.payload);
+				if (Array.isArray(payload)) {
+					// It's a request Turn (System + User or just User)
+					// We only want the User messages from history if they aren't the first one (which had system)
+					// Actually, simpler: Just take the User/Assistant messages.
+					const userMsgs = payload.filter((m) => m.role === "user");
+					historyMessages.push(...userMsgs);
+				} else if (payload.role === "assistant") {
+					historyMessages.push(payload);
+				}
+				sequenceOffset = Math.max(sequenceOffset, turn.sequence_number + 1);
+			}
+		} else {
+			currentRunId = crypto.randomUUID();
+			await this.#db.create_run.run({
+				id: currentRunId,
+				session_id: sessionId,
+				type,
+				config: JSON.stringify({ model, activeFiles }),
+			});
+		}
 
 		const turnObj = await this.#turnBuilder.build({
 			project,
@@ -177,17 +232,32 @@ export default class ProjectAgent {
 			db: this.#db,
 		});
 
-		const messages = await turnObj.serialize();
-		const finalMessages = await this.#hooks.llm.messages.filter(messages, {
-			model,
-			sessionId,
-			jobId,
-		});
+		const currentTurnMessages = await turnObj.serialize();
+
+		// Construct final message set:
+		// [New System/Context] + [History User/Assistant] + [New User Prompt]
+		const systemMsgs = currentTurnMessages.filter((m) => m.role === "system");
+		const newUserMsg = currentTurnMessages.find((m) => m.role === "user");
+
+		const finalMessages = [
+			...systemMsgs,
+			...historyMessages,
+			newUserMsg,
+		].filter(Boolean);
+
+		const filteredMessages = await this.#hooks.llm.messages.filter(
+			finalMessages,
+			{
+				model,
+				sessionId,
+				runId: currentRunId,
+			},
+		);
 
 		await this.#db.create_turn.run({
-			job_id: jobId,
-			sequence_number: 0,
-			payload: JSON.stringify(finalMessages),
+			run_id: currentRunId,
+			sequence_number: sequenceOffset,
+			payload: JSON.stringify(filteredMessages),
 			usage: null,
 			prompt_tokens: 0,
 			completion_tokens: 0,
@@ -198,25 +268,31 @@ export default class ProjectAgent {
 		if (!requestedModel) {
 			throw new Error("No model specified and SNORE_DEFAULT_MODEL is not set.");
 		}
-		const targetModel = process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
+		const targetModel =
+			process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
 
 		if (process.env.SNORE_DEBUG === "true") {
-			console.log(`[LLM] Target Model: ${targetModel} (requested: ${requestedModel})`);
+			console.log(
+				`[LLM] Target Model: ${targetModel} (requested: ${requestedModel})`,
+			);
 		}
 
 		await this.#hooks.llm.request.started.emit({
-			jobId,
+			runId: currentRunId,
 			model: targetModel,
-			messages: finalMessages,
+			messages: filteredMessages,
 		});
-		const result = await this.#client.completion(finalMessages, targetModel);
-		await this.#hooks.llm.request.completed.emit({ jobId, result });
+		const result = await this.#client.completion(filteredMessages, targetModel);
+		await this.#hooks.llm.request.completed.emit({
+			runId: currentRunId,
+			result,
+		});
 
 		const responseMessage = result.choices?.[0]?.message;
 
 		const finalResponse = await this.#hooks.llm.response.filter(
 			responseMessage,
-			{ model, sessionId, jobId },
+			{ model, sessionId, runId: currentRunId },
 		);
 
 		const usage = result.usage || {
@@ -226,8 +302,8 @@ export default class ProjectAgent {
 		};
 
 		await this.#db.create_turn.run({
-			job_id: jobId,
-			sequence_number: 1,
+			run_id: currentRunId,
+			sequence_number: sequenceOffset + 1,
 			payload: JSON.stringify(finalResponse),
 			usage: JSON.stringify(usage),
 			prompt_tokens: usage.prompt_tokens || 0,
@@ -235,7 +311,11 @@ export default class ProjectAgent {
 			total_tokens: usage.total_tokens || 0,
 		});
 
-		await this.#db.update_job_status.run({ id: jobId, status: "completed" });
+		const finalStatus = type === "act" ? "proposed" : "completed";
+		await this.#db.update_run_status.run({
+			id: currentRunId,
+			status: finalStatus,
+		});
 
 		if (responseMessage?.reasoning_content) {
 			turnObj.assistant.reasoning.add(responseMessage.reasoning_content);
@@ -243,26 +323,52 @@ export default class ProjectAgent {
 		if (finalResponse?.content) {
 			turnObj.assistant.content.add(finalResponse.content);
 		}
-		turnObj.assistant.meta.add(usage);
+		turnObj.assistant.meta.add({
+			...usage,
+			alias: requestedModel,
+			actualModel: result.model,
+		});
+
+		// Build the Atomic Turn result
+		const atomicResult = {
+			id: currentRunId,
+			model: requestedModel,
+			choices: result.choices.map((c, i) => {
+				const choice = i === 0 ? { ...c, message: finalResponse } : c;
+				return {
+					index: choice.index,
+					message: choice.message,
+					finishReason: choice.finish_reason, // camelCase
+				};
+			}),
+			usage,
+			snore: {
+				runId: currentRunId,
+				alias: requestedModel,
+				actualModel: result.model,
+				activeFiles,
+				diffs: [],
+				notifications: [],
+				finishReason: result.choices[0]?.finish_reason,
+			},
+		};
+
+		// Allow plugins to augment the turn (e.g., add diffs, notifications)
+		const finalResult = await this.#hooks.run.turn.filter(atomicResult, {
+			turn: turnObj,
+			sessionId,
+			type,
+		});
 
 		await hook.completed.emit({
-			jobId,
+			runId: currentRunId,
 			sessionId,
 			model: targetModel,
 			turn: turnObj,
 			usage,
+			result: finalResult,
 		});
 
-		// Use the upstream result as the base to preserve all metadata
-		// but ensure the ID matches our DB and the message is filtered.
-		return {
-			...result,
-			id: jobId,
-			choices: result.choices.map((c, i) =>
-				i === 0
-					? { ...c, message: finalResponse }
-					: c,
-			),
-		};
+		return finalResult;
 	}
 }

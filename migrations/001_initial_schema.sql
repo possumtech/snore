@@ -21,15 +21,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS jobs (
+CREATE TABLE IF NOT EXISTS runs (
 	id TEXT PRIMARY KEY
 	, session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
-	, parent_job_id TEXT REFERENCES jobs (id) ON DELETE SET NULL
+	, parent_run_id TEXT REFERENCES runs (id) ON DELETE SET NULL
 	, type TEXT NOT NULL CHECK (
 		type IN ('orchestrator', 'task', 'ask', 'act')
 	)
 	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
-		status IN ('queued', 'running', 'completed', 'failed')
+		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
 	)
 	, config JSON
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, job_id TEXT NOT NULL REFERENCES jobs (id) ON DELETE CASCADE
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, sequence_number INTEGER NOT NULL
 	, payload JSON NOT NULL
 	, usage JSON
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS repo_map_references (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
-CREATE INDEX IF NOT EXISTS idx_jobs_session_id ON jobs (session_id);
+CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_id
 ON repo_map_files (project_id);
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id ON repo_map_tags (file_id);

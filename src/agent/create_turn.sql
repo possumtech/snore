@@ -1,6 +1,6 @@
 -- PREP: create_turn
 INSERT INTO turns (
-	job_id
+	run_id
 	, sequence_number
 	, payload
 	, usage
@@ -9,7 +9,7 @@ INSERT INTO turns (
 	, total_tokens
 )
 VALUES (
-	:job_id
+	:run_id
 	, :sequence_number
 	, :payload
 	, :usage

@@ -48,11 +48,19 @@ async function scanDir(dir, hooks, isRoot = false) {
 		}
 
 		if (stats.isFile() && name.endsWith(".js")) {
-			if (isRoot) {
+			// Always load any .js file that is not index.js (unless we want index.js)
+			// Wait: to maintain original intent of 'index.js as folder entry point'
+			if (name === "index.js" || name === `${basename(dir)}.js`) {
+				await loadPlugin(fullPath, hooks);
+			} else if (isRoot) {
+				// At root level, load all files except index.js
 				if (name !== "index.js") await loadPlugin(fullPath, hooks);
 			} else {
-				const folderName = basename(dir);
-				if (name === "index.js" || name === `${folderName}.js`) {
+				// In a subfolder, and it's not the entry point file. 
+				// We don't load random .js files deep in subfolders unless they follow the naming convention.
+				// This prevents loading tests or helpers.
+				// However, if we want to allow deep organization like findings/findings.js:
+				if (name === `${basename(dir)}.js`) {
 					await loadPlugin(fullPath, hooks);
 				}
 			}
@@ -68,10 +76,16 @@ async function loadPlugin(filePath, hooks) {
 		const { default: Plugin } = await import(url);
 		if (typeof Plugin?.register === "function") {
 			Plugin.register(hooks);
+		} else {
+			if (process.env.SNORE_DEBUG === "true") {
+				console.error(
+					`[SNORE] Plugin at ${filePath} has no register() method.`,
+				);
+			}
 		}
 	} catch (err) {
 		if (process.env.SNORE_DEBUG === "true") {
-			console.error(`[SNORE] Plugin load failed at ${filePath}:`, err.message);
+			console.error(`[SNORE] Plugin load failed at ${filePath}:`, err);
 		}
 	}
 }

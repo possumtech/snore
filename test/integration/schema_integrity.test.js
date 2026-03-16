@@ -28,7 +28,7 @@ describe("System Integrity: Schema Validation", () => {
 
 			if (content.includes("INSERT INTO turns")) {
 				// Access the underlying SqliteSync instance safely
-				const _info = await tdb.db.get_turns_by_job_id.all({ job_id: "none" });
+				const _info = await tdb.db.get_turns_by_run_id.all({ run_id: "none" });
 				// We'll just check if the properties exist on a row if we could get one,
 				// but for now let's just use a raw query if available.
 				// SqlRite doesn't always expose the raw DB clearly, let's assume if the
