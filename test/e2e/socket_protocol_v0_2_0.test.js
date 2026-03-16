@@ -102,6 +102,7 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 		// Verify Atomic Turn bundling
 		assert.ok(result.runId);
 		assert.strictEqual(result.model.requested, "mock-model");
+		assert.strictEqual(result.model.display, "mock-model");
 		assert.ok(result.model.actual);
 		assert.ok(Array.isArray(result.activeFiles));
 

@@ -190,6 +190,20 @@ export default class ProjectAgent {
 		}
 	}
 
+	#resolveAlias(modelId) {
+		if (!modelId) return modelId;
+		// Check if the input is already an alias
+		if (process.env[`SNORE_MODEL_${modelId}`]) return modelId;
+
+		// Check if the input is a target of an existing alias
+		for (const key of Object.keys(process.env)) {
+			if (key.startsWith("SNORE_MODEL_") && process.env[key] === modelId) {
+				return key.replace("SNORE_MODEL_", "");
+			}
+		}
+		return modelId;
+	}
+
 	async #executeRun(
 		type,
 		sessionId,
@@ -291,14 +305,15 @@ export default class ProjectAgent {
 			prompt_tokens: 0,
 			completion_tokens: 0,
 			total_tokens: 0,
+			cost: 0,
 		});
 
-		const requestedModel = model || process.env.SNORE_DEFAULT_MODEL;
+		const requestedModel = model || process.env.SNORE_MODEL_DEFAULT;
 		if (!requestedModel) {
-			throw new Error("No model specified and SNORE_DEFAULT_MODEL is not set.");
+			throw new Error("No model specified and SNORE_MODEL_DEFAULT is not set.");
 		}
-		const targetModel =
-			process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
+
+		const targetModel = process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
 
 		if (process.env.SNORE_DEBUG === "true") {
 			console.log(
@@ -328,6 +343,7 @@ export default class ProjectAgent {
 			prompt_tokens: 0,
 			completion_tokens: 0,
 			total_tokens: 0,
+			cost: 0,
 		};
 
 		const completedTurn = await this.#db.create_turn.run({
@@ -337,6 +353,7 @@ export default class ProjectAgent {
 			prompt_tokens: usage.prompt_tokens || 0,
 			completion_tokens: usage.completion_tokens || 0,
 			total_tokens: usage.total_tokens || 0,
+			cost: usage.cost || 0,
 		});
 		const turnId = completedTurn.lastInsertRowid;
 
@@ -356,14 +373,18 @@ export default class ProjectAgent {
 			...usage,
 			alias: requestedModel,
 			actualModel: result.model,
+			displayModel: this.#resolveAlias(requestedModel),
 		});
 
 		// Build the clean SNORE result object
 		const atomicResult = {
 			runId: currentRunId,
 			model: {
-				requested: requestedModel,
+				requested: model || process.env.SNORE_MODEL_DEFAULT,
+				alias: this.#resolveAlias(requestedModel),
+				target: targetModel,
 				actual: result.model,
+				display: this.#resolveAlias(requestedModel),
 			},
 			content: finalResponse?.content || "",
 			reasoning: finalResponse?.reasoning_content || null,
@@ -372,6 +393,7 @@ export default class ProjectAgent {
 				promptTokens: usage.prompt_tokens || 0,
 				completionTokens: usage.completion_tokens || 0,
 				totalTokens: usage.total_tokens || 0,
+				cost: usage.cost || 0,
 			},
 			activeFiles,
 			diffs: [],

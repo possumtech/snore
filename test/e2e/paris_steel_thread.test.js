@@ -40,7 +40,7 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 		});
 
 		const askResult = await client.call("ask", {
-			model: process.env.SNORE_DEFAULT_MODEL,
+			model: process.env.SNORE_MODEL_DEFAULT,
 			prompt: "What is the capital of France?",
 		});
 

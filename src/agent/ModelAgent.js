@@ -19,7 +19,7 @@ export default class ModelAgent {
 				const alias = key.replace("SNORE_MODEL_", "");
 				return {
 					id: alias,
-					name: `${alias} (Env Alias)`,
+					name: alias,
 					description: `Alias for ${process.env[key]}`,
 					target: process.env[key],
 				};

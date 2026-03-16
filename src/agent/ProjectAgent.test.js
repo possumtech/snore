@@ -13,7 +13,7 @@ describe("ProjectAgent Unit", () => {
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-		process.env.SNORE_DEFAULT_MODEL = "test-model";
+		process.env.SNORE_MODEL_DEFAULT = "test-model";
 		process.env.SNORE_HTTP_REFERER = "http://test";
 		process.env.SNORE_X_TITLE = "Test";
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
@@ -123,7 +123,7 @@ describe("ProjectAgent Unit", () => {
 		const agent = new ProjectAgent(mockDb, hooks);
 		const result = await agent.ask(
 			"sess-1",
-			process.env.SNORE_DEFAULT_MODEL,
+			process.env.SNORE_MODEL_DEFAULT,
 			"Capital?",
 		);
 		assert.strictEqual(result.content, "Paris");

@@ -41,7 +41,7 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 		});
 
 		const askResult = await client.call("ask", {
-			model: process.env.SNORE_DEFAULT_MODEL,
+			model: process.env.SNORE_MODEL_DEFAULT,
 			prompt: "What is the IDENTITY_KEY? (Answer with only the key)",
 		});
 
