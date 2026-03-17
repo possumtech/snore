@@ -138,7 +138,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# snore
-snore.db*
+# rummy
+rummy.db*
 AGENTS.md
 .venv/

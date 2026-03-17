@@ -23,10 +23,10 @@ export default class HookRegistry {
 	/**
 	 * Run all registered Turn processors.
 	 */
-	async processTurn(snore) {
+	async processTurn(rummy) {
 		for (const p of this.#processors) {
 			const start = performance.now();
-			await p.callback(snore);
+			await p.callback(rummy);
 			if (this.#debug) {
 				const duration = (performance.now() - start).toFixed(2);
 				console.log(

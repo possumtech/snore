@@ -1,8 +1,8 @@
 /**
- * SnoreContext provides a unified, semantic API for plugins to interact with
+ * RummyContext provides a unified, semantic API for plugins to interact with
  * the Turn XML Document and core resources like the Database and Project metadata.
  */
-export default class SnoreContext {
+export default class RummyContext {
 	#doc;
 	#context;
 

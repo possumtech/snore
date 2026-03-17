@@ -113,12 +113,12 @@ export default class RepoMap {
 	async renderPerspective(activeFiles = [], options = {}) {
 		const globalReferences = new Set();
 		let budget = Number.parseInt(
-			process.env.SNORE_MAP_TOKEN_BUDGET || "4096",
+			process.env.RUMMY_MAP_TOKEN_BUDGET || "4096",
 			10,
 		);
 
-		if (options.contextSize && process.env.SNORE_MAP_MAX_PERCENT) {
-			const percent = Number.parseInt(process.env.SNORE_MAP_MAX_PERCENT, 10);
+		if (options.contextSize && process.env.RUMMY_MAP_MAX_PERCENT) {
+			const percent = Number.parseInt(process.env.RUMMY_MAP_MAX_PERCENT, 10);
 			budget = Math.floor(options.contextSize * (percent / 100));
 		}
 

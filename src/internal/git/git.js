@@ -3,8 +3,8 @@
  */
 export default class GitPlugin {
 	static register(hooks) {
-		hooks.onTurn(async (snore) => {
-			const { project, db } = snore;
+		hooks.onTurn(async (rummy) => {
+			const { project, db } = rummy;
 			if (!project?.id || !db) return;
 
 			const indexedFiles = await db.get_project_repo_map.all({
@@ -32,10 +32,10 @@ export default class GitPlugin {
 			}
 
 			if (modified.length > 0) {
-				const gitEl = snore.tag("git_changes", {}, [
+				const gitEl = rummy.tag("git_changes", {}, [
 					modified.map((p) => `Modified: ${p}`).join("\n"),
 				]);
-				snore.contextEl.appendChild(gitEl);
+				rummy.contextEl.appendChild(gitEl);
 			}
 		});
 	}

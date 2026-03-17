@@ -1,20 +1,20 @@
-# SNORE: Sqlite/Node OpenRouter Engine
+# RUMMY: Sqlite/Node OpenRouter Engine
 
-SNORE is a high-integrity, system-wide agent service that orchestrates LLM sessions for multiple clients (e.g., Neovim instances). It treats the project codebase as a **Relational Single Source of Truth**, storing state, history, and semantic maps in a shared SQLite database.
+RUMMY is a high-integrity, system-wide agent service that orchestrates LLM sessions for multiple clients (e.g., Neovim instances). It treats the project codebase as a **Relational Single Source of Truth**, storing state, history, and semantic maps in a shared SQLite database.
 
 ## Key Features
 
 - **Lean Core:** A modular, plugin-first architecture using WordPress-style hooks, filters, and events.
 - **Dynamic Context:** Automated repository mapping with a "Hot/Cold" lens to optimize token usage.
 - **Relational Integrity:** Strictly enforced database constraints and flattened token metrics.
-- **System-Wide:** One service manages multiple projects and sessions, defaulting to `~/.snore`.
+- **System-Wide:** One service manages multiple projects and sessions, defaulting to `~/.rummy`.
 - **Audit-First:** Prettified XML turn audits for every model exchange.
 
 ## Installation
 
 ```bash
-git clone https://github.com/possumtech/snore
-cd snore/main
+git clone https://github.com/possumtech/rummy
+cd rummy/main
 npm install
 cp .env.example .env
 # Add your OPENROUTER_API_KEY to .env
@@ -37,7 +37,7 @@ node test/example_paris.js
 
 ## Plugin Architecture
 
-SNORE is infinitely extensible. Create a JavaScript file in `src/internal/` or `~/.snore/plugins/`.
+RUMMY is infinitely extensible. Create a JavaScript file in `src/internal/` or `~/.rummy/plugins/`.
 
 ### Creating a Plugin
 ```javascript
@@ -49,17 +49,17 @@ export default class MyPlugin {
         });
 
         // Participate in the XML Pipeline
-        hooks.onTurn(async (snore) => {
+        hooks.onTurn(async (rummy) => {
             // Add instructions to the system prompt
-            snore.system.appendChild(
-                snore.doc.createTextNode("\nYou are an expert pair programmer.")
+            rummy.system.appendChild(
+                rummy.doc.createTextNode("\nYou are an expert pair programmer.")
             );
 
             // Inject custom context using the .tag() helper
-            const myTag = snore.tag("my_extension", { version: "1.0" }, [
+            const myTag = rummy.tag("my_extension", { version: "1.0" }, [
                 "Custom extension data"
             ]);
-            snore.contextEl.appendChild(myTag);
+            rummy.contextEl.appendChild(myTag);
         });
     }
 }

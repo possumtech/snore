@@ -22,7 +22,7 @@ describe("Plugin Loader", () => {
 	});
 
 	it("should log errors in debug mode when scanning a non-directory", async () => {
-		process.env.SNORE_DEBUG = "true";
+		process.env.RUMMY_DEBUG = "true";
 		const errorMock = mock.method(console, "error", () => {});
 
 		// Attempt to scan a file as a directory
@@ -35,7 +35,7 @@ describe("Plugin Loader", () => {
 			),
 		);
 
-		delete process.env.SNORE_DEBUG;
+		delete process.env.RUMMY_DEBUG;
 		errorMock.mock.restore();
 	});
 });

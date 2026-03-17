@@ -8,15 +8,15 @@ export default class ModelAgent {
 	}
 
 	/**
-	 * Returns combined list of DB models and SNORE_MODEL_ environment aliases.
+	 * Returns combined list of DB models and RUMMY_MODEL_ environment aliases.
 	 */
 	async getModels() {
 		const dbModels = await this.#db.get_models.all();
 
 		const envModels = Object.keys(process.env)
-			.filter((key) => key.startsWith("SNORE_MODEL_"))
+			.filter((key) => key.startsWith("RUMMY_MODEL_"))
 			.map((key) => {
-				const alias = key.replace("SNORE_MODEL_", "");
+				const alias = key.replace("RUMMY_MODEL_", "");
 				return {
 					id: alias,
 					name: alias,

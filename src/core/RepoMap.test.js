@@ -13,7 +13,7 @@ describe("RepoMap (Perspective Engine)", () => {
 	const projectId = "test-project";
 
 	before(async () => {
-		process.env.SNORE_MAP_TOKEN_BUDGET = "1000";
+		process.env.RUMMY_MAP_TOKEN_BUDGET = "1000";
 		await fs.mkdir(testDir, { recursive: true });
 		await fs.writeFile(join(testDir, "active.js"), "const x = 1;");
 		await fs.writeFile(join(testDir, "dep.js"), "function dep() {}");
@@ -45,7 +45,7 @@ describe("RepoMap (Perspective Engine)", () => {
 		const repoMap = new RepoMap(ctx, db, projectId);
 
 		// Force tiny budget
-		process.env.SNORE_MAP_TOKEN_BUDGET = "10";
+		process.env.RUMMY_MAP_TOKEN_BUDGET = "10";
 		const perspective = await repoMap.renderPerspective([]);
 		// Pruning should happen (but active files always stay)
 		assert.ok(perspective.usage.tokens <= 100); // Json overhead is significant

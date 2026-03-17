@@ -25,9 +25,9 @@ async function scanDir(dir, hooks, isRoot = false) {
 	}
 
 	if (!dirStats.isDirectory()) {
-		if (process.env.SNORE_DEBUG === "true") {
+		if (process.env.RUMMY_DEBUG === "true") {
 			console.error(
-				`[SNORE] Cannot scan plugin directory (not a directory): ${dir}`,
+				`[RUMMY] Cannot scan plugin directory (not a directory): ${dir}`,
 			);
 		}
 		return;
@@ -37,8 +37,8 @@ async function scanDir(dir, hooks, isRoot = false) {
 	try {
 		entries = await readdir(dir);
 	} catch (err) {
-		if (process.env.SNORE_DEBUG === "true") {
-			console.error(`[SNORE] Failed to read directory ${dir}:`, err.message);
+		if (process.env.RUMMY_DEBUG === "true") {
+			console.error(`[RUMMY] Failed to read directory ${dir}:`, err.message);
 		}
 		return;
 	}
@@ -73,15 +73,15 @@ async function loadPlugin(filePath, hooks) {
 		if (typeof Plugin?.register === "function") {
 			Plugin.register(hooks);
 		} else {
-			if (process.env.SNORE_DEBUG === "true") {
+			if (process.env.RUMMY_DEBUG === "true") {
 				console.error(
-					`[SNORE] Plugin at ${filePath} has no register() method.`,
+					`[RUMMY] Plugin at ${filePath} has no register() method.`,
 				);
 			}
 		}
 	} catch (err) {
-		if (process.env.SNORE_DEBUG === "true") {
-			console.error(`[SNORE] Plugin load failed at ${filePath}:`, err);
+		if (process.env.RUMMY_DEBUG === "true") {
+			console.error(`[RUMMY] Plugin load failed at ${filePath}:`, err);
 		}
 	}
 }

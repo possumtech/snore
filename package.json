@@ -1,17 +1,17 @@
 {
-	"name": "snore",
+	"name": "rummy",
 	"version": "0.0.1",
 	"description": "Sqlite/Node OpenRouter Engine",
 	"keywords": [
 		"llm"
 	],
-	"homepage": "https://github.com/possumtech/snore#readme",
+	"homepage": "https://github.com/possumtech/rummy#readme",
 	"bugs": {
-		"url": "https://github.com/possumtech/snore/issues"
+		"url": "https://github.com/possumtech/rummy/issues"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/possumtech/snore.git"
+		"url": "git+https://github.com/possumtech/rummy.git"
 	},
 	"license": "MIT",
 	"author": "@wikitopian",

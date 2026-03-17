@@ -71,7 +71,7 @@ export default class ClientConnection {
 
 	async #handleMessage(data) {
 		let id = null;
-		const debug = process.env.SNORE_DEBUG === "true";
+		const debug = process.env.RUMMY_DEBUG === "true";
 		try {
 			const rawMessage = await this.#hooks.socket.message.raw.filter(data);
 			if (debug) console.log(`[SOCKET] IN: ${rawMessage.toString()}`);
@@ -254,7 +254,7 @@ export default class ClientConnection {
 	}
 
 	#send(payload) {
-		const debug = process.env.SNORE_DEBUG === "true";
+		const debug = process.env.RUMMY_DEBUG === "true";
 		if (debug) {
 			console.log(`[SOCKET] OUT: ${JSON.stringify(payload, null, 2)}`);
 		}

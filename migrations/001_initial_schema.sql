@@ -61,8 +61,24 @@ CREATE TABLE IF NOT EXISTS findings_diffs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
+	, type TEXT NOT NULL CHECK (type IN ('edit', 'create', 'delete'))
 	, file_path TEXT NOT NULL
 	, patch TEXT NOT NULL
+	, status TEXT NOT NULL DEFAULT 'proposed' CHECK (
+		status IN ('proposed', 'accepted', 'rejected', 'modified')
+	)
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS findings_commands (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
+	, type TEXT NOT NULL CHECK (type IN ('run', 'env'))
+	, command TEXT NOT NULL
+	, status TEXT NOT NULL DEFAULT 'proposed' CHECK (
+		status IN ('proposed', 'accepted', 'rejected')
+	)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -76,6 +92,26 @@ CREATE TABLE IF NOT EXISTS findings_notifications (
 	, append BOOLEAN
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- THE STATE LOCK TRIGGER
+-- Physically prevents starting a new turn if actions are unresolved.
+CREATE TRIGGER IF NOT EXISTS lock_turn_on_pending_actions
+BEFORE INSERT ON turns
+FOR EACH ROW
+BEGIN
+	SELECT CASE
+		WHEN (
+			SELECT COUNT(*) FROM findings_diffs 
+			WHERE run_id = NEW.run_id AND status = 'proposed'
+		) > 0 
+		THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed diffs.')
+		WHEN (
+			SELECT COUNT(*) FROM findings_commands 
+			WHERE run_id = NEW.run_id AND status = 'proposed'
+		) > 0 
+		THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed commands.')
+	END;
+END;
 
 -- Repo Map Tables
 CREATE TABLE IF NOT EXISTS repo_map_files (
@@ -117,4 +153,4 @@ CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id ON repo_map_tags (file_id);
 -- Initial Data
 INSERT OR IGNORE INTO projects (id, path, name)
 VALUES
-('snore-project', '/home/frith/repo/snore/main', 'SNORE Main');
+('rummy-project', '/home/frith/repo/rummy/main', 'RUMMY Main');

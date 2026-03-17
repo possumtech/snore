@@ -15,8 +15,8 @@ export default class OpenRouterClient {
 			headers: {
 				Authorization: `Bearer ${this.#apiKey}`,
 				"Content-Type": "application/json",
-				"HTTP-Referer": process.env.SNORE_HTTP_REFERER,
-				"X-Title": process.env.SNORE_X_TITLE,
+				"HTTP-Referer": process.env.RUMMY_HTTP_REFERER,
+				"X-Title": process.env.RUMMY_X_TITLE,
 			},
 			body: JSON.stringify({
 				model,

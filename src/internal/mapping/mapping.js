@@ -15,8 +15,8 @@ export default class RepoMapPlugin {
 		});
 
 		// Pipeline: Inject file data into the DOM
-		hooks.onTurn(async (snore) => {
-			const { project, activeFiles, db } = snore;
+		hooks.onTurn(async (rummy) => {
+			const { project, activeFiles, db } = rummy;
 			if (!project || !db) return;
 
 			await RepoMapPlugin.#updateIndex(db, project.id, project.path);
@@ -29,19 +29,19 @@ export default class RepoMapPlugin {
 			const perspective = await repoMap.renderPerspective(activeFiles);
 
 			// Inject base system prompt
-			snore.system.appendChild(
-				snore.doc.createTextNode("You are an assistant."),
+			rummy.system.appendChild(
+				rummy.doc.createTextNode("You are an assistant."),
 			);
 
-			const filesContainer = snore.tag("files");
-			snore.contextEl.appendChild(filesContainer);
+			const filesContainer = rummy.tag("files");
+			rummy.contextEl.appendChild(filesContainer);
 
 			for (const f of perspective.files) {
 				const status = f.mode || "unknown";
-				const fileEl = snore.tag("file", { path: f.path, status });
+				const fileEl = rummy.tag("file", { path: f.path, status });
 
 				if (f.symbols?.length) {
-					const symbolsEl = snore.tag("symbols", {}, [
+					const symbolsEl = rummy.tag("symbols", {}, [
 						JSON.stringify(f.symbols, null, 2),
 					]);
 					fileEl.appendChild(symbolsEl);
@@ -51,7 +51,7 @@ export default class RepoMapPlugin {
 					const fullPath = join(project.path, f.path);
 					if (existsSync(fullPath)) {
 						fileEl.appendChild(
-							snore.doc.createTextNode(readFileSync(fullPath, "utf8")),
+							rummy.doc.createTextNode(readFileSync(fullPath, "utf8")),
 						);
 					}
 				}

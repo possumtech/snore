@@ -10,13 +10,13 @@ describe("DebugLoggerPlugin", () => {
 	const auditFile = "test_audit.xml";
 
 	before(() => {
-		process.env.SNORE_DEBUG = "true";
-		process.env.SNORE_AUDIT_FILE = auditFile;
+		process.env.RUMMY_DEBUG = "true";
+		process.env.RUMMY_AUDIT_FILE = auditFile;
 	});
 
 	after(async () => {
-		delete process.env.SNORE_DEBUG;
-		delete process.env.SNORE_AUDIT_FILE;
+		delete process.env.RUMMY_DEBUG;
+		delete process.env.RUMMY_AUDIT_FILE;
 		await fs.unlink(auditFile).catch(() => {});
 	});
 

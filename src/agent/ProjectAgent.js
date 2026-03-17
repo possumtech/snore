@@ -158,6 +158,81 @@ export default class ProjectAgent {
 		await this.#db.delete_session_skill.run({ session_id: sessionId, name });
 	}
 
+	async #applyDiff(projectPath, diff) {
+		const fullPath = join(projectPath, diff.file);
+		if (diff.type === "delete") {
+			await fs.unlink(fullPath).catch(() => {});
+		} else if (diff.type === "create" || diff.type === "edit") {
+			// For edit, we assume the patch was already matched/applied to content in memory
+			// or if it's a raw content create.
+			// However, in our system, 'patch' field for 'edit' after HeuristicMatcher 
+			// contains the full NEW content of the file (or we should make it so).
+			// Wait, HeuristicMatcher.matchAndPatch returns a Unified Diff string.
+			// We need a way to apply that diff physically.
+			// Let's assume for now the model provides full content for create, 
+			// and we'll add a 'patch' utility for edit.
+			if (diff.type === "create") {
+				await fs.writeFile(fullPath, diff.patch, "utf8");
+			} else {
+				// Applying a Unified Diff physically
+				const { applyPatch } = await import("diff");
+				const oldContent = await fs.readFile(fullPath, "utf8");
+				const newContent = applyPatch(oldContent, diff.patch);
+				if (newContent) {
+					await fs.writeFile(fullPath, newContent, "utf8");
+				} else {
+					throw new Error(`Failed to apply patch to ${diff.file}`);
+				}
+			}
+		}
+	}
+
+	async #resolveOutstandingFindings(projectPath, runId, prompt) {
+		const findings = await this.#db.get_findings_by_run_id.all({ run_id: runId });
+		const proposed = findings.filter((f) => f.status === "proposed");
+		if (proposed.length === 0) return { resolvedCount: 0, remainingCount: 0 };
+
+		// Parse resolution tags: <info diff="ID">Accepted</info>
+		const frag = parse5.parseFragment(prompt);
+		const infoTags = [];
+		const traverse = (node) => {
+			if (node.tagName === "info") infoTags.push(node);
+			if (node.childNodes) {
+				for (const child of node.childNodes) traverse(child);
+			}
+		};
+		traverse(frag);
+
+		let resolvedCount = 0;
+		for (const tag of infoTags) {
+			const diffId = tag.attrs.find((a) => a.name === "diff")?.value;
+			const cmdId = tag.attrs.find((a) => a.name === "command")?.value;
+			const resolution = this.#getNodeText(tag).trim();
+
+			if (diffId) {
+				const finding = proposed.find((f) => f.category === "diff" && String(f.id) === diffId);
+				if (finding) {
+					const status = resolution.toLowerCase() === "accepted" ? "accepted" : "rejected";
+					if (status === "accepted") {
+						await this.#applyDiff(projectPath, finding);
+					}
+					await this.#db.update_finding_diff_status.run({ id: finding.id, status });
+					resolvedCount++;
+				}
+			} else if (cmdId) {
+				const finding = proposed.find((f) => f.category === "command" && String(f.id) === cmdId);
+				if (finding) {
+					const status = resolution.toLowerCase() === "accepted" ? "accepted" : "rejected";
+					await this.#db.update_finding_command_status.run({ id: finding.id, status });
+					resolvedCount++;
+				}
+			}
+		}
+
+		const remainingCount = proposed.length - resolvedCount;
+		return { resolvedCount, remainingCount };
+	}
+
 	async ask(sessionId, model, prompt, activeFiles = [], runId = null) {
 		return this.#executeRun(
 			"ask",
@@ -287,21 +362,22 @@ export default class ProjectAgent {
 
 		// Keep legacy test markers for our E2E tests for now
 		const turnContent = atomicResult.content;
-		if (turnContent.includes("SNORE_TEST_DIFF")) {
+		if (turnContent.includes("RUMMY_TEST_DIFF")) {
 			atomicResult.diffs.push({
 				runId: atomicResult.runId,
+				type: "edit",
 				file: "test.txt",
 				patch: "--- test.txt\n+++ test.txt\n@@ -1 +1 @@\n-old\n+new",
 			});
 		}
-		if (turnContent.includes("SNORE_TEST_NOTIFY")) {
+		if (turnContent.includes("RUMMY_TEST_NOTIFY")) {
 			atomicResult.notifications.push({
 				type: "notify",
 				text: "System notification detected in response",
 				level: "info",
 			});
 		}
-		if (turnContent.includes("SNORE_TEST_RENDER")) {
+		if (turnContent.includes("RUMMY_TEST_RENDER")) {
 			atomicResult.notifications.push({
 				type: "render",
 				text: "# Rendered Content",
@@ -313,12 +389,12 @@ export default class ProjectAgent {
 	#resolveAlias(modelId) {
 		if (!modelId) return modelId;
 		// Check if the input is already an alias
-		if (process.env[`SNORE_MODEL_${modelId}`]) return modelId;
+		if (process.env[`RUMMY_MODEL_${modelId}`]) return modelId;
 
 		// Check if the input is a target of an existing alias
 		for (const key of Object.keys(process.env)) {
-			if (key.startsWith("SNORE_MODEL_") && process.env[key] === modelId) {
-				return key.replace("SNORE_MODEL_", "");
+			if (key.startsWith("RUMMY_MODEL_") && process.env[key] === modelId) {
+				return key.replace("RUMMY_MODEL_", "");
 			}
 		}
 		return modelId;
@@ -360,10 +436,49 @@ export default class ProjectAgent {
 			const previousTurns = await this.#db.get_turns_by_run_id.all({
 				run_id: currentRunId,
 			});
+
+			// Declarative Resolution Gate
+			const { resolvedCount, remainingCount } = await this.#resolveOutstandingFindings(project.path, currentRunId, prompt);
+			if (remainingCount > 0) {
+				// If still blocked, return current state immediately
+				const lastTurn = previousTurns[previousTurns.length - 1];
+				const payload = JSON.parse(lastTurn.payload);
+				
+				// Re-fetch findings to bundle the unresolved ones
+				const findings = await this.#db.get_findings_by_run_id.all({ run_id: currentRunId });
+				const proposed = findings.filter(f => f.status === 'proposed');
+
+				return {
+					runId: currentRunId,
+					content: `Blocked: ${remainingCount} proposed action(s) still require resolution.`,
+					status: 'proposed',
+					diffs: proposed.filter(f => f.category === 'diff').map(f => ({
+						id: f.id,
+						runId: currentRunId,
+						type: f.type,
+						file: f.file,
+						patch: f.patch,
+						status: f.status
+					})),
+					commands: proposed.filter(f => f.category === 'command').map(f => ({
+						id: f.id,
+						type: f.type,
+						command: f.patch,
+						status: f.status
+					})),
+					notifications: [{
+						type: 'notify',
+						text: `${remainingCount} action(s) still pending resolution.`,
+						level: 'warn'
+					}]
+				};
+			}
+
+			// All resolved! Transition back to running.
+			await this.#db.update_run_status.run({ id: currentRunId, status: 'running' });
+
 			// History logic:
-			// Sequence 0 was the initial system+user.
-			// Subsequent turns follow.
-			// We want to reconstruct the conversation history.
+			// Reconstruct history...
 			for (const turn of previousTurns) {
 				const payload = JSON.parse(turn.payload);
 				if (Array.isArray(payload)) {
@@ -434,15 +549,15 @@ export default class ProjectAgent {
 				cost: 0,
 			});
 
-			const requestedModel = model || process.env.SNORE_MODEL_DEFAULT;
+			const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 			if (!requestedModel) {
-				throw new Error("No model specified and SNORE_MODEL_DEFAULT is not set.");
+				throw new Error("No model specified and RUMMY_MODEL_DEFAULT is not set.");
 			}
 
 			const targetModel =
-				process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
+				process.env[`RUMMY_MODEL_${requestedModel}`] || requestedModel;
 
-			if (process.env.SNORE_DEBUG === "true") {
+			if (process.env.RUMMY_DEBUG === "true") {
 				console.log(
 					`[LLM] Target Model: ${targetModel} (requested: ${requestedModel})`,
 				);
@@ -500,11 +615,11 @@ export default class ProjectAgent {
 				displayModel: this.#resolveAlias(requestedModel),
 			});
 
-			// Build the clean SNORE result object
+			// Build the clean RUMMY result object
 			const atomicResult = {
 				runId: currentRunId,
 				model: {
-					requested: model || process.env.SNORE_MODEL_DEFAULT,
+					requested: model || process.env.RUMMY_MODEL_DEFAULT,
 					alias: this.#resolveAlias(requestedModel),
 					target: targetModel,
 					actual: result.model,
@@ -565,6 +680,7 @@ export default class ProjectAgent {
 					await this.#db.insert_finding_diff.run({
 						run_id: currentRunId,
 						turn_id: turnId,
+						type: diff.type,
 						file_path: diff.file,
 						patch: diff.patch,
 					});

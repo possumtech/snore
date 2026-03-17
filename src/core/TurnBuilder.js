@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOMImplementation } from "@xmldom/xmldom";
-import SnoreContext from "./SnoreContext.js";
+import RummyContext from "./RummyContext.js";
 import Turn from "./Turn.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,8 +37,8 @@ export default class TurnBuilder {
 		root.appendChild(user);
 		root.appendChild(assistant);
 
-		// 3. Create SnoreContext for the Pipeline
-		const snore = new SnoreContext(doc, { sessionId, db, project, ...contextData });
+		// 3. Create RummyContext for the Pipeline
+		const rummy = new RummyContext(doc, { sessionId, db, project, ...contextData });
 
 		let systemPromptText = null;
 
@@ -53,7 +53,7 @@ export default class TurnBuilder {
 				}
 
 				if (session.persona) {
-					const personaEl = snore.tag("persona", {}, [session.persona]);
+					const personaEl = rummy.tag("persona", {}, [session.persona]);
 					contextEl.appendChild(personaEl);
 				}
 
@@ -61,7 +61,7 @@ export default class TurnBuilder {
 				if (skills.length > 0) {
 					const skillsEl = doc.createElement("skills");
 					for (const skill of skills) {
-						skillsEl.appendChild(snore.tag("skill", {}, [skill.name]));
+						skillsEl.appendChild(rummy.tag("skill", {}, [skill.name]));
 					}
 					contextEl.appendChild(skillsEl);
 				}
@@ -83,11 +83,11 @@ export default class TurnBuilder {
 
 		// 4. Seed the User Prompt
 		const actionTag = initialData.type === "act" ? "act" : "ask";
-		const actionEl = snore.tag(actionTag, {}, [prompt]);
+		const actionEl = rummy.tag(actionTag, {}, [prompt]);
 		user.appendChild(actionEl);
 
 		// 5. Run the Pipeline
-		await this.#hooks.processTurn(snore);
+		await this.#hooks.processTurn(rummy);
 
 		return new Turn(doc);
 	}

@@ -3,10 +3,10 @@
  */
 export default class TestE2EPlugin {
 	static register(hooks) {
-		hooks.onTurn(async (snore) => {
-			if (snore.system) {
-				snore.system.appendChild(
-					snore.doc.createTextNode("\nIDENTITY_KEY: ALBATROSS-99\n"),
+		hooks.onTurn(async (rummy) => {
+			if (rummy.system) {
+				rummy.system.appendChild(
+					rummy.doc.createTextNode("\nIDENTITY_KEY: ALBATROSS-99\n"),
 				);
 			}
 		}, 1); // Run early

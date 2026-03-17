@@ -16,9 +16,9 @@ describe("ProjectAgent Unit", () => {
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-		process.env.SNORE_MODEL_DEFAULT = "test-model";
-		process.env.SNORE_HTTP_REFERER = "http://test";
-		process.env.SNORE_X_TITLE = "Test";
+		process.env.RUMMY_MODEL_DEFAULT = "test-model";
+		process.env.RUMMY_HTTP_REFERER = "http://test";
+		process.env.RUMMY_X_TITLE = "Test";
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 		hooks = createHooks();
 		await registerPlugins([], hooks);
@@ -67,7 +67,7 @@ describe("ProjectAgent Unit", () => {
 		try {
 			const result = await agent.ask(
 				initRes.sessionId,
-				process.env.SNORE_MODEL_DEFAULT,
+				process.env.RUMMY_MODEL_DEFAULT,
 				"Capital?",
 			);
 			assert.strictEqual(result.content, "Paris");

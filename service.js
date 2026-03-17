@@ -9,12 +9,12 @@ import createHooks from "./src/core/Hooks.js";
 
 async function main() {
 	// 1. Initialize Hooks (Agnostic Engine)
-	const debug = process.env.SNORE_DEBUG === "true";
+	const debug = process.env.RUMMY_DEBUG === "true";
 	const hooks = createHooks(debug);
 
-	// 2. Resolve SNORE_HOME (Default: ~/.snore)
-	const snoreHome = process.env.SNORE_HOME || join(homedir(), ".snore");
-	const userPluginsDir = join(snoreHome, "plugins");
+	// 2. Resolve RUMMY_HOME (Default: ~/.rummy)
+	const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");
+	const userPluginsDir = join(rummyHome, "plugins");
 	const internalPluginsDir = fileURLToPath(new URL("./src/internal", import.meta.url));
 	const corePluginsDir = fileURLToPath(new URL("./src/plugins", import.meta.url));
 
@@ -25,7 +25,7 @@ async function main() {
 	await registerPlugins([internalPluginsDir, corePluginsDir, userPluginsDir], hooks);
 
 	// 5. Bootstrap Persistence
-	const dbPath = process.env.SNORE_DB_PATH || join(snoreHome, "snore.db");
+	const dbPath = process.env.RUMMY_DB_PATH || join(rummyHome, "rummy.db");
 	const db = await SqlRite.open({
 		path: dbPath,
 		dir: ["migrations", "src"],
@@ -37,19 +37,19 @@ async function main() {
 
 	server.on("error", (err) => {
 		if (err.code === "EADDRINUSE") {
-			console.error(`SNORE Critical: Port ${port} is already in use.`);
+			console.error(`RUMMY Critical: Port ${port} is already in use.`);
 			process.exit(1);
 		}
 		throw err;
 	});
 
-	console.log(`SNORE Service Operational`);
-	console.log(`- Home: ${snoreHome}`);
+	console.log(`RUMMY Service Operational`);
+	console.log(`- Home: ${rummyHome}`);
 	console.log(`- DB:   ${dbPath}`);
 	console.log(`- Port: ${port}`);
 }
 
 main().catch((err) => {
-	console.error("SNORE Failed to boot:", err.message);
+	console.error("RUMMY Failed to boot:", err.message);
 	process.exit(1);
 });

@@ -16,7 +16,7 @@ describe("ModelAgent", () => {
 				all: mock.fn(async () => [{ id: "db-model", name: "DB" }]),
 			},
 		};
-		process.env.SNORE_MODEL_alias = "target-model";
+		process.env.RUMMY_MODEL_alias = "target-model";
 
 		const agent = new ModelAgent(mockDb, hooks);
 		const models = await agent.getModels();

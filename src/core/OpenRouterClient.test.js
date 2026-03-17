@@ -5,8 +5,8 @@ import OpenRouterClient from "./OpenRouterClient.js";
 describe("OpenRouterClient", () => {
 	before(() => {
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-		process.env.SNORE_HTTP_REFERER = "http://test";
-		process.env.SNORE_X_TITLE = "Test";
+		process.env.RUMMY_HTTP_REFERER = "http://test";
+		process.env.RUMMY_X_TITLE = "Test";
 	});
 
 	it("should send a completion request", async () => {

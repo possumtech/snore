@@ -16,8 +16,8 @@ const PORT = process.env.PORT || 3000;
 const ws = new WebSocket(`ws://localhost:${PORT}`);
 
 ws.on("open", () => {
-	console.log("--- SNORE Live Paris Test ---");
-	console.log(`Connected to SNORE on port ${PORT}`);
+	console.log("--- RUMMY Live Paris Test ---");
+	console.log(`Connected to RUMMY on port ${PORT}`);
 
 	// 1. Initialize project
 	console.log("\n1. Initializing Project...");
@@ -27,7 +27,7 @@ ws.on("open", () => {
 			method: "init",
 			params: {
 				projectPath: process.cwd(),
-				projectName: "SNORE Ad-hoc Test",
+				projectName: "RUMMY Ad-hoc Test",
 				clientId: "manual-tester",
 			},
 			id: "init-req",
@@ -74,5 +74,5 @@ ws.on("message", (data) => {
 
 ws.on("error", (err) => {
 	console.error("WebSocket Error:", err.message);
-	console.log("Is SNORE running? (npm start)");
+	console.log("Is RUMMY running? (npm start)");
 });

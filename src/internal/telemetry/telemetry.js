@@ -6,9 +6,9 @@ import { writeFileSync } from "node:fs";
 export default class DebugLoggerPlugin {
 	static register(hooks) {
 		hooks.ask.completed.on(async ({ turn }) => {
-			if (process.env.SNORE_DEBUG !== "true") return;
+			if (process.env.RUMMY_DEBUG !== "true") return;
 
-			const auditFile = process.env.SNORE_AUDIT_FILE || "audit_last_turn.xml";
+			const auditFile = process.env.RUMMY_AUDIT_FILE || "audit_last_turn.xml";
 			try {
 				const xml = turn.toXml();
 				writeFileSync(auditFile, xml);

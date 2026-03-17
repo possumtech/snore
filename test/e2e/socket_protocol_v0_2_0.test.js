@@ -84,12 +84,12 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 	});
 
 	it("should support 'act' method and all bundled findings", async () => {
-		// Mock LLM response to trigger all detections via SnoreNvimPlugin
+		// Mock LLM response to trigger all detections via RummyNvimPlugin
 		tserver.hooks.addFilter("llm.response", (response) => {
 			return {
 				...response,
 				content:
-					"Acting... SNORE_TEST_NOTIFY SNORE_TEST_RENDER SNORE_TEST_DIFF",
+					"Acting... RUMMY_TEST_NOTIFY RUMMY_TEST_RENDER RUMMY_TEST_DIFF",
 				reasoning_content: "I need to notify and diff.",
 			};
 		});
