@@ -1,15 +1,20 @@
-import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative } from "node:path";
 import { getEncoding } from "js-tiktoken";
 import SymbolExtractor from "./SymbolExtractor.js";
+import CtagsExtractor from "./CtagsExtractor.js";
 
+/**
+ * RepoMap coordinates the persistent indexing of project symbols
+ * and the generation of context-aware repository perspectives.
+ */
 export default class RepoMap {
 	#ctx;
 	#db;
 	#projectId;
 	#hdExtractor;
+	#ctagsExtractor;
 	#tokenizer;
 
 	constructor(projectContext, db, projectId) {
@@ -17,6 +22,7 @@ export default class RepoMap {
 		this.#db = db;
 		this.#projectId = projectId;
 		this.#hdExtractor = new SymbolExtractor();
+		this.#ctagsExtractor = new CtagsExtractor(projectContext.root);
 		this.#tokenizer = getEncoding("cl100k_base");
 	}
 
@@ -44,7 +50,6 @@ export default class RepoMap {
 
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
-
 			if (!existsSync(fullPath)) continue;
 
 			const content = readFileSync(fullPath, "utf8");
@@ -54,6 +59,7 @@ export default class RepoMap {
 
 			const existing = fileRecords.get(relPath);
 
+			// Skip if hash/visibility match AND we have symbols
 			if (
 				existing?.hash === hash &&
 				existing?.visibility === visibility &&
@@ -62,6 +68,7 @@ export default class RepoMap {
 				continue;
 			}
 
+			// Upsert file record immediately to get fileId for tags
 			const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 				project_id: this.#projectId,
 				path: relPath,
@@ -105,26 +112,14 @@ export default class RepoMap {
 					});
 				}
 			} else {
-				const breadcrumbWeight = this.#tokenizer.encode(
-					JSON.stringify({ path: relPath, status: visibility }),
-				).length;
-
-				await this.#db.upsert_repo_map_file.run({
-					project_id: this.#projectId,
-					path: relPath,
-					hash,
-					size,
-					visibility,
-					symbol_tokens: breadcrumbWeight,
-				});
-				ctagsQueue.Spush(relPath);
+				// Definitions not found via HD extractor, queue for ctags
+				ctagsQueue.push(relPath);
 			}
 		}
 
 		if (ctagsQueue.length > 0) {
-			const ctagsResults = this.#generateCtags(ctagsQueue);
-			for (const result of ctagsResults) {
-				const { path, symbols } = result;
+			const ctagsResults = this.#ctagsExtractor.extract(ctagsQueue);
+			for (const [path, symbols] of ctagsResults.entries()) {
 				const fullPath = join(this.#ctx.root, path);
 				if (!existsSync(fullPath)) continue;
 
@@ -213,15 +208,21 @@ export default class RepoMap {
 		const processedFiles = Array.from(filesMap.values()).map((file) => {
 			const status = normalizedActiveFiles.includes(file.path)
 				? "active"
-				const isRootFile = !file.path.includes("/");
+				: file.visibility;
 
+			const overlapCount = file.symbols.filter((s) =>
+				activeWords.has(s.name),
+			).length;
+			const isRootFile = !file.path.includes("/");
+
+			// SIMPLIFIED RANKING:
+			// 1. Active files are priority.
+			// 2. Score = (Root ? 1 : 0) + overlapCount.
 			let rank = 0;
 			if (status === "active") {
-				rank = Infinity; // Active is always top priority
-			} else if (isRootFile) {
-				rank = 1 + overlapCount; // Root files are warm by default (rank 1+)
+				rank = Infinity;
 			} else {
-				rank = overlapCount; // Other files ranked by overlap count
+				rank = (isRootFile ? 1 : 0) + overlapCount;
 			}
 
 			return { ...file, status, rank };
@@ -257,7 +258,9 @@ export default class RepoMap {
 				};
 
 				finalFiles.push(displayFile);
-				currentTokens += this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+				currentTokens += this.#tokenizer.encode(
+					JSON.stringify(displayFile),
+				).length;
 				continue;
 			}
 
@@ -272,10 +275,11 @@ export default class RepoMap {
 				displayFile = { path: file.path, size: file.size, status: file.status };
 			}
 
-			let finalTokens = file.symbol_tokens || this.#tokenizer.encode(JSON.stringify(displayFile)).length;
-			
-			// Only squish files with rank 0 if over budget
-			if (currentTokens + finalTokens > budget && file.rank === 0) {
+			let finalTokens =
+				file.symbol_tokens ||
+				this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+
+			if (currentTokens + finalTokens > budget) {
 				if (file.symbols.length > 0) {
 					const signaturesOnly = {
 						path: file.path,
@@ -283,14 +287,22 @@ export default class RepoMap {
 						status: file.status,
 						symbols: file.symbols.map((s) => ({ name: s.name })),
 					};
-					const sigTokens = this.#tokenizer.encode(JSON.stringify(signaturesOnly)).length;
+					const sigTokens = this.#tokenizer.encode(
+						JSON.stringify(signaturesOnly),
+					).length;
 
 					if (currentTokens + sigTokens <= budget) {
 						displayFile = signaturesOnly;
 						finalTokens = sigTokens;
 					} else {
-						const pathOnly = { path: file.path, size: file.size, status: file.status };
-						const pathTokens = this.#tokenizer.encode(JSON.stringify(pathOnly)).length;
+						const pathOnly = {
+							path: file.path,
+							size: file.size,
+							status: file.status,
+						};
+						const pathTokens = this.#tokenizer.encode(
+							JSON.stringify(pathOnly),
+						).length;
 
 						if (currentTokens + pathTokens <= budget) {
 							displayFile = pathOnly;
@@ -305,6 +317,7 @@ export default class RepoMap {
 			}
 
 			displayFile.tokens = finalTokens;
+			displayFile.rank = file.rank;
 			finalFiles.push(displayFile);
 			currentTokens += finalTokens;
 		}
@@ -313,65 +326,5 @@ export default class RepoMap {
 			files: finalFiles,
 			usage: { tokens: currentTokens, budget },
 		};
-	}
-
-	#generateCtags(paths) {
-		const result = spawnSync(
-			"ctags",
-			["--output-format=json", "--fields=+nS", "-f", "-", ...paths],
-			{ cwd: this.#ctx.root, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
-		);
-
-		if (result.error && result.error.code === "ENOENT") {
-			console.warn("[RUMMY] skipping ctags: not installed.");
-			const empty = new Map();
-			for (const p of paths) empty.set(p, []);
-			return empty;
-		}
-
-		if (result.status !== 0) {
-			console.warn(`[RUMMY] skipping ctags: failed (${result.stderr})`);
-			const empty = new Map();
-			for (const p of paths) empty.set(p, []);
-			return empty;
-		}
-
-		const tags = result.stdout
-			.split("
-")
-			.filter(Boolean)
-			.map((l) => JSON.parse(l));
-		const grouped = new Map();
-		for (const path of paths) grouped.set(path, []);
-
-		for (const tag of tags) {
-			const symbols = grouped.get(tag.path);
-			if (symbols) {
-				let params = tag.signature || null;
-
-				if (!params && tag.path.endsWith(".lua") && tag.pattern && tag.name) {
-					const escapedName = tag.name.replace(/[.*+?^${}()|[\]\]/g, "\$&");
-					const regex = new RegExp(`${escapedName}\s*(\(.*?\))`);
-					const match = tag.pattern.match(regex);
-					if (match) {
-						params = match[1];
-					}
-				}
-
-				symbols.push({
-					name: tag.name,
-					type: tag.kind,
-					params,
-					line: tag.line,
-					source: "standard",
-				});
-			}
-		}
-
-		return Array.from(grouped.entries()).map(([path, symbols]) => ({
-			path,
-			symbols,
-			source: "standard",
-		}));
 	}
 }

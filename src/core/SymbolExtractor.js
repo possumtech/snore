@@ -29,6 +29,8 @@ export default class SymbolExtractor {
 (class_declaration) @class
 (function_declaration) @function
 (method_definition) @method
+(call_expression) @ref
+(new_expression) @ref
     `.trim();
 
 		this.#queries.js = new Parser.Query(JavaScript, jsQueryStr);
@@ -47,7 +49,7 @@ export default class SymbolExtractor {
 	}
 
 	/**
-	 * Extracts symbol definitions.
+	 * Extracts both definitions and references.
 	 */
 	extract(content, ext) {
 		const lang = this.#grammars[ext];
@@ -61,6 +63,7 @@ export default class SymbolExtractor {
 			const captures = query.captures(tree.rootNode);
 
 			const definitions = [];
+			const references = new Set();
 
 			for (const capture of captures) {
 				if (
@@ -80,7 +83,9 @@ export default class SymbolExtractor {
 							].includes(child.type)
 						) {
 							name = child.text;
-						} else if (child.type === "formal_parameters") {
+						} else if (
+							child.type === "formal_parameters"
+						) {
 							params = child.text;
 						}
 					}
@@ -93,10 +98,28 @@ export default class SymbolExtractor {
 							line: capture.node.startPosition.row + 1,
 						});
 					}
+				} else if (capture.name === "ref") {
+					const findIdentifier = (node) => {
+						if (
+							node.type === "identifier" ||
+							node.type === "property_identifier"
+						)
+							return node.text;
+						for (let i = 0; i < node.childCount; i++) {
+							const result = findIdentifier(node.child(i));
+							if (result) return result;
+						}
+						return null;
+					};
+					const refName = findIdentifier(capture.node);
+					if (refName) references.add(refName);
 				}
 			}
 
-			return { definitions };
+			return {
+				definitions,
+				references: Array.from(references),
+			};
 		} catch (err) {
 			console.error(`HD Symbol extraction failed for .${ext}:`, err);
 			return null;
