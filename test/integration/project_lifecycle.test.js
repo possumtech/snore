@@ -59,7 +59,8 @@ describe("Project Lifecycle Integration", () => {
 		mock.method(globalThis, "fetch", async () => ({
 			ok: true,
 			json: async () => ({
-				choices: [{ message: { role: "assistant", content: "Paris" } }],
+				model: "gpt-4o",
+				choices: [{ message: { role: "assistant", content: "<tasks>- [x] Answer</tasks><response>Paris</response><short>Paris</short>" } }],
 				usage: { total_tokens: 42 },
 			}),
 		}));
@@ -69,7 +70,14 @@ describe("Project Lifecycle Integration", () => {
 			"gpt-4o",
 			"Capital of France?",
 		);
-		assert.strictEqual(result.content, "Paris");
 		assert.ok(result.runId);
+		assert.strictEqual(result.status, "completed");
+		assert.strictEqual(result.turn, 0);
+
+		// Verify turn was persisted
+		const turns = await tdb.db.get_turns_by_run_id.all({ run_id: result.runId });
+		assert.strictEqual(turns.length, 1);
+		const payload = JSON.parse(turns[0].payload);
+		assert.ok(payload.assistant.content.includes("Paris"));
 	});
 });
