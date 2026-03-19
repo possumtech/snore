@@ -57,9 +57,9 @@ if (actualModelId.startsWith("ollama/")) {
 let SqlRite, SocketServer, registerPlugins, createHooks;
 try {
 	SqlRite = (await import("@possumtech/sqlrite")).default;
-	SocketServer = (await import("./src/socket/SocketServer.js")).default;
+	SocketServer = (await import("./src/infrastructure/socket/SocketServer.js")).default;
 	registerPlugins = (await import("./src/plugins/index.js")).registerPlugins;
-	createHooks = (await import("./src/core/Hooks.js")).default;
+	createHooks = (await import("./src/domain/hooks/Hooks.js")).default;
 } catch (err) {
 	if (err.code === "ERR_MODULE_NOT_FOUND") {
 		console.error("RUMMY Dependency Error: node_modules not found or incomplete.");
@@ -76,7 +76,7 @@ async function main() {
 
 	// 2. Resolve Directories
 	const userPluginsDir = join(rummyHome, "plugins");
-	const internalPluginsDir = fileURLToPath(new URL("./src/internal", import.meta.url));
+	const internalPluginsDir = fileURLToPath(new URL("./src/application/plugins", import.meta.url));
 	const corePluginsDir = fileURLToPath(new URL("./src/plugins", import.meta.url));
 
 	// 3. Ensure Directory Structure

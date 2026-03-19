@@ -1,5 +1,5 @@
-import ModelAgent from "../agent/ModelAgent.js";
-import ProjectAgent from "../agent/ProjectAgent.js";
+import ModelAgent from "../../application/model/ModelAgent.js";
+import ProjectAgent from "../../application/agent/ProjectAgent.js";
 
 export default class ClientConnection {
 	#ws;

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT_DIR = join(__dirname, "../..");
+const ROOT_DIR = join(__dirname, "../../..");
 
 export default class PromptManager {
 	static async getSystemPrompt(type, customPrompt = null) {

@@ -1,5 +1,5 @@
-import OllamaClient from "./OllamaClient.js";
-import OpenRouterClient from "./OpenRouterClient.js";
+import OllamaClient from "../../infrastructure/llm/OllamaClient.js";
+import OpenRouterClient from "../../infrastructure/llm/OpenRouterClient.js";
 
 /**
  * LlmProvider: Factory and router for multiple LLM backends.

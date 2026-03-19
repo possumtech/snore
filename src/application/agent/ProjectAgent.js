@@ -1,10 +1,10 @@
-import createHooks from "../core/Hooks.js";
-import LlmProvider from "../core/LlmProvider.js";
-import TurnBuilder from "../core/TurnBuilder.js";
+import createHooks from "../../domain/hooks/Hooks.js";
+import LlmProvider from "../../domain/llm/LlmProvider.js";
+import TurnBuilder from "../../domain/turn/TurnBuilder.js";
 import AgentLoop from "./AgentLoop.js";
 import FindingsManager from "./FindingsManager.js";
 import ResponseParser from "./ResponseParser.js";
-import SessionManager from "./SessionManager.js";
+import SessionManager from "../session/SessionManager.js";
 
 /**
  * ProjectAgent: Primary entry point and coordinator for the outside world.

@@ -1,5 +1,5 @@
 import { isAbsolute, join, relative } from "node:path";
-import GitProvider from "./GitProvider.js";
+import GitProvider from "../../infrastructure/filesystem/GitProvider.js";
 
 export const FileState = {
 	INVISIBLE: "invisible",

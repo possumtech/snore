@@ -1,5 +1,5 @@
 import { DOMImplementation } from "@xmldom/xmldom";
-import PromptManager from "./PromptManager.js";
+import PromptManager from "../prompt/PromptManager.js";
 import RummyContext from "./RummyContext.js";
 import Turn from "./Turn.js";
 

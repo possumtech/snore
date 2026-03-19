@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import ProjectContext from "../core/ProjectContext.js";
+import ProjectContext from "../../domain/project/ProjectContext.js";
 
 /**
  * SessionManager: Handles database state for Projects, Sessions, Runs, and Skills.
@@ -51,7 +51,7 @@ export default class SessionManager {
 			client_id: clientId,
 		});
 
-		const { default: GitProvider } = await import("../core/GitProvider.js");
+		const { default: GitProvider } = await import("../../infrastructure/filesystem/GitProvider.js");
 		const gitRoot = await GitProvider.detectRoot(projectPath);
 		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
 

@@ -1,5 +1,5 @@
-import ProjectContext from "../../core/ProjectContext.js";
-import RepoMap from "../../core/RepoMap.js";
+import ProjectContext from "../../../domain/project/ProjectContext.js";
+import RepoMap from "../../../domain/repomap/RepoMap.js";
 
 /**
  * RepoMapPlugin: Logic for mapping files and formatting them as DOM nodes.

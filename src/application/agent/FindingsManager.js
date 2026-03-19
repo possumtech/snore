@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import HeuristicMatcher from "../core/HeuristicMatcher.js";
+import HeuristicMatcher from "../../extraction/HeuristicMatcher.js";
 
 /**
  * FindingsManager: Handles tag processing, patches, and declarative resolution.

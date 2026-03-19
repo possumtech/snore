@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative } from "node:path";
 import { getEncoding } from "js-tiktoken";
-import SymbolExtractor from "./SymbolExtractor.js";
-import CtagsExtractor from "./CtagsExtractor.js";
+import SymbolExtractor from "../../extraction/SymbolExtractor.js";
+import CtagsExtractor from "../../extraction/CtagsExtractor.js";
 
 /**
  * RepoMap coordinates the persistent indexing of project symbols
