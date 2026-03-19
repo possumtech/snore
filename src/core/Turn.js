@@ -84,19 +84,14 @@ export default class Turn {
 			return el ? el.textContent : null;
 		};
 
-		const files = [];
-		const filesEl = contextEl?.getElementsByTagName("files")[0];
-		if (filesEl) {
-			const fileNodes = filesEl.getElementsByTagName("file");
-			for (let i = 0; i < fileNodes.length; i++) {
-				const f = fileNodes[i];
-				files.push({
-					path: f.getAttribute("path"),
-					status: f.getAttribute("status"),
-					content: f.textContent || null,
-				});
-			}
-		}
+		const assistantMeta = JSON.parse(
+			getTagContent(assistantEl, "meta") || "{}",
+		);
+		const usage = assistantMeta.usage || {
+			prompt_tokens: assistantMeta.prompt_tokens || 0,
+			completion_tokens: assistantMeta.completion_tokens || 0,
+			total_tokens: assistantMeta.total_tokens || 0,
+		};
 
 		return {
 			sequence: Number.parseInt(
@@ -104,18 +99,16 @@ export default class Turn {
 				10,
 			),
 			system: systemEl?.textContent || "",
-			persona: getTagContent(contextEl, "persona"),
-			context: {
-				files,
-				skills: Array.from(contextEl?.getElementsByTagName("skill") || []).map(
-					(s) => s.textContent,
-				),
-			},
+			context: this.#serializePretty(contextEl),
 			user: userEl?.textContent || "",
 			assistant: {
 				content: getTagContent(assistantEl, "content"),
 				reasoning: getTagContent(assistantEl, "reasoning_content"),
-				meta: JSON.parse(getTagContent(assistantEl, "meta") || "{}"),
+			},
+			usage,
+			model: {
+				alias: assistantMeta.alias,
+				actual: assistantMeta.actualModel,
 			},
 		};
 	}
@@ -124,13 +117,81 @@ export default class Turn {
 	 * Serializes the entire turn into a pretty-printed XML document.
 	 */
 	toXml() {
-		return this.#serializer.serializeToString(this.#doc);
+		return this.#serializePretty(this.#doc.documentElement);
 	}
 
 	#serializeNode(node) {
 		if (!node) return "";
-		// serializeToString returns the tag itself.
-		// For LLM messages, we often want the content, but keeping tags is fine for modern models.
 		return this.#serializer.serializeToString(node);
+	}
+
+	#serializePretty(node, level = 0) {
+		if (!node) return "";
+		const indent = "  ".repeat(level);
+
+		// Handle Text Nodes
+		if (node.nodeType === 3) {
+			const text = node.nodeValue;
+			// Only return text if it's not just whitespace
+			return text.trim() ? text : "";
+		}
+
+		// Handle Document Node
+		if (node.nodeType === 9) {
+			return this.#serializePretty(node.documentElement, level);
+		}
+
+		// Handle Element Nodes
+		const tagName = node.tagName;
+		let xml = `${indent}<${tagName}`;
+
+		// Add Attributes
+		if (node.attributes) {
+			for (let i = 0; i < node.attributes.length; i++) {
+				const attr = node.attributes[i];
+				xml += ` ${attr.name}="${this.#escapeXml(attr.value)}"`;
+			}
+		}
+
+		// Self-closing if no children
+		if (node.childNodes.length === 0) {
+			return `${xml}/>\n`;
+		}
+
+		// Special handling for content-preserving tags
+		const preserve = ["source", "symbols", "persona", "skill", "short", "content", "reasoning_content", "tasks", "known", "unknown"].includes(tagName);
+
+		if (preserve) {
+			xml += ">";
+			for (let i = 0; i < node.childNodes.length; i++) {
+				const child = node.childNodes[i];
+				if (child.nodeType === 3) xml += child.nodeValue;
+				else xml += this.#serializePretty(child, 0).trim();
+			}
+			xml += `</${tagName}>\n`;
+			return xml;
+		}
+
+		// Standard structural tags
+		xml += ">\n";
+		for (let i = 0; i < node.childNodes.length; i++) {
+			const childResult = this.#serializePretty(node.childNodes[i], level + 1);
+			if (childResult) xml += childResult;
+		}
+		xml += `${indent}</${tagName}>\n`;
+		return xml;
+	}
+
+	#escapeXml(unsafe) {
+		return unsafe.replace(/[<>&"']/g, (c) => {
+			switch (c) {
+				case "<": return "&lt;";
+				case ">": return "&gt;";
+				case "&": return "&amp;";
+				case "\"": return "&quot;";
+				case "'": return "&apos;";
+			}
+			return c;
+		});
 	}
 }

@@ -60,7 +60,15 @@ describe("Project Lifecycle Integration", () => {
 			ok: true,
 			json: async () => ({
 				model: "gpt-4o",
-				choices: [{ message: { role: "assistant", content: "<tasks>- [x] Answer</tasks><response>Paris</response><short>Paris</short>" } }],
+				choices: [
+					{
+						message: {
+							role: "assistant",
+							content:
+								"<tasks>- [x] Answer</tasks><response>Paris</response><short>Paris</short>",
+						},
+					},
+				],
 				usage: { total_tokens: 42 },
 			}),
 		}));
@@ -75,7 +83,9 @@ describe("Project Lifecycle Integration", () => {
 		assert.strictEqual(result.turn, 0);
 
 		// Verify turn was persisted
-		const turns = await tdb.db.get_turns_by_run_id.all({ run_id: result.runId });
+		const turns = await tdb.db.get_turns_by_run_id.all({
+			run_id: result.runId,
+		});
 		assert.strictEqual(turns.length, 1);
 		const payload = JSON.parse(turns[0].payload);
 		assert.ok(payload.assistant.content.includes("Paris"));

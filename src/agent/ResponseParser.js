@@ -118,9 +118,21 @@ export default class ResponseParser {
 
 	parseActionTags(content) {
 		const coreTagNames = [
-			"read", "env", "run", "create", "delete", "edit", 
-			"prompt_user", "summary", "tasks", "analysis", 
-			"info", "known", "unknown", "response", "short"
+			"read",
+			"env",
+			"run",
+			"create",
+			"delete",
+			"edit",
+			"prompt_user",
+			"summary",
+			"tasks",
+			"analysis",
+			"info",
+			"known",
+			"unknown",
+			"response",
+			"short",
 		];
 
 		const tags = [];
@@ -131,22 +143,24 @@ export default class ResponseParser {
 			const key = `${name}:${text.substring(0, 20)}:${index}`;
 			if (seenKeys.has(key)) return;
 			seenKeys.add(key);
-			
+
 			tags.push({
 				tagName: name,
 				isMock: true,
 				attrs: attrs || [],
 				childNodes: [{ nodeName: "#text", value: text.trim() }],
-				startIndex: index
+				startIndex: index,
 			});
 		};
 
 		// 1. Aggressive Regex Extraction (The "Greedy" layer)
 		// This catches mangled tags like <read file="a.js" <read file="b.js">
 		for (const name of coreTagNames) {
-			const regex = new RegExp(`<${name}([^>]*)>([\\s\\S]*?)(?:</${name}>|(?=<[a-z])|$)`, "gi");
-			let match;
-			while ((match = regex.exec(content)) !== null) {
+			const regex = new RegExp(
+				`<${name}([^>]*)>([\\s\\S]*?)(?:</${name}>|(?=<[a-z])|$)`,
+				"gi",
+			);
+			for (const match of content.matchAll(regex)) {
 				const attrString = match[1];
 				const tagContent = match[2];
 				addTag(name, tagContent, this.#parseAttrs(attrString), match.index);
@@ -159,7 +173,8 @@ export default class ResponseParser {
 			const traverse = (node) => {
 				if (node.tagName && coreTagNames.includes(node.tagName)) {
 					const text = this.getNodeText(node);
-					const attrs = node.attrs?.map(a => ({ name: a.name, value: a.value })) || [];
+					const attrs =
+						node.attrs?.map((a) => ({ name: a.name, value: a.value })) || [];
 					addTag(node.tagName, text, attrs, content.indexOf(node.tagName));
 				}
 				if (node.childNodes) {
@@ -178,8 +193,7 @@ export default class ResponseParser {
 		const attrs = [];
 		if (!tagString) return attrs;
 		const attrRegex = /([a-z-]+)="([^"]*)"/gi;
-		let match;
-		while ((match = attrRegex.exec(tagString)) !== null) {
+		for (const match of tagString.matchAll(attrRegex)) {
 			attrs.push({ name: match[1], value: match[2] });
 		}
 		return attrs;

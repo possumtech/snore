@@ -24,6 +24,24 @@ export default class RepoMap {
 		const mappableFiles = await this.#ctx.getMappableFiles();
 		const ctagsQueue = [];
 
+		const allFilesRows = await this.#db.get_project_repo_map.all({
+			project_id: this.#projectId,
+		});
+		const fileTagCounts = new Map();
+		const fileRecords = new Map();
+		for (const row of allFilesRows) {
+			if (!fileRecords.has(row.path)) {
+				fileRecords.set(row.path, {
+					hash: row.hash,
+					visibility: row.visibility,
+					id: row.id,
+				});
+			}
+			if (row.name) {
+				fileTagCounts.set(row.path, (fileTagCounts.get(row.path) || 0) + 1);
+			}
+		}
+
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
 
@@ -35,29 +53,41 @@ export default class RepoMap {
 			const hash = crypto.createHash("sha256").update(content).digest("hex");
 			const visibility = await this.#ctx.resolveState(relPath);
 
-			const existing = await this.#db.get_repo_map_file.get({
-				project_id: this.#projectId,
-				path: relPath,
-			});
+			const existing = fileRecords.get(relPath);
 
-			if (existing?.hash === hash && existing?.visibility === visibility)
+			// Skip if hash/visibility match AND we have at least some tags (if symbols exist)
+			// We don't skip if tag count is 0 because it might be a previous failed index.
+			if (
+				existing?.hash === hash &&
+				existing?.visibility === visibility &&
+				fileTagCounts.get(relPath) > 0
+			) {
 				continue;
-
-			// Always upsert the file record so it exists in the map even without symbols
-			const { id: fileId } = await this.#db.upsert_repo_map_file.get({
-				project_id: this.#projectId,
-				path: relPath,
-				hash,
-				size,
-				visibility,
-			});
-
-			await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
+			}
 
 			const ext = extname(relPath).slice(1);
 			const extraction = this.#hdExtractor.extract(content, ext);
 
 			if (extraction) {
+				const symbolWeight = this.#tokenizer.encode(
+					JSON.stringify({
+						path: relPath,
+						status: visibility,
+						symbols: extraction.definitions,
+					}),
+				).length;
+
+				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
+					project_id: this.#projectId,
+					path: relPath,
+					hash,
+					size,
+					visibility,
+					symbol_tokens: symbolWeight,
+				});
+
+				await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
+
 				for (const sym of extraction.definitions) {
 					await this.#db.insert_repo_map_tag.run({
 						file_id: fileId,
@@ -76,6 +106,23 @@ export default class RepoMap {
 					});
 				}
 			} else {
+				// Mark as indexed with 0 symbols for now so we don't infinitely re-index
+				// if ctags also finds nothing.
+				const breadcrumbWeight = this.#tokenizer.encode(
+					JSON.stringify({
+						path: relPath,
+						status: visibility,
+					}),
+				).length;
+
+				await this.#db.upsert_repo_map_file.run({
+					project_id: this.#projectId,
+					path: relPath,
+					hash,
+					size,
+					visibility,
+					symbol_tokens: breadcrumbWeight,
+				});
 				ctagsQueue.push(relPath);
 			}
 		}
@@ -83,21 +130,30 @@ export default class RepoMap {
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#generateCtags(ctagsQueue);
 			for (const result of ctagsResults) {
-				const fullPath = join(this.#ctx.root, result.path);
+				const { path, symbols } = result;
+				const fullPath = join(this.#ctx.root, path);
 				if (!existsSync(fullPath)) continue;
 
 				const size = readFileSync(fullPath).length;
-				const visibility = await this.#ctx.resolveState(result.path);
+				const visibility = await this.#ctx.resolveState(path);
+				const symbolWeight = this.#tokenizer.encode(
+					JSON.stringify({
+						path,
+						status: visibility,
+						symbols,
+					}),
+				).length;
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
-					path: result.path,
+					path: path,
 					hash: null,
 					size,
 					visibility,
+					symbol_tokens: symbolWeight,
 				});
 				await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
-				for (const sym of result.symbols) {
+				for (const sym of symbols) {
 					await this.#db.insert_repo_map_tag.run({
 						file_id: fileId,
 						name: sym.name,
@@ -114,7 +170,7 @@ export default class RepoMap {
 	async renderPerspective(activeFiles = [], options = {}) {
 		const globalReferences = new Set();
 		let budget = Number.parseInt(
-			process.env.RUMMY_MAP_TOKEN_BUDGET || "4096",
+			process.env.RUMMY_MAP_TOKEN_BUDGET || "16384",
 			10,
 		);
 
@@ -128,7 +184,7 @@ export default class RepoMap {
 			relative(this.#ctx.root, join(this.#ctx.root, f)),
 		);
 
-		// 1. Identify all symbols referenced in the active context
+		// 1. Identify symbols referenced in the active context (Directed Warming)
 		for (const relPath of normalizedActiveFiles) {
 			const refs = await this.#db.get_file_references.all({
 				project_id: this.#projectId,
@@ -138,26 +194,38 @@ export default class RepoMap {
 		}
 
 		// 2. Load all project tags and map them
-		const allTags = await this.#db.get_project_repo_map.all({
+		const allFiles = await this.#db.get_project_repo_map.all({
 			project_id: this.#projectId,
 		});
-		const filesMap = new Map();
-		for (const tag of allTags) {
-			if (tag.visibility === "invisible") continue;
 
-			if (!filesMap.has(tag.path)) {
-				filesMap.set(tag.path, {
-					path: tag.path,
-					visibility: tag.visibility || "mappable",
+		// Fallback: If no references found from active files, use global references
+		// to allow the Root-Warm rule to find relevant entry points.
+		if (globalReferences.size === 0) {
+			const refs = await this.#db.get_project_references.all({
+				project_id: this.#projectId,
+			});
+			for (const r of refs) globalReferences.add(r.symbol_name);
+		}
+
+		const filesMap = new Map();
+		for (const row of allFiles) {
+			if (row.visibility === "invisible") continue;
+
+			if (!filesMap.has(row.path)) {
+				filesMap.set(row.path, {
+					path: row.path,
+					size: row.size || 0,
+					symbol_tokens: row.symbol_tokens || 0,
+					visibility: row.visibility || "mappable",
 					symbols: [],
 				});
 			}
-			if (tag.name) {
-				filesMap.get(tag.path).symbols.push({
-					name: tag.name,
-					type: tag.type,
-					params: tag.params,
-					line: tag.line,
+			if (row.name) {
+				filesMap.get(row.path).symbols.push({
+					name: row.name,
+					type: row.type,
+					params: row.params,
+					line: row.line,
 				});
 			}
 		}
@@ -185,9 +253,10 @@ export default class RepoMap {
 				// 1. Root files get 5000 pts (Warm - show symbols)
 				// 2. Directory proximity gets 1000 pts
 				// 3. Symbol overlap gets 10 pts per symbol
-				rank = (isRootFile ? 5000 : 0) +
-				       (isInActiveDir ? 1000 : 0) + 
-				       overlapCount * 10;
+				rank =
+					(isRootFile ? 5000 : 0) +
+					(isInActiveDir ? 1000 : 0) +
+					overlapCount * 10;
 			}
 
 			return { ...file, status, rank, overlapCount };
@@ -216,67 +285,91 @@ export default class RepoMap {
 				} catch (err) {
 					content = `Error reading file: ${err.message}`;
 				}
+				const tokens = this.#tokenizer.encode(content).length;
 				displayFile = {
 					path: file.path,
+					size: file.size,
+					tokens,
 					status: file.status,
 					content,
 				};
-				
+
 				// Mandatory context - we keep active files even if they blow the budget
 				finalFiles.push(displayFile);
-				currentTokens += this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+				currentTokens += this.#tokenizer.encode(
+					JSON.stringify(displayFile),
+				).length;
 				continue;
 			}
 
-			// Non-active files (MAPPED)
+			// Non-active files (MAPPABLE / READ_ONLY)
 			displayFile = {
 				path: file.path,
+				size: file.size,
 				status: file.status,
 				symbols: file.symbols,
 			};
 
-			let estTokens = this.#tokenizer.encode(
+			// If a file has 0 symbols, it's just a breadcrumb by definition
+			if (file.symbols.length === 0) {
+				displayFile = { path: file.path, size: file.size, status: file.status };
+			}
+
+			// Initial weight of the file with full symbols
+			let finalTokens = file.symbol_tokens || this.#tokenizer.encode(
 				JSON.stringify(displayFile),
 			).length;
 
-			// If we are over budget, attempt to "Squish" before dropping
-			if (currentTokens + estTokens > budget) {
-				if (file.status === "mapped") {
-					// Tier 1 Squish: Detailed Symbols -> Signatures Only (No params/lines)
-					const signaturesOnly = {
-						path: file.path,
-						status: file.status,
-						symbols: file.symbols.map((s) => ({ name: s.name, type: s.type })),
-					};
-					const sigTokens = this.#tokenizer.encode(
-						JSON.stringify(signaturesOnly),
-					).length;
-
-					if (currentTokens + sigTokens <= budget) {
-						displayFile = signaturesOnly;
-						estTokens = sigTokens;
-					} else {
-						// Tier 2 Squish: Signatures -> Breadcrumbs (Path only)
-						const pathOnly = { path: file.path, status: file.status };
-						const pathTokens = this.#tokenizer.encode(
-							JSON.stringify(pathOnly),
+			// If we are over budget, attempt to "Squish" before dropping.
+			// ROOT-WARM EXEMPTION: We don't squish root files (rank >= 5000) because they are priority context.
+			if (currentTokens + finalTokens > budget && file.rank < 5000) {
+				if (file.status === "mappable" || file.status === "read_only") {
+					if (file.symbols.length > 0) {
+						// Tier 1 Squish: Detailed Symbols -> Signatures Only (No params/lines)
+						const signaturesOnly = {
+							path: file.path,
+							size: file.size,
+							status: file.status,
+							symbols: file.symbols.map((s) => ({ name: s.name, type: s.type })),
+						};
+						const sigTokens = this.#tokenizer.encode(
+							JSON.stringify(signaturesOnly),
 						).length;
 
-						if (currentTokens + pathTokens <= budget) {
-							displayFile = pathOnly;
-							estTokens = pathTokens;
+						if (currentTokens + sigTokens <= budget) {
+							displayFile = signaturesOnly;
+							finalTokens = sigTokens;
 						} else {
-							// For cold/mapped files over budget, we skip them entirely
-							continue;
+							// Tier 2 Squish: Signatures -> Breadcrumbs (Path only)
+							const pathOnly = {
+								path: file.path,
+								size: file.size,
+								status: file.status,
+							};
+							const pathTokens = this.#tokenizer.encode(
+								JSON.stringify(pathOnly),
+							).length;
+
+							if (currentTokens + pathTokens <= budget) {
+								displayFile = pathOnly;
+								finalTokens = pathTokens;
+							} else {
+								// For cold/mappable files over budget, we skip them entirely
+								continue;
+							}
 						}
+					} else {
+						// File already has 0 symbols (breadcrumb), if it's over budget, skip it
+						continue;
 					}
 				} else {
 					continue; // Skip ignored or other types
 				}
 			}
 
+			displayFile.tokens = finalTokens;
 			finalFiles.push(displayFile);
-			currentTokens += estTokens;
+			currentTokens += finalTokens;
 		}
 
 		return {
@@ -330,18 +423,5 @@ export default class RepoMap {
 			symbols,
 			source: "standard",
 		}));
-	}
-
-	#estimateTokens(file, status) {
-		if (status === "active") {
-			const fullPath = join(this.#ctx.root, file.path);
-			try {
-				const content = readFileSync(fullPath, "utf8");
-				return Math.ceil(content.length / 4) + 20;
-			} catch (_err) {
-				return 20;
-			}
-		}
-		return file.path.length / 4 + (file.symbols?.length || 0) * 15 + 10;
 	}
 }

@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 	, visibility TEXT NOT NULL DEFAULT 'mappable' CHECK (
 		visibility IN ('active', 'read_only', 'mappable', 'ignored')
 	)
+	, symbol_tokens INTEGER DEFAULT 0
 	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (project_id, path)
 );

@@ -31,17 +31,21 @@ export default class RepoMapPlugin {
 
 			for (const f of perspective.files) {
 				const status = f.status || "mappable";
-				const fileEl = rummy.tag("file", { path: f.path, status });
+				const fileEl = rummy.tag("file", {
+					path: f.path,
+					status,
+					size: String(f.size ?? 0),
+					tokens: String(f.tokens ?? 0),
+				});
 
-				if (f.symbols?.length) {
-					const symbolsEl = rummy.tag("symbols", {}, [
-						JSON.stringify(f.symbols, null, 2),
-					]);
-					fileEl.appendChild(symbolsEl);
+				if (f.symbols && f.symbols.length > 0) {
+					fileEl.appendChild(
+						rummy.tag("symbols", {}, [JSON.stringify(f.symbols)]),
+					);
 				}
 
 				if (f.status === "active" && f.content) {
-					fileEl.appendChild(rummy.doc.createTextNode(f.content));
+					fileEl.appendChild(rummy.tag("source", {}, [f.content]));
 				}
 
 				filesContainer.appendChild(fileEl);

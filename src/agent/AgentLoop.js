@@ -32,6 +32,16 @@ export default class AgentLoop {
 		this.#findingsManager = findingsManager;
 	}
 
+	#resolveAlias(modelId) {
+		if (!modelId) return modelId;
+		if (process.env[`RUMMY_MODEL_${modelId}`]) return modelId;
+		for (const key of Object.keys(process.env)) {
+			if (key.startsWith("RUMMY_MODEL_") && process.env[key] === modelId)
+				return key.replace("RUMMY_MODEL_", "");
+		}
+		return modelId;
+	}
+
 	async run(type, sessionId, model, prompt, activeFiles = [], runId = null) {
 		if (process.env.RUMMY_DEBUG === "true")
 			console.log("[DEBUG] AgentLoop.run args:", {
@@ -178,7 +188,12 @@ export default class AgentLoop {
 			});
 		}
 
-		let currentActiveFiles = Array.isArray(activeFiles) ? [...activeFiles] : [];
+		let currentActiveFiles = [];
+		if (Array.isArray(activeFiles)) {
+			currentActiveFiles = [...activeFiles];
+		} else if (activeFiles && Array.isArray(activeFiles.files)) {
+			currentActiveFiles = [...activeFiles.files];
+		}
 		let loopPrompt = prompt;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
@@ -351,7 +366,7 @@ export default class AgentLoop {
 			// 1. If the model requested information, we MUST continue the loop,
 			// even if it ALSO provided a summary or marked tasks as complete.
 			if (gatherReadTags.length > 0 || gatherCmdTags.length > 0) {
-				const infoParts = [];
+				const infoTags = [];
 				if (gatherReadTags.length > 0) {
 					const newFiles = gatherReadTags
 						.map((t) => t.attrs.find((a) => a.name === "file")?.value)
@@ -359,9 +374,9 @@ export default class AgentLoop {
 					currentActiveFiles = [
 						...new Set([...currentActiveFiles, ...newFiles]),
 					];
-					infoParts.push(
-						`Read ${newFiles.length} file(s): ${newFiles.join(", ")}`,
-					);
+					for (const f of newFiles) {
+						infoTags.push(`<info file="${f}">Full file added to context</info>`);
+					}
 				}
 				for (const tag of gatherCmdTags) {
 					const cmd = this.#responseParser.getNodeText(tag).trim();
@@ -369,18 +384,19 @@ export default class AgentLoop {
 						const { stdout, stderr } = await execAsync(cmd, {
 							cwd: project.path,
 						});
-						infoParts.push(
-							`Executed ${tag.tagName}: '${cmd}'\nOutput:\n${(stdout + stderr).trim() || "(no output)"}`,
+						const output = (stdout + stderr).trim() || "(no output)";
+						infoTags.push(
+							`<info command="${cmd}">Executed ${tag.tagName}.\nOutput:\n${output}</info>`,
 						);
 					} catch (err) {
-						infoParts.push(
-							`Failed to execute ${tag.tagName}: '${cmd}'\nError: ${err.message}`,
+						infoTags.push(
+							`<info command="${cmd}">Failed to execute ${tag.tagName}.\nError: ${err.message}</info>`,
 						);
 					}
 				}
 				historyMessages.push(newUserMsg);
 				historyMessages.push(finalResponse);
-				loopPrompt = `<info>\n${infoParts.join("\n\n")}\n\nContent and results are now available in the system context.</info>`;
+				loopPrompt = infoTags.join("\n");
 				continue;
 			}
 
@@ -498,13 +514,38 @@ export default class AgentLoop {
 				};
 			}
 
-			// 4. STALL PROTECTION: If the model provided a response but didn't check the box
+			// 4. STALL PROTECTION: If the model provided a response OR says it has no unknowns,
 			// and didn't use any tools, we assume it is finished.
-			if (tags.find(t => t.tagName === "response")) {
-				await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
-				const finalResult = await this.#hooks.run.turn.filter(atomicResult, { turn: turnObj, sessionId, type });
-				await hook.completed.emit({ runId: currentRunId, sessionId, model: targetModel, turn: turnObj, usage, result: finalResult });
-				return { runId: currentRunId, status: "completed", turn: currentTurnNumber };
+			const currentUnknownTag = tags.find((t) => t.tagName === "unknown");
+			const unknownText = currentUnknownTag
+				? this.#responseParser.getNodeText(currentUnknownTag).trim()
+				: "";
+			const hasNoUnknownsIntent =
+				currentUnknownTag && (unknownText === "" || unknownText === "none");
+
+			if (tags.find((t) => t.tagName === "response") || hasNoUnknownsIntent) {
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "completed",
+				});
+				const finalResult = await this.#hooks.run.turn.filter(atomicResult, {
+					turn: turnObj,
+					sessionId,
+					type,
+				});
+				await hook.completed.emit({
+					runId: currentRunId,
+					sessionId,
+					model: targetModel,
+					turn: turnObj,
+					usage,
+					result: finalResult,
+				});
+				return {
+					runId: currentRunId,
+					status: "completed",
+					turn: currentTurnNumber,
+				};
 			}
 
 			// If no terminal state reached, break and return current
@@ -536,15 +577,5 @@ export default class AgentLoop {
 	async getRunHistory(runId) {
 		const turns = await this.#db.get_turns_by_run_id.all({ run_id: runId });
 		return turns.map((t) => JSON.parse(t.payload));
-	}
-
-	#resolveAlias(modelId) {
-		if (!modelId) return modelId;
-		if (process.env[`RUMMY_MODEL_${modelId}`]) return modelId;
-		for (const key of Object.keys(process.env)) {
-			if (key.startsWith("RUMMY_MODEL_") && process.env[key] === modelId)
-				return key.replace("RUMMY_MODEL_", "");
-		}
-		return modelId;
 	}
 }

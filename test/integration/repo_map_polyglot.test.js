@@ -25,6 +25,7 @@ describe("RepoMap Polyglot Integration", () => {
 			"struct RustStruct { x: i32 }\nfn rust_func() {}",
 		);
 		await fs.writeFile(join(testDir, "app.go"), "package main\nfunc main() {}");
+		await fs.writeFile(join(testDir, "README.md"), "# Heading 1\n## Heading 2");
 
 		await fs.unlink(dbPath).catch(() => {});
 		db = await SqlRite.open({
@@ -56,6 +57,7 @@ describe("RepoMap Polyglot Integration", () => {
 			["main.py", "mappable"],
 			["lib.rs", "mappable"],
 			["app.go", "mappable"],
+			["README.md", "mappable"],
 		]);
 
 		const ctx = await ProjectContext.open(testDir, visibility);
@@ -64,7 +66,7 @@ describe("RepoMap Polyglot Integration", () => {
 
 		const perspective = await repoMap.renderPerspective([]);
 
-		assert.strictEqual(perspective.files.length, 3);
+		assert.strictEqual(perspective.files.length, 4);
 
 		const pyFile = perspective.files.find((f) => f.path === "main.py");
 		assert.ok(
@@ -82,6 +84,12 @@ describe("RepoMap Polyglot Integration", () => {
 		assert.ok(
 			goFile.symbols.some((s) => s.name === "main"),
 			"Should contain Go function",
+		);
+
+		const mdFile = perspective.files.find((f) => f.path === "README.md");
+		assert.ok(
+			mdFile.symbols.some((s) => s.name === "Heading 1"),
+			"Should contain Markdown heading",
 		);
 	});
 });

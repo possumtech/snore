@@ -1,8 +1,11 @@
 -- PREP: get_project_repo_map
 SELECT
-	f.path
+	f.id
+	, f.path
 	, f.size
+	, f.hash
 	, f.visibility
+	, f.symbol_tokens
 	, t.name
 	, t.type
 	, t.params
