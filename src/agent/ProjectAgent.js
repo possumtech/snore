@@ -50,6 +50,10 @@ export default class ProjectAgent {
 		return this.#sessionManager.startRun(sessionId, runConfig);
 	}
 
+	async getRunHistory(runId) {
+		return this.#agentLoop.getRunHistory(runId);
+	}
+
 	async setSystemPrompt(sessionId, systemPrompt) {
 		return this.#sessionManager.setSystemPrompt(sessionId, systemPrompt);
 	}

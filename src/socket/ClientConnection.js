@@ -54,6 +54,15 @@ export default class ClientConnection {
 			}
 		});
 
+		this.#hooks.run.step.completed.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				this.#sendNotification("run/step/completed", {
+					runId: payload.runId,
+					turnXml: payload.turn.toXml(),
+				});
+			}
+		});
+
 		this.#hooks.editor.diff.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("editor/diff", {
@@ -96,6 +105,66 @@ export default class ClientConnection {
 					result = {};
 					break;
 
+				case "rpc/discover":
+					result = {
+						methods: {
+							ping: { description: "Check server liveness", params: {} },
+							init: {
+								description: "Initialize a project session",
+								params: {
+									projectPath: "Absolute path to project",
+									projectName: "Display name",
+									clientId: "Unique client identifier",
+								},
+							},
+							getModels: { description: "Get available local and aliased models", params: {} },
+							getFiles: { description: "List all files in the current project", params: {} },
+							updateFiles: {
+								description: "Update the visibility/indexing status of files",
+								params: { files: "Array of { path, visibility }" },
+							},
+							startRun: {
+								description: "Begin a new agent execution sequence",
+								params: {
+									model: "Optional override model",
+									activeFiles: "Array of files to include in context",
+									yolo: "Boolean for auto-affirmation",
+								},
+							},
+							getRunHistory: {
+								description: "Retrieve all turns for a specific run",
+								params: { runId: "UUID of the run" },
+							},
+							ask: {
+								description: "Send a non-mutating query to the agent",
+								params: {
+									prompt: "User message",
+									model: "Optional override",
+									activeFiles: "Files to include in context",
+								},
+							},
+							act: {
+								description: "Send a mutating directive to the agent (can propose edits)",
+								params: {
+									prompt: "User message",
+									model: "Optional override",
+									activeFiles: "Files to include in context",
+								},
+							},
+							systemPrompt: { description: "Set the base system prompt override", params: { text: "XML/Text content" } },
+							persona: { description: "Set the agent persona", params: { text: "Text content" } },
+							"skill/add": { description: "Enable a skill for this session", params: { name: "Skill ID" } },
+						},
+						notifications: {
+							"llm/request/started": "Triggered when a turn is built and sent to the LLM. Contains the full 'turnXml'.",
+							"run/step/completed": "Triggered when a turn finishes. Contains the full 'turnXml' including response.",
+							"run/progress": "Periodic updates on agent thoughts and task status.",
+							"ui/render": "Fragments for streaming output UI.",
+							"editor/diff": "Proposed file modifications.",
+						},
+					};
+					break;
+
 				case "init":
 					result = await this.#projectAgent.init(
 						params.projectPath,
@@ -132,16 +201,21 @@ export default class ClientConnection {
 
 				case "startRun":
 					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
+						throw new Error("Project not initialized.");
 					result = await this.#projectAgent.startRun(
 						this.#context.sessionId,
 						params,
 					);
 					break;
 
+				case "getRunHistory":
+					result = await this.#projectAgent.getRunHistory(params.runId);
+					break;
+
 				case "run/affirm":
 					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
+						throw new Error("Project not initialized.");
+
 					// Typically here we would commit files or finalize the state in the DB
 					// For now, just mark the run as completed
 					await this.#db.update_run_status.run({

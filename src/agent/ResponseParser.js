@@ -66,6 +66,44 @@ export default class ResponseParser {
 		}
 	}
 
+	parsePromptUser(node) {
+		const fullText = this.getNodeText(node);
+
+		// Split by the first occurrence of the checklist marker
+		const marker = "- [ ]";
+		const firstIndex = fullText.indexOf(marker);
+
+		if (firstIndex === -1) {
+			return {
+				question: fullText.trim(),
+				options: [
+					{ label: "Other", description: "None of the above. Provide a freeform answer." }
+				]
+			};
+		}
+
+		const question = fullText.substring(0, firstIndex).trim() || "The agent has a question:";
+		const rawOptions = fullText.substring(firstIndex).split(marker).filter(Boolean);
+
+		const options = rawOptions.map((opt) => {
+			const text = opt.trim();
+			// Extract a label from the first line or first segment
+			const label = text.split(/\r?\n|:/)[0].trim();
+			return {
+				label: label || "Option",
+				description: text,
+			};
+		});
+
+		// Always append the "Other" option
+		options.push({
+			label: "Other",
+			description: "None of the above. Provide a freeform answer.",
+		});
+
+		return { question, options };
+	}
+
 	parseActionTags(content) {
 		const frag = parse5.parseFragment(content);
 		const tags = [];

@@ -83,14 +83,18 @@ CREATE TABLE IF NOT EXISTS findings_commands (
 );
 
 CREATE TABLE IF NOT EXISTS findings_notifications (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
-	, type TEXT NOT NULL
-	, text TEXT NOT NULL
-	, level TEXT
-	, append BOOLEAN
-	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        id INTEGER PRIMARY KEY AUTOINCREMENT
+        , run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+        , turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
+        , type TEXT NOT NULL
+        , text TEXT NOT NULL
+        , level TEXT
+        , status TEXT NOT NULL DEFAULT 'proposed' CHECK (
+                status IN ('proposed', 'acknowledged', 'responded')
+        )
+        , config JSON
+        , append BOOLEAN
+        , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- THE STATE LOCK TRIGGER
@@ -99,20 +103,24 @@ CREATE TRIGGER IF NOT EXISTS lock_turn_on_pending_actions
 BEFORE INSERT ON turns
 FOR EACH ROW
 BEGIN
-	SELECT CASE
-		WHEN (
-			SELECT COUNT(*) FROM findings_diffs 
-			WHERE run_id = NEW.run_id AND status = 'proposed'
-		) > 0 
-		THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed diffs.')
-		WHEN (
-			SELECT COUNT(*) FROM findings_commands 
-			WHERE run_id = NEW.run_id AND status = 'proposed'
-		) > 0 
-		THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed commands.')
-	END;
+        SELECT CASE
+                WHEN (
+                        SELECT COUNT(*) FROM findings_diffs 
+                        WHERE run_id = NEW.run_id AND status = 'proposed'
+                ) > 0 
+                THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed diffs.')
+                WHEN (
+                        SELECT COUNT(*) FROM findings_commands 
+                        WHERE run_id = NEW.run_id AND status = 'proposed'
+                ) > 0 
+                THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed commands.')
+                WHEN (
+                        SELECT COUNT(*) FROM findings_notifications 
+                        WHERE run_id = NEW.run_id AND status = 'proposed' AND type = 'prompt_user'
+                ) > 0 
+                THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed user prompts.')
+        END;
 END;
-
 -- Repo Map Tables
 CREATE TABLE IF NOT EXISTS repo_map_files (
 	id INTEGER PRIMARY KEY AUTOINCREMENT

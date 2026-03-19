@@ -85,7 +85,6 @@ export default class AgentLoop {
 			if (remainingCount > 0 && !yolo) {
 				return {
 					runId: currentRunId,
-					content: `Blocked: ${remainingCount} proposed action(s) still require resolution.`,
 					status: "proposed",
 					diffs: proposed.filter((f) => f.status === "proposed").map((f) => ({
 						id: f.id, runId: currentRunId, type: f.type, file: f.file, patch: f.patch, status: f.status
@@ -148,13 +147,13 @@ export default class AgentLoop {
 
 			const usage = result.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost: 0 };
 			const completedTurn = await this.#db.create_turn.run({
-				run_id: currentRunId, sequence_number: sequenceOffset + 1, payload: JSON.stringify(finalResponse),
+				run_id: currentRunId, sequence_number: sequenceOffset, payload: JSON.stringify(finalResponse),
 				prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0, cost: usage.cost || 0
 			});
 
 			const turnId = completedTurn.lastInsertRowid;
-			if (finalResponse?.reasoning_content) this.#responseParser.appendAssistantContent(turnObj, "reasoning_content", finalResponse.reasoning_content);
-			if (finalResponse?.content) this.#responseParser.appendAssistantContent(turnObj, "content", finalResponse.content);
+			if (finalResponse?.reasoning_content) turnObj.assistant.reasoning.add(finalResponse.reasoning_content);
+			if (finalResponse?.content) turnObj.assistant.content.add(finalResponse.content);
 			turnObj.assistant.meta.add({ ...usage, alias: requestedModel, actualModel: result.model, displayModel: this.#resolveAlias(requestedModel) });
 
 			const atomicResult = {
@@ -167,7 +166,7 @@ export default class AgentLoop {
 
 			const tags = this.#responseParser.parseActionTags(finalResponse?.content || "");
 			await this.#findingsManager.populateFindings(project.path, atomicResult, tags);
-			await this.#hooks.run.step.completed.emit({ runId: currentRunId, turn: turnObj });
+			await this.#hooks.run.step.completed.emit({ runId: currentRunId, sessionId, turn: turnObj });
 
 			const tasksTag = tags.find((t) => t.tagName === "tasks");
 			const tasksText = tasksTag ? this.#responseParser.getNodeText(tasksTag).trim() : "";
@@ -179,7 +178,9 @@ export default class AgentLoop {
 			const breakingTags = tags.filter((t) => ["create", "delete", "edit", "prompt_user"].includes(t.tagName));
 			const summaryTag = tags.find(t => t.tagName === "summary");
 
-			if (gatherReadTags.length > 0 || gatherCmdTags.length === 0 && gatherReadTags.length > 0 || gatherCmdTags.length > 0) {
+			// 1. If the model requested information, we MUST continue the loop, 
+			// even if it ALSO provided a summary or marked tasks as complete.
+			if (gatherReadTags.length > 0 || gatherCmdTags.length > 0) {
 				const infoParts = [];
 				if (gatherReadTags.length > 0) {
 					const newFiles = gatherReadTags.map((t) => t.attrs.find((a) => a.name === "file")?.value).filter(Boolean);
@@ -197,29 +198,67 @@ export default class AgentLoop {
 				}
 				historyMessages.push(newUserMsg);
 				historyMessages.push(finalResponse);
-				sequenceOffset += 2;
+				sequenceOffset += 1;
 				loopPrompt = `<info>\n${infoParts.join("\n\n")}\n\nContent and results are now available in the system context.</info>`;
 				continue; 
 			}
 
+			// 2. If the model proposed breaking changes or a user prompt, we MUST stop and wait for user affirmation.
 			if (breakingTags.length > 0) {
 				await this.#db.update_run_status.run({ id: currentRunId, status: "proposed" });
 				for (const d of atomicResult.diffs) await this.#db.insert_finding_diff.run({ run_id: currentRunId, turn_id: turnId, type: d.type, file_path: d.file, patch: d.patch });
 				for (const c of atomicResult.commands) await this.#db.insert_finding_command.run({ run_id: currentRunId, turn_id: turnId, type: c.type, command: c.command });
+				for (const n of atomicResult.notifications) {
+					if (n.type === "prompt_user") {
+						await this.#db.insert_finding_notification.run({ 
+							run_id: currentRunId, turn_id: turnId, type: n.type, text: n.text, 
+							level: "info", status: "proposed", config: JSON.stringify(n.config), append: false 
+						});
+					}
+				}
 				const finalResult = await this.#hooks.run.turn.filter(atomicResult, { turn: turnObj, sessionId, type });
 				await hook.completed.emit({ runId: currentRunId, sessionId, model: targetModel, turn: turnObj, usage, result: finalResult });
-				return finalResult;
+				return { runId: currentRunId, status: "proposed", turn: sequenceOffset };
 			}
 
+			// 3. Only if no further actions (info-gathering or breaking) were requested,
+			// do we consider the run "completed" based on the summary or checklist.
 			if (isChecklistComplete || summaryTag) {
 				await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
 				const finalResult = await this.#hooks.run.turn.filter(atomicResult, { turn: turnObj, sessionId, type });
 				if (atomicResult.analysis) finalResult.analysis = atomicResult.analysis;
 				await hook.completed.emit({ runId: currentRunId, sessionId, model: targetModel, turn: turnObj, usage, result: finalResult });
-				return finalResult;
+				return { runId: currentRunId, status: "completed", turn: sequenceOffset };
 			}
+
+			sequenceOffset += 1;
+			// If no terminal state reached, break and return current
 			break;
 		}
+
+		return { runId: currentRunId, status: "running", turn: sequenceOffset };
+	}
+
+	async getRunHistory(runId) {
+		const turns = await this.#db.get_turns_by_run_id.all({ run_id: runId });
+		const results = [];
+		for (const t of turns) {
+			const payload = JSON.parse(t.payload);
+			// This is a simplification; ideally we'd have the XML stored.
+			// Since we don't have it in the schema yet, we return the payload.
+			results.push({
+				sequenceNumber: t.sequence_number,
+				role: payload.role,
+				content: payload.content,
+				usage: {
+					promptTokens: t.prompt_tokens,
+					completionTokens: t.completion_tokens,
+					totalTokens: t.total_tokens,
+					cost: t.cost
+				}
+			});
+		}
+		return results;
 	}
 
 	#resolveAlias(modelId) {

@@ -14,7 +14,7 @@ export default class LlmProvider {
 			hooks,
 		);
 
-		const ollamaUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+		const ollamaUrl = process.env.OLLAMA_BASE_URL;
 		this.#ollama = new OllamaClient(ollamaUrl, hooks);
 	}
 

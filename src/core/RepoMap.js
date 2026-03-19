@@ -284,7 +284,19 @@ export default class RepoMap {
 			{ cwd: this.#ctx.root, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
 		);
 
-		if (result.status !== 0) throw new Error(`Ctags failed: ${result.stderr}`);
+		if (result.error && result.error.code === "ENOENT") {
+			console.warn("[RUMMY] skipping ctags: not installed.");
+			const empty = new Map();
+			for (const p of paths) empty.set(p, []);
+			return empty;
+		}
+
+		if (result.status !== 0) {
+			console.warn(`[RUMMY] skipping ctags: failed (${result.stderr})`);
+			const empty = new Map();
+			for (const p of paths) empty.set(p, []);
+			return empty;
+		}
 
 		const tags = result.stdout
 			.split("\n")

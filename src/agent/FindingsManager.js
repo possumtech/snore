@@ -84,7 +84,15 @@ export default class FindingsManager {
 					type: tag.tagName,
 					command: this.#responseParser.getNodeText(tag).trim(),
 				});
-			} else if (tag.tagName === "prompt_user" || tag.tagName === "summary") {
+			} else if (tag.tagName === "prompt_user") {
+				const { question, options } = this.#responseParser.parsePromptUser(tag);
+				atomicResult.notifications.push({
+					type: tag.tagName,
+					text: question,
+					status: "proposed",
+					config: { options }
+				});
+			} else if (tag.tagName === "summary") {
 				atomicResult.notifications.push({
 					type: tag.tagName,
 					text: this.#responseParser.getNodeText(tag).trim(),
@@ -131,6 +139,7 @@ export default class FindingsManager {
 		for (const tag of infoTags) {
 			const diffId = tag.attrs.find((a) => a.name === "diff")?.value;
 			const cmdId = tag.attrs.find((a) => a.name === "command")?.value;
+			const noteId = tag.attrs.find((a) => a.name === "notification")?.value;
 			const resolution = this.#responseParser.getNodeText(tag).trim();
 
 			if (diffId) {
@@ -159,6 +168,17 @@ export default class FindingsManager {
 					await this.#db.update_finding_command_status.run({
 						id: finding.id,
 						status,
+					});
+					resolvedCount++;
+				}
+			} else if (noteId) {
+				const finding = proposed.find(
+					(f) => f.category === "notification" && String(f.id) === noteId,
+				);
+				if (finding) {
+					await this.#db.update_finding_notification_status.run({
+						id: finding.id,
+						status: "responded",
 					});
 					resolvedCount++;
 				}
