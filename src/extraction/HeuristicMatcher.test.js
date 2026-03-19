@@ -126,4 +126,47 @@ log("hi");
 		strictEqual(result.patch, null);
 		ok(result.error.includes("multiple locations"));
 	});
+
+	it("should perform a fuzzy match skipping blank lines in target file", () => {
+		const content = `
+function hello() {
+
+  console.log("hello world");
+
+}
+`.trim();
+		const searchBlock = 'function hello() {\n  console.log("hello world");\n}';
+		const replaceBlock = 'function hello() {\n  console.log("hello fuzzy");\n}';
+
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			content,
+			searchBlock,
+			replaceBlock,
+		);
+
+		if (!result.patch) console.log("Fuzzy Match Error:", result.error);
+		ok(result.patch);
+		strictEqual(result.error, null);
+		ok(result.patch.includes('-  console.log("hello world");'));
+		ok(result.patch.includes('+  console.log("hello fuzzy");'));
+	});
+
+	it("should heal indentation for lines that don't match the searchIndent exactly", () => {
+		const content = '    log("hi");'; // 4 spaces
+		const searchBlock = '  log("hi");'; // 2 spaces
+		const replaceBlock = '  log("line 1");\nnot_indented();';
+
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			content,
+			searchBlock,
+			replaceBlock,
+		);
+
+		if (result.patch) console.log("Healed Patch Content:\n", result.patch);
+		ok(result.patch);
+		// 'not_indented();' should be prepended with the file's 4-space indent
+		ok(result.patch.includes('+    not_indented();'));
+	});
 });

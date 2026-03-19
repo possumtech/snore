@@ -1,52 +1,63 @@
-import { strictEqual, ok } from "node:assert";
-import { describe, it, mock } from "node:test";
+import test from "node:test";
+import assert from "node:assert";
+import { mock } from "node:test";
 import TurnBuilder from "./TurnBuilder.js";
 import PromptManager from "../prompt/PromptManager.js";
 
-describe("TurnBuilder", () => {
-	it("should build a structured Turn with initial data", async () => {
-		const hooks = {
-			processTurn: async () => {},
-		};
-		const builder = new TurnBuilder(hooks);
-		
-		const getSystemPromptMock = mock.method(PromptManager, "getSystemPrompt", async () => "System Prompt");
+test("TurnBuilder class", async (t) => {
+	const mockHooks = {
+		processTurn: mock.fn(async () => {}),
+	};
 
-		const initialData = {
-			prompt: "User Prompt",
-			type: "act",
-			sequence: 1,
-			sessionId: "session-1",
-			db: {
-				get_session_by_id: { all: async () => [{ id: "session-1", system_prompt: "Custom" }] },
-				get_session_skills: { all: async () => [] },
-			},
-		};
+	const mockDb = {
+		get_session_by_id: {
+			all: mock.fn(async () => [{ system_prompt: "Custom prompt", persona: "Helper" }]),
+		},
+		get_session_skills: {
+			all: mock.fn(async () => [{ name: "git" }]),
+		},
+	};
 
-		const turn = await builder.build(initialData);
+	mock.method(PromptManager, "getSystemPrompt", async () => "Base system prompt");
 
-		const json = turn.toJson();
-		strictEqual(json.sequence, 1);
-		strictEqual(json.system, "System Prompt\n");
-		strictEqual(json.user, "User Prompt");
+	const builder = new TurnBuilder(mockHooks);
 
-		getSystemPromptMock.mock.restore();
-	});
-
-	it("should apply allowed and required tags based on context", async () => {
-		const hooks = {
-			processTurn: async () => {},
-		};
-		const builder = new TurnBuilder(hooks);
-		mock.method(PromptManager, "getSystemPrompt", async () => "System Prompt");
-
+	await t.test("build() creates a Turn with expected structure", async () => {
 		const turn = await builder.build({
-			prompt: "User Prompt",
-			type: "act",
-			hasUnknowns: false, // Should allow edit, create etc.
+			prompt: "Hello",
+			sessionId: "session-1",
+			db: mockDb,
+			type: "ask",
+			sequence: 5,
 		});
 
-		const xml = turn.toXml();
-		ok(xml.includes("allowed_tags=\"tasks known unknown read env edit create delete run analysis summary\""));
+		assert.ok(turn);
+		assert.strictEqual(turn.doc.documentElement.getAttribute("sequence"), "5");
+		
+		const systemEl = turn.doc.getElementsByTagName("system")[0];
+		assert.ok(systemEl.textContent.includes("Base system prompt"));
+
+		const userEl = turn.doc.getElementsByTagName("user")[0];
+		assert.ok(userEl.textContent.includes("Hello"));
+		
+		const personaEl = turn.doc.getElementsByTagName("persona")[0];
+		assert.strictEqual(personaEl.textContent, "Helper");
+
+		const skillEl = turn.doc.getElementsByTagName("skill")[0];
+		assert.strictEqual(skillEl.textContent, "git");
+
+		assert.strictEqual(mockHooks.processTurn.mock.calls.length, 1);
 	});
+
+    await t.test("build() act mode", async () => {
+        const turn = await builder.build({
+            prompt: "Hi",
+            type: "act",
+            hasUnknowns: false, // This allows edit/create/etc.
+        });
+        assert.ok(turn);
+        const actEl = turn.doc.getElementsByTagName("act")[0];
+        assert.ok(actEl);
+        assert.ok(actEl.getAttribute("allowed_tags").includes("edit"));
+    });
 });

@@ -9,26 +9,8 @@ export default class HeuristicMatcher {
 		const searchLines = searchBlock.split(/\r?\n/);
 		const fileLines = fileContent.split(/\r?\n/);
 
-		// 1. Exact Match Attempt
-		const exactMatches = fileContent.split(searchBlock).length - 1;
-		if (exactMatches === 1) {
-			const newContent = fileContent.replace(searchBlock, replaceBlock);
-			const patch = createPatch(
-				filePath,
-				fileContent,
-				newContent,
-				"old",
-				"new",
-			);
-			return { patch, warning: null, error: null };
-		} else if (exactMatches > 1) {
-			return {
-				patch: null,
-				warning: null,
-				error:
-					"The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
-			};
-		}
+		// 1. Exact Match Attempt (Strict: must match whole lines)
+		// We'll skip this and use the fuzzy logic for everything to ensure indentation healing works consistently.
 
 		// 2. Fuzzy Tokenized Match (Ignore leading/trailing whitespace per line)
 		const searchTokens = searchLines
@@ -50,37 +32,29 @@ export default class HeuristicMatcher {
 		let matchCount = 0;
 
 		// Sliding window search across the file
-		for (let i = 0; i <= fileTokens.length - searchTokens.length; i++) {
-			let isMatch = true;
-			for (let j = 0; j < searchTokens.length; j++) {
-				// Skip empty lines in the target file during fuzzy matching
-				let offset = 0;
-				while (
-					i + j + offset < fileTokens.length &&
-					fileTokens[i + j + offset] === ""
-				) {
-					offset++;
+		for (let i = 0; i < fileTokens.length; i++) {
+			let searchIdx = 0;
+			let fileIdx = i;
+
+			while (searchIdx < searchTokens.length && fileIdx < fileTokens.length) {
+				// Skip blank lines in target file
+				if (fileTokens[fileIdx] === "" && searchTokens[searchIdx] !== "") {
+					fileIdx++;
+					continue;
 				}
 
-				if (fileTokens[i + j + offset] !== searchTokens[j]) {
-					isMatch = false;
+				if (fileTokens[fileIdx] === searchTokens[searchIdx]) {
+					searchIdx++;
+					fileIdx++;
+				} else {
 					break;
 				}
 			}
 
-			if (isMatch) {
+			if (searchIdx === searchTokens.length) {
 				matchCount++;
 				matchStartIndex = i;
-				// Calculate end index accounting for skipped blank lines
-				let currentSearchIdx = 0;
-				let currentFileIdx = i;
-				while (currentSearchIdx < searchTokens.length) {
-					if (fileTokens[currentFileIdx] !== "") {
-						currentSearchIdx++;
-					}
-					currentFileIdx++;
-				}
-				matchEndIndex = currentFileIdx - 1;
+				matchEndIndex = fileIdx - 1;
 			}
 		}
 
