@@ -106,6 +106,7 @@ export default class ClientConnection {
 					result = {};
 					break;
 
+				case "discover":
 				case "rpc/discover":
 					result = {
 						methods: {
