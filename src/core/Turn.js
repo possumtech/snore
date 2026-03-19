@@ -93,6 +93,40 @@ export default class Turn {
 			total_tokens: assistantMeta.total_tokens || 0,
 		};
 
+		const files = [];
+		if (contextEl) {
+			const fileEls = contextEl.getElementsByTagName("file");
+			for (let i = 0; i < fileEls.length; i++) {
+				const f = fileEls[i];
+				const sourceEl = f.getElementsByTagName("source")[0];
+				const symbolsEl = f.getElementsByTagName("symbols")[0];
+				const symbols = [];
+				if (symbolsEl) {
+					const raw = symbolsEl.textContent.split("\t");
+					for (const s of raw) {
+						if (!s) continue;
+						const match = s.match(/^([^(]+)(\(.*\))?$/);
+						if (match) {
+							const sym = { name: match[1] };
+							if (match[2]) sym.params = match[2];
+							symbols.push(sym);
+						} else {
+							symbols.push({ name: s });
+						}
+					}
+				}
+
+				files.push({
+					path: f.getAttribute("path"),
+					status: f.getAttribute("status"),
+					size: Number.parseInt(f.getAttribute("size") || "0", 10),
+					tokens: Number.parseInt(f.getAttribute("tokens") || "0", 10),
+					content: sourceEl ? sourceEl.textContent : null,
+					symbols: symbols.length > 0 ? symbols : null,
+				});
+			}
+		}
+
 		return {
 			sequence: Number.parseInt(
 				this.#doc.documentElement.getAttribute("sequence") || "0",
@@ -100,6 +134,7 @@ export default class Turn {
 			),
 			system: systemEl?.textContent || "",
 			context: this.#serializePretty(contextEl),
+			files, // Include parsed files for client convenience
 			user: userEl?.textContent || "",
 			assistant: {
 				content: getTagContent(assistantEl, "content"),
@@ -159,7 +194,18 @@ export default class Turn {
 		}
 
 		// Special handling for content-preserving tags
-		const preserve = ["source", "symbols", "persona", "skill", "short", "content", "reasoning_content", "tasks", "known", "unknown"].includes(tagName);
+		const preserve = [
+			"source",
+			"symbols",
+			"persona",
+			"skill",
+			"short",
+			"content",
+			"reasoning_content",
+			"tasks",
+			"known",
+			"unknown",
+		].includes(tagName);
 
 		if (preserve) {
 			xml += ">";
@@ -185,11 +231,16 @@ export default class Turn {
 	#escapeXml(unsafe) {
 		return unsafe.replace(/[<>&"']/g, (c) => {
 			switch (c) {
-				case "<": return "&lt;";
-				case ">": return "&gt;";
-				case "&": return "&amp;";
-				case "\"": return "&quot;";
-				case "'": return "&apos;";
+				case "<":
+					return "&lt;";
+				case ">":
+					return "&gt;";
+				case "&":
+					return "&amp;";
+				case '"':
+					return "&quot;";
+				case "'":
+					return "&apos;";
 			}
 			return c;
 		});

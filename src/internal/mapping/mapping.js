@@ -39,9 +39,10 @@ export default class RepoMapPlugin {
 				});
 
 				if (f.symbols && f.symbols.length > 0) {
-					fileEl.appendChild(
-						rummy.tag("symbols", {}, [JSON.stringify(f.symbols)]),
-					);
+					const highDensitySymbols = f.symbols
+						.map((s) => (s.params ? `${s.name}${s.params}` : s.name))
+						.join("\t");
+					fileEl.appendChild(rummy.tag("symbols", {}, [highDensitySymbols]));
 				}
 
 				if (f.status === "active" && f.content) {

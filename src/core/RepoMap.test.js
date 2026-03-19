@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { after, afterEach, describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import SqlRite from "@possumtech/sqlrite";
 import ProjectContext from "./ProjectContext.js";
 import RepoMap from "./RepoMap.js";
@@ -15,25 +15,20 @@ describe("RepoMap (Perspective Engine)", () => {
 		const testDir = join(testBase, name);
 		const dbPath = join(testBase, `${name}.db`);
 		currentDbPath = dbPath;
-		
+
 		await fs.mkdir(testDir, { recursive: true });
-		
-		// Create a mix of files
 		await fs.writeFile(join(testDir, "active.js"), "function active() {}");
 		await fs.writeFile(join(testDir, "README.md"), "# Project Title\n## Section 1");
-		
-		// Put dep.js in a subdirectory so it's not "root-warm" and can be squished
 		await fs.mkdir(join(testDir, "src"), { recursive: true });
 		await fs.writeFile(join(testDir, "src/dep.js"), "function dep() {}");
 
-		// Initialize git and stage files so they are 'tracked'
 		const { execSync } = await import("node:child_process");
-		execSync("git init && git config user.email \"test@test.com\" && git config user.name \"Test\" && git add .", { cwd: testDir });
+		execSync("git init && git config user.email \\"test@test.com\\" && git config user.name \\"Test\\" && git add .", { cwd: testDir });
 
 		await fs.unlink(dbPath).catch(() => {});
 		const db = await SqlRite.open({ path: dbPath, dir: ["migrations", "src"] });
 		currentDb = db;
-		
+
 		const pid = `p-${name}`;
 		await db.upsert_project.run({ id: pid, path: testDir, name: "Test" });
 		const ctx = await ProjectContext.open(testDir);
@@ -91,15 +86,15 @@ describe("RepoMap (Perspective Engine)", () => {
 	it("4. The Squish Pipeline: should gracefully degrade non-root files over budget", async () => {
 		const { db, pid, ctx, testDir } = await setup("squish");
 		
-		// Add a hefty file that will push us over budget
-		await fs.writeFile(join(testDir, "src/heavy.js"), "function a() {} \n function b() {} \n function c() {}");
+		await fs.writeFile(join(testDir, "src/heavy.js"), "function a() {} 
+ function b() {} 
+ function c() {}");
 		const { execSync } = await import("node:child_process");
 		execSync("git add .", { cwd: testDir });
 		
 		const repoMap = new RepoMap(ctx, db, pid);
 		await repoMap.updateIndex();
 
-		// Set budget artificially low to force a squish on non-root files
 		process.env.RUMMY_MAP_MAX_PERCENT = "1";
 		const perspective = await repoMap.renderPerspective([], { contextSize: 100 }); 
 
@@ -128,7 +123,6 @@ describe("RepoMap (Perspective Engine)", () => {
 		const crypto = await import("node:crypto");
 		const realHash = crypto.createHash("sha256").update(content).digest("hex");
 		
-		// Insert entry with 0 tags
 		await db.upsert_repo_map_file.run({
 			project_id: pid,
 			path: "src/dep.js",
@@ -139,7 +133,7 @@ describe("RepoMap (Perspective Engine)", () => {
 		});
 		
 		const repoMap = new RepoMap(ctx, db, pid);
-		await repoMap.updateIndex(); // This should heal the 0 tags entry
+		await repoMap.updateIndex(); 
 
 		const tags = await db.get_project_repo_map.all({ project_id: pid });
 		const depTags = tags.filter(t => t.path === "src/dep.js" && t.name);
@@ -158,5 +152,29 @@ describe("RepoMap (Perspective Engine)", () => {
 		assert.ok(activeFile, "active.js must be in perspective");
 		assert.strictEqual(activeFile.status, "active", "Status must be active");
 		assert.ok(activeFile.content, "Full content must be present for active files");
+	});
+
+	it("8. Directed Warming: should warm up dependencies based on symbol matches", async () => {
+		const { db, pid, ctx, testDir } = await setup("warming");
+		
+		await fs.mkdir(join(testDir, "deep/nested/dir"), { recursive: true });
+		await fs.writeFile(join(testDir, "deep/nested/dir/lib.js"), "function targetSymbol() {}");
+		
+		await fs.writeFile(join(testDir, "active.js"), "// Call the symbol
+targetSymbol();");
+		
+		const { execSync } = await import("node:child_process");
+		execSync("git add .", { cwd: testDir });
+
+		const repoMap = new RepoMap(ctx, db, pid);
+		await repoMap.updateIndex();
+
+		const perspective = await repoMap.renderPerspective(["active.js"]);
+
+		const lib = perspective.files.find((f) => f.path === "deep/nested/dir/lib.js");
+		assert.ok(lib, "Deep dependency should be warmed up and included in perspective via greedy match");
+		assert.strictEqual(lib.rank, 1, "Warmed file rank should be 1 (one overlap)");
+		assert.ok(lib.symbols && lib.symbols.length > 0, "Warmed dependency should include its symbols");
+		assert.strictEqual(lib.symbols[0].name, "targetSymbol");
 	});
 });

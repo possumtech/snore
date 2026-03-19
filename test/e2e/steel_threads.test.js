@@ -16,6 +16,10 @@ describe("Steel Thread E2E", () => {
 			join(projectPath, "source.txt"),
 			"SECRET_KEY=GOLDEN-TICKET",
 		);
+		await fs.writeFile(
+			join(projectPath, "app.js"),
+			"function main(args) { console.log(args); }",
+		);
 
 		// Initialize git so RepoMap finds the files
 		const { execSync } = await import("node:child_process");
@@ -85,6 +89,9 @@ describe("Steel Thread E2E", () => {
 		assert.ok(contextXml.includes('<file path="source.txt"'), "source.txt must be in context XML");
 		assert.ok(contextXml.includes('size="24"'), "source.txt must have size attribute in XML");
 		assert.ok(contextXml.includes('tokens="14"'), "source.txt must have tokens attribute in XML");
+		
+		// Verify new symbol syntax
+		assert.ok(contextXml.includes('<symbols>main(args)</symbols>'), "app.js must have the high-density symbols tag in XML");
 		
 		assert.strictEqual(result.status, "proposed");
 		assert.strictEqual(result.turn, 1); // 0 (read) then 1 (propose create)
