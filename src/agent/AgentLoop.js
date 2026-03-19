@@ -481,6 +481,15 @@ export default class AgentLoop {
 				};
 			}
 
+			// 4. STALL PROTECTION: If the model provided a response but didn't check the box
+			// and didn't use any tools, we assume it is finished.
+			if (tags.find(t => t.tagName === "response")) {
+				await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
+				const finalResult = await this.#hooks.run.turn.filter(atomicResult, { turn: turnObj, sessionId, type });
+				await hook.completed.emit({ runId: currentRunId, sessionId, model: targetModel, turn: turnObj, usage, result: finalResult });
+				return { runId: currentRunId, status: "completed", turn: currentTurnNumber };
+			}
+
 			// If no terminal state reached, break and return current
 			break;
 		}

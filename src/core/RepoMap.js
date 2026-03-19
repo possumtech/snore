@@ -177,12 +177,15 @@ export default class RepoMap {
 			const isInActiveDir = activeDirs.has(dirname(file.path));
 
 			let rank = 0;
-			if (status === "active" || status === "read_only") {
+			if (status === "active") {
 				rank = 100000; // Always top
 			} else {
 				// Significant boost for directory proximity (1000 pts)
 				// + symbol overlap (10 pts per symbol)
-				rank = (isInActiveDir ? 1000 : 0) + overlapCount * 10;
+				// + small boost for read_only (100 pts)
+				rank = (isInActiveDir ? 1000 : 0) + 
+				       (status === "read_only" ? 100 : 0) +
+				       overlapCount * 10;
 			}
 
 			return { ...file, status, rank, overlapCount };
@@ -202,8 +205,8 @@ export default class RepoMap {
 
 			let displayFile;
 
-			if (file.status === "active" || file.status === "read_only") {
-				// FULL CONTENT for Active and Read Only
+			if (file.status === "active") {
+				// FULL CONTENT for Active only
 				const fullPath = join(this.#ctx.root, file.path);
 				let content = "";
 				try {
@@ -322,5 +325,18 @@ export default class RepoMap {
 			symbols,
 			source: "standard",
 		}));
+	}
+
+	#estimateTokens(file, status) {
+		if (status === "active") {
+			const fullPath = join(this.#ctx.root, file.path);
+			try {
+				const content = readFileSync(fullPath, "utf8");
+				return Math.ceil(content.length / 4) + 20;
+			} catch (_err) {
+				return 20;
+			}
+		}
+		return file.path.length / 4 + (file.symbols?.length || 0) * 15 + 10;
 	}
 }
