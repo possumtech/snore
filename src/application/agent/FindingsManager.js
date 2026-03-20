@@ -60,9 +60,17 @@ export default class FindingsManager {
 			}
 
 			// NOTIFICATION TAGS
-			if (tagName === "short") {
+			if (tagName === "remark") {
 				atomicResult.notifications.push({
 					type: "short",
+					text: this.#parser.getNodeText(tag),
+					level: "info",
+				});
+			}
+
+			if (tagName === "summary") {
+				atomicResult.notifications.push({
+					type: "summary",
 					text: this.#parser.getNodeText(tag),
 					level: "info",
 				});
@@ -74,14 +82,6 @@ export default class FindingsManager {
 					text: this.#parser.getNodeText(tag),
 					level: "warn",
 					config: this.#parser.parsePromptUser(tag),
-				});
-			}
-
-			if (tagName === "summary") {
-				atomicResult.notifications.push({
-					type: "summary",
-					text: this.#parser.getNodeText(tag),
-					level: "info",
 				});
 			}
 

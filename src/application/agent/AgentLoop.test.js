@@ -20,12 +20,12 @@ test("AgentLoop", async (t) => {
 		reset_buffered: { run: async () => {} },
 		set_buffered: { run: async () => {} },
 		update_file_attention: { run: async () => {} },
-		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read env response short" }) }
+		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read drop env remark summary response short" }) }
 	});
 
 	const createMockLlm = () => ({
 		completion: async () => ({
-			choices: [{ message: { role: "assistant", content: "<tasks>- [x] done</tasks><response>Hi</response>" } }],
+			choices: [{ message: { role: "assistant", content: "<tasks>- [x] done</tasks><summary>Hi</summary>" } }],
 			usage: { total_tokens: 10 }
 		})
 	});
@@ -43,7 +43,8 @@ test("AgentLoop", async (t) => {
 		parseActionTags: (content) => {
 			if (content.includes("<create")) return [{ tagName: "create", attrs: [{ name: "file", value: "b.js" }] }];
 			if (content.includes("read")) return [{ tagName: "read", attrs: [{ name: "file", value: "a.js" }] }, { tagName: "run", isMock: true, childNodes: [{ value: "ls" }] }];
-			return [{ tagName: "response" }, { tagName: "tasks" }];
+			if (content.includes("summary")) return [{ tagName: "summary" }];
+			return [{ tagName: "remark" }, { tagName: "tasks" }];
 		},
 		getNodeText: (tag) => {
 			if (tag.tagName === "tasks") return "- [x] done";
@@ -83,8 +84,6 @@ test("AgentLoop", async (t) => {
 		const runId = "r2";
 		const mockDb = createMockDb();
 		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
-		
-		// This is the key: get_unresolved_findings must return items
 		mockDb.get_unresolved_findings.all = async () => [{ id: 1, status: "proposed" }];
 		
 		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
@@ -93,7 +92,15 @@ test("AgentLoop", async (t) => {
 	});
 
 	await t.test("run should terminate on checklist completion", async () => {
-		const loop = new AgentLoop(createMockDb(), createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		const mockParserWithSummary = {
+			...mockParser,
+			parseActionTags: (content) => [
+				{ tagName: "tasks", isMock: true, childNodes: [{ value: "- [x] all done" }] },
+				{ tagName: "summary", isMock: true, childNodes: [{ value: "bye" }] }
+			],
+			getNodeText: (tag) => tag.tagName === "tasks" ? "- [x] all done" : "bye"
+		};
+		const loop = new AgentLoop(createMockDb(), createMockLlm(), createHooks(), mockTurnBuilder, mockParserWithSummary, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "finish");
 		assert.strictEqual(result.status, "completed");
 	});
@@ -113,7 +120,7 @@ test("AgentLoop", async (t) => {
 
 	await t.test("run should handle information gathering", async () => {
 		let callCount = 0;
-		const mockLlm = {
+		const mockLlmLocal = {
 			completion: async () => {
 				callCount++;
 				if (callCount === 1) return {
@@ -121,19 +128,19 @@ test("AgentLoop", async (t) => {
 					usage: { total_tokens: 10 }
 				};
 				return {
-					choices: [{ message: { role: "assistant", content: "<response>Done</response>" } }],
+					choices: [{ message: { role: "assistant", content: "<summary>Done</summary>" } }],
 					usage: { total_tokens: 5 }
 				};
 			}
 		};
 		
-		const loop = new AgentLoop(createMockDb(), mockLlm, createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		const loop = new AgentLoop(createMockDb(), mockLlmLocal, createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "gather");
 		assert.strictEqual(result.status, "completed");
 	});
 
 	await t.test("run should stop on breaking changes", async () => {
-		const mockLlm = {
+		const mockLlmBreaking = {
 			completion: async () => ({
 				choices: [{ message: { role: "assistant", content: "<create file=\"b.js\">content</create>" } }],
 				usage: { total_tokens: 10 }
@@ -144,7 +151,7 @@ test("AgentLoop", async (t) => {
 		mockDb.insert_finding_command = { run: async () => {} };
 		mockDb.insert_finding_notification = { run: async () => {} };
 
-		const loop = new AgentLoop(mockDb, mockLlm, createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		const loop = new AgentLoop(mockDb, mockLlmBreaking, createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "breaking");
 		assert.strictEqual(result.status, "proposed");
 	});

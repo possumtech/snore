@@ -64,13 +64,15 @@ test("ResponseParser", async (t) => {
 		const content = `
 			<read file="test.js"/>
 			<tasks>- [ ] do it</tasks>
-			<unknown>something</unknown>
+			<remark>Thinking</remark>
+			<summary>Done</summary>
 			<invalid>ignore me</invalid>
 		`;
 		const tags = parser.parseActionTags(content);
 		assert.ok(tags.some(t => t.tagName === "read"));
 		assert.ok(tags.some(t => t.tagName === "tasks"));
-		assert.ok(tags.some(t => t.tagName === "unknown"));
+		assert.ok(tags.some(t => t.tagName === "remark"));
+		assert.ok(tags.some(t => t.tagName === "summary"));
 		assert.ok(!tags.some(t => t.tagName === "invalid"));
 		
 		const readTag = tags.find(t => t.tagName === "read");

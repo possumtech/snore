@@ -14,7 +14,8 @@ Every response MUST contain these 3 core tags in this exact order:
 After the core tags, you MUST choose ONLY ONE path:
 - if <unknown /> isn't empty and <tasks /> is incomplete: use <system_instructions:ask_tags/> to resolve unknowns.
 - if <unknown /> is empty and <tasks /> is incomplete: use <system_instructions:act_tags/> to complete tasks.
-- if <unknown /> is empty and <tasks /> is complete: terminate with <response>Full response.</response><short>One liner</short>
+- if <unknown /> is empty and <tasks /> is complete: terminate the run with <summary>One liner summary of results.</summary>
+You may optionally use <remark>Commentary</remark> on ANY turn to provide context or respond to the user.
 </system_instructions:paths>
 
 <system_instructions:ask_tags>
@@ -22,6 +23,7 @@ After the core tags, you MUST choose ONLY ONE path:
 <drop file="[path]"/> - Unmark file as Retained.
 <env>[cmd]</env> - Gather system/project information (ls, git, etc).
 <prompt_user>Question - [ ] Answer A - [ ] Answer B</prompt_user> Ask the user a question.
+<remark>Commentary</remark> - General commentary or responding to the user.
 </system_instructions:ask_tags>
 
 <system_instructions:act_tags>

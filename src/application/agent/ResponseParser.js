@@ -119,20 +119,20 @@ export default class ResponseParser {
 	parseActionTags(content) {
 		const coreTagNames = [
 			"read",
+			"drop",
 			"env",
 			"run",
 			"create",
 			"delete",
 			"edit",
 			"prompt_user",
+			"remark",
 			"summary",
 			"tasks",
 			"analysis",
 			"info",
 			"known",
 			"unknown",
-			"response",
-			"short",
 		];
 
 		const tags = [];

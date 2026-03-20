@@ -179,10 +179,10 @@ CREATE TABLE IF NOT EXISTS protocol_constraints (
 
 INSERT OR IGNORE INTO protocol_constraints (type, has_unknowns, required_tags, allowed_tags)
 VALUES 
-('ask', 1, 'tasks known unknown', 'tasks known unknown read env'),
-('ask', 0, 'tasks known unknown', 'tasks known unknown read env edit create delete run analysis summary'),
-('act', 1, 'tasks known unknown', 'tasks known unknown read env'),
-('act', 0, 'tasks known unknown', 'tasks known unknown read env edit create delete run analysis summary');
+('ask', 1, 'tasks known unknown', 'tasks known unknown read drop env remark'),
+('ask', 0, 'tasks known unknown', 'tasks known unknown read drop env edit create delete run analysis summary remark response short'),
+('act', 1, 'tasks known unknown', 'tasks known unknown read drop env remark'),
+('act', 0, 'tasks known unknown', 'tasks known unknown read drop env edit create delete run analysis summary remark response short');
 
 -- FILE TYPE HANDLERS (Symbol Extraction Strategy)
 CREATE TABLE IF NOT EXISTS file_type_handlers (

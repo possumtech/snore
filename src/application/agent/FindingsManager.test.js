@@ -29,7 +29,7 @@ test("FindingsManager", async (t) => {
 		const tags = [
 			{ tagName: "read", attrs: [{ name: "file", value: "logic.js" }] },
 			{ tagName: "drop", attrs: [{ name: "file", value: "old.js" }] },
-			{ tagName: "short", isMock: true, childNodes: [{ value: "short text" }] },
+			{ tagName: "remark", isMock: true, childNodes: [{ value: "some remark" }] },
 			{ tagName: "edit", attrs: [{ name: "file", value: "edit.js" }], isMock: true, childNodes: [{ value: "patch" }] },
 			{ tagName: "delete", attrs: [{ name: "file", value: "del.js" }], isMock: true },
 			{ tagName: "prompt_user", isMock: true, childNodes: [{ value: "Question?" }] },
@@ -38,7 +38,11 @@ test("FindingsManager", async (t) => {
 			{ tagName: "run", isMock: true, childNodes: [{ value: "ls" }] }
 		];
 		await manager.populateFindings("/tmp", atomicResult, tags);
-		assert.strictEqual(atomicResult.notifications.length, 4); // short, prompt_user, summary, and RUMMY_TEST_NOTIFY
+		// 1. remark (short)
+		// 2. prompt_user
+		// 3. summary
+		// 4. RUMMY_TEST_NOTIFY
+		assert.strictEqual(atomicResult.notifications.length, 4); 
 		assert.strictEqual(atomicResult.diffs.length, 3); // edit, delete, and RUMMY_TEST_DIFF
 		assert.strictEqual(atomicResult.commands.length, 1);
 		assert.strictEqual(atomicResult.analysis, "Ana");
