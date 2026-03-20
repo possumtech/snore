@@ -42,4 +42,26 @@ describe("LlmProvider", () => {
 
 		completionMock.mock.restore();
 	});
+
+	it("should resolve aliases from environment variables before routing", async () => {
+		process.env.RUMMY_MODEL_my_alias = "ollama/llama3";
+
+		const completionMock = mock.method(
+			OllamaClient.prototype,
+			"completion",
+			async (_messages, model) => {
+				strictEqual(model, "llama3");
+				return "ollama result";
+			},
+		);
+
+		const provider = new LlmProvider({});
+		const result = await provider.completion([], "my_alias");
+
+		strictEqual(result, "ollama result");
+		strictEqual(completionMock.mock.callCount(), 1);
+
+		completionMock.mock.restore();
+		delete process.env.RUMMY_MODEL_my_alias;
+	});
 });

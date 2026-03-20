@@ -23,11 +23,13 @@ export default class LlmProvider {
 	 * Default is OpenRouter.
 	 */
 	async completion(messages, model) {
-		if (model.startsWith("ollama/")) {
-			const localModel = model.replace("ollama/", "");
+		const resolvedModel = process.env[`RUMMY_MODEL_${model}`] || model;
+
+		if (resolvedModel.startsWith("ollama/")) {
+			const localModel = resolvedModel.replace("ollama/", "");
 			return this.#ollama.completion(messages, localModel);
 		}
 
-		return this.#openRouter.completion(messages, model);
+		return this.#openRouter.completion(messages, resolvedModel);
 	}
 }
