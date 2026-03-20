@@ -1,9 +1,9 @@
-import test from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import DebugLoggerPlugin from "./telemetry.js";
+import test from "node:test";
 import createHooks from "../../../domain/hooks/Hooks.js";
+import DebugLoggerPlugin from "./telemetry.js";
 
 test("DebugLoggerPlugin", async (t) => {
 	const auditDir = join(process.cwd(), "test_audits");
@@ -22,7 +22,7 @@ test("DebugLoggerPlugin", async (t) => {
 
 		const mockTurn = {
 			doc: { documentElement: { getAttribute: () => "0" } },
-			toXml: () => "<turn/>"
+			toXml: () => "<turn/>",
 		};
 
 		await hooks.run.turn.audit.emit({ runId: "r1", turn: mockTurn });

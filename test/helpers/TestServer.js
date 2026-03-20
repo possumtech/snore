@@ -1,8 +1,8 @@
-import SocketServer from "../../src/infrastructure/socket/SocketServer.js";
-import createHooks from "../../src/domain/hooks/Hooks.js";
-import { registerPlugins } from "../../src/plugins/index.js";
-import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import createHooks from "../../src/domain/hooks/Hooks.js";
+import SocketServer from "../../src/infrastructure/socket/SocketServer.js";
+import { registerPlugins } from "../../src/plugins/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +15,7 @@ export default class TestServer {
 
 	static async start(db) {
 		const hooks = createHooks(false);
-		
+
 		// Register internal and core plugins so hooks like RepoMap work in tests
 		const internalPluginsDir = join(__dirname, "../../src/application/plugins");
 		const corePluginsDir = join(__dirname, "../../src/plugins");

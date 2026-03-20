@@ -1,4 +1,4 @@
-import { strictEqual, deepStrictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import { describe, it, mock } from "node:test";
 import CtagsExtractor from "./CtagsExtractor.js";
 

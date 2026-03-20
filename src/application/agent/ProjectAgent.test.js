@@ -1,7 +1,7 @@
-import test from "node:test";
 import assert from "node:assert";
-import ProjectAgent from "./ProjectAgent.js";
+import test from "node:test";
 import createHooks from "../../domain/hooks/Hooks.js";
+import ProjectAgent from "./ProjectAgent.js";
 
 test("ProjectAgent", async (t) => {
 	const mockDb = {
@@ -31,7 +31,12 @@ test("ProjectAgent", async (t) => {
 		get_last_turn_sequence: { get: async () => ({ last_seq: null }) },
 		update_file_attention: { run: async () => {} },
 		insert_turn_element: { get: async () => ({ id: 1 }) },
-		get_protocol_constraints: { get: async () => ({ required_tags: "tasks", allowed_tags: "tasks response" }) },
+		get_protocol_constraints: {
+			get: async () => ({
+				required_tags: "tasks",
+				allowed_tags: "tasks response",
+			}),
+		},
 		set_retained: { run: async () => {} },
 	};
 	const hooks = createHooks();
@@ -44,10 +49,20 @@ test("ProjectAgent", async (t) => {
 	});
 
 	await t.test("ask should delegate to AgentLoop", async () => {
-		globalThis.fetch = async () => new Response(JSON.stringify({
-			choices: [{ message: { role: "assistant", content: "<tasks>- [x] ok</tasks><response>Hello</response>" } }],
-			usage: { total_tokens: 5 }
-		}));
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({
+					choices: [
+						{
+							message: {
+								role: "assistant",
+								content: "<tasks>- [x] ok</tasks><response>Hello</response>",
+							},
+						},
+					],
+					usage: { total_tokens: 5 },
+				}),
+			);
 
 		const result = await agent.ask("s1", "m1", "hi");
 		assert.strictEqual(result.status, "completed");
@@ -61,7 +76,7 @@ test("ProjectAgent", async (t) => {
 		await agent.setPersona("s1", "per");
 		await agent.addSkill("s1", "sk");
 		await agent.removeSkill("s1", "sk");
-		
+
 		const result = await agent.act("s1", "m1", "do it");
 		assert.strictEqual(result.status, "completed");
 	});

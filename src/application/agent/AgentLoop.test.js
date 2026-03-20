@@ -1,7 +1,7 @@
-import test from "node:test";
 import assert from "node:assert";
-import AgentLoop from "./AgentLoop.js";
+import test from "node:test";
 import createHooks from "../../domain/hooks/Hooks.js";
+import AgentLoop from "./AgentLoop.js";
 
 test("AgentLoop", async (t) => {
 	const createMockDb = () => ({
@@ -20,29 +20,56 @@ test("AgentLoop", async (t) => {
 		reset_buffered: { run: async () => {} },
 		set_buffered: { run: async () => {} },
 		update_file_attention: { run: async () => {} },
-		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read drop env remark summary response short" }) }
+		get_protocol_constraints: {
+			get: async () => ({
+				required_tags: "tasks known unknown",
+				allowed_tags:
+					"tasks known unknown read drop env remark summary response short",
+			}),
+		},
 	});
 
 	const createMockLlm = () => ({
 		completion: async () => ({
-			choices: [{ message: { role: "assistant", content: "<tasks>- [x] done</tasks><summary>Hi</summary>" } }],
-			usage: { total_tokens: 10 }
-		})
+			choices: [
+				{
+					message: {
+						role: "assistant",
+						content: "<tasks>- [x] done</tasks><summary>Hi</summary>",
+					},
+				},
+			],
+			usage: { total_tokens: 10 },
+		}),
 	});
 
 	const mockTurnBuilder = {
 		build: async () => ({
 			toJson: () => ({ assistant: { content: "Hi" } }),
-			serialize: async () => [{ role: "user", content: "test" }, { role: "system", content: "sys" }],
-			assistant: { reasoning: { add: () => {} }, content: { add: () => {} }, meta: { add: () => {} } },
-			save: async () => {}
-		})
+			serialize: async () => [
+				{ role: "user", content: "test" },
+				{ role: "system", content: "sys" },
+			],
+			assistant: {
+				reasoning: { add: () => {} },
+				content: { add: () => {} },
+				meta: { add: () => {} },
+			},
+			save: async () => {},
+		}),
 	};
 
 	const mockParser = {
 		parseActionTags: (content) => {
-			if (content.includes("<create")) return [{ tagName: "create", attrs: [{ name: "file", value: "b.js" }] }];
-			if (content.includes("read")) return [{ tagName: "read", attrs: [{ name: "file", value: "a.js" }] }, { tagName: "run", isMock: true, childNodes: [{ value: "ls" }] }];
+			if (content.includes("<create"))
+				return [
+					{ tagName: "create", attrs: [{ name: "file", value: "b.js" }] },
+				];
+			if (content.includes("read"))
+				return [
+					{ tagName: "read", attrs: [{ name: "file", value: "a.js" }] },
+					{ tagName: "run", isMock: true, childNodes: [{ value: "ls" }] },
+				];
 			if (content.includes("summary")) return [{ tagName: "summary" }];
 			return [{ tagName: "remark" }, { tagName: "tasks" }];
 		},
@@ -50,17 +77,27 @@ test("AgentLoop", async (t) => {
 			if (tag.tagName === "tasks") return "- [x] done";
 			return "some text";
 		},
-		mergePrefill: (p, c) => p + c
+		mergePrefill: (p, c) => p + c,
 	};
 
 	const mockFindings = {
 		populateFindings: async () => {},
-		resolveOutstandingFindings: async () => ({ remainingCount: 0, proposed: [] }),
-		applyDiff: async () => {}
+		resolveOutstandingFindings: async () => ({
+			remainingCount: 0,
+			proposed: [],
+		}),
+		applyDiff: async () => {},
 	};
 
 	await t.test("run should complete a simple turn", async () => {
-		const loop = new AgentLoop(createMockDb(), createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		const loop = new AgentLoop(
+			createMockDb(),
+			createMockLlm(),
+			createHooks(),
+			mockTurnBuilder,
+			mockParser,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "hello");
 		assert.strictEqual(result.status, "completed");
 	});
@@ -68,14 +105,23 @@ test("AgentLoop", async (t) => {
 	await t.test("run should resume with history", async () => {
 		const runId = "r1";
 		const mockDb = createMockDb();
-		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
+		mockDb.get_run_by_id = {
+			get: async () => ({ id: runId, session_id: "s1", config: "{}" }),
+		};
 		mockDb.get_last_turn_sequence = { get: async () => ({ last_seq: 1 }) };
 		mockDb.get_turn_history.all = async () => [
 			{ role: "user", content: "hi", max_seq: 0 },
-			{ role: "assistant", content: "hello", max_seq: 1 }
+			{ role: "assistant", content: "hello", max_seq: 1 },
 		];
-		
-		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
+
+		const loop = new AgentLoop(
+			mockDb,
+			createMockLlm(),
+			createHooks(),
+			mockTurnBuilder,
+			mockParser,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "next", null, runId);
 		assert.strictEqual(result.status, "completed");
 	});
@@ -83,10 +129,21 @@ test("AgentLoop", async (t) => {
 	await t.test("run should block if findings are pending", async () => {
 		const runId = "r2";
 		const mockDb = createMockDb();
-		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
-		mockDb.get_unresolved_findings.all = async () => [{ id: 1, status: "proposed" }];
-		
-		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		mockDb.get_run_by_id = {
+			get: async () => ({ id: runId, session_id: "s1", config: "{}" }),
+		};
+		mockDb.get_unresolved_findings.all = async () => [
+			{ id: 1, status: "proposed" },
+		];
+
+		const loop = new AgentLoop(
+			mockDb,
+			createMockLlm(),
+			createHooks(),
+			mockTurnBuilder,
+			mockParser,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "next", null, runId);
 		assert.strictEqual(result.status, "proposed");
 	});
@@ -94,13 +151,25 @@ test("AgentLoop", async (t) => {
 	await t.test("run should terminate on checklist completion", async () => {
 		const mockParserWithSummary = {
 			...mockParser,
-			parseActionTags: (content) => [
-				{ tagName: "tasks", isMock: true, childNodes: [{ value: "- [x] all done" }] },
-				{ tagName: "summary", isMock: true, childNodes: [{ value: "bye" }] }
+			parseActionTags: (_content) => [
+				{
+					tagName: "tasks",
+					isMock: true,
+					childNodes: [{ value: "- [x] all done" }],
+				},
+				{ tagName: "summary", isMock: true, childNodes: [{ value: "bye" }] },
 			],
-			getNodeText: (tag) => tag.tagName === "tasks" ? "- [x] all done" : "bye"
+			getNodeText: (tag) =>
+				tag.tagName === "tasks" ? "- [x] all done" : "bye",
 		};
-		const loop = new AgentLoop(createMockDb(), createMockLlm(), createHooks(), mockTurnBuilder, mockParserWithSummary, mockFindings);
+		const loop = new AgentLoop(
+			createMockDb(),
+			createMockLlm(),
+			createHooks(),
+			mockTurnBuilder,
+			mockParserWithSummary,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "finish");
 		assert.strictEqual(result.status, "completed");
 	});
@@ -108,12 +177,33 @@ test("AgentLoop", async (t) => {
 	await t.test("run should handle yolo mode", async () => {
 		const runId = "r_yolo";
 		const mockDb = createMockDb();
-		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: JSON.stringify({ yolo: true }) }) };
-		mockDb.get_unresolved_findings.all = async () => [{ id: 1, status: "proposed", category: "command", patch: "ls", type: "run" }];
+		mockDb.get_run_by_id = {
+			get: async () => ({
+				id: runId,
+				session_id: "s1",
+				config: JSON.stringify({ yolo: true }),
+			}),
+		};
+		mockDb.get_unresolved_findings.all = async () => [
+			{
+				id: 1,
+				status: "proposed",
+				category: "command",
+				patch: "ls",
+				type: "run",
+			},
+		];
 		mockDb.update_finding_command_status = { run: async () => {} };
 		mockDb.update_finding_diff_status = { run: async () => {} };
-		
-		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
+
+		const loop = new AgentLoop(
+			mockDb,
+			createMockLlm(),
+			createHooks(),
+			mockTurnBuilder,
+			mockParser,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "yolo", null, runId);
 		assert.strictEqual(result.status, "completed");
 	});
@@ -123,18 +213,40 @@ test("AgentLoop", async (t) => {
 		const mockLlmLocal = {
 			completion: async () => {
 				callCount++;
-				if (callCount === 1) return {
-					choices: [{ message: { role: "assistant", content: "<read file=\"a.js\"/><run>ls</run>" } }],
-					usage: { total_tokens: 10 }
-				};
+				if (callCount === 1)
+					return {
+						choices: [
+							{
+								message: {
+									role: "assistant",
+									content: '<read file="a.js"/><run>ls</run>',
+								},
+							},
+						],
+						usage: { total_tokens: 10 },
+					};
 				return {
-					choices: [{ message: { role: "assistant", content: "<summary>Done</summary>" } }],
-					usage: { total_tokens: 5 }
+					choices: [
+						{
+							message: {
+								role: "assistant",
+								content: "<summary>Done</summary>",
+							},
+						},
+					],
+					usage: { total_tokens: 5 },
 				};
-			}
+			},
 		};
-		
-		const loop = new AgentLoop(createMockDb(), mockLlmLocal, createHooks(), mockTurnBuilder, mockParser, mockFindings);
+
+		const loop = new AgentLoop(
+			createMockDb(),
+			mockLlmLocal,
+			createHooks(),
+			mockTurnBuilder,
+			mockParser,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "gather");
 		assert.strictEqual(result.status, "completed");
 	});
@@ -142,16 +254,30 @@ test("AgentLoop", async (t) => {
 	await t.test("run should stop on breaking changes", async () => {
 		const mockLlmBreaking = {
 			completion: async () => ({
-				choices: [{ message: { role: "assistant", content: "<create file=\"b.js\">content</create>" } }],
-				usage: { total_tokens: 10 }
-			})
+				choices: [
+					{
+						message: {
+							role: "assistant",
+							content: '<create file="b.js">content</create>',
+						},
+					},
+				],
+				usage: { total_tokens: 10 },
+			}),
 		};
 		const mockDb = createMockDb();
 		mockDb.insert_finding_diff = { run: async () => {} };
 		mockDb.insert_finding_command = { run: async () => {} };
 		mockDb.insert_finding_notification = { run: async () => {} };
 
-		const loop = new AgentLoop(mockDb, mockLlmBreaking, createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		const loop = new AgentLoop(
+			mockDb,
+			mockLlmBreaking,
+			createHooks(),
+			mockTurnBuilder,
+			mockParser,
+			mockFindings,
+		);
 		const result = await loop.run("ask", "s1", "m1", "breaking");
 		assert.strictEqual(result.status, "proposed");
 	});

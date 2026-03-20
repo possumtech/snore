@@ -1,10 +1,9 @@
-import createHooks from "../../domain/hooks/Hooks.js";
 import LlmProvider from "../../domain/llm/LlmProvider.js";
 import TurnBuilder from "../../domain/turn/TurnBuilder.js";
+import SessionManager from "../session/SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
 import FindingsManager from "./FindingsManager.js";
 import ResponseParser from "./ResponseParser.js";
-import SessionManager from "../session/SessionManager.js";
 
 /**
  * ProjectAgent: Primary entry point and coordinator for the outside world.
@@ -38,7 +37,12 @@ export default class ProjectAgent {
 	}
 
 	async init(projectPath, projectName, clientId, projectBufferFiles = []) {
-		return this.#sessionManager.init(projectPath, projectName, clientId, projectBufferFiles);
+		return this.#sessionManager.init(
+			projectPath,
+			projectName,
+			clientId,
+			projectBufferFiles,
+		);
 	}
 
 	async syncBuffered(projectId, files) {
@@ -73,7 +77,14 @@ export default class ProjectAgent {
 		return this.#sessionManager.removeSkill(sessionId, name);
 	}
 
-	async ask(sessionId, model, prompt, activeFiles = [], runId = null, projectBufferFiles = null) {
+	async ask(
+		sessionId,
+		model,
+		prompt,
+		_activeFiles = [],
+		runId = null,
+		projectBufferFiles = null,
+	) {
 		return this.#agentLoop.run(
 			"ask",
 			sessionId,
@@ -84,7 +95,14 @@ export default class ProjectAgent {
 		);
 	}
 
-	async act(sessionId, model, prompt, activeFiles = [], runId = null, projectBufferFiles = null) {
+	async act(
+		sessionId,
+		model,
+		prompt,
+		_activeFiles = [],
+		runId = null,
+		projectBufferFiles = null,
+	) {
 		return this.#agentLoop.run(
 			"act",
 			sessionId,

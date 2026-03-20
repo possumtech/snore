@@ -1,6 +1,6 @@
-import SqlRite from "@possumtech/sqlrite";
 import fs from "node:fs/promises";
 import { join } from "node:path";
+import SqlRite from "@possumtech/sqlrite";
 
 export default class TestDb {
 	constructor(db, dbPath) {

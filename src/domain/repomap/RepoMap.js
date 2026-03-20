@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, extname, isAbsolute, join, relative } from "node:path";
+import { extname, join } from "node:path";
 import { getEncoding } from "js-tiktoken";
-import SymbolExtractor from "../../extraction/SymbolExtractor.js";
 import CtagsExtractor from "../../extraction/CtagsExtractor.js";
+import SymbolExtractor from "../../extraction/SymbolExtractor.js";
 
 /**
  * RepoMap coordinates the persistent indexing of project symbols
@@ -209,7 +209,10 @@ export default class RepoMap {
 		const finalFiles = [];
 		let currentTokens = 0;
 		const currentTurn = options.sequence ?? 0;
-		const decayThreshold = Number.parseInt(process.env.RUMMY_DECAY_THRESHOLD || "12", 10);
+		const decayThreshold = Number.parseInt(
+			process.env.RUMMY_DECAY_THRESHOLD || "12",
+			10,
+		);
 
 		for (const file of rankedFiles) {
 			if (file.visibility === "ignored") continue;
@@ -219,8 +222,10 @@ export default class RepoMap {
 			// FIDELITY DECAY: Full content ONLY for:
 			// 1. User-buffered files (pinned)
 			// 2. Retained files with attention within the last X turns
-			const hasRecentAttention = (currentTurn - file.last_attention_turn) <= decayThreshold;
-			const shouldIncludeSource = file.is_buffered || (file.is_active && hasRecentAttention);
+			const hasRecentAttention =
+				currentTurn - file.last_attention_turn <= decayThreshold;
+			const shouldIncludeSource =
+				file.is_buffered || (file.is_active && hasRecentAttention);
 
 			if (shouldIncludeSource) {
 				const fullPath = join(this.#ctx.root, file.path);
@@ -238,7 +243,9 @@ export default class RepoMap {
 					content,
 				};
 
-				const weight = this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+				const weight = this.#tokenizer.encode(
+					JSON.stringify(displayFile),
+				).length;
 				finalFiles.push(displayFile);
 				currentTokens += weight;
 				continue;

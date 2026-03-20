@@ -1,7 +1,7 @@
-import test from "node:test";
 import assert from "node:assert";
-import SocketServer from "./SocketServer.js";
+import test from "node:test";
 import createHooks from "../../domain/hooks/Hooks.js";
+import SocketServer from "./SocketServer.js";
 
 test("SocketServer", async (t) => {
 	const mockDb = {};

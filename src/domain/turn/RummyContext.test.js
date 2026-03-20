@@ -1,4 +1,4 @@
-import { strictEqual, ok, deepStrictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import { describe, it } from "node:test";
 import { DOMImplementation } from "@xmldom/xmldom";
 import RummyContext from "./RummyContext.js";
@@ -44,7 +44,10 @@ describe("RummyContext", () => {
 
 	it("should create new tags with attributes and children", () => {
 		const ctx = new RummyContext(createDoc(), {});
-		const tag = ctx.tag("myTag", { id: "123" }, ["Hello", ctx.tag("child", {}, [])]);
+		const tag = ctx.tag("myTag", { id: "123" }, [
+			"Hello",
+			ctx.tag("child", {}, []),
+		]);
 
 		strictEqual(tag.tagName, "myTag");
 		strictEqual(tag.getAttribute("id"), "123");

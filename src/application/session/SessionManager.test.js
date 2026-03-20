@@ -1,7 +1,7 @@
-import test from "node:test";
 import assert from "node:assert";
-import SessionManager from "./SessionManager.js";
+import test from "node:test";
 import createHooks from "../../domain/hooks/Hooks.js";
+import SessionManager from "./SessionManager.js";
 
 test("SessionManager", async (t) => {
 	const mockDb = {
@@ -23,7 +23,12 @@ test("SessionManager", async (t) => {
 		create_empty_turn: { get: async () => ({ id: 1 }) },
 		update_turn_stats: { run: async () => {} },
 		insert_turn_element: { get: async () => ({ id: 1 }) },
-		get_protocol_constraints: { get: async () => ({ required_tags: "tasks", allowed_tags: "tasks response" }) },
+		get_protocol_constraints: {
+			get: async () => ({
+				required_tags: "tasks",
+				allowed_tags: "tasks response",
+			}),
+		},
 		set_retained: { run: async () => {} },
 	};
 	const hooks = createHooks();
@@ -54,12 +59,18 @@ test("SessionManager", async (t) => {
 	});
 
 	await t.test("updateFiles should upsert files and emit event", async () => {
-		const result = await manager.updateFiles("p1", [{ path: "a.js", visibility: "mappable" }]);
+		const result = await manager.updateFiles("p1", [
+			{ path: "a.js", visibility: "mappable" },
+		]);
 		assert.strictEqual(result.status, "ok");
 	});
 
 	await t.test("startRun should filter config and create run", async () => {
-		const runId = await manager.startRun("s1", { type: "ask", model: "m1", other: "ignore" });
+		const runId = await manager.startRun("s1", {
+			type: "ask",
+			model: "m1",
+			other: "ignore",
+		});
 		assert.ok(runId);
 	});
 });

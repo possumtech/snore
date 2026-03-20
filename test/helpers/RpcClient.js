@@ -1,5 +1,5 @@
-import { WebSocket } from "ws";
 import { EventEmitter } from "node:events";
+import { WebSocket } from "ws";
 
 export default class RpcClient extends EventEmitter {
 	constructor(url) {

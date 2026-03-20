@@ -10,6 +10,11 @@ export default class OpenRouterClient {
 	}
 
 	async completion(messages, model) {
+		if (!this.#apiKey) {
+			throw new Error(
+				"OpenRouter API key is missing. Please set OPENROUTER_API_KEY in your environment.",
+			);
+		}
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
@@ -26,9 +31,13 @@ export default class OpenRouterClient {
 
 		if (!response.ok) {
 			const error = await response.text();
+			if (response.status === 401 || response.status === 403) {
+				throw new Error(
+					`OpenRouter Authentication Error: ${response.status} - ${error}. Please check your OPENROUTER_API_KEY.`,
+				);
+			}
 			throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
 		}
-
 		return response.json();
 	}
 }

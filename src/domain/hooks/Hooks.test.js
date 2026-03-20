@@ -1,4 +1,4 @@
-import { strictEqual, ok } from "node:assert";
+import { strictEqual } from "node:assert";
 import { describe, it } from "node:test";
 import createHooks from "./Hooks.js";
 
@@ -19,7 +19,7 @@ describe("Hooks (createHooks)", () => {
 		const hooks = createHooks();
 
 		hooks.llm.response.addFilter((res) => {
-			return res + " [filtered]";
+			return `${res} [filtered]`;
 		});
 
 		const result = await hooks.llm.response.filter("Hello");

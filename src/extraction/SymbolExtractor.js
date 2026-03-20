@@ -83,9 +83,7 @@ export default class SymbolExtractor {
 							].includes(child.type)
 						) {
 							name = child.text;
-						} else if (
-							child.type === "formal_parameters"
-						) {
+						} else if (child.type === "formal_parameters") {
 							params = child.text;
 						}
 					}

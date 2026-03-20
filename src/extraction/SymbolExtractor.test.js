@@ -1,4 +1,4 @@
-import { strictEqual, deepStrictEqual, ok } from "node:assert";
+import { ok, strictEqual } from "node:assert";
 import { describe, it } from "node:test";
 import SymbolExtractor from "./SymbolExtractor.js";
 
@@ -19,9 +19,21 @@ myFunc(1);
 
 		const result = extractor.extract(content, "js");
 
-		ok(result.definitions.find((d) => d.name === "MyClass" && d.type === "class"));
-		ok(result.definitions.find((d) => d.name === "myMethod" && d.type === "method"));
-		ok(result.definitions.find((d) => d.name === "myFunc" && d.type === "function"));
+		ok(
+			result.definitions.find(
+				(d) => d.name === "MyClass" && d.type === "class",
+			),
+		);
+		ok(
+			result.definitions.find(
+				(d) => d.name === "myMethod" && d.type === "method",
+			),
+		);
+		ok(
+			result.definitions.find(
+				(d) => d.name === "myFunc" && d.type === "function",
+			),
+		);
 		ok(result.references.includes("myFunc"));
 	});
 
@@ -34,7 +46,11 @@ myFunc(1);
 
 		const result = extractor.extract(content, "css");
 
-		ok(result.definitions.find((d) => d.name === "my-class" && d.type === "class"));
+		ok(
+			result.definitions.find(
+				(d) => d.name === "my-class" && d.type === "class",
+			),
+		);
 		ok(result.definitions.find((d) => d.name === "my-id" && d.type === "id"));
 	});
 
@@ -46,7 +62,7 @@ myFunc(1);
 	});
 
 	it("should handle extraction errors gracefully", () => {
-		const extractor = new SymbolExtractor();
+		const _extractor = new SymbolExtractor();
 		// Passing something that makes tree-sitter crash or fail if possible
 		// But usually it just returns an error node.
 		// Let's try to mock the internal parser if we really need to test catch block.

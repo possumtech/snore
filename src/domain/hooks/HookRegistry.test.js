@@ -1,4 +1,4 @@
-import { strictEqual, deepStrictEqual, ok } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import { describe, it } from "node:test";
 import HookRegistry from "./HookRegistry.js";
 
@@ -23,8 +23,8 @@ describe("HookRegistry", () => {
 	it("should apply filters in priority order", async () => {
 		const registry = new HookRegistry();
 
-		registry.addFilter("test", (val) => val + "B", 20);
-		registry.addFilter("test", (val) => val + "A", 10);
+		registry.addFilter("test", (val) => `${val}B`, 20);
+		registry.addFilter("test", (val) => `${val}A`, 10);
 
 		const result = await registry.applyFilters("test", "Start");
 		strictEqual(result, "StartAB");

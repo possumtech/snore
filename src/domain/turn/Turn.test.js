@@ -1,5 +1,5 @@
-import test from "node:test";
 import assert from "node:assert";
+import test from "node:test";
 import { DOMParser } from "@xmldom/xmldom";
 import Turn from "./Turn.js";
 
@@ -33,19 +33,22 @@ test("Turn class", async (t) => {
 	});
 
 	await t.test("save() should persist elements to DB recursively", async () => {
-		const doc = parser.parseFromString('<turn sequence="1"><system>Hi</system><context><file path="a.js">content</file></context></turn>', "text/xml");
+		const doc = parser.parseFromString(
+			'<turn sequence="1"><system>Hi</system><context><file path="a.js">content</file></context></turn>',
+			"text/xml",
+		);
 		const elements = [];
 		const mockDb = {
 			insert_turn_element: {
 				get: async (params) => {
 					elements.push(params);
 					return { id: elements.length };
-				}
-			}
+				},
+			},
 		};
 		const turn = new Turn(doc, mockDb, 123);
 		await turn.save();
-		
+
 		// Root, system, context, file
 		assert.ok(elements.length >= 4);
 		assert.strictEqual(elements[0].tag_name, "turn");

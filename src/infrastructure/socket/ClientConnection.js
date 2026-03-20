@@ -1,5 +1,5 @@
-import ModelAgent from "../../application/model/ModelAgent.js";
 import ProjectAgent from "../../application/agent/ProjectAgent.js";
+import ModelAgent from "../../application/model/ModelAgent.js";
 
 export default class ClientConnection {
 	#ws;
@@ -157,6 +157,14 @@ export default class ClientConnection {
 									projectBufferFiles: "Files open in IDE",
 								},
 							},
+							run: {
+								description: "Alias for 'act'. Execute a mutating directive.",
+								params: {
+									prompt: "User message",
+									model: "Optional override",
+									projectBufferFiles: "Files open in IDE",
+								},
+							},
 							systemPrompt: {
 								description: "Set the base system prompt override",
 								params: { text: "XML/Text content" },
@@ -301,9 +309,12 @@ export default class ClientConnection {
 				case "ask":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
-					
+
 					if (params.projectBufferFiles && this.#context.projectId) {
-						await this.#projectAgent.syncBuffered(this.#context.projectId, params.projectBufferFiles);
+						await this.#projectAgent.syncBuffered(
+							this.#context.projectId,
+							params.projectBufferFiles,
+						);
 					}
 
 					result = await this.#projectAgent.ask(
@@ -316,11 +327,15 @@ export default class ClientConnection {
 					break;
 
 				case "act":
+				case "run":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
 
 					if (params.projectBufferFiles && this.#context.projectId) {
-						await this.#projectAgent.syncBuffered(this.#context.projectId, params.projectBufferFiles);
+						await this.#projectAgent.syncBuffered(
+							this.#context.projectId,
+							params.projectBufferFiles,
+						);
 					}
 
 					result = await this.#projectAgent.act(

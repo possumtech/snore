@@ -33,14 +33,22 @@ export default class FindingsManager {
 			if (tagName === "read" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
-					await this.#db.set_retained.run({ project_id: projectId, path, is_retained: 1 });
+					await this.#db.set_retained.run({
+						project_id: projectId,
+						path,
+						is_retained: 1,
+					});
 				}
 			}
 
 			if (tagName === "drop" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
-					await this.#db.set_retained.run({ project_id: projectId, path, is_retained: 0 });
+					await this.#db.set_retained.run({
+						project_id: projectId,
+						path,
+						is_retained: 0,
+					});
 				}
 			}
 
@@ -107,7 +115,7 @@ export default class FindingsManager {
 		}
 	}
 
-	async resolveOutstandingFindings(projectPath, runId, prompt, infoTags) {
+	async resolveOutstandingFindings(projectPath, runId, _prompt, infoTags) {
 		const findings = await this.#db.get_findings_by_run_id.all({
 			run_id: runId,
 		});
@@ -120,7 +128,7 @@ export default class FindingsManager {
 			const action = this.#parser.getNodeText(tag);
 
 			if (diffId) {
-				const f = findings.find((x) => x.id === Number.parseInt(diffId));
+				const f = findings.find((x) => x.id === Number.parseInt(diffId, 10));
 				if (f && f.status === "proposed") {
 					const status = action === "accepted" ? "accepted" : "rejected";
 					if (status === "accepted") {
@@ -132,16 +140,19 @@ export default class FindingsManager {
 			}
 
 			if (cmdId) {
-				const f = findings.find((x) => x.id === Number.parseInt(cmdId));
+				const f = findings.find((x) => x.id === Number.parseInt(cmdId, 10));
 				if (f && f.status === "proposed") {
 					const status = action === "accepted" ? "accepted" : "rejected";
-					await this.#db.update_finding_command_status.run({ id: f.id, status });
+					await this.#db.update_finding_command_status.run({
+						id: f.id,
+						status,
+					});
 					resolvedCount++;
 				}
 			}
 
 			if (notifId) {
-				const f = findings.find((x) => x.id === Number.parseInt(notifId));
+				const f = findings.find((x) => x.id === Number.parseInt(notifId, 10));
 				if (f && f.status === "proposed") {
 					await this.#db.update_finding_notification_status.run({
 						id: f.id,

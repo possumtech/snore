@@ -54,7 +54,9 @@ export default class SessionManager {
 		// Sync buffered files immediately
 		await this.syncBuffered(projectId, projectBufferFiles);
 
-		const { default: GitProvider } = await import("../../infrastructure/filesystem/GitProvider.js");
+		const { default: GitProvider } = await import(
+			"../../infrastructure/filesystem/GitProvider.js"
+		);
 		const gitRoot = await GitProvider.detectRoot(projectPath);
 		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
 

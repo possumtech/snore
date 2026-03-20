@@ -59,7 +59,7 @@ export default class Turn {
 			tag_name: node.tagName,
 			content,
 			attributes: JSON.stringify(attrs),
-			sequence
+			sequence,
 		});
 
 		const elementId = result.id;

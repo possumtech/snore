@@ -1,13 +1,13 @@
-import test from "node:test";
 import assert from "node:assert";
 import fs from "node:fs";
 import { join } from "node:path";
+import test from "node:test";
 import FsProvider from "./FsProvider.js";
 
 test("FsProvider", async (t) => {
 	const testDir = join(process.cwd(), "test_fs_provider");
 	if (!fs.existsSync(testDir)) fs.mkdirSync(testDir);
-	
+
 	fs.writeFileSync(join(testDir, "file1.txt"), "hello");
 	const subDir = join(testDir, "sub");
 	if (!fs.existsSync(subDir)) fs.mkdirSync(subDir);

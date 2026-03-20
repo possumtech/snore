@@ -1,4 +1,4 @@
-import { strictEqual, ok } from "node:assert";
+import { ok, strictEqual } from "node:assert";
 import { describe, it } from "node:test";
 import HeuristicMatcher from "./HeuristicMatcher.js";
 
@@ -167,6 +167,6 @@ function hello() {
 		if (result.patch) console.log("Healed Patch Content:\n", result.patch);
 		ok(result.patch);
 		// 'not_indented();' should be prepended with the file's 4-space indent
-		ok(result.patch.includes('+    not_indented();'));
+		ok(result.patch.includes("+    not_indented();"));
 	});
 });

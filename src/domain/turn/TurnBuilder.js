@@ -15,8 +15,16 @@ export default class TurnBuilder {
 	 * Build a structured Turn by running the DOM pipeline.
 	 */
 	async build(initialData = {}) {
-		const { prompt, sessionId, db, project, type, model, turnId, ...contextData } =
-			initialData;
+		const {
+			prompt,
+			sessionId,
+			db,
+			project,
+			type,
+			model,
+			turnId,
+			...contextData
+		} = initialData;
 
 		// 1. Create fresh Document
 		const doc = this.#dom.createDocument(null, "turn", null);
@@ -86,14 +94,14 @@ export default class TurnBuilder {
 
 		// Determine allowed tags based on previous turn's state
 		const hasUnknowns = contextData.hasUnknowns ?? true; // Default to true for Turn 0
-		
+
 		let required = "tasks known unknown";
 		let allowed = "tasks known unknown read env";
 
 		if (db) {
 			const constraints = await db.get_protocol_constraints.get({
 				type,
-				has_unknowns: hasUnknowns ? 1 : 0
+				has_unknowns: hasUnknowns ? 1 : 0,
 			});
 			if (constraints) {
 				required = constraints.required_tags;
