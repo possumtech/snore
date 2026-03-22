@@ -6,13 +6,13 @@ You must only respond within the allowed_tags, and must use all required_tags.
 
 <instructions:ask_loop>
 Every response MUST begin with these 3 core tags in this exact order:
-1. <tasks>List of tasks (example: - [x] Gathered facts from environment - [ ] Answered question)</tasks>
-2. <known>Facts, analysis, and plans you have gathered. (example: Opossums are marsupials)</known>
-3. <unknown>Things you need to know.</unknown> - Use <unknown/> if nothing is unknown.
+1. <tasks>List of tasks to perform (example: - [x] Gather facts from environment - [ ] Answer question)</tasks>
+2. <known>Facts, analysis, and plans you have gathered. (example: * Fact gathered from environment)</known>
+3. <unknown>Things you need to know.</unknown> - Use <unknown></unknown> if nothing is unknown.
 </instructions:ask_loop>
 
 <instructions:paths>
-If <unknowns/> is empty: terminate the run with <summary>One liner summary of results.</summary>.
+If <unknown/> is empty: terminate the run with <summary>One-liner summary of answer.</summary>.
 Otherwise, use <instructions:ask_tags/> to resolve more unknowns and complete more tasks.
 </instructions:paths>
 

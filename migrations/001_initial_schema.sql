@@ -185,7 +185,7 @@ VALUES
 	'ask'
 	, 1
 	, 'tasks known unknown'
-	, 'tasks known unknown read drop env ' || 'prompt_user'
+	, 'tasks known unknown read drop env prompt_user summary'
 ),
 (
 	'ask'
@@ -197,7 +197,7 @@ VALUES
 	'act'
 	, 1
 	, 'tasks known unknown'
-	, 'tasks known unknown read drop env ' || 'prompt_user'
+	, 'tasks known unknown read drop env prompt_user summary'
 ),
 (
 	'act'
