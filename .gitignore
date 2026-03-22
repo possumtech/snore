@@ -140,5 +140,4 @@ vite.config.ts.timestamp-*
 
 # rummy
 rummy.db*
-AGENTS.md
 .venv/

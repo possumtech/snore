@@ -61,6 +61,10 @@ export default class ProjectAgent {
 		return this.#sessionManager.updateFiles(projectId, files);
 	}
 
+	async drop(projectId, pattern) {
+		return this.#sessionManager.drop(projectId, pattern);
+	}
+
 	async startRun(sessionId, config) {
 		return this.#sessionManager.startRun(sessionId, config);
 	}

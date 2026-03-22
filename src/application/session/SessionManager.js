@@ -163,6 +163,15 @@ export default class SessionManager {
 		return { status: "ok" };
 	}
 
+	async drop(projectId, pattern) {
+		await this.#db.update_files_visibility_by_pattern.run({
+			project_id: projectId,
+			pattern,
+			visibility: "mappable",
+		});
+		return { status: "ok" };
+	}
+
 	async startRun(sessionId, runConfig) {
 		const runId = crypto.randomUUID();
 

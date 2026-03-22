@@ -136,6 +136,10 @@ export default class ClientConnection {
 								description: "Update the visibility/indexing status of files",
 								params: { files: "Array of { path, visibility }" },
 							},
+							drop: {
+								description: "Demote files matching a glob pattern to 'mappable'",
+								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
+							},
 							startRun: {
 								description: "Begin a new agent execution sequence",
 								params: {
@@ -234,6 +238,15 @@ export default class ClientConnection {
 					result = await this.#projectAgent.updateFiles(
 						this.#context.projectId,
 						params.files,
+					);
+					break;
+
+				case "drop":
+					if (!this.#context.projectId)
+						throw new Error("Project not initialized.");
+					result = await this.#projectAgent.drop(
+						this.#context.projectId,
+						params.pattern,
 					);
 					break;
 
