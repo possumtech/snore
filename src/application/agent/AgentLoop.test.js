@@ -23,8 +23,7 @@ test("AgentLoop", async (t) => {
 		get_protocol_constraints: {
 			get: async () => ({
 				required_tags: "tasks known unknown",
-				allowed_tags:
-					"tasks known unknown read drop env summary",
+				allowed_tags: "tasks known unknown read drop env summary",
 			}),
 		},
 	});

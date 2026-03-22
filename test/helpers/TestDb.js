@@ -1,5 +1,5 @@
-import { tmpdir } from "node:os";
 import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
 
@@ -10,7 +10,10 @@ export default class TestDb {
 	}
 
 	static async create() {
-		const dbPath = join(tmpdir(), `rummy_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
+		const dbPath = join(
+			tmpdir(),
+			`rummy_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+		);
 		// Scan both migrations and the new src structure for PREP/INIT tags
 		const db = await SqlRite.open({
 			path: dbPath,

@@ -72,15 +72,17 @@ describe("Happy Path E2E: France", () => {
 		// Wait a beat for async DB persistence
 		await new Promise((r) => setTimeout(r, 1000));
 
-		const turnsHistory = await client.call("getRunHistory", { runId: result.runId });
+		const turnsHistory = await client.call("getRunHistory", {
+			runId: result.runId,
+		});
 		assert.strictEqual(turnsHistory.length, 2);
-		
+
 		const userMsg = turnsHistory.find((m) => m.role === "user");
 		const assistantMsg = turnsHistory.find((m) => m.role === "assistant");
-		
+
 		assert.ok(userMsg.content.includes("France"));
 		assert.ok(assistantMsg.content.includes("Paris"));
-		
+
 		const turn0_emitted = turns.find((t) => t.sequence === 0);
 		assert.ok(
 			turn0_emitted.context.includes("<context"),

@@ -142,11 +142,13 @@ export default class ClientConnection {
 								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
 							},
 							ignore: {
-								description: "Hide files matching a glob pattern from the model",
+								description:
+									"Hide files matching a glob pattern from the model",
 								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
 							},
 							drop: {
-								description: "Demote files matching a glob pattern to 'mappable'",
+								description:
+									"Demote files matching a glob pattern to 'mappable'",
 								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
 							},
 							getRunHistory: {

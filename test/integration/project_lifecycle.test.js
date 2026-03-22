@@ -53,14 +53,14 @@ describe("Project Lifecycle Integration", () => {
 
 	it("should update visibility and persist to DB", async () => {
 		const { projectId } = await agent.init(projectPath, "LifecycleTest", "c1");
-		
+
 		// Manually insert to ensure row exists for pattern update
 		await db.upsert_repo_map_file.run({
 			project_id: projectId,
 			path: "main.js",
 			visibility: "mappable",
 			hash: "h1",
-			size: 10
+			size: 10,
 		});
 
 		await agent.ignore(projectId, "main.js");
