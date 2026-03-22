@@ -207,7 +207,7 @@ export default class FindingsManager {
 
 		if (diff.type === "edit") {
 			const oldContent = await fs.readFile(fullPath, "utf8");
-			const { patch, newContent, error } = HeuristicMatcher.matchAndPatch(
+			const { newContent, error } = HeuristicMatcher.matchAndPatch(
 				diff.file,
 				oldContent,
 				diff.search,

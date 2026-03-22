@@ -185,6 +185,7 @@ describe("RepoMap (Perspective Engine)", () => {
 			visibility: "active",
 			hash: null,
 			size: 0,
+			symbol_tokens: 0,
 		});
 		await db.set_retained.run({
 			project_id: pid,
@@ -242,8 +243,8 @@ describe("RepoMap (Perspective Engine)", () => {
 		);
 		assert.strictEqual(
 			lib.heat,
-			1,
-			"Warmed file heat should be 1 (one symbol overlap)",
+			2,
+			"Warmed file heat should be 2 (one symbol overlap * 2)",
 		);
 		assert.ok(
 			lib.symbols && lib.symbols.length > 0,

@@ -16,10 +16,35 @@ test("AgentLoop", async (t) => {
 		get_last_turn_sequence: { get: async () => ({ last_seq: null }) },
 		create_empty_turn: { get: async () => ({ id: 1 }) },
 		update_turn_stats: { run: async () => {} },
-		create_turn: { get: async () => ({ id: 1 }) },
+		insert_turn_element: { run: async () => {}, get: async () => ({ id: 1 }) },
 		reset_buffered: { run: async () => {} },
 		set_buffered: { run: async () => {} },
 		update_file_attention: { run: async () => {} },
+		get_turn_elements: {
+			all: async () => [
+				{
+					id: 1,
+					parent_id: null,
+					tag_name: "turn",
+					content: null,
+					attributes: "{}",
+				},
+				{
+					id: 2,
+					parent_id: 1,
+					tag_name: "context",
+					content: null,
+					attributes: "{}",
+				},
+				{
+					id: 3,
+					parent_id: 1,
+					tag_name: "assistant",
+					content: null,
+					attributes: "{}",
+				},
+			],
+		},
 		get_protocol_constraints: {
 			get: async () => ({
 				required_tags: "tasks known unknown",
@@ -44,21 +69,18 @@ test("AgentLoop", async (t) => {
 
 	const mockTurnBuilder = {
 		build: async () => ({
-			toJson: () => ({ assistant: { content: "Hi" } }),
+			id: 1,
+			toJson: () => ({
+				assistant: { content: "Hi", tasks: [], next_task: null, summary: "Hi" },
+				errors: [],
+				warnings: [],
+				infos: [],
+			}),
 			serialize: async () => [
 				{ role: "user", content: "test" },
 				{ role: "system", content: "sys" },
 			],
-			assistant: {
-				reasoning: { add: () => {} },
-				content: { add: () => {} },
-				meta: { add: () => {} },
-			},
-			context: {
-				error: { add: () => {} },
-				warn: { add: () => {} },
-				info: { add: () => {} },
-			},
+			hydrate: async () => {},
 			save: async () => {},
 		}),
 	};
@@ -80,17 +102,6 @@ test("AgentLoop", async (t) => {
 		getNodeText: (tag) => {
 			if (tag.tagName === "tasks") return "- [x] done";
 			return "some text";
-		},
-		mergePrefill: (p, c) => p + c,
-		appendAssistantContent: () => {},
-		setAssistantContent: () => {},
-	};
-
-	const _mockParserWithSummary = {
-		parseActionTags: () => [{ tagName: "tasks" }, { tagName: "summary" }],
-		getNodeText: (tag) => {
-			if (tag.tagName === "tasks") return "- [x] done";
-			return "done";
 		},
 		mergePrefill: (p, c) => p + c,
 		appendAssistantContent: () => {},
@@ -132,8 +143,8 @@ test("AgentLoop", async (t) => {
 		};
 		mockDb.get_last_turn_sequence = { get: async () => ({ last_seq: 1 }) };
 		mockDb.get_turn_history.all = async () => [
-			{ role: "user", content: "hi", max_seq: 0 },
-			{ role: "assistant", content: "hello", max_seq: 1 },
+			{ id: 1, role: "user" },
+			{ id: 2, role: "assistant" },
 		];
 
 		const loop = new AgentLoop(
@@ -256,7 +267,7 @@ test("AgentLoop", async (t) => {
 						{
 							message: {
 								role: "assistant",
-								content: "<summary>Done</summary>",
+								content: "<tasks>- [x] done</tasks><summary>Done</summary>",
 							},
 						},
 					],

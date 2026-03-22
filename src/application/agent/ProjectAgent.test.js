@@ -8,8 +8,8 @@ test("ProjectAgent", async (t) => {
 		upsert_project: { run: async () => {} },
 		get_project_by_path: { all: async () => [{ id: "p1" }] },
 		create_session: { run: async () => {} },
-		get_session_by_id: { all: async () => [{ project_id: "p1" }] },
 		get_project_by_id: { get: async () => ({ id: "p1", path: "/tmp" }) },
+		get_session_by_id: { all: async () => [{ project_id: "p1" }] },
 		get_session_skills: { all: async () => [] },
 		create_run: { run: async () => {} },
 		create_turn: { get: async () => ({ id: 1 }) },
@@ -30,7 +30,40 @@ test("ProjectAgent", async (t) => {
 		update_turn_stats: { run: async () => {} },
 		get_last_turn_sequence: { get: async () => ({ last_seq: null }) },
 		update_file_attention: { run: async () => {} },
-		insert_turn_element: { get: async () => ({ id: 1 }) },
+		insert_turn_element: { run: async () => {}, get: async () => ({ id: 1 }) },
+		update_turn_payload: { run: async () => {} },
+		get_turn_elements: {
+			all: async () => [
+				{
+					id: 1,
+					parent_id: null,
+					tag_name: "turn",
+					content: null,
+					attributes: '{"sequence":0}',
+				},
+				{
+					id: 2,
+					parent_id: 1,
+					tag_name: "context",
+					content: null,
+					attributes: "{}",
+				},
+				{
+					id: 3,
+					parent_id: 1,
+					tag_name: "assistant",
+					content: null,
+					attributes: "{}",
+				},
+				{
+					id: 4,
+					parent_id: 3,
+					tag_name: "meta",
+					content: "{}",
+					attributes: "{}",
+				},
+			],
+		},
 		get_protocol_constraints: {
 			get: async () => ({
 				required_tags: "tasks",
@@ -57,7 +90,7 @@ test("ProjectAgent", async (t) => {
 						{
 							message: {
 								role: "assistant",
-								content: "<tasks>- [x] ok</tasks><response>Hello</response>",
+								content: "<tasks>- [x] ok</tasks><summary>Hello</summary>",
 							},
 						},
 					],

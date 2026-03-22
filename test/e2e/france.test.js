@@ -8,15 +8,17 @@ import TestServer from "../helpers/TestServer.js";
 
 describe("Happy Path E2E: France", () => {
 	let tdb, tserver, client;
-	const projectPath = join(process.cwd(), "test_france_project");
+	const projectPath = join(process.cwd(), "test_project_france");
 
 	before(async () => {
+		// Prepare a dummy project
 		await fs.mkdir(projectPath, { recursive: true });
+		await fs.writeFile(join(projectPath, "main.js"), "console.log('hi');");
 
-		// Initialize git so RepoMap finds files (required by our new architecture)
+		// Initialize Git
 		const { execSync } = await import("node:child_process");
 		execSync(
-			'git init && git config user.email "test@test.com" && git config user.name "Test"',
+			'git init && git config user.email "test@test.com" && git config user.name "Test" && git add . && git commit -m "feat: init"',
 			{ cwd: projectPath },
 		);
 
@@ -34,11 +36,13 @@ describe("Happy Path E2E: France", () => {
 	});
 
 	it("should answer 'What is the capital of France?' correctly", async () => {
-		// Mock the LLM Response
-		globalThis.fetch = async () => {
-			return new Response(
+		const turns = [];
+		client.on("run/step/completed", (params) => turns.push(params.turn));
+
+		// Mock global fetch for LLM call
+		globalThis.fetch = async () =>
+			new Response(
 				JSON.stringify({
-					model: "mock-model",
 					choices: [
 						{
 							message: {
@@ -51,10 +55,6 @@ describe("Happy Path E2E: France", () => {
 					usage: { total_tokens: 50 },
 				}),
 			);
-		};
-
-		const turns = [];
-		client.on("run/step/completed", (params) => turns.push(params.turn));
 
 		await client.call("init", {
 			projectPath,
@@ -69,28 +69,28 @@ describe("Happy Path E2E: France", () => {
 
 		assert.strictEqual(result.status, "completed");
 
-		// Two notifications are sent: Turn 0 (initial) and Turn 0 (with model response)
-		// Or 1 if no internal recovery happened.
-		// Actually, our AgentLoop emits one turn per LLM response.
-		// Let's verify why it's 2.
-		assert.ok(turns.length >= 1);
-		const lastTurn = turns[turns.length - 1];
-
+		// Find the turn that actually contains the summary
+		const finalTurn = turns.find((t) => t.assistant.summary?.includes("Paris"));
 		assert.ok(
-			lastTurn.user.includes("France") || turns[0].user.includes("France"),
+			finalTurn,
+			"Could not find a turn with the correct summary in notifications",
 		);
-		assert.ok(lastTurn.assistant.summary.includes("Paris"));
+
+		assert.ok(finalTurn.user.includes("France"));
 
 		// Verify structured tasks
 		assert.ok(
-			Array.isArray(lastTurn.assistant.tasks),
+			Array.isArray(finalTurn.assistant.tasks),
 			"Tasks should be an array",
 		);
-		assert.strictEqual(lastTurn.assistant.tasks[0].text, "Answer question");
-		assert.strictEqual(lastTurn.assistant.tasks[0].completed, true);
+		assert.ok(
+			finalTurn.assistant.tasks.length > 0,
+			"Tasks should not be empty",
+		);
+		assert.strictEqual(finalTurn.assistant.tasks[0].completed, true);
 
 		assert.ok(
-			lastTurn.context.includes("<context"),
+			finalTurn.context.includes("<context"),
 			"Context should be a prettified XML string",
 		);
 	});

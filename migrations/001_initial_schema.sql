@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, sequence_number INTEGER NOT NULL
+	, sequence INTEGER NOT NULL
 	, payload JSON -- Keep for legacy/compatibility during transition
 	, prompt_tokens INTEGER DEFAULT 0
 	, completion_tokens INTEGER DEFAULT 0
@@ -295,20 +295,41 @@ FROM findings_notifications WHERE status = 'proposed';
 -- TURN HISTORY VIEW
 CREATE VIEW IF NOT EXISTS v_turn_history AS
 SELECT
-	run_id,
-	sequence_number,
-	key as msg_index,
-	json_extract(value, '$.role') as role,
-	json_extract(value, '$.content') as content
-FROM turns, json_each(turns.payload)
-WHERE json_extract(value, '$.role') IN ('user', 'assistant');
+	t.run_id,
+	t.id as turn_id,
+	t.sequence,
+	'system' as role,
+	te.content,
+	0 as msg_index
+FROM turns AS t
+JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'system'
+UNION ALL
+SELECT
+	t.run_id,
+	t.id as turn_id,
+	t.sequence,
+	'user' as role,
+	te.content,
+	1 as msg_index
+FROM turns AS t
+JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'user'
+UNION ALL
+SELECT
+	t.run_id,
+	t.id as turn_id,
+	t.sequence,
+	'assistant' as role,
+	te.content,
+	2 as msg_index
+FROM turns AS t
+JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'content';
 
 -- RELATIONAL TURN SUMMARY VIEW
 CREATE VIEW IF NOT EXISTS v_turns_summary AS
 SELECT
 	t.id as turn_id,
 	t.run_id,
-	t.sequence_number,
+	t.sequence,
 	(
 		SELECT content
 		FROM turn_elements
@@ -349,7 +370,7 @@ CREATE TABLE IF NOT EXISTS system_hooks (
 -- INDEXES: INFRASTRUCTURE
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
-CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence_number);
+CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
 
 -- INDEXES: REPOMAP (Heat Engine)
 CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_active

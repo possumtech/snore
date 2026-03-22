@@ -1,18 +1,8 @@
 -- PREP: create_turn
 INSERT INTO turns (
-	run_id
-	, sequence_number
-	, payload
-	, prompt_tokens
-	, completion_tokens
-	, total_tokens
-	, cost
+	run_id,
+	sequence
 ) VALUES (
-	:run_id
-	, :sequence_number
-	, :payload
-	, :prompt_tokens
-	, :completion_tokens
-	, :total_tokens
-	, :cost
+	:run_id,
+	:sequence
 ) RETURNING id;

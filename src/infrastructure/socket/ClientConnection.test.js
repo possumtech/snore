@@ -33,7 +33,33 @@ test("ClientConnection Expanded Coverage", async (t) => {
 		reset_buffered: { run: async () => {} },
 		set_buffered: { run: async () => {} },
 		update_file_attention: { run: async () => {} },
-		insert_turn_element: { get: async () => ({ id: 1 }) },
+		insert_turn_element: { run: async () => {}, get: async () => ({ id: 1 }) },
+		update_turn_payload: { run: async () => {} },
+		get_turn_elements: {
+			all: async () => [
+				{
+					id: 1,
+					parent_id: null,
+					tag_name: "turn",
+					content: null,
+					attributes: "{}",
+				},
+				{
+					id: 2,
+					parent_id: 1,
+					tag_name: "assistant",
+					content: null,
+					attributes: "{}",
+				},
+				{
+					id: 3,
+					parent_id: 2,
+					tag_name: "meta",
+					content: "{}",
+					attributes: "{}",
+				},
+			],
+		},
 		get_protocol_constraints: {
 			get: async () => ({
 				required_tags: "tasks",

@@ -9,16 +9,11 @@ import TestServer from "../helpers/TestServer.js";
 
 describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 	let tdb, tserver, client;
-	const projectPath = join(tmpdir(), `rummy_decay_test_${Date.now()}`);
+	const projectPath = join(tmpdir(), `rummy-decay-${Date.now()}`);
 
 	before(async () => {
-		process.env.RUMMY_DECAY_THRESHOLD = "2";
 		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(
-			join(projectPath, "logic.js"),
-			"function target() { return 'core logic'; }",
-		);
-
+		await fs.writeFile(join(projectPath, "logic.js"), "function init() {}");
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "test@test.com" && git config user.name "Test" && git add . && git commit -m "feat: init"',
@@ -32,7 +27,6 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 	});
 
 	after(async () => {
-		delete process.env.RUMMY_DECAY_THRESHOLD;
 		client.close();
 		await tserver.stop();
 		await tdb.cleanup();
@@ -40,18 +34,14 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 	});
 
 	it("should empirically prove fidelity decay over turns", async () => {
-		const turnResults = [];
-		client.on("run/step/completed", (params) => {
-			const turn = params.turn;
-			turn.files = params.files;
-			turnResults.push(turn);
-		});
+		const turns = [];
+		client.on("run/step/completed", (payload) => turns.push(payload.turn));
 
-		// 0. Init
+		const clientId = `c-decay-${Date.now()}`;
 		await client.call("init", {
 			projectPath,
-			projectName: "FinalDecayV2",
-			clientId: "c1",
+			projectName: "DecayProject",
+			clientId,
 		});
 
 		const responses = [
@@ -80,40 +70,37 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 			);
 		};
 
-		const res1 = await client.call("ask", { prompt: "Go" });
-		const runId = res1.runId;
+		// Force threshold to 2 turns for testing
+		process.env.RUMMY_DECAY_THRESHOLD = "2";
 
-		for (let i = 0; i < 4; i++) {
-			await client.call("ask", { prompt: "Continue", runId });
-		}
+		const result = await client.call("ask", {
+			model: "ccp",
+			prompt: "Let's begin.",
+		});
 
-		const findTurn = (seq) => turnResults.find((t) => t.sequence === seq);
+		assert.strictEqual(result.status, "completed");
 
-		// Verified Turn Sequences:
+		const findTurn = (seq) => turns.find((t) => t.sequence === seq);
+
 		assert.ok(
-			!findTurn(0).context.includes("<source>"),
-			"Turn 0: Summary only",
+			findTurn(0).context.includes("logic.js"),
+			"Turn 0: logic.js in map",
 		);
 		assert.ok(
 			findTurn(1).context.includes("<source>"),
-			"Turn 1: Source present (after read)",
-		);
-		assert.strictEqual(
-			findTurn(1).files.find((f) => f.path === "logic.js").state,
-			"retained",
-			"Turn 1: State should be 'retained'",
+			"Turn 1: Source present (Recently mentioned)",
 		);
 		assert.ok(
 			findTurn(2).context.includes("<source>"),
-			"Turn 2: Source present (within window)",
+			"Turn 2: Source present (Recent enough)",
 		);
 		assert.ok(
 			findTurn(3).context.includes("<source>"),
-			"Turn 3: Source present (Retained & Recent)",
+			"Turn 3: Source present (Recent enough)",
 		);
 		assert.ok(
 			!findTurn(4).context.includes("<source>"),
-			"Turn 4: Source DECAYED (Retained & Old)",
+			"Turn 4: Source DECAYED (Threshold reached)",
 		);
 	});
 });

@@ -61,6 +61,7 @@ describe("Project Lifecycle Integration", () => {
 			visibility: "mappable",
 			hash: "h1",
 			size: 10,
+			symbol_tokens: 0,
 		});
 
 		await agent.ignore(projectId, "main.js");

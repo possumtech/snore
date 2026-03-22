@@ -22,7 +22,12 @@ test("SessionManager", async (t) => {
 		get_unresolved_findings: { all: async () => [] },
 		create_empty_turn: { get: async () => ({ id: 1 }) },
 		update_turn_stats: { run: async () => {} },
-		insert_turn_element: { get: async () => ({ id: 1 }) },
+		insert_turn_element: {
+			get: async () => ({ id: 1 }),
+			run: async () => {},
+		},
+		update_turn_payload: { run: async () => {} },
+		get_turn_elements: { all: async () => [] },
 		get_protocol_constraints: {
 			get: async () => ({
 				required_tags: "tasks",

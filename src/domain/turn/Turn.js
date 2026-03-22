@@ -1,23 +1,17 @@
-import { XMLSerializer } from "@xmldom/xmldom";
 import TaskParser from "../../application/agent/TaskParser.js";
 
 /**
- * The Turn class represents the structured Document of a single LLM round.
+ * Turn: The thin JS glue representing a single orchestration round.
+ * The database is the single source of truth.
  */
 export default class Turn {
-	#doc;
-	#serializer = new XMLSerializer();
 	#db;
 	#turnId;
+	#data = null;
 
-	constructor(doc, db = null, turnId = null) {
-		this.#doc = doc;
+	constructor(db, turnId) {
 		this.#db = db;
 		this.#turnId = turnId;
-	}
-
-	get doc() {
-		return this.#doc;
 	}
 
 	get id() {
@@ -25,340 +19,182 @@ export default class Turn {
 	}
 
 	/**
-	 * Persists the current DOM structure to the turn_elements table.
-	 * Also saves the serialized message history to the payload column.
+	 * Hydrates the turn data from the database.
 	 */
-	async save() {
-		if (!this.#db || !this.#turnId) return;
+	async hydrate() {
+		const elements =
+			(await this.#db?.get_turn_elements.all({
+				turn_id: this.#turnId,
+			})) || [];
 
-		// 1. Save standardized message payload for history views
-		const messages = await this.serialize();
+		// Build flat map for O(1) tag access
+		const tagMap = new Map();
+		const allNodes = [];
 
-		if (this.#db.update_turn_payload) {
-			await this.#db.update_turn_payload.run({
-				id: this.#turnId,
-				payload: JSON.stringify(messages),
-			});
+		for (const el of elements) {
+			const node = {
+				...el,
+				attributes: JSON.parse(el.attributes || "{}"),
+				children: [],
+			};
+			allNodes.push(node);
+			if (!tagMap.has(el.tag_name)) tagMap.set(el.tag_name, []);
+			tagMap.get(el.tag_name).push(node);
 		}
 
-		// 2. Recursively save elements for semantic logic
-		await this.#saveNode(this.#doc.documentElement, null, 0);
-	}
-
-	async #saveNode(node, parentId, sequence) {
-		if (node.nodeType !== 1) return; // Only save Elements
-
-		const attrs = {};
-		if (node.attributes) {
-			for (let i = 0; i < node.attributes.length; i++) {
-				attrs[node.attributes[i].name] = node.attributes[i].value;
+		// Rebuild parent-child links for XML serialization
+		const nodeLookup = new Map(allNodes.map((n) => [n.id, n]));
+		const root = [];
+		for (const node of allNodes) {
+			if (node.parent_id === null) {
+				root.push(node);
+			} else {
+				const parent = nodeLookup.get(node.parent_id);
+				if (parent) parent.children.push(node);
 			}
 		}
 
-		// Find text content if it's a simple leaf node
-		let content = null;
-		if (node.childNodes.length === 1 && node.childNodes[0].nodeType === 3) {
-			content = node.childNodes[0].nodeValue;
-		}
-
-		const result = await this.#db.insert_turn_element.get({
-			turn_id: this.#turnId,
-			parent_id: parentId,
-			tag_name: node.tagName,
-			content,
-			attributes: JSON.stringify(attrs),
-			sequence,
-		});
-
-		const elementId = result.id;
-
-		// Save children if not a simple leaf node
-		if (!content) {
-			for (let i = 0; i < node.childNodes.length; i++) {
-				await this.#saveNode(node.childNodes[i], elementId, i);
-			}
-		}
+		this.#data = { root, tagMap };
+		return this;
 	}
 
 	/**
-	 * Returns helpers for the context section.
+	 * Serializes the turn for the Client (JSON-RPC).
 	 */
-	get context() {
-		const contextEl = this.#doc.getElementsByTagName("context")[0];
-		const h = (tagName) => {
-			return {
-				add: (content, attrs = {}) => {
-					const el = this.#doc.createElement(tagName);
-					for (const [k, v] of Object.entries(attrs)) {
-						el.setAttribute(k, v);
-					}
-					el.appendChild(this.#doc.createTextNode(content));
-					contextEl.appendChild(el);
-				},
-			};
+	toJson() {
+		if (!this.#data) throw new Error("Turn not hydrated.");
+		const { tagMap } = this.#data;
+
+		const findTag = (tagName, pool = this.#data.root) => {
+			for (const el of pool) {
+				if (el.tag_name === tagName) return el;
+				const found = findTag(tagName, el.children);
+				if (found) return found;
+			}
+			return null;
 		};
+
+		const turnNode = findTag("turn");
+		const systemNode = findTag("system");
+		const contextNode = findTag("context");
+		const userNode = findTag("user");
+		const assistantNode = findTag("assistant");
+
+		const getDeepContent = (node) => {
+			if (!node) return null;
+			if (node.content !== null) return node.content;
+			return node.children
+				.map((c) => getDeepContent(c))
+				.filter((v) => v !== null)
+				.join("\n");
+		};
+
+		const getChildContent = (parent, tagName) => {
+			const el = parent?.children.find((c) => c.tag_name === tagName);
+			return getDeepContent(el);
+		};
+
+		const meta = JSON.parse(getChildContent(assistantNode, "meta") || "{}");
+		const tasksRaw = getChildContent(assistantNode, "tasks") || "";
+		const { list: tasks, next: next_task } = TaskParser.parse(tasksRaw);
+
+		// FETCH SEQUENCE FROM ROOT TURN NODE ATTRIBUTES OR SQL DATA
+		const rawSeq = turnNode?.attributes?.sequence ?? turnNode?.sequence ?? 0;
+		const sequence = Number.parseInt(String(rawSeq), 10);
 
 		return {
-			error: h("error"),
-			warn: h("warn"),
-			info: h("info"),
+			sequence: Number.isNaN(sequence) ? 0 : sequence,
+			system: getDeepContent(systemNode) || "",
+			user: getDeepContent(userNode) || "",
+			context: contextNode ? this.toXml(contextNode) : "",
+			errors:
+				tagMap
+					.get("error")
+					?.map((t) => ({ content: t.content, ...t.attributes })) || [],
+			warnings:
+				tagMap
+					.get("warn")
+					?.map((t) => ({ content: t.content, ...t.attributes })) || [],
+			infos:
+				tagMap
+					.get("info")
+					?.map((t) => ({ content: t.content, ...t.attributes })) || [],
+			files:
+				tagMap.get("file")?.map((f) => {
+					const source = f.children.find((c) => c.tag_name === "source");
+					const symbols = f.children.find((c) => c.tag_name === "symbols");
+					return {
+						path: f.attributes.path,
+						size: f.attributes.size,
+						tokens: f.attributes.tokens,
+						content: source ? source.content : null,
+						symbols: symbols ? symbols.content?.split("\t") : null,
+					};
+				}) || [],
+			assistant: {
+				content: getChildContent(assistantNode, "content"),
+				reasoning: getChildContent(assistantNode, "reasoning_content"),
+				tasks,
+				next_task,
+				known: getChildContent(assistantNode, "known"),
+				unknown: getChildContent(assistantNode, "unknown"),
+				summary: getChildContent(assistantNode, "summary"),
+			},
+			usage: {
+				prompt_tokens: meta.prompt_tokens || 0,
+				completion_tokens: meta.completion_tokens || 0,
+				total_tokens: meta.total_tokens || 0,
+			},
+			model: {
+				alias: meta.alias,
+				actual: meta.actualModel,
+				display: meta.displayModel,
+			},
 		};
 	}
 
 	/**
-	 * Returns helpers for the assistant section.
-	 */
-	get assistant() {
-		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
-		const h = (tagName) => {
-			let el = assistantEl.getElementsByTagName(tagName)[0];
-			if (!el) {
-				el = this.#doc.createElement(tagName);
-				assistantEl.appendChild(el);
-			}
-			return {
-				add: (content) => {
-					if (typeof content === "string") {
-						el.appendChild(this.#doc.createTextNode(content));
-					} else {
-						el.appendChild(this.#doc.createTextNode(JSON.stringify(content)));
-					}
-				},
-			};
-		};
-
-		return {
-			reasoning: h("reasoning_content"),
-			content: h("content"),
-			meta: h("meta"),
-		};
-	}
-
-	/**
-	 * Serializes only the request portions for the OpenAI messages array.
-	 * Currently handles System and User roles.
+	 * Serializes the turn for the LLM history.
 	 */
 	async serialize() {
-		const systemEl = this.#doc.getElementsByTagName("system")[0];
-		const contextEl = this.#doc.getElementsByTagName("context")[0];
-		const userEl = this.#doc.getElementsByTagName("user")[0];
+		if (!this.#data) await this.hydrate();
+		const json = this.toJson();
 
-		// system role = <system> + <context>
-		const systemContent = [
-			this.#serializeNode(systemEl),
-			this.#serializeNode(contextEl),
-		]
-			.filter(Boolean)
-			.join("\n");
+		const messages = [];
+		if (json.system) messages.push({ role: "system", content: json.system });
 
-		// user role = <user>
-		const userContent = this.#serializeNode(userEl);
+		const userContent = (json.context || "") + (json.user || "");
+		if (userContent) messages.push({ role: "user", content: userContent });
 
-		const messages = [
-			{ role: "system", content: systemContent },
-			{ role: "user", content: userContent },
-		];
-
-		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
-		if (assistantEl) {
-			const assistantContent = this.#serializeNode(assistantEl);
-			if (assistantContent) {
-				messages.push({ role: "assistant", content: assistantContent });
-			}
+		if (json.assistant.content) {
+			messages.push({ role: "assistant", content: json.assistant.content });
 		}
 
 		return messages;
 	}
 
 	/**
-	 * Serializes the entire turn into a structured JSON object for the client.
+	 * Renders a node and its children to faithful XML.
 	 */
-	toJson() {
-		const systemEl = this.#doc.getElementsByTagName("system")[0];
-		const contextEl = this.#doc.getElementsByTagName("context")[0];
-		const userEl = this.#doc.getElementsByTagName("user")[0];
-		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
-
-		const getTagContent = (parent, tagName) => {
-			if (!parent) return null;
-			const el = parent.getElementsByTagName(tagName)[0];
-			if (!el) return null;
-			return el.textContent;
-		};
-
-		const assistantMeta = JSON.parse(
-			getTagContent(assistantEl, "meta") || "{}",
-		);
-		const usage = assistantMeta.usage || {
-			prompt_tokens: assistantMeta.prompt_tokens || 0,
-			completion_tokens: assistantMeta.completion_tokens || 0,
-			total_tokens: assistantMeta.total_tokens || 0,
-		};
-
-		const files = [];
-		const errors = [];
-		const warnings = [];
-		const infos = [];
-
-		if (contextEl) {
-			const getFeedback = (tagName) => {
-				const els = contextEl.getElementsByTagName(tagName);
-				const results = [];
-				for (let i = 0; i < els.length; i++) {
-					const el = els[i];
-					const attrs = {};
-					for (let j = 0; j < el.attributes.length; j++) {
-						attrs[el.attributes[j].name] = el.attributes[j].value;
-					}
-					results.push({ content: el.textContent, ...attrs });
-				}
-				return results;
-			};
-
-			errors.push(...getFeedback("error"));
-			warnings.push(...getFeedback("warn"));
-			infos.push(...getFeedback("info"));
-
-			const fileEls = contextEl.getElementsByTagName("file");
-			for (let i = 0; i < fileEls.length; i++) {
-				const f = fileEls[i];
-				const sourceEl = f.getElementsByTagName("source")[0];
-				const symbolsEl = f.getElementsByTagName("symbols")[0];
-				const symbols = [];
-				if (symbolsEl) {
-					const raw = symbolsEl.textContent.split("\t");
-					for (const s of raw) {
-						if (!s) continue;
-						const match = s.match(/^([^(]+)(\(.*\))?$/);
-						if (match) {
-							const sym = { name: match[1] };
-							if (match[2]) sym.params = match[2];
-							symbols.push(sym);
-						} else {
-							symbols.push({ name: s });
-						}
-					}
-				}
-
-				files.push({
-					path: f.getAttribute("path"),
-					size: Number.parseInt(f.getAttribute("size") || "0", 10),
-					tokens: Number.parseInt(f.getAttribute("tokens") || "0", 10),
-					content: sourceEl ? sourceEl.textContent : null,
-					symbols: symbols.length > 0 ? symbols : null,
-				});
-			}
-		}
-
-		const tasksRaw = getTagContent(assistantEl, "tasks");
-		const { list: tasksList, next: nextTask } = TaskParser.parse(tasksRaw);
-
-		return {
-			sequence: Number.parseInt(
-				this.#doc.documentElement.getAttribute("sequence") || "0",
-				10,
-			),
-			system: systemEl?.textContent || "",
-			context: this.#serializePretty(contextEl),
-			files, // Include parsed files for client convenience
-			errors,
-			warnings,
-			infos,
-			user: userEl?.textContent || "",
-			assistant: {
-				content: getTagContent(assistantEl, "content"),
-				reasoning: getTagContent(assistantEl, "reasoning_content"),
-				tasks: tasksList,
-				next_task: nextTask,
-				known: getTagContent(assistantEl, "known"),
-				unknown: getTagContent(assistantEl, "unknown"),
-				summary: getTagContent(assistantEl, "summary"),
-			},
-			usage,
-			model: {
-				alias: assistantMeta.alias,
-				actual: assistantMeta.actualModel,
-			},
-		};
-	}
-
-	/**
-	 * Serializes the entire turn into a pretty-printed XML document.
-	 */
-	toXml() {
-		return this.#serializePretty(this.#doc.documentElement);
-	}
-
-	#serializeNode(node) {
+	toXml(node = null) {
+		if (!node && this.#data) node = this.#data.root[0];
 		if (!node) return "";
-		return this.#serializer.serializeToString(node);
-	}
 
-	#serializePretty(node, level = 0) {
-		if (!node) return "";
-		const indent = "  ".repeat(level);
-
-		// Handle Text Nodes
-		if (node.nodeType === 3) {
-			const text = node.nodeValue;
-			// Only return text if it's not just whitespace
-			return text.trim() ? text : "";
+		let xml = `<${node.tag_name}`;
+		for (const [k, v] of Object.entries(node.attributes)) {
+			xml += ` ${k}="${this.#escapeXml(String(v))}"`;
 		}
 
-		// Handle Document Node
-		if (node.nodeType === 9) {
-			return this.#serializePretty(node.documentElement, level);
-		}
-
-		// Handle Element Nodes
-		const tagName = node.tagName;
-		let xml = `${indent}<${tagName}`;
-
-		// Add Attributes
-		if (node.attributes) {
-			for (let i = 0; i < node.attributes.length; i++) {
-				const attr = node.attributes[i];
-				xml += ` ${attr.name}="${this.#escapeXml(attr.value)}"`;
-			}
-		}
-
-		// Self-closing if no children
-		if (node.childNodes.length === 0) {
+		if (node.content === null && node.children.length === 0) {
 			return `${xml}/>\n`;
 		}
 
-		// Special handling for content-preserving tags
-		const preserve = [
-			"source",
-			"symbols",
-			"persona",
-			"skill",
-			"summary",
-			"content",
-			"reasoning_content",
-			"tasks",
-			"known",
-			"unknown",
-		].includes(tagName);
-
-		if (preserve) {
-			xml += ">";
-			for (let i = 0; i < node.childNodes.length; i++) {
-				const child = node.childNodes[i];
-				if (child.nodeType === 3) xml += child.nodeValue;
-				else xml += this.#serializePretty(child, 0).trim();
-			}
-			xml += `</${tagName}>\n`;
-			return xml;
+		xml += ">";
+		if (node.content !== null) xml += node.content;
+		for (const child of node.children) {
+			xml += this.toXml(child);
 		}
-
-		// Standard structural tags
-		xml += ">\n";
-		for (let i = 0; i < node.childNodes.length; i++) {
-			const childResult = this.#serializePretty(node.childNodes[i], level + 1);
-			if (childResult) xml += childResult;
-		}
-		xml += `${indent}</${tagName}>\n`;
+		xml += `</${node.tag_name}>\n`;
 		return xml;
 	}
 

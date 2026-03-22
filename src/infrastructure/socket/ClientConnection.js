@@ -54,9 +54,14 @@ export default class ClientConnection {
 			}
 		});
 
-		this.#hooks.run.step.completed.on(async (payload) => {
+		this.#hooks.run.step.completed.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
-				const turn = await payload.turn.toJson();
+				const turn = payload.turn.toJson();
+				if (process.env.RUMMY_DEBUG === "true") {
+					console.log(
+						`[DEBUG] RPC OUT: run/step/completed. Errors: ${turn.errors.length}`,
+					);
+				}
 				this.#sendNotification("run/step/completed", {
 					runId: payload.runId,
 					turn,

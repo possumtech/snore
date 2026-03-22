@@ -1,12 +1,13 @@
 import { exec } from "node:child_process";
 import crypto from "node:crypto";
 import { promisify } from "node:util";
+import Turn from "../../domain/turn/Turn.js";
 
 const execAsync = promisify(exec);
 
 /**
  * AgentLoop: Coordinates the autonomous Rumsfeld Loop.
- * The Loop Arbiter enforces Hierarchical Priority: Gather > Action > Summary.
+ * The database is the single source of truth for every tag and state change.
  */
 export default class AgentLoop {
 	#db;
@@ -63,18 +64,28 @@ export default class AgentLoop {
 		});
 
 		const sessions = await this.#db.get_session_by_id.all({
-			id: String(sessionId),
+			id: String(sessionId || ""),
 		});
-		const projectId = String(sessions[0].project_id);
+		if (!sessions || sessions.length === 0) {
+			throw new Error(`Session '${sessionId}' not found.`);
+		}
+		const projectId = String(sessions[0].project_id || "");
 		const project = await this.#db.get_project_by_id.get({
 			id: projectId,
 		});
 
-		// 1. INITIAL SYNC: Buffered Files
+		if (!project) {
+			throw new Error(`Project '${projectId}' not found.`);
+		}
+
+		// Sync Buffered Files
 		if (Array.isArray(projectBufferFiles)) {
 			await this.#db.reset_buffered.run({ project_id: projectId });
 			for (const path of projectBufferFiles) {
-				await this.#db.set_buffered.run({ project_id: projectId, path });
+				await this.#db.set_buffered.run({
+					project_id: projectId,
+					path: String(path),
+				});
 			}
 		}
 
@@ -140,57 +151,67 @@ export default class AgentLoop {
 				(projectBufferFiles && projectBufferFiles.yolo === true);
 			await this.#db.create_run.run({
 				id: currentRunId,
-				session_id: sessionId,
-				type,
+				session_id: String(sessionId || ""),
+				type: String(type || "ask"),
 				config: JSON.stringify({ model, yolo }),
 			});
 		}
 
-		let loopPrompt = prompt;
+		const loopPrompt = prompt;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
-		let currentTurnSequence = 0;
 		let protocolRetries = 0;
-		const MAX_PROTOCOL_RETRIES = 3;
+		const MAX_PROTOCOL_RETRIES = 5;
+		let currentTurnSequence = 0;
 
 		// --- THE ATOMIC TURN LOOP ---
 		while (true) {
 			const lastSeqRow = await this.#db.get_last_turn_sequence.get({
 				run_id: currentRunId,
 			});
-			const sequenceOffset =
-				lastSeqRow.last_seq !== null ? lastSeqRow.last_seq + 1 : 0;
-			currentTurnSequence = sequenceOffset;
+			currentTurnSequence =
+				lastSeqRow && lastSeqRow.last_seq !== null
+					? lastSeqRow.last_seq + 1
+					: 0;
 
+			// Fetch history from SQL (Authoritative)
 			const historyRows = await this.#db.get_turn_history.all({
 				run_id: currentRunId,
 			});
-			const historyMessages = historyRows.map((r) => ({
-				role: r.role,
-				content: r.content,
-			}));
+			const historyMessages = [];
+			for (const row of historyRows) {
+				if (!row.turn_id) continue;
+				const turn = new Turn(this.#db, row.turn_id);
+				await turn.hydrate();
+				const msgs = await turn.serialize();
+				historyMessages.push(...msgs);
+			}
 
-			const lastAssistantMsg = historyMessages
-				.filter((m) => m.role === "assistant")
-				.at(-1);
-			const previousTags = this.#responseParser.parseActionTags(
-				lastAssistantMsg?.content || "",
-			);
-			const unknownTag = previousTags.find((t) => t.tagName === "unknown");
-			const hasUnknowns = unknownTag
-				? this.#responseParser.getNodeText(unknownTag).trim().length > 0
-				: true;
-			const tasksTagPrev = previousTags.find((t) => t.tagName === "tasks");
-			const tasksTextPrev = tasksTagPrev
-				? this.#responseParser.getNodeText(tasksTagPrev).trim()
-				: "";
-			const tasksComplete =
-				tasksTextPrev.length > 0 && !tasksTextPrev.includes("- [ ]");
+			// Peek at last turn state
+			let hasUnknowns = true;
+			let tasksComplete = false;
+			const lastTurnRow = historyRows.at(-1);
+			if (lastTurnRow) {
+				const lastTurn = new Turn(this.#db, lastTurnRow.turn_id);
+				await lastTurn.hydrate();
+				const lastJson = lastTurn.toJson();
+				const unknownText = (lastJson.assistant.unknown || "").trim();
+				hasUnknowns =
+					unknownText.length > 0 &&
+					!/^<unknown\s*\/>$/i.test(unknownText) &&
+					!/^<unknown\s*>\s*<\/unknown\s*>$/i.test(unknownText);
+				tasksComplete =
+					lastJson.assistant.tasks.length > 0 &&
+					lastJson.assistant.tasks.every((t) => t.completed);
+			}
 
-			const { id: turnId } = await this.#db.create_empty_turn.get({
-				run_id: currentRunId,
-				sequence_number: sequenceOffset,
+			// Create fresh Turn entry in DB
+			const turnRow = await this.#db.create_empty_turn.get({
+				run_id: String(currentRunId || ""),
+				sequence: Number(currentTurnSequence),
 			});
+			const turnId = turnRow.id;
 
+			// Build initial prompt tags and COMMIT to SQL
 			const turnObj = await this.#turnBuilder.build({
 				type,
 				project,
@@ -198,7 +219,7 @@ export default class AgentLoop {
 				model: requestedModel,
 				db: this.#db,
 				prompt: loopPrompt,
-				sequence: sequenceOffset,
+				sequence: Number(currentTurnSequence),
 				hasUnknowns,
 				tasksComplete,
 				turnId,
@@ -221,69 +242,107 @@ export default class AgentLoop {
 				requestedModel,
 			);
 			const responseMessage = result.choices?.[0]?.message;
+			const rawReasoning =
+				responseMessage?.reasoning_content || responseMessage?.reasoning;
 			const mergedContent = this.#responseParser.mergePrefill(
 				prefill,
 				responseMessage?.content || "",
 			);
 
 			const finalResponse = await this.#hooks.llm.response.filter(
-				{ ...responseMessage, content: mergedContent },
+				{
+					...responseMessage,
+					content: mergedContent,
+					reasoning_content: rawReasoning,
+				},
 				{ model: requestedModel, sessionId, runId: currentRunId },
 			);
+
+			// Commit Usage Stats
 			const usage = result.usage || {
 				prompt_tokens: 0,
 				completion_tokens: 0,
 				total_tokens: 0,
-				cost: 0,
 			};
-
-			if (finalResponse?.reasoning_content)
-				turnObj.assistant.reasoning.add(finalResponse.reasoning_content);
-			if (finalResponse?.content)
-				turnObj.assistant.content.add(finalResponse.content);
-			turnObj.assistant.meta.add({
-				prompt_tokens: usage.prompt_tokens,
-				completion_tokens: usage.completion_tokens,
-				total_tokens: usage.total_tokens,
-				cost: usage.cost,
-				alias: requestedModel,
-				actualModel: result.model,
-				displayModel: this.#resolveAlias(requestedModel),
-			});
-
-			const dbUsage = {
-				prompt_tokens: usage.prompt_tokens || 0,
-				completion_tokens: usage.completion_tokens || 0,
-				total_tokens: usage.total_tokens || 0,
-				cost: usage.cost || 0,
-			};
-
 			await this.#db.update_turn_stats.run({
 				id: turnId,
-				...dbUsage,
+				prompt_tokens: Number(usage.prompt_tokens || 0),
+				completion_tokens: Number(usage.completion_tokens || 0),
+				total_tokens: Number(usage.total_tokens || 0),
+				cost: Number(usage.cost || 0),
 			});
-			await turnObj.save();
 
-			const turnContent = finalResponse?.content || "";
-			const atomicResult = {
-				runId: currentRunId,
-				content: turnContent,
-				reasoning: finalResponse?.reasoning_content || null,
-				usage,
-				diffs: [],
-				commands: [],
-				notifications: [],
+			// COMMIT ASSISTANT RESPONSE TO SQL
+			const elements = await this.#db.get_turn_elements.all({
+				turn_id: turnId,
+			});
+			const assistantNode = elements.find((el) => el.tag_name === "assistant");
+
+			if (!assistantNode) {
+				throw new Error(
+					`Critical Error: assistant node not found in database for turn ${turnId}`,
+				);
+			}
+
+			const commitAssistantTag = async (
+				tagName,
+				content,
+				attrs = {},
+				sequence = 0,
+			) => {
+				await this.#db.insert_turn_element.run({
+					turn_id: turnId,
+					parent_id: assistantNode.id,
+					tag_name: String(tagName || ""),
+					content: content === null ? null : String(content),
+					attributes:
+						typeof attrs === "string" ? attrs : JSON.stringify(attrs || {}),
+					sequence: Number(sequence),
+				});
 			};
-			const tags = this.#responseParser.parseActionTags(finalResponse.content);
 
-			const tasksTag = tags.find((t) => t.tagName === "tasks");
-			const tasksText = tasksTag
-				? this.#responseParser.getNodeText(tasksTag).trim()
-				: "";
+			if (finalResponse.reasoning_content) {
+				await commitAssistantTag(
+					"reasoning_content",
+					finalResponse.reasoning_content,
+					{},
+					0,
+				);
+			}
+			await commitAssistantTag("content", finalResponse.content, {}, 1);
+			await commitAssistantTag(
+				"meta",
+				JSON.stringify({
+					prompt_tokens: usage.prompt_tokens,
+					completion_tokens: usage.completion_tokens,
+					total_tokens: usage.total_tokens,
+					alias: requestedModel,
+					actualModel: result.model,
+					displayModel: this.#resolveAlias(requestedModel),
+				}),
+				{},
+				2,
+			);
+
+			const tags = this.#responseParser.parseActionTags(finalResponse.content);
+			for (let i = 0; i < tags.length; i++) {
+				const tag = tags[i];
+				if (["tasks", "known", "unknown", "summary"].includes(tag.tagName)) {
+					await commitAssistantTag(
+						tag.tagName,
+						this.#responseParser.getNodeText(tag),
+						{},
+						i + 3,
+					);
+				}
+			}
+
+			// Hydrate to ensure memory state matches disk
+			await turnObj.hydrate();
 
 			// PROTOCOL VALIDATION
 			const validationErrors = [];
-			if (this.#db && protocolRetries < MAX_PROTOCOL_RETRIES) {
+			if (protocolRetries < MAX_PROTOCOL_RETRIES) {
 				const constraints = await this.#db.get_protocol_constraints.get({
 					type,
 					has_unknowns: hasUnknowns ? 1 : 0,
@@ -303,7 +362,6 @@ export default class AgentLoop {
 							});
 						}
 					}
-
 					for (const tag of tags) {
 						if (tag.tagName === "summary") continue;
 						if (!allowed.includes(tag.tagName)) {
@@ -313,15 +371,14 @@ export default class AgentLoop {
 							});
 						}
 					}
-
-					const unknownTagNow = tags.find((t) => t.tagName === "unknown");
-					const unknownText = unknownTagNow
-						? this.#responseParser.getNodeText(unknownTagNow).trim()
-						: "";
+					const turnJson = turnObj.toJson();
 					const hasUnknownsNow =
-						unknownText.length > 0 &&
-						unknownText !== "<unknown/>" &&
-						unknownText !== "<unknown></unknown>";
+						turnJson.assistant.unknown &&
+						turnJson.assistant.unknown.trim().length > 0 &&
+						!/^<unknown\s*\/>$/i.test(turnJson.assistant.unknown) &&
+						!/^<unknown\s*>\s*<\/unknown\s*>$/i.test(
+							turnJson.assistant.unknown,
+						);
 
 					if (!hasUnknownsNow && !presentTags.has("summary")) {
 						validationErrors.push({
@@ -335,47 +392,40 @@ export default class AgentLoop {
 
 			if (validationErrors.length > 0) {
 				protocolRetries++;
-
-				// PERSIST AND EMIT EVEN ON FAILURE (Transparency)
-				for (const err of validationErrors) {
-					turnObj.context.error.add(err.content, err.attrs);
+				const contextNode = elements.find((el) => el.tag_name === "context");
+				if (contextNode) {
+					for (let j = 0; j < validationErrors.length; j++) {
+						const err = validationErrors[j];
+						await this.#db.insert_turn_element.run({
+							turn_id: turnId,
+							parent_id: contextNode.id,
+							tag_name: "error",
+							content: String(err.content || ""),
+							attributes: JSON.stringify(err.attrs || {}),
+							sequence: 100 + j,
+						});
+					}
 				}
-
-				await turnObj.save();
-				const projectFiles = await this.#sessionManager.getFiles(project.path);
+				await turnObj.hydrate();
 				await this.#hooks.run.step.completed.emit({
 					runId: currentRunId,
 					sessionId,
 					turn: turnObj,
-					projectFiles,
+					projectFiles: await this.#sessionManager.getFiles(project.path),
 				});
-
-				await this.#hooks.run.progress.emit({
-					runId: currentRunId,
-					sessionId,
-					tasks: tasksText,
-					status: `Protocol Error: ${validationErrors.length} violations detected. Retrying (Attempt ${protocolRetries})...`,
-				});
-				// Original prompt remains, errors are now in context
-				loopPrompt = prompt;
 				continue;
 			}
-			// Reset retries on success
-			protocolRetries = 0;
 
-			// PERSIST SEMANTIC TAGS TO TURN DOM
-			const semanticTags = ["tasks", "known", "unknown", "summary"];
-			for (const tagName of semanticTags) {
-				const tag = tags.find((t) => t.tagName === tagName);
-				if (tag) {
-					this.#responseParser.setAssistantContent(
-						turnObj,
-						tagName,
-						this.#responseParser.getNodeText(tag),
-					);
-				}
-			}
-
+			// Process Findings
+			const atomicResult = {
+				runId: currentRunId,
+				content: finalResponse.content,
+				reasoning: finalResponse.reasoning_content,
+				usage,
+				diffs: [],
+				commands: [],
+				notifications: [],
+			};
 			await this.#findingsManager.populateFindings(
 				project.path,
 				atomicResult,
@@ -384,137 +434,46 @@ export default class AgentLoop {
 
 			const mentions = new Set();
 			const wordRegex = /[a-zA-Z0-9_./-]+/g;
-			const reasoningText = finalResponse.reasoning_content || "";
-			const knownTag = tags.find((t) => t.tagName === "known");
-			const knownText = knownTag
-				? this.#responseParser.getNodeText(knownTag)
-				: "";
-
-			for (const match of `${finalResponse.content} ${reasoningText} ${knownText}`.matchAll(
+			const turnJson = turnObj.toJson();
+			for (const match of `${turnJson.assistant.content} ${turnJson.assistant.reasoning} ${turnJson.assistant.known}`.matchAll(
 				wordRegex,
 			)) {
 				mentions.add(match[0]);
 			}
 			for (const mention of mentions) {
-				await this.#db.update_file_attention.run({
-					project_id: projectId,
-					turn_seq: sequenceOffset,
-					mention,
-				});
+				try {
+					await this.#db.update_file_attention.run({
+						project_id: String(projectId),
+						turn_seq: Number(currentTurnSequence),
+						mention: String(mention),
+					});
+				} catch (_err) {}
 			}
 
-			const projectFiles = await this.#sessionManager.getFiles(project.path);
+			// RE-HYDRATE TO CAPTURE FINDINGS NODES
+			await turnObj.hydrate();
 
-			await this.#hooks.run.turn.audit.emit({
-				runId: currentRunId,
-				turn: turnObj,
-			});
-
+			// Finalize Turn
 			await this.#hooks.run.step.completed.emit({
 				runId: currentRunId,
 				sessionId,
 				turn: turnObj,
-				projectFiles,
+				projectFiles: await this.#sessionManager.getFiles(project.path),
 			});
 
-			if (tasksText)
-				await this.#hooks.run.progress.emit({
-					runId: currentRunId,
-					sessionId,
-					tasks: tasksText,
-					status: "Agent is thinking...",
-				});
-
-			const gatherReadTags = tags.filter((t) => t.tagName === "read");
-			const gatherCmdTags = tags.filter(
-				(t) => t.tagName === "env" || t.tagName === "run",
-			);
+			const isChecklistComplete =
+				turnJson.assistant.tasks.length > 0 &&
+				turnJson.assistant.tasks.every((t) => t.completed);
+			const summaryTag = tags.find((t) => t.tagName === "summary");
 			const breakingTags = tags.filter((t) =>
 				["create", "delete", "edit", "prompt_user"].includes(t.tagName),
 			);
-			const summaryTag = tags.find((t) => t.tagName === "summary");
-			const isChecklistComplete =
-				tasksText.length > 0 && !tasksText.includes("- [ ]");
-
-			if (gatherReadTags.length > 0 || gatherCmdTags.length > 0) {
-				if (gatherReadTags.length > 0) {
-					const paths = gatherReadTags
-						.map((t) => t.attrs.find((a) => a.name === "file")?.value)
-						.filter(Boolean);
-					for (const p of paths)
-						turnObj.context.info.add("Full file added to context", { file: p });
-				}
-				for (const tag of gatherCmdTags) {
-					const cmd = this.#responseParser.getNodeText(tag).trim();
-					try {
-						const { stdout, stderr } = await execAsync(cmd, {
-							cwd: project.path,
-						});
-						turnObj.context.info.add(
-							`Executed ${tag.tagName}.\nOutput:\n${(stdout + stderr).trim() || "(no output)"}`,
-							{ command: cmd },
-						);
-					} catch (err) {
-						turnObj.context.info.add(
-							`Failed to execute ${tag.tagName}.\nError: ${err.message}`,
-							{ command: cmd },
-						);
-					}
-				}
-				// Original prompt remains, gathered data is now in context
-				loopPrompt = prompt;
-				continue;
-			}
 
 			if (breakingTags.length > 0) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "proposed",
 				});
-				for (const d of atomicResult.diffs) {
-					await this.#db.insert_finding_diff.run({
-						run_id: currentRunId,
-						turn_id: turnId,
-						type: d.type,
-						file_path: d.file,
-						patch: d.patch,
-					});
-				}
-				for (const c of atomicResult.commands) {
-					await this.#db.insert_finding_command.run({
-						run_id: currentRunId,
-						turn_id: turnId,
-						type: c.type,
-						command: c.command,
-					});
-				}
-				for (const n of atomicResult.notifications) {
-					if (n.type === "prompt_user") {
-						await this.#db.insert_finding_notification.run({
-							run_id: currentRunId,
-							turn_id: turnId,
-							type: n.type,
-							text: n.text,
-							level: "info",
-							status: "proposed",
-							config: n.config ? JSON.stringify(n.config) : null,
-							append: 0,
-						});
-					}
-				}
-
-				await this.#hooks.run.turn.audit.emit({
-					runId: currentRunId,
-					turn: turnObj,
-				});
-
-				await this.#hooks.run.step.completed.emit({
-					runId: currentRunId,
-					sessionId,
-					turn: turnObj,
-					projectFiles: await this.#sessionManager.getFiles(project.path),
-				});
-
 				return {
 					runId: currentRunId,
 					status: "proposed",
@@ -527,33 +486,6 @@ export default class AgentLoop {
 					id: currentRunId,
 					status: "completed",
 				});
-				for (const n of atomicResult.notifications) {
-					if (n.type === "summary") {
-						await this.#db.insert_finding_notification.run({
-							run_id: currentRunId,
-							turn_id: turnId,
-							type: n.type,
-							text: n.text,
-							level: "info",
-							status: "acknowledged",
-							config: null,
-							append: n.append ? 1 : 0,
-						});
-					}
-				}
-
-				await this.#hooks.run.turn.audit.emit({
-					runId: currentRunId,
-					turn: turnObj,
-				});
-
-				await this.#hooks.run.step.completed.emit({
-					runId: currentRunId,
-					sessionId,
-					turn: turnObj,
-					projectFiles: await this.#sessionManager.getFiles(project.path),
-				});
-
 				return {
 					runId: currentRunId,
 					status: "completed",
@@ -561,17 +493,55 @@ export default class AgentLoop {
 				};
 			}
 
-			await this.#hooks.run.turn.audit.emit({
-				runId: currentRunId,
-				turn: turnObj,
-			});
-
-			await this.#hooks.run.step.completed.emit({
-				runId: currentRunId,
-				sessionId,
-				turn: turnObj,
-				projectFiles: await this.#sessionManager.getFiles(project.path),
-			});
+			// Gather info
+			const gatherTags = tags.filter((t) =>
+				["read", "env", "run"].includes(t.tagName),
+			);
+			if (gatherTags.length > 0) {
+				const contextNode = elements.find((el) => el.tag_name === "context");
+				if (contextNode) {
+					for (let k = 0; k < gatherTags.length; k++) {
+						const tag = gatherTags[k];
+						if (tag.tagName === "read") {
+							const path = tag.attrs.find((a) => a.name === "file")?.value;
+							await this.#db.insert_turn_element.run({
+								turn_id: turnId,
+								parent_id: contextNode.id,
+								tag_name: "info",
+								content: "Full file added to context",
+								attributes: JSON.stringify({ file: path }),
+								sequence: 200 + k,
+							});
+						} else {
+							const cmd = this.#responseParser.getNodeText(tag).trim();
+							try {
+								const { stdout, stderr } = await execAsync(cmd, {
+									cwd: project.path,
+								});
+								await this.#db.insert_turn_element.run({
+									turn_id: turnId,
+									parent_id: contextNode.id,
+									tag_name: "info",
+									content: String((stdout + stderr).trim() || "(no output)"),
+									attributes: JSON.stringify({ command: cmd }),
+									sequence: 200 + k,
+								});
+							} catch (err) {
+								await this.#db.insert_turn_element.run({
+									turn_id: turnId,
+									parent_id: contextNode.id,
+									tag_name: "info",
+									content: String(err.message),
+									attributes: JSON.stringify({ command: cmd, error: true }),
+									sequence: 200 + k,
+								});
+							}
+						}
+					}
+				}
+				await turnObj.hydrate();
+				continue;
+			}
 
 			break;
 		}
