@@ -178,7 +178,14 @@ describe("RepoMap (Perspective Engine)", () => {
 		// Index first so records exist
 		await repoMap.updateIndex();
 
-		// RELATIONAL: Mark as retained (Model focus)
+		// RELATIONAL: Mark as active (Model focus)
+		await db.upsert_repo_map_file.run({
+			project_id: pid,
+			path: "active.js",
+			visibility: "active",
+			hash: null,
+			size: 0,
+		});
 		await db.set_retained.run({
 			project_id: pid,
 			path: "active.js",
