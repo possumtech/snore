@@ -48,7 +48,7 @@ describe("Happy Path E2E: France", () => {
 							message: {
 								role: "assistant",
 								content:
-									"<tasks>- [x] Answer question</tasks><known>The user is asking about France.</known><unknown></unknown><summary>The capital of France is Paris.</summary>",
+									"<todo>- [x] summary: Answer question</todo><known>The user is asking about France.</known><unknown></unknown><summary>The capital of France is Paris.</summary>",
 							},
 						},
 					],
@@ -78,16 +78,16 @@ describe("Happy Path E2E: France", () => {
 
 		assert.ok(finalTurn.user.includes("France"));
 
-		// Verify structured tasks
+		// Verify structured todo
 		assert.ok(
-			Array.isArray(finalTurn.assistant.tasks),
-			"Tasks should be an array",
+			Array.isArray(finalTurn.assistant.todo),
+			"Todo should be an array",
 		);
 		assert.ok(
-			finalTurn.assistant.tasks.length > 0,
-			"Tasks should not be empty",
+			finalTurn.assistant.todo.length > 0,
+			"Todo should not be empty",
 		);
-		assert.strictEqual(finalTurn.assistant.tasks[0].completed, true);
+		assert.strictEqual(finalTurn.assistant.todo[0].completed, true);
 
 		assert.ok(
 			finalTurn.context.includes("<context"),

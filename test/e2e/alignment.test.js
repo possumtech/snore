@@ -74,8 +74,8 @@ describe("E2E: Protocol Alignment & Stability", () => {
 
 			const finalTurn = turns[turns.length - 1];
 			assert.ok(
-				Array.isArray(finalTurn.assistant.tasks),
-				"Final turn missing structured tasks",
+				Array.isArray(finalTurn.assistant.todo),
+				"Final turn missing structured todo",
 			);
 			const answer = [
 				finalTurn.assistant.summary,

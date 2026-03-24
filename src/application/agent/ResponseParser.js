@@ -1,6 +1,6 @@
 import * as parse5 from "parse5";
 
-import TaskParser from "./TaskParser.js";
+import TodoParser from "./TodoParser.js";
 
 /**
  * ResponseParser: Focused logic for parsing LLM output and managing DOM nodes.
@@ -31,7 +31,7 @@ export default class ResponseParser {
 		) {
 			return prefill + content;
 		}
-		if (!content.includes("<tasks>")) {
+		if (!content.includes("<todo>")) {
 			return prefill + content;
 		}
 		return content;
@@ -91,8 +91,8 @@ export default class ResponseParser {
 		}
 	}
 
-	parseTaskList(text) {
-		return TaskParser.parse(text);
+	parseTodoList(text) {
+		return TodoParser.parse(text);
 	}
 
 	parsePromptUser(node) {
@@ -151,7 +151,7 @@ export default class ResponseParser {
 			"edit",
 			"prompt_user",
 			"summary",
-			"tasks",
+			"todo",
 			"info",
 			"known",
 			"unknown",

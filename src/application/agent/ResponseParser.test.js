@@ -20,8 +20,8 @@ test("ResponseParser", async (t) => {
 		"mergePrefill should handle content starting with prefill",
 		() => {
 			assert.strictEqual(
-				parser.mergePrefill("<tasks>", "<tasks>- [ ]"),
-				"<tasks>- [ ]",
+				parser.mergePrefill("<todo>", "<todo>- [ ]"),
+				"<todo>- [ ]",
 			);
 		},
 	);
@@ -30,22 +30,22 @@ test("ResponseParser", async (t) => {
 		"mergePrefill should prepend prefill for partial completions",
 		() => {
 			assert.strictEqual(
-				parser.mergePrefill("<tasks>\n- [", "] task"),
-				"<tasks>\n- [] task",
+				parser.mergePrefill("<todo>\n- [", "] task"),
+				"<todo>\n- [] task",
 			);
 			assert.strictEqual(
-				parser.mergePrefill("<tasks>\n- [", "x] task"),
-				"<tasks>\n- [x] task",
+				parser.mergePrefill("<todo>\n- [", "x] task"),
+				"<todo>\n- [x] task",
 			);
 		},
 	);
 
 	await t.test(
-		"mergePrefill should prepend prefill if <tasks> is missing",
+		"mergePrefill should prepend prefill if <todo> is missing",
 		() => {
 			assert.strictEqual(
-				parser.mergePrefill("<tasks>", "no tasks"),
-				"<tasks>no tasks",
+				parser.mergePrefill("<todo>", "no todo"),
+				"<todo>no todo",
 			);
 		},
 	);
@@ -102,13 +102,13 @@ test("ResponseParser", async (t) => {
 	await t.test("parseActionTags should extract various tags", () => {
 		const content = `
 			<read file="test.js"/>
-			<tasks>- [ ] do it</tasks>
+			<todo>- [ ] edit: do it</todo>
 			<summary>Done</summary>
 			<invalid>ignore me</invalid>
 		`;
 		const tags = parser.parseActionTags(content);
 		assert.ok(tags.some((t) => t.tagName === "read"));
-		assert.ok(tags.some((t) => t.tagName === "tasks"));
+		assert.ok(tags.some((t) => t.tagName === "todo"));
 		assert.ok(tags.some((t) => t.tagName === "summary"));
 		assert.ok(!tags.some((t) => t.tagName === "invalid"));
 

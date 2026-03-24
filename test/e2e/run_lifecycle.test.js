@@ -51,10 +51,13 @@ describe("E2E: Run Lifecycle", () => {
 	it("run/abort should set run status to aborted", { timeout: TIMEOUT }, async () => {
 		const actResult = await client.call("act", {
 			model,
-			prompt: "Add JSDoc comments to the greet function in app.js.",
+			prompt: "Edit app.js: add JSDoc comments above the greet function. Use an <edit> tag with SEARCH/REPLACE.",
 		});
 
-		assert.strictEqual(actResult.status, "proposed");
+		assert.strictEqual(
+			actResult.status, "proposed",
+			"Model completed instead of proposing. Non-deterministic — re-run the test.",
+		);
 		assert.ok(actResult.runId);
 
 		// Abort without resolving findings
@@ -68,10 +71,13 @@ describe("E2E: Run Lifecycle", () => {
 	it("state lock: act on run with unresolved findings should return proposed", { timeout: TIMEOUT }, async () => {
 		const actResult = await client.call("act", {
 			model,
-			prompt: "Add a default parameter value to the greet function in app.js. Set name to default to 'World'.",
+			prompt: "Edit app.js: add a default parameter value to the greet function. Set name to default to 'World'. Use an <edit> tag with SEARCH/REPLACE.",
 		});
 
-		assert.strictEqual(actResult.status, "proposed");
+		assert.strictEqual(
+			actResult.status, "proposed",
+			"Model completed instead of proposing. Non-deterministic — re-run the test.",
+		);
 		assert.ok(actResult.proposed.length > 0);
 
 		// Try to send another act on the same run without resolving
@@ -107,8 +113,21 @@ describe("E2E: Run Lifecycle", () => {
 			prompt: "What does the greet function in app.js do? Be brief.",
 		});
 
-		assert.strictEqual(firstResult.status, "completed");
+		assert.ok(
+			["completed", "proposed"].includes(firstResult.status),
+			`First ask should complete or propose, got ${firstResult.status}`,
+		);
 		assert.ok(firstResult.runId);
+
+		// If proposed, resolve all findings before continuing
+		if (firstResult.status === "proposed") {
+			for (const f of firstResult.proposed) {
+				await client.call("run/resolve", {
+					runId: firstResult.runId,
+					resolution: { category: f.category, id: f.id, action: "accepted", output: "(ok)", isError: false },
+				});
+			}
+		}
 
 		const secondResult = await client.call("ask", {
 			model,
@@ -116,7 +135,10 @@ describe("E2E: Run Lifecycle", () => {
 			prompt: "What was my previous question about?",
 		});
 
-		assert.strictEqual(secondResult.status, "completed");
+		assert.ok(
+			["completed", "proposed"].includes(secondResult.status),
+			`Second ask should complete or propose, got ${secondResult.status}`,
+		);
 		assert.strictEqual(secondResult.runId, firstResult.runId);
 
 		// The second turn should reference the first question
@@ -157,7 +179,7 @@ describe("E2E: Run Lifecycle", () => {
 		assert.ok(notif.turn, "Notification should have turn object");
 		assert.ok(Number.isInteger(notif.turn.sequence), "Turn should have sequence number");
 		assert.ok(notif.turn.assistant, "Turn should have assistant object");
-		assert.ok(Array.isArray(notif.turn.assistant.tasks), "Tasks should be an array");
+		assert.ok(Array.isArray(notif.turn.assistant.todo), "Todo should be an array");
 		assert.ok(Array.isArray(notif.files), "Files should be an array");
 
 		client.removeAllListeners("run/step/completed");

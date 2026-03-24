@@ -30,7 +30,7 @@ export default class ClientConnection {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("run/progress", {
 					runId: payload.runId,
-					tasks: payload.tasks,
+					todo: payload.todo,
 					status: payload.status,
 				});
 			}

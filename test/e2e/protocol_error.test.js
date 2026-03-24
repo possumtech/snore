@@ -57,7 +57,7 @@ describe("E2E: Protocol Error & Context Delivery", () => {
 		const turn = turnMap.get(latestSeq);
 
 		// Stability check: if the model failed, it should have errors.
-		// If it was compliant, it should have tasks.
+		// If it was compliant, it should have todo items.
 		if (turn.errors?.length > 0) {
 			assert.ok(
 				turn.errors[0].content.includes("Missing required tag") ||
@@ -65,8 +65,8 @@ describe("E2E: Protocol Error & Context Delivery", () => {
 			);
 		} else {
 			assert.ok(
-				turn.assistant.tasks.length > 0,
-				"Model was compliant but missed tasks",
+				turn.assistant.todo.length > 0,
+				"Model was compliant but missed todo",
 			);
 		}
 	});

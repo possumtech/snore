@@ -217,26 +217,26 @@ VALUES
 (
 	'ask'
 	, 1
-	, 'tasks known unknown'
-	, 'tasks known unknown read drop env prompt_user summary'
+	, 'todo known unknown'
+	, 'todo known unknown read drop env prompt_user summary'
 ),
 (
 	'ask'
 	, 0
-	, 'tasks known unknown'
-	, 'tasks known unknown read drop env prompt_user summary'
+	, 'todo known unknown'
+	, 'todo known unknown read drop env prompt_user summary'
 ),
 (
 	'act'
 	, 1
-	, 'tasks known unknown'
-	, 'tasks known unknown read drop env prompt_user summary'
+	, 'todo known unknown'
+	, 'todo known unknown read drop env prompt_user summary'
 ),
 (
 	'act'
 	, 0
-	, 'tasks known unknown'
-	, 'tasks known unknown read drop env prompt_user edit create delete run '
+	, 'todo known unknown'
+	, 'todo known unknown read drop env prompt_user edit create delete run '
 	|| 'summary'
 );
 
@@ -357,14 +357,14 @@ SELECT
 	(
 		SELECT content
 		FROM turn_elements
-		WHERE turn_id = t.id AND tag_name = 'tasks'
+		WHERE turn_id = t.id AND tag_name = 'todo'
 		LIMIT 1
-	) as tasks_text
+	) as todo_text
 	,
 	EXISTS(
 		SELECT 1
 		FROM turn_elements
-		WHERE turn_id = t.id AND tag_name = 'tasks' AND content NOT LIKE '%- [ ]%'
+		WHERE turn_id = t.id AND tag_name = 'todo' AND content NOT LIKE '%- [ ]%'
 	) as is_complete
 FROM turns AS t;
 

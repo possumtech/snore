@@ -1,4 +1,4 @@
-import TaskParser from "../../application/agent/TaskParser.js";
+import TodoParser from "../../application/agent/TodoParser.js";
 
 /**
  * Turn: The thin JS glue representing a single orchestration round.
@@ -87,8 +87,8 @@ export default class Turn {
 		};
 
 		const meta = JSON.parse(getChildContent(assistantNode, "meta") || "{}");
-		const tasksRaw = getChildContent(assistantNode, "tasks") || "";
-		const { list: tasks, next: next_task } = TaskParser.parse(tasksRaw);
+		const todoRaw = getChildContent(assistantNode, "todo") || "";
+		const { list: todo, next: next_todo } = TodoParser.parse(todoRaw);
 
 		// FETCH SEQUENCE FROM ROOT TURN NODE ATTRIBUTES OR SQL DATA
 		const rawSeq = turnNode?.attributes?.sequence ?? turnNode?.sequence ?? 0;
@@ -125,8 +125,8 @@ export default class Turn {
 			assistant: {
 				content: getChildContent(assistantNode, "content"),
 				reasoning_content: getChildContent(assistantNode, "reasoning_content"),
-				tasks,
-				next_task,
+				todo,
+				next_todo,
 				known: getChildContent(assistantNode, "known"),
 				unknown: getChildContent(assistantNode, "unknown"),
 				summary: getChildContent(assistantNode, "summary"),

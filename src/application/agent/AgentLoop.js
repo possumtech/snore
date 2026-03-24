@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import Turn from "../../domain/turn/Turn.js";
+import TodoParser from "./TodoParser.js";
 
 /**
  * AgentLoop: Coordinates the autonomous Rumsfeld Loop.
@@ -156,7 +157,7 @@ export default class AgentLoop {
 
 			// Peek at last turn state
 			let hasUnknowns = true;
-			let tasksComplete = false;
+			let todoComplete = false;
 			const lastTurnRow = historyRows.at(-1);
 			if (lastTurnRow) {
 				const lastTurn = new Turn(this.#db, lastTurnRow.turn_id);
@@ -167,9 +168,9 @@ export default class AgentLoop {
 					unknownText.length > 0 &&
 					!/^<unknown\s*\/>$/i.test(unknownText) &&
 					!/^<unknown\s*>\s*<\/unknown\s*>$/i.test(unknownText);
-				tasksComplete =
-					lastJson.assistant.tasks.length > 0 &&
-					lastJson.assistant.tasks.every((t) => t.completed);
+				todoComplete =
+					lastJson.assistant.todo.length > 0 &&
+					lastJson.assistant.todo.every((t) => t.completed);
 			}
 
 			// Create fresh Turn entry in DB
@@ -189,7 +190,7 @@ export default class AgentLoop {
 				prompt: loopPrompt,
 				sequence: Number(currentTurnSequence),
 				hasUnknowns,
-				tasksComplete,
+				todoComplete,
 				turnId,
 				runId: currentRunId,
 			});
@@ -205,7 +206,7 @@ export default class AgentLoop {
 				{ model: requestedModel, sessionId, runId: currentRunId },
 			);
 
-			const prefill = "<tasks>\n- [";
+			const prefill = "<todo>\n- [";
 			const result = await this.#llmProvider.completion(
 				[...filteredMessages, { role: "assistant", content: prefill }],
 				requestedModel,
@@ -296,7 +297,7 @@ export default class AgentLoop {
 			const tags = this.#responseParser.parseActionTags(finalResponse.content);
 			for (let i = 0; i < tags.length; i++) {
 				const tag = tags[i];
-				if (["tasks", "known", "unknown", "summary"].includes(tag.tagName)) {
+				if (["todo", "known", "unknown", "summary"].includes(tag.tagName)) {
 					await commitAssistantTag(
 						tag.tagName,
 						this.#responseParser.getNodeText(tag),
@@ -474,10 +475,29 @@ export default class AgentLoop {
 				projectFiles: await this.#sessionManager.getFiles(project.path),
 			});
 
-			const isChecklistComplete =
-				turnJson.assistant.tasks.length > 0 &&
-				turnJson.assistant.tasks.every((t) => t.completed);
+			const todoList = turnJson.assistant.todo;
+			const isTodoComplete =
+				todoList.length > 0 && todoList.every((t) => t.completed);
 			const summaryTag = tags.find((t) => t.tagName === "summary");
+			const emittedTagNames = tags.map((t) => t.tagName);
+
+			// Verb cross-reference: warn if checked action verbs lack matching tags
+			const verbWarnings = TodoParser.crossReference(todoList, emittedTagNames);
+			if (verbWarnings.length > 0) {
+				const contextNode3 = elements.find((el) => el.tag_name === "context");
+				if (contextNode3) {
+					for (let k = 0; k < verbWarnings.length; k++) {
+						await this.#db.insert_turn_element.run({
+							turn_id: turnId,
+							parent_id: contextNode3.id,
+							tag_name: "warn",
+							content: verbWarnings[k],
+							attributes: JSON.stringify({ todo: "mismatch" }),
+							sequence: 160 + k,
+						});
+					}
+				}
+			}
 
 			// Breaking tags: anything that requires client resolution before continuing
 			const breakingTags = tags.filter((t) =>
@@ -508,11 +528,39 @@ export default class AgentLoop {
 				continue;
 			}
 
+			// Verb mismatch: model checked action todos without emitting the tags.
+			// Loop to give the model a chance to self-correct with the warnings.
+			if (verbWarnings.length > 0) {
+				await turnObj.hydrate();
+				continue;
+			}
+
 			const hasNoUnknowns =
 				!turnJson.assistant.unknown ||
 				turnJson.assistant.unknown.trim().length === 0;
 
-			if (isChecklistComplete || summaryTag || hasNoUnknowns) {
+			// Summary fallback: if todo is complete and unknowns empty but no
+			// summary tag, warn once then synthesize from <known>
+			if (isTodoComplete && hasNoUnknowns && !summaryTag) {
+				const contextNode4 = elements.find((el) => el.tag_name === "context");
+				if (contextNode4) {
+					await this.#db.insert_turn_element.run({
+						turn_id: turnId,
+						parent_id: contextNode4.id,
+						tag_name: "warn",
+						content: "All todos complete but no <summary> provided. Synthesizing from <known>.",
+						attributes: JSON.stringify({ protocol: "warning" }),
+						sequence: 170,
+					});
+				}
+				// Synthesize summary from known
+				const knownText = turnJson.assistant.known || "";
+				const synthesized = knownText.split("\n").filter(Boolean).pop() || "Work completed.";
+				await commitAssistantTag("summary", synthesized, {}, 50);
+				await turnObj.hydrate();
+			}
+
+			if (isTodoComplete || summaryTag || hasNoUnknowns) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",
