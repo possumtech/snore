@@ -193,47 +193,4 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(atomicResult.notifications[0].text, "Done.");
 	});
 
-	await t.test("applyDiff should create a file", async () => {
-		const target = join(projectPath, "created.txt");
-		await fm.applyDiff(projectPath, {
-			type: "create",
-			file: "created.txt",
-			patch: "hello world",
-		});
-
-		const content = await fs.readFile(target, "utf8");
-		assert.strictEqual(content, "hello world");
-	});
-
-	await t.test("applyDiff should delete a file", async () => {
-		const target = join(projectPath, "to_delete.txt");
-		await fs.writeFile(target, "bye");
-
-		await fm.applyDiff(projectPath, {
-			type: "delete",
-			file: "to_delete.txt",
-			patch: "",
-		});
-
-		const exists = await fs
-			.access(target)
-			.then(() => true)
-			.catch(() => false);
-		assert.strictEqual(exists, false);
-	});
-
-	await t.test("applyDiff should edit a file via search/replace", async () => {
-		const target = join(projectPath, "edit_target.js");
-		await fs.writeFile(target, "const x = 1;\nconst y = 2;\n");
-
-		await fm.applyDiff(projectPath, {
-			type: "edit",
-			file: "edit_target.js",
-			search: "const y = 2;",
-			replace: "const y = 99;",
-		});
-
-		const content = await fs.readFile(target, "utf8");
-		assert.ok(content.includes("const y = 99;"));
-	});
 });

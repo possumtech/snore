@@ -1,9 +1,7 @@
-import fs from "node:fs/promises";
-import { join } from "node:path";
-import HeuristicMatcher from "../../extraction/HeuristicMatcher.js";
-
 /**
- * FindingsManager: Handles tag processing, patches, and declarative resolution.
+ * FindingsManager: Handles tag processing and finding extraction.
+ * The server never touches the filesystem — all findings are proposed
+ * to the client for resolution.
  */
 export default class FindingsManager {
 	#db;
@@ -127,98 +125,6 @@ export default class FindingsManager {
 				text: "System notification detected in response",
 				level: "info",
 			});
-		}
-	}
-
-	async resolveOutstandingFindings(projectPath, runId, _prompt, infoTags) {
-		const findings = await this.#db.get_findings_by_run_id.all({
-			run_id: runId,
-		});
-		let resolvedCount = 0;
-
-		for (const tag of infoTags) {
-			const diffId = tag.attrs.find((a) => a.name === "diff")?.value;
-			const cmdId = tag.attrs.find((a) => a.name === "command")?.value;
-			const notifId = tag.attrs.find((a) => a.name === "notification")?.value;
-			const action = this.#parser.getNodeText(tag);
-
-			if (diffId) {
-				const f = findings.find((x) => x.id === Number.parseInt(diffId, 10));
-				if (f && f.status === "proposed") {
-					const status = action === "accepted" ? "accepted" : "rejected";
-					if (status === "accepted") {
-						await this.applyDiff(projectPath, f);
-					}
-					await this.#db.update_finding_diff_status.run({ id: f.id, status });
-					resolvedCount++;
-				}
-			}
-
-			if (cmdId) {
-				const f = findings.find((x) => x.id === Number.parseInt(cmdId, 10));
-				if (f && f.status === "proposed") {
-					const status = action === "accepted" ? "accepted" : "rejected";
-					await this.#db.update_finding_command_status.run({
-						id: f.id,
-						status,
-					});
-					resolvedCount++;
-				}
-			}
-
-			if (notifId) {
-				const f = findings.find((x) => x.id === Number.parseInt(notifId, 10));
-				if (f && f.status === "proposed") {
-					await this.#db.update_finding_notification_status.run({
-						id: f.id,
-						status: "responded",
-					});
-					resolvedCount++;
-				}
-			}
-		}
-
-		const remaining = await this.#db.get_findings_by_run_id.all({
-			run_id: runId,
-		});
-		const proposed = remaining.filter((f) => f.status === "proposed");
-
-		return {
-			resolvedCount,
-			remainingCount: proposed.length,
-			proposed,
-		};
-	}
-
-	async applyDiff(projectPath, diff) {
-		const fullPath = join(projectPath, diff.file);
-
-		if (diff.type === "create") {
-			await fs.writeFile(fullPath, diff.patch, "utf8");
-			return;
-		}
-
-		if (diff.type === "delete") {
-			await fs.unlink(fullPath).catch(() => {});
-			return;
-		}
-
-		if (diff.type === "edit") {
-			const oldContent = await fs.readFile(fullPath, "utf8");
-			const { newContent, error } = HeuristicMatcher.matchAndPatch(
-				diff.file,
-				oldContent,
-				diff.search,
-				diff.replace,
-			);
-
-			if (error) {
-				throw new Error(error);
-			}
-
-			if (newContent) {
-				await fs.writeFile(fullPath, newContent, "utf8");
-			}
 		}
 	}
 

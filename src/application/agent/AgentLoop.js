@@ -1,13 +1,11 @@
-import { exec } from "node:child_process";
 import crypto from "node:crypto";
-import { promisify } from "node:util";
 import Turn from "../../domain/turn/Turn.js";
-
-const execAsync = promisify(exec);
 
 /**
  * AgentLoop: Coordinates the autonomous Rumsfeld Loop.
  * The database is the single source of truth for every tag and state change.
+ * The server never touches the filesystem — all diffs and commands are proposed
+ * to the client, which resolves them and reports back.
  */
 export default class AgentLoop {
 	#db;
@@ -91,48 +89,17 @@ export default class AgentLoop {
 		}
 
 		let currentRunId = runId;
-		let yolo = false;
 
 		if (currentRunId) {
 			const existingRun = await this.#db.get_run_by_id.get({
 				id: currentRunId,
 			});
 			if (!existingRun) throw new Error(`Run '${currentRunId}' not found.`);
-			yolo = JSON.parse(existingRun.config || "{}").yolo === true;
-
-			if (yolo) {
-				const proposed = await this.#db.get_unresolved_findings.all({
-					run_id: currentRunId,
-				});
-				for (const f of proposed) {
-					if (f.category === "diff")
-						await this.#findingsManager.applyDiff(project.path, f);
-					await (f.category === "diff"
-						? this.#db.update_finding_diff_status.run({
-								id: f.id,
-								status: "accepted",
-							})
-						: this.#db.update_finding_command_status.run({
-								id: f.id,
-								status: "accepted",
-							}));
-				}
-			}
-
-			const infoTags = this.#responseParser
-				.parseActionTags(prompt)
-				.filter((t) => t.tagName === "info");
-			await this.#findingsManager.resolveOutstandingFindings(
-				project.path,
-				currentRunId,
-				prompt,
-				infoTags,
-			);
 
 			const remaining = await this.#db.get_unresolved_findings.all({
 				run_id: currentRunId,
 			});
-			if (remaining.length > 0 && !yolo) {
+			if (remaining.length > 0) {
 				return {
 					runId: currentRunId,
 					status: "proposed",
@@ -147,14 +114,11 @@ export default class AgentLoop {
 			});
 		} else {
 			currentRunId = crypto.randomUUID();
-			yolo =
-				prompt.includes("RUMMY_YOLO") ||
-				(projectBufferFiles && projectBufferFiles.yolo === true);
 			await this.#db.create_run.run({
 				id: currentRunId,
 				session_id: String(sessionId || ""),
 				type: String(type || "ask"),
-				config: JSON.stringify({ model, yolo }),
+				config: JSON.stringify({ model }),
 			});
 		}
 
@@ -386,8 +350,6 @@ export default class AgentLoop {
 						);
 
 					if (!hasUnknownsNow && !presentTags.has("summary")) {
-						// Missing summary is a warning, not a blocking error.
-						// The completion check at the end of the loop will handle exit.
 						const contextNode2 = elements.find((el) => el.tag_name === "context");
 						if (contextNode2) {
 							await this.#db.insert_turn_element.run({
@@ -446,6 +408,38 @@ export default class AgentLoop {
 				tags,
 			);
 
+			// PERSIST FINDINGS TO DB
+			for (const diff of atomicResult.diffs) {
+				await this.#db.insert_finding_diff.run({
+					run_id: currentRunId,
+					turn_id: turnId,
+					type: diff.type,
+					file_path: diff.file,
+					patch: diff.patch,
+				});
+			}
+			for (const cmd of atomicResult.commands) {
+				await this.#db.insert_finding_command.run({
+					run_id: currentRunId,
+					turn_id: turnId,
+					type: cmd.type,
+					command: cmd.command,
+				});
+			}
+			for (const notif of atomicResult.notifications) {
+				await this.#db.insert_finding_notification.run({
+					run_id: currentRunId,
+					turn_id: turnId,
+					type: notif.type,
+					text: notif.text,
+					level: notif.level || "info",
+					status: notif.type === "prompt_user" ? "proposed" : "acknowledged",
+					config: notif.config ? JSON.stringify(notif.config) : null,
+					append: notif.append ? 1 : 0,
+				});
+			}
+
+			// Update attention tracking
 			const mentions = new Set();
 			const wordRegex = /[a-zA-Z0-9_./-]+/g;
 			const turnJson = turnObj.toJson();
@@ -465,38 +459,9 @@ export default class AgentLoop {
 				} catch (_err) {}
 			}
 
-			// GATHER INFO
-			// <read>: handled by FindingsManager (agent promotion).
-			//         File appears in context on the next turn via renderPerspective.
-			// <env>/<run>: command executes now, result queued in pending_context.
-			//              Next turn's builder renders it into context.
-			const gatherTags = tags.filter((t) =>
-				["read", "env", "run"].includes(t.tagName),
-			);
-			for (const tag of gatherTags) {
-				if (tag.tagName === "env" || tag.tagName === "run") {
-					const cmd = this.#responseParser.getNodeText(tag).trim();
-					let result;
-					let isError = 0;
-					try {
-						const { stdout, stderr } = await execAsync(cmd, {
-							cwd: project.path,
-						});
-						result = (stdout + stderr).trim() || "(no output)";
-					} catch (err) {
-						result = err.message;
-						isError = 1;
-					}
-					await this.#db.insert_pending_context.run({
-						run_id: currentRunId,
-						source_turn_id: turnId,
-						type: tag.tagName,
-						request: cmd,
-						result,
-						is_error: isError,
-					});
-				}
-			}
+			// <read> tags: handled by FindingsManager (agent promotion).
+			// File appears in context on the next turn via renderPerspective.
+			const readTags = tags.filter((t) => t.tagName === "read");
 
 			// FINAL HYDRATE BEFORE EMISSION
 			await turnObj.hydrate();
@@ -513,8 +478,12 @@ export default class AgentLoop {
 				turnJson.assistant.tasks.length > 0 &&
 				turnJson.assistant.tasks.every((t) => t.completed);
 			const summaryTag = tags.find((t) => t.tagName === "summary");
+
+			// Breaking tags: anything that requires client resolution before continuing
 			const breakingTags = tags.filter((t) =>
-				["create", "delete", "edit", "prompt_user"].includes(t.tagName),
+				["create", "delete", "edit", "run", "env", "prompt_user"].includes(
+					t.tagName,
+				),
 			);
 
 			if (breakingTags.length > 0) {
@@ -522,16 +491,20 @@ export default class AgentLoop {
 					id: currentRunId,
 					status: "proposed",
 				});
+				const proposed = await this.#db.get_unresolved_findings.all({
+					run_id: currentRunId,
+				});
 				return {
 					runId: currentRunId,
 					status: "proposed",
 					turn: currentTurnSequence,
+					proposed,
 				};
 			}
 
-			// Gather tags force continuation — the model requested data it hasn't
-			// seen yet. Even if it also emitted a summary, it was answering blind.
-			if (gatherTags.length > 0) {
+			// <read> tags force continuation — the model requested file content
+			// it hasn't seen yet. Next turn renders it via renderPerspective.
+			if (readTags.length > 0) {
 				continue;
 			}
 
@@ -564,12 +537,70 @@ export default class AgentLoop {
 	async resolve(runId, resolution) {
 		const run = await this.#db.get_run_by_id.get({ id: runId });
 		if (!run) throw new Error(`Run '${runId}' not found.`);
-		const { category, id, action, answer } = resolution;
-		const resumePrompt =
-			category === "notification"
-				? `<info notification="${id}">${answer || action}</info>`
-				: `<info ${category}="${id}">${action}</info>`;
-		return this.run(run.type, run.session_id, null, resumePrompt, null, runId);
+
+		const { category, id, action } = resolution;
+
+		// Update finding status in DB
+		if (category === "diff") {
+			await this.#db.update_finding_diff_status.run({ id, status: action });
+			const finding = await this.#db.get_findings_by_run_id.all({ run_id: runId });
+			const diff = finding.find((f) => f.category === "diff" && f.id === id);
+			const filePath = diff?.file || "unknown";
+			const tag = action === "accepted" ? "info" : "warn";
+			const label = action === "modified" ? "edits partially accepted" : `edits ${action}`;
+			await this.#db.insert_pending_context.run({
+				run_id: runId,
+				source_turn_id: diff?.turn_id || 0,
+				type: "diff",
+				request: filePath,
+				result: label,
+				is_error: 0,
+			});
+		} else if (category === "command") {
+			await this.#db.update_finding_command_status.run({ id, status: action });
+			const finding = await this.#db.get_findings_by_run_id.all({ run_id: runId });
+			const cmd = finding.find((f) => f.category === "command" && f.id === id);
+			const command = cmd?.patch || "unknown";
+			await this.#db.insert_pending_context.run({
+				run_id: runId,
+				source_turn_id: cmd?.turn_id || 0,
+				type: "command",
+				request: command,
+				result: resolution.output || action,
+				is_error: resolution.isError ? 1 : 0,
+			});
+		} else if (category === "notification") {
+			await this.#db.update_finding_notification_status.run({
+				id,
+				status: "responded",
+			});
+			const finding = await this.#db.get_findings_by_run_id.all({ run_id: runId });
+			const notif = finding.find((f) => f.category === "notification" && f.id === id);
+			await this.#db.insert_pending_context.run({
+				run_id: runId,
+				source_turn_id: notif?.turn_id || 0,
+				type: "notification",
+				request: notif?.patch || "prompt_user",
+				result: resolution.answer || action,
+				is_error: 0,
+			});
+		}
+
+		// Check remaining proposed findings
+		const remaining = await this.#db.get_unresolved_findings.all({
+			run_id: runId,
+		});
+		if (remaining.length > 0) {
+			return {
+				runId,
+				status: "proposed",
+				remainingCount: remaining.length,
+				proposed: remaining,
+			};
+		}
+
+		// All findings resolved — auto-resume the run
+		return this.run(run.type, run.session_id, null, "", null, runId);
 	}
 
 	async getRunHistory(runId) {

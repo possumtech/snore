@@ -169,12 +169,12 @@ ON file_promotions (file_id, source) WHERE run_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_file_promotions_run_unique
 ON file_promotions (file_id, source, run_id) WHERE run_id IS NOT NULL;
 
--- Pending Context: queued results from <env>/<run> awaiting next turn
+-- Pending Context: queued resolution info awaiting next turn
 CREATE TABLE IF NOT EXISTS pending_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, source_turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
-	, type TEXT NOT NULL CHECK (type IN ('command', 'env'))
+	, type TEXT NOT NULL CHECK (type IN ('command', 'env', 'diff', 'notification'))
 	, request TEXT NOT NULL
 	, result TEXT NOT NULL
 	, is_error BOOLEAN DEFAULT 0
