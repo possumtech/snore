@@ -50,25 +50,21 @@ export default class TurnBuilder {
 		}
 		contextEl.appendChild(filesEl);
 
-		// 3. Protocol Constraints
+		root.appendChild(contextEl);
+
+		// 4. User Prompt wrapped in mode tag
+		const userEl = doc.createElement("user");
+		const modeEl = doc.createElement(type);
 		const constraints = await db.get_protocol_constraints.get({
 			type,
 			has_unknowns: hasUnknowns ? 1 : 0,
 		});
 		if (constraints) {
-			const constraintsEl = doc.createElement("instructions");
-			constraintsEl.setAttribute("required_tags", constraints.required_tags);
-			constraintsEl.setAttribute("allowed_tags", constraints.allowed_tags);
-			constraintsEl.appendChild(
-				doc.createTextNode(constraints.instructions || ""),
-			);
-			contextEl.appendChild(constraintsEl);
+			modeEl.setAttribute("required_tags", constraints.required_tags);
+			modeEl.setAttribute("allowed_tags", constraints.allowed_tags);
 		}
-		root.appendChild(contextEl);
-
-		// 4. User Prompt
-		const userEl = doc.createElement("user");
-		userEl.appendChild(doc.createTextNode(prompt));
+		modeEl.appendChild(doc.createTextNode(prompt));
+		userEl.appendChild(modeEl);
 		root.appendChild(userEl);
 
 		// 5. Assistant placeholder
