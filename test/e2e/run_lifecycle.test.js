@@ -7,7 +7,7 @@ import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
-const model = "grok";
+const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
 async function createIsolatedSession() {

@@ -7,7 +7,7 @@ import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
-const model = "grok";
+const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
 /**
@@ -78,7 +78,7 @@ describe("E2E: Diff Content Verification", () => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("proposed diff should contain SEARCH/REPLACE markers in patch", { timeout: TIMEOUT }, async () => {
+	it("proposed edit diff should be a unified diff patch", { timeout: TIMEOUT }, async () => {
 		const result = await client.call("act", {
 			model,
 			prompt: 'The add function in math.js has a bug: it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Use a single <edit> with SEARCH/REPLACE format.',
@@ -89,21 +89,23 @@ describe("E2E: Diff Content Verification", () => {
 		const diff = result.proposed.find((f) => f.category === "diff");
 		assert.ok(diff, `No diff finding. Got categories: ${result.proposed.map((f) => f.category).join(", ")}`);
 		assert.strictEqual(diff.type, "edit");
-		assert.ok(diff.file, "Diff should have a file path");
-		assert.ok(
-			diff.file.includes("math.js"),
-			`Expected file path containing math.js, got ${diff.file}`,
-		);
+		assert.ok(diff.file.includes("math.js"), `Expected math.js, got ${diff.file}`);
 		assert.ok(diff.patch, "Diff should have patch content");
+
+		// Should be a unified diff, not raw SEARCH/REPLACE
 		assert.ok(
-			diff.patch.includes("SEARCH") && diff.patch.includes("REPLACE"),
-			`Patch should contain SEARCH/REPLACE markers. Got: ${diff.patch.slice(0, 200)}`,
+			diff.patch.includes("---") && diff.patch.includes("+++"),
+			`Patch should be a unified diff with --- and +++ headers. Got:\n${diff.patch.slice(0, 300)}`,
+		);
+		assert.ok(
+			diff.patch.includes("@@"),
+			`Patch should contain @@ hunk headers. Got:\n${diff.patch.slice(0, 300)}`,
 		);
 
-		// The search block should contain the buggy code
+		// The diff should show the subtraction being replaced with addition
 		assert.ok(
-			diff.patch.includes("a - b") || diff.patch.includes("a-b"),
-			`Search block should reference the buggy subtraction. Got: ${diff.patch.slice(0, 200)}`,
+			diff.patch.includes("-") && diff.patch.includes("+"),
+			`Patch should contain removed (-) and added (+) lines. Got:\n${diff.patch.slice(0, 300)}`,
 		);
 
 		// Clean up

@@ -11,4 +11,5 @@ INSERT INTO findings_diffs (
 	, :type
 	, :file_path
 	, :patch
-);
+)
+RETURNING id;

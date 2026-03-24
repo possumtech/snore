@@ -67,6 +67,7 @@ export default function createHooks(debug = false) {
 		ui: {
 			render: createEvent("ui.render"),
 			notify: createEvent("ui.notify"),
+			prompt: createEvent("ui.prompt"),
 		},
 		editor: {
 			diff: createEvent("editor.diff"),

@@ -162,7 +162,8 @@ export default class ResponseParser {
 
 		// Helper to add unique tags
 		const addTag = (name, text, attrs = [], index = 0) => {
-			const key = `${name}:${text.substring(0, 20)}:${index}`;
+			const attrKey = attrs.map((a) => `${a.name}=${a.value}`).join(",");
+			const key = `${name}:${text.substring(0, 50)}:${attrKey}`;
 			if (seenKeys.has(key)) return;
 			seenKeys.add(key);
 

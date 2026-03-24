@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS findings_diffs (
 	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
 	, type TEXT NOT NULL CHECK (type IN ('edit', 'create', 'delete'))
 	, file_path TEXT NOT NULL
-	, patch TEXT NOT NULL
+	, patch TEXT
 	, status TEXT NOT NULL DEFAULT 'proposed' CHECK (
 		status IN ('proposed', 'accepted', 'rejected', 'modified')
 	)
@@ -230,7 +230,8 @@ VALUES
 	'act'
 	, 1
 	, 'todo known unknown'
-	, 'todo known unknown read drop env prompt_user summary'
+	, 'todo known unknown read drop env prompt_user edit create delete run '
+	|| 'summary'
 ),
 (
 	'act'

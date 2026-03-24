@@ -94,7 +94,11 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(file.has_agent_promotion, 0);
 	});
 
-	await t.test("edit tag should populate diffs", async () => {
+	await t.test("edit tag should produce unified diff patch", async () => {
+		// Create the target file so HeuristicMatcher can resolve
+		await fs.mkdir(join(projectPath, "src"), { recursive: true });
+		await fs.writeFile(join(projectPath, "src/a.js"), "old code\n");
+
 		const atomicResult = {
 			runId,
 			sequence: 2,
@@ -118,8 +122,35 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(atomicResult.diffs.length, 1);
 		assert.strictEqual(atomicResult.diffs[0].type, "edit");
 		assert.strictEqual(atomicResult.diffs[0].file, "src/a.js");
-		assert.strictEqual(atomicResult.diffs[0].search, "old code");
-		assert.strictEqual(atomicResult.diffs[0].replace, "new code");
+		assert.ok(atomicResult.diffs[0].patch.includes("---"), "Should be unified diff");
+		assert.ok(atomicResult.diffs[0].patch.includes("+++"), "Should be unified diff");
+		assert.strictEqual(atomicResult.diffs[0].error, null);
+	});
+
+	await t.test("edit tag with missing file should produce error, no patch", async () => {
+		const atomicResult = {
+			runId,
+			sequence: 2,
+			content: "",
+			diffs: [],
+			commands: [],
+			notifications: [],
+		};
+
+		const editContent =
+			"<<<<<<< SEARCH\nold code\n=======\nnew code\n>>>>>>> REPLACE";
+		await fm.populateFindings(projectPath, atomicResult, [
+			{
+				tagName: "edit",
+				isMock: true,
+				attrs: [{ name: "file", value: "nonexistent.js" }],
+				childNodes: [{ value: editContent }],
+			},
+		]);
+
+		assert.strictEqual(atomicResult.diffs.length, 1);
+		assert.strictEqual(atomicResult.diffs[0].patch, null);
+		assert.ok(atomicResult.diffs[0].error);
 	});
 
 	await t.test("create tag should populate diffs", async () => {

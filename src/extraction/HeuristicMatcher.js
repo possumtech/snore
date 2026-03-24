@@ -9,8 +9,26 @@ export default class HeuristicMatcher {
 		const searchLines = searchBlock.split(/\r?\n/);
 		const fileLines = fileContent.split(/\r?\n/);
 
-		// 1. Exact Match Attempt (Strict: must match whole lines)
-		// We'll skip this and use the fuzzy logic for everything to ensure indentation healing works consistently.
+		// 1. Exact Match Attempt (line-boundary substring search)
+		const exactIndex = fileContent.indexOf(searchBlock);
+		if (exactIndex !== -1) {
+			// Verify the match starts at a line boundary (start of file or after newline)
+			const atLineBoundary = exactIndex === 0 || fileContent[exactIndex - 1] === "\n";
+			if (atLineBoundary) {
+				const secondIndex = fileContent.indexOf(searchBlock, exactIndex + 1);
+				if (secondIndex === -1) {
+					const newContent = fileContent.slice(0, exactIndex) + replaceBlock + fileContent.slice(exactIndex + searchBlock.length);
+					const patch = createPatch(filePath, fileContent, newContent, "old", "new");
+					return { patch, newContent, warning: null, error: null };
+				}
+				return {
+					patch: null,
+					newContent: null,
+					warning: null,
+					error: "The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
+				};
+			}
+		}
 
 		// 2. Fuzzy Tokenized Match (Ignore leading/trailing whitespace per line)
 		const searchTokens = searchLines
@@ -33,11 +51,15 @@ export default class HeuristicMatcher {
 
 		// Sliding window search across the file
 		for (let i = 0; i < fileTokens.length; i++) {
+			// Don't start a match on a blank line — prevents duplicate matches
+			// where blank-line skipping creates an off-by-one start
+			if (fileTokens[i] === "" && searchTokens[0] !== "") continue;
+
 			let searchIdx = 0;
 			let fileIdx = i;
 
 			while (searchIdx < searchTokens.length && fileIdx < fileTokens.length) {
-				// Skip blank lines in target file
+				// Skip blank lines in target file within an ongoing match
 				if (fileTokens[fileIdx] === "" && searchTokens[searchIdx] !== "") {
 					fileIdx++;
 					continue;

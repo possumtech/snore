@@ -127,7 +127,8 @@ export default class AgentLoop {
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
-		let verbMismatchRetried = false;
+		let verbMismatchRetries = 0;
+		const MAX_VERB_MISMATCH_RETRIES = 3;
 		let currentTurnSequence = 0;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
@@ -167,6 +168,7 @@ export default class AgentLoop {
 				const unknownText = (lastJson.assistant.unknown || "").trim();
 				hasUnknowns =
 					unknownText.length > 0 &&
+					!/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownText) &&
 					!/^<unknown\s*\/>$/i.test(unknownText) &&
 					!/^<unknown\s*>\s*<\/unknown\s*>$/i.test(unknownText);
 				todoComplete =
@@ -410,14 +412,24 @@ export default class AgentLoop {
 				tags,
 			);
 
-			// PERSIST FINDINGS TO DB
+			// PERSIST FINDINGS TO DB + EMIT NOTIFICATIONS
 			for (const diff of atomicResult.diffs) {
-				await this.#db.insert_finding_diff.run({
+				const row = await this.#db.insert_finding_diff.get({
 					run_id: currentRunId,
 					turn_id: turnId,
 					type: diff.type,
 					file_path: diff.file,
 					patch: diff.patch,
+				});
+				await this.#hooks.editor.diff.emit({
+					sessionId,
+					runId: currentRunId,
+					findingId: row?.id,
+					type: diff.type,
+					file: diff.file,
+					patch: diff.patch,
+					warning: diff.warning || null,
+					error: diff.error || null,
 				});
 			}
 			for (const cmd of atomicResult.commands) {
@@ -429,7 +441,7 @@ export default class AgentLoop {
 				});
 			}
 			for (const notif of atomicResult.notifications) {
-				await this.#db.insert_finding_notification.run({
+				const row = await this.#db.insert_finding_notification.get({
 					run_id: currentRunId,
 					turn_id: turnId,
 					type: notif.type,
@@ -439,6 +451,15 @@ export default class AgentLoop {
 					config: notif.config ? JSON.stringify(notif.config) : null,
 					append: notif.append ? 1 : 0,
 				});
+				if (notif.type === "prompt_user" && notif.config) {
+					await this.#hooks.ui.prompt.emit({
+						sessionId,
+						runId: currentRunId,
+						findingId: row?.id,
+						question: notif.config.question,
+						options: notif.config.options,
+					});
+				}
 			}
 
 			// Update attention tracking
@@ -530,16 +551,17 @@ export default class AgentLoop {
 			}
 
 			// Verb mismatch: model checked action todos without emitting the tags.
-			// Loop once to give the model a chance to self-correct with the warnings.
-			if (verbWarnings.length > 0 && !verbMismatchRetried) {
-				verbMismatchRetried = true;
+			// Loop to give the model a chance to self-correct with the warnings.
+			if (verbWarnings.length > 0 && verbMismatchRetries < MAX_VERB_MISMATCH_RETRIES) {
+				verbMismatchRetries++;
 				await turnObj.hydrate();
 				continue;
 			}
 
+			const unknownRaw = (turnJson.assistant.unknown || "").trim();
 			const hasNoUnknowns =
-				!turnJson.assistant.unknown ||
-				turnJson.assistant.unknown.trim().length === 0;
+				unknownRaw.length === 0 ||
+				/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownRaw);
 
 			// Summary fallback: if todo is complete and unknowns empty but no
 			// summary tag, warn once then synthesize from <known>
@@ -562,7 +584,18 @@ export default class AgentLoop {
 				await turnObj.hydrate();
 			}
 
-			if (isTodoComplete || summaryTag || hasNoUnknowns) {
+			// isTodoComplete is only valid if no action verbs were hallucinated
+			const validTodoComplete = isTodoComplete && verbWarnings.length === 0;
+
+			// hasNoUnknowns alone can't trigger completion if there are
+			// unchecked action verbs — the model knows what to do but hasn't done it
+			const ACTION_VERBS = new Set(["edit", "create", "delete", "run", "env", "prompt_user"]);
+			const hasUncheckedActions = todoList.some(
+				(t) => !t.completed && t.verb && ACTION_VERBS.has(t.verb),
+			);
+			const validNoUnknowns = hasNoUnknowns && !hasUncheckedActions;
+
+			if (validTodoComplete || summaryTag || validNoUnknowns) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",
@@ -572,6 +605,12 @@ export default class AgentLoop {
 					status: "completed",
 					turn: currentTurnSequence,
 				};
+			}
+
+			// Incomplete todos with no action taken — the model planned but
+			// didn't execute. Continue to give it another turn to act.
+			if (todoList.length > 0 && todoList.some((t) => !t.completed)) {
+				continue;
 			}
 
 			break;

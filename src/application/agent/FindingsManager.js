@@ -1,7 +1,12 @@
+import fs from "node:fs/promises";
+import { join } from "node:path";
+import HeuristicMatcher from "../../extraction/HeuristicMatcher.js";
+
 /**
  * FindingsManager: Handles tag processing and finding extraction.
  * The server never touches the filesystem — all findings are proposed
- * to the client for resolution.
+ * to the client for resolution. Edit diffs are resolved against the
+ * actual file content via HeuristicMatcher to produce unified diffs.
  */
 export default class FindingsManager {
 	#db;
@@ -69,12 +74,34 @@ export default class FindingsManager {
 				if (path) {
 					if (tagName === "edit") {
 						const { search, replace } = this.#parseEditTag(content);
+						let patch = null;
+						let warning = null;
+						let error = null;
+
+						if (search && replace) {
+							try {
+								const fullPath = join(projectPath, path);
+								const fileContent = await fs.readFile(fullPath, "utf8");
+								const result = HeuristicMatcher.matchAndPatch(path, fileContent, search, replace);
+								if (result.error) {
+									error = result.error;
+								} else {
+									patch = result.patch;
+									warning = result.warning;
+								}
+							} catch (err) {
+								error = `Could not read file for diff resolution: ${err.message}`;
+							}
+						} else {
+							error = "Could not parse SEARCH/REPLACE markers from edit tag.";
+						}
+
 						atomicResult.diffs.push({
 							type: tagName,
 							file: path,
-							patch: content,
-							search,
-							replace,
+							patch,
+							warning,
+							error,
 						});
 					} else {
 						atomicResult.diffs.push({

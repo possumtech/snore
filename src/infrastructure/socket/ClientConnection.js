@@ -54,6 +54,17 @@ export default class ClientConnection {
 			}
 		});
 
+		this.#hooks.ui.prompt.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				this.#sendNotification("ui/prompt", {
+					runId: payload.runId,
+					findingId: payload.findingId,
+					question: payload.question,
+					options: payload.options,
+				});
+			}
+		});
+
 		this.#hooks.run.step.completed.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				const turn = payload.turn.toJson();
@@ -74,8 +85,12 @@ export default class ClientConnection {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("editor/diff", {
 					runId: payload.runId,
+					findingId: payload.findingId,
+					type: payload.type,
 					file: payload.file,
 					patch: payload.patch,
+					warning: payload.warning,
+					error: payload.error,
 				});
 			}
 		});
@@ -218,6 +233,8 @@ export default class ClientConnection {
 							"run/progress": "Agent task status and intermediate updates.",
 							"ui/render": "Streaming output fragments for display.",
 							"ui/notify": "Toast/status notifications (text + level).",
+							"ui/prompt":
+								"Model is asking the user a question (findingId + question + options).",
 							"editor/diff": "Proposed file modifications (file + patch).",
 						},
 					};
@@ -237,10 +254,6 @@ export default class ClientConnection {
 
 				case "getModels":
 					result = await this.#modelAgent.getModels();
-					break;
-
-				case "getOpenRouterModels":
-					result = await this.#modelAgent.getOpenRouterModels();
 					break;
 
 				case "getFiles":
