@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { isAbsolute, relative } from "node:path";
 import ProjectContext from "../../domain/project/ProjectContext.js";
 
 export default class SessionManager {
@@ -144,16 +145,24 @@ export default class SessionManager {
 		};
 	}
 
+	async #normalizePath(projectId, path) {
+		if (!isAbsolute(path)) return path;
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		if (!project) return path;
+		return relative(project.path, path);
+	}
+
 	async activate(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern,
+			pattern: path,
 			constraint: "full",
 		});
 
 		await this.#db.upsert_client_promotion.run({
 			project_id: projectId,
-			path: pattern,
+			path,
 			constraint_type: "full",
 		});
 
@@ -170,15 +179,16 @@ export default class SessionManager {
 	}
 
 	async readOnly(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern,
+			pattern: path,
 			constraint: "full:readonly",
 		});
 
 		await this.#db.upsert_client_promotion.run({
 			project_id: projectId,
-			path: pattern,
+			path,
 			constraint_type: "full:readonly",
 		});
 
@@ -195,15 +205,16 @@ export default class SessionManager {
 	}
 
 	async ignore(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern,
+			pattern: path,
 			constraint: "excluded",
 		});
 
 		await this.#db.upsert_client_promotion.run({
 			project_id: projectId,
-			path: pattern,
+			path,
 			constraint_type: "excluded",
 		});
 
@@ -220,22 +231,23 @@ export default class SessionManager {
 	}
 
 	async drop(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern,
+			pattern: path,
 			constraint: null,
 		});
 
 		await this.#db.delete_client_promotion.run({
 			project_id: projectId,
-			pattern,
+			pattern: path,
 		});
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
-			pattern,
+			pattern: path,
 			constraint: null,
 			db: this.#db,
 		});
