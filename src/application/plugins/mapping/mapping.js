@@ -62,7 +62,24 @@ export default class RepoMapPlugin {
 		});
 
 		hooks.project.files.update.completed.on(async (payload) => {
-			const { projectId, projectPath, db } = payload;
+			const { projectId, projectPath, pattern, db } = payload;
+
+			// If a specific file was activated that might not be git-tracked,
+			// ensure it's discoverable by adding it to the DB before indexing.
+			if (pattern && !pattern.includes("*") && !pattern.includes("?")) {
+				const { existsSync } = await import("node:fs");
+				const { join } = await import("node:path");
+				if (existsSync(join(projectPath, pattern))) {
+					await db.upsert_repo_map_file.get({
+						project_id: projectId,
+						path: pattern,
+						hash: null,
+						size: null,
+						symbol_tokens: null,
+					});
+				}
+			}
+
 			const ctx = await ProjectContext.open(projectPath);
 			const repoMap = new RepoMap(ctx, db, projectId);
 			await repoMap.updateIndex();
