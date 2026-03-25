@@ -19,7 +19,8 @@ SELECT
 			AND f2.id != f.id
 			AND (
 				EXISTS (
-					SELECT 1 FROM file_promotions WHERE file_id = f2.id AND source = 'client'
+					SELECT 1 FROM client_promotions
+					WHERE project_id = f.project_id AND path = f2.path
 				)
 				OR EXISTS (
 					SELECT 1
@@ -32,7 +33,7 @@ SELECT
 			)
 	) * 2 + f.is_root AS heat
 FROM repo_map_files AS f
-LEFT JOIN file_promotions AS cp ON f.id = cp.file_id AND cp.source = 'client'
+LEFT JOIN client_promotions AS cp ON f.project_id = cp.project_id AND f.path = cp.path
 LEFT JOIN
 	file_promotions AS ap
 	ON f.id = ap.file_id AND ap.source = 'agent' AND ap.run_id = :run_id

@@ -22,13 +22,14 @@ The project represents the codebase. Data here is expensive to compute (treesitt
 parsing, ctags extraction, git status) and shared across all runs.
 
 - `repo_map_files` — file metadata (path, hash, size, symbol_tokens)
-- `repo_map_tags` — symbol definitions extracted by treesitter or ctags
+- `repo_map_tags` — symbol definitions extracted by ctags
 - `repo_map_references` — symbol cross-references for heat calculation
-- `file_promotions` where `source = 'client'` — client focus decisions
+- `client_promotions` — client focus decisions, stored by path (no FK to file index)
 
-Client promotions are project-scoped because they represent the user's intent about
-the codebase, not about a specific conversation. When a user `activate`s a file in
-their editor, that file should be active in every run.
+Client promotions are project-scoped declarations of intent. They reference files
+by path, not by file ID — a file does not need to be git-tracked or indexed to be
+activated. When a user `activate`s a file, that file is read from disk at render
+time and included in every run.
 
 ### 1.2 Run Scope
 
@@ -58,14 +59,18 @@ model receive?). Promotion is stored. Fidelity is derived at render time.
 ### 2.1 Promotion
 
 A promotion is a record that a file was placed into context by a specific source.
-Promotions are stored in the `file_promotions` table. A file can have zero or more
-simultaneous promotions from different sources and scopes.
+Two separate tables store promotions based on their nature:
 
-| Source   | Set by                   | Scope   | Lifecycle                              |
-|----------|--------------------------|---------|----------------------------------------|
-| `client` | Client RPC (`activate`, `readOnly`, `ignore`) | Project | Persistent until client changes it |
-| `agent`  | Model `<read>` tag       | Run     | Persistent within run, removed by decay or `<drop>` |
-| `editor` | Buffer sync (`projectBufferFiles`) | Turn | Transient — cleared and re-synced each turn |
+- **`client_promotions`** — stored by project + path. No dependency on the file index.
+  The client declares intent about a path; the file is read from disk at render time.
+- **`file_promotions`** — stored by file_id (FK to `repo_map_files`). Used by
+  agent and editor sources which reference indexed files.
+
+| Source   | Table | Set by                   | Scope   | Lifecycle                              |
+|----------|-------|--------------------------|---------|----------------------------------------|
+| `client` | `client_promotions` | Client RPC (`activate`, `readOnly`, `ignore`) | Project | Persistent until client changes it |
+| `agent`  | `file_promotions` | Model `<read>` tag       | Run     | Persistent within run, removed by decay or `<drop>` |
+| `editor` | `file_promotions` | Buffer sync (`projectBufferFiles`) | Turn | Transient — cleared and re-synced each turn |
 
 **Client promotions** carry a constraint that determines fidelity:
 
@@ -75,6 +80,9 @@ simultaneous promotions from different sources and scopes.
 | `full:readonly` | Full source, not editable (`readOnly`) |
 | `excluded` | Invisible to model (`ignore`) |
 
+Client promotions work on any file path — the file does not need to be git-tracked
+or pre-indexed. Untracked files are read from disk at render time.
+
 **Agent promotions** carry no constraint. Fidelity is derived from context
 (see §2.3). Agent promotions track `last_attention_turn` for decay.
 Agent promotions are scoped to a `run_id` — they do not leak across runs.
@@ -82,8 +90,7 @@ Agent promotions are scoped to a `run_id` — they do not leak across runs.
 **Editor promotions** carry no constraint. They always resolve to `full:readonly`.
 
 **`drop` RPC** removes the client promotion from the project. The file reverts to
-its baseline (agent/editor promotions may still apply). This replaces the old
-`mappable` visibility — there is no "mappable" state, only "no client promotion."
+its baseline (agent/editor promotions may still apply).
 
 ### 2.2 Fidelity Levels
 
@@ -153,26 +160,30 @@ Files are ranked for inclusion in the context window by:
 ### 2.7 Schema
 
 ```sql
+-- Client intent: stored by path, no FK to file index
+CREATE TABLE client_promotions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+    , project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE
+    , path TEXT NOT NULL
+    , constraint_type TEXT NOT NULL CHECK (
+        constraint_type IN ('full', 'full:readonly', 'excluded')
+    )
+    , UNIQUE (project_id, path)
+);
+
+-- Agent/editor state: references indexed files
 CREATE TABLE file_promotions (
     id INTEGER PRIMARY KEY AUTOINCREMENT
     , file_id INTEGER NOT NULL REFERENCES repo_map_files(id) ON DELETE CASCADE
-    , source TEXT NOT NULL CHECK (source IN ('client', 'agent', 'editor'))
+    , source TEXT NOT NULL CHECK (source IN ('agent', 'editor'))
     , run_id TEXT REFERENCES runs(id) ON DELETE CASCADE
-    , constraint_type TEXT CHECK (
-        (source = 'client' AND constraint_type IN ('full', 'full:readonly', 'excluded'))
-        OR (source != 'client' AND constraint_type IS NULL)
-    )
     , last_attention_turn INTEGER DEFAULT 0
-    , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    , UNIQUE (file_id, source, run_id)
 );
 ```
 
-- Client promotions: `run_id IS NULL` (project-scoped).
+- Client promotions: path-based, project-scoped. Works on untracked files.
 - Agent promotions: `run_id` is set (run-scoped).
 - Editor promotions: `run_id IS NULL` (transient, cleared each turn).
-- Uniqueness: `(file_id, source, run_id)` — a file can have one client promotion
-  (project), one agent promotion per run, and one editor promotion.
 
 ---
 
@@ -337,12 +348,12 @@ are implemented server-side.
 
 | Term        | Definition |
 |-------------|------------|
-| **Project** | A codebase. Owns file index, symbols, and client promotions. |
+| **Project** | A codebase. Owns file index, symbols, references, and client promotions (by path). |
 | **Session** | A client connection to a project. Owns config (persona, system prompt, skills). |
 | **Run**     | An open-ended conversation within a session. Owns agent promotions, turns, findings. |
 | **Turn**    | A single LLM request/response cycle within a run. Owns editor promotions (transient). |
 | **Finding** | A proposed action extracted from a turn: **diff** (edit/create/delete), **command** (run/env), or **notification** (summary/prompt_user). |
-| **Promotion** | A record that a file was placed into context by a specific source (client, agent, editor) at a specific scope (project, run, turn). |
+| **Promotion** | A record that a file was placed into context. Client promotions are stored by path in `client_promotions`. Agent/editor promotions are stored by file_id in `file_promotions`. |
 | **Fidelity** | The level of detail the model receives for a file (full, full:readonly, signatures, path, excluded). Derived at render time, never stored. |
 | **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. Run-scoped. |
 | **Retained** | Model-facing term for an agent-promoted file (used in system prompts). |

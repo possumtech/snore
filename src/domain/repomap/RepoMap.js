@@ -243,6 +243,37 @@ export default class RepoMap {
 			currentTokens += finalTokens;
 		}
 
+		// Include client-promoted files that aren't in the index (untracked)
+		const clientPromos = await this.#db.get_client_promotions.all({
+			project_id: this.#projectId,
+		});
+		const indexedPaths = new Set(rankedFiles.map((f) => f.path));
+		for (const promo of clientPromos) {
+			if (indexedPaths.has(promo.path)) continue;
+			if (promo.constraint_type === "excluded") continue;
+
+			const fullPath = join(this.#ctx.root, promo.path);
+			let content = "";
+			try {
+				content = readFileSync(fullPath, "utf8");
+			} catch {
+				continue;
+			}
+
+			const fidelity = promo.constraint_type === "full:readonly"
+				? "full:readonly"
+				: "full";
+			const tokens = estimateTokens(content);
+			finalFiles.push({
+				path: promo.path,
+				size: content.length,
+				tokens,
+				content,
+				fidelity,
+			});
+			currentTokens += estimateTokens(JSON.stringify({ path: promo.path, content }));
+		}
+
 		return {
 			files: finalFiles,
 			usage: { context_used: currentTokens, context_budget: budget },

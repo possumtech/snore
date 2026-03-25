@@ -14,7 +14,7 @@ SELECT
 	, CASE WHEN ap.id IS NOT NULL THEN 1 ELSE 0 END AS has_agent_promotion
 	, CASE WHEN ep.id IS NOT NULL THEN 1 ELSE 0 END AS has_editor_promotion
 FROM repo_map_files AS f
-LEFT JOIN file_promotions AS cp ON f.id = cp.file_id AND cp.source = 'client'
+LEFT JOIN client_promotions AS cp ON f.project_id = cp.project_id AND f.path = cp.path
 LEFT JOIN
 	file_promotions AS ap
 	ON f.id = ap.file_id AND ap.source = 'agent' AND ap.run_id = :run_id

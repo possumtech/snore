@@ -108,9 +108,9 @@ describe("File Promotion Lifecycle", () => {
 		try {
 			await indexProject(tdb, projectPath);
 
-			await tdb.db.upsert_client_promotion_by_pattern.run({
+			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
-				pattern: "tracked.js",
+				path: "tracked.js",
 				constraint_type: "full",
 			});
 
@@ -146,22 +146,19 @@ describe("File Promotion Lifecycle", () => {
 		try {
 			await indexProject(tdb, projectPath);
 
-			// Simulate what happens when client calls activate("GAMEPLAN.md"):
-			// 1. SessionManager emits project.files.update.completed
-			// 2. Mapping plugin handles it — discovers the file, indexes it
-			// 3. Promotion query finds the file
+			// Client promotion is now path-based — no need to pre-index
+			await tdb.db.upsert_client_promotion.run({
+				project_id: "p1",
+				path: "GAMEPLAN.md",
+				constraint_type: "full",
+			});
+
 			await hooks.project.files.update.completed.emit({
 				projectId: "p1",
 				projectPath,
 				pattern: "GAMEPLAN.md",
 				constraint: "full",
 				db: tdb.db,
-			});
-
-			await tdb.db.upsert_client_promotion_by_pattern.run({
-				project_id: "p1",
-				pattern: "GAMEPLAN.md",
-				constraint_type: "full",
 			});
 
 			const turn = await buildTurn(tdb, hooks, projectPath);
@@ -195,9 +192,9 @@ describe("File Promotion Lifecycle", () => {
 		try {
 			await indexProject(tdb, projectPath);
 
-			await tdb.db.upsert_client_promotion_by_pattern.run({
+			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
-				pattern: "config.json",
+				path: "config.json",
 				constraint_type: "full:readonly",
 			});
 
@@ -239,9 +236,9 @@ describe("File Promotion Lifecycle", () => {
 		try {
 			await indexProject(tdb, projectPath);
 
-			await tdb.db.upsert_client_promotion_by_pattern.run({
+			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
-				pattern: "secret.env",
+				path: "secret.env",
 				constraint_type: "excluded",
 			});
 
@@ -280,12 +277,12 @@ describe("File Promotion Lifecycle", () => {
 			await indexProject(tdb, projectPath);
 
 			// Activate then drop
-			await tdb.db.upsert_client_promotion_by_pattern.run({
+			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
-				pattern: "main.js",
+				path: "main.js",
 				constraint_type: "full",
 			});
-			await tdb.db.delete_client_promotion_by_pattern.run({
+			await tdb.db.delete_client_promotion.run({
 				project_id: "p1",
 				pattern: "main.js",
 			});
@@ -326,9 +323,9 @@ describe("File Promotion Lifecycle", () => {
 			await indexProject(tdb, projectPath);
 
 			// Activate
-			await tdb.db.upsert_client_promotion_by_pattern.run({
+			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
-				pattern: "flip.js",
+				path: "flip.js",
 				constraint_type: "full",
 			});
 
@@ -339,9 +336,9 @@ describe("File Promotion Lifecycle", () => {
 			assert.strictEqual(status.client_constraint, "full");
 
 			// Override to ignore
-			await tdb.db.upsert_client_promotion_by_pattern.run({
+			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
-				pattern: "flip.js",
+				path: "flip.js",
 				constraint_type: "excluded",
 			});
 

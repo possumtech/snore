@@ -95,9 +95,16 @@ export default class SessionManager {
 
 		const ctx = await ProjectContext.open(projectPath);
 		const mappable = await ctx.getMappableFiles();
-		const results = [];
 
-		for (const relPath of mappable) {
+		// Also include files with client promotions that aren't in git
+		const clientPromos = await this.#db.get_client_promotions.all({
+			project_id: projectId,
+		});
+		const allPaths = new Set(mappable);
+		for (const p of clientPromos) allPaths.add(p.path);
+
+		const results = [];
+		for (const relPath of allPaths) {
 			results.push(await this.fileStatus(projectId, relPath));
 		}
 		return results;
@@ -112,19 +119,24 @@ export default class SessionManager {
 			path,
 		});
 
-		// Derive fidelity label for client display
+		// Check client promotion directly (works even for unindexed files)
+		const clientPromos = await this.#db.get_client_promotions.all({
+			project_id: projectId,
+		});
+		const clientPromo = clientPromos.find((p) => p.path === path);
+
 		let fidelity = "signatures";
-		if (dbFile?.client_constraint === "excluded") fidelity = "excluded";
-		else if (dbFile?.client_constraint === "full:readonly")
+		if (clientPromo?.constraint_type === "excluded") fidelity = "excluded";
+		else if (clientPromo?.constraint_type === "full:readonly")
 			fidelity = "full:readonly";
-		else if (dbFile?.client_constraint === "full") fidelity = "full";
+		else if (clientPromo?.constraint_type === "full") fidelity = "full";
 		else if (dbFile?.has_agent_promotion) fidelity = "full";
 		else if (dbFile?.has_editor_promotion) fidelity = "full:readonly";
 
 		return {
 			path,
 			fidelity,
-			client_constraint: dbFile?.client_constraint || null,
+			client_constraint: clientPromo?.constraint_type || null,
 			has_agent_promotion: !!dbFile?.has_agent_promotion,
 			has_editor_promotion: !!dbFile?.has_editor_promotion,
 			size: dbFile?.size || 0,
@@ -139,9 +151,9 @@ export default class SessionManager {
 			constraint: "full",
 		});
 
-		await this.#db.upsert_client_promotion_by_pattern.run({
+		await this.#db.upsert_client_promotion.run({
 			project_id: projectId,
-			pattern,
+			path: pattern,
 			constraint_type: "full",
 		});
 
@@ -164,9 +176,9 @@ export default class SessionManager {
 			constraint: "full:readonly",
 		});
 
-		await this.#db.upsert_client_promotion_by_pattern.run({
+		await this.#db.upsert_client_promotion.run({
 			project_id: projectId,
-			pattern,
+			path: pattern,
 			constraint_type: "full:readonly",
 		});
 
@@ -189,9 +201,9 @@ export default class SessionManager {
 			constraint: "excluded",
 		});
 
-		await this.#db.upsert_client_promotion_by_pattern.run({
+		await this.#db.upsert_client_promotion.run({
 			project_id: projectId,
-			pattern,
+			path: pattern,
 			constraint_type: "excluded",
 		});
 
@@ -214,7 +226,7 @@ export default class SessionManager {
 			constraint: null,
 		});
 
-		await this.#db.delete_client_promotion_by_pattern.run({
+		await this.#db.delete_client_promotion.run({
 			project_id: projectId,
 			pattern,
 		});

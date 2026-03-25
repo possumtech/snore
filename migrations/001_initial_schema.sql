@@ -135,31 +135,34 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 	, UNIQUE (project_id, path)
 );
 
--- Repo Map: File Promotions (who put this file in context?)
--- client: project-scoped (run_id IS NULL)
+-- Client Promotions: user intent about file visibility (by path, no FK to file index)
+CREATE TABLE IF NOT EXISTS client_promotions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
+	, path TEXT NOT NULL
+	, constraint_type TEXT NOT NULL CHECK (
+		constraint_type IN ('full', 'full:readonly', 'excluded')
+	)
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, UNIQUE (project_id, path)
+);
+
+-- File Promotions: agent and editor focus state (references indexed files)
 -- agent: run-scoped (run_id set)
 -- editor: turn-scoped, transient (run_id IS NULL, cleared each turn)
 CREATE TABLE IF NOT EXISTS file_promotions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
-	, source TEXT NOT NULL CHECK (source IN ('client', 'agent', 'editor'))
+	, source TEXT NOT NULL CHECK (source IN ('agent', 'editor'))
 	, run_id TEXT REFERENCES runs (id) ON DELETE CASCADE
-	, constraint_type TEXT CHECK (
-		(
-			source = 'client'
-			AND constraint_type IN ('full', 'full:readonly', 'excluded')
-		)
-		OR (source != 'client' AND constraint_type IS NULL)
-	)
 	, last_attention_turn INTEGER DEFAULT 0
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Unique constraints: SQLite treats NULLs as distinct, so we need two indexes.
--- Project-scoped (client/editor): run_id IS NULL
+-- Editor promotions: project-scoped (run_id IS NULL)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_file_promotions_project_unique
 ON file_promotions (file_id, source) WHERE run_id IS NULL;
--- Run-scoped (agent): run_id is set
+-- Agent promotions: run-scoped (run_id is set)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_file_promotions_run_unique
 ON file_promotions (file_id, source, run_id) WHERE run_id IS NOT NULL;
 
