@@ -101,13 +101,24 @@ test("TodoParser", async (t) => {
 		assert.strictEqual(warnings.length, 0);
 	});
 
-	await t.test("crossReference should skip read/env/summary verbs", () => {
+	await t.test("crossReference should skip read/summary verbs", () => {
 		const todoList = [
 			{ verb: "read", text: "check file", completed: true },
-			{ verb: "env", text: "get version", completed: true },
 			{ verb: "summary", text: "done", completed: true },
 		];
 		const warnings = TodoParser.crossReference(todoList, []);
 		assert.strictEqual(warnings.length, 0);
 	});
+
+	await t.test(
+		"crossReference should warn on checked env verb without tag",
+		() => {
+			const todoList = [
+				{ verb: "env", text: "check disk space", completed: true },
+			];
+			const warnings = TodoParser.crossReference(todoList, []);
+			assert.strictEqual(warnings.length, 1);
+			assert.ok(warnings[0].includes("env"));
+		},
+	);
 });

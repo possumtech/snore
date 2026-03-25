@@ -77,9 +77,8 @@ export default class TodoParser {
 
 		for (const item of todoList) {
 			if (!item.verb || !item.completed) continue;
-			// read/env are gather verbs — don't warn if skipped
-			// (file may already be in context, or model decided info wasn't needed)
-			if (item.verb === "read" || item.verb === "env") continue;
+			// read: file may already be in context, skip silently
+			if (item.verb === "read") continue;
 			// summary is handled separately by the summary fallback
 			if (item.verb === "summary") continue;
 

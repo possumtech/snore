@@ -1,32 +1,25 @@
 import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
-import { getEncoding } from "js-tiktoken";
+import { join } from "node:path";
 import CtagsExtractor from "../../extraction/CtagsExtractor.js";
-import SymbolExtractor from "../../extraction/SymbolExtractor.js";
 
-const HD_EXTENSIONS = new Set(["js", "ts", "tsx", "html", "css"]);
+const estimateTokens = (str) => Math.ceil(str.length / 4);
 
 export default class RepoMap {
 	#ctx;
 	#db;
 	#projectId;
-	#hdExtractor;
 	#ctagsExtractor;
-	#tokenizer;
 
 	constructor(projectContext, db, projectId) {
 		this.#ctx = projectContext;
 		this.#db = db;
 		this.#projectId = projectId;
-		this.#hdExtractor = new SymbolExtractor();
 		this.#ctagsExtractor = new CtagsExtractor(projectContext.root);
-		this.#tokenizer = getEncoding("cl100k_base");
 	}
 
 	async updateIndex() {
 		const mappableFiles = await this.#ctx.getMappableFiles();
-		const ctagsQueue = [];
 
 		const allFilesRows = await this.#db.get_project_repo_map.all({
 			project_id: this.#projectId,
@@ -45,6 +38,8 @@ export default class RepoMap {
 			}
 		}
 
+		const ctagsQueue = [];
+
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
 			if (!existsSync(fullPath)) continue;
@@ -59,7 +54,7 @@ export default class RepoMap {
 				continue;
 			}
 
-			const { id: fileId } = await this.#db.upsert_repo_map_file.get({
+			await this.#db.upsert_repo_map_file.get({
 				project_id: this.#projectId,
 				path: relPath,
 				hash,
@@ -67,70 +62,19 @@ export default class RepoMap {
 				symbol_tokens: 0,
 			});
 
-			await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
-
-			const ext = extname(relPath).slice(1);
-
-			if (HD_EXTENSIONS.has(ext)) {
-				const extraction = this.#hdExtractor.extract(content, ext);
-
-				if (extraction) {
-					const symbolWeight = this.#tokenizer.encode(
-						JSON.stringify({
-							path: relPath,
-							symbols: extraction.definitions,
-						}),
-					).length;
-
-					await this.#db.upsert_repo_map_file.run({
-						project_id: this.#projectId,
-						path: relPath,
-						hash,
-						size,
-						symbol_tokens: symbolWeight,
-					});
-
-					for (const sym of extraction.definitions) {
-						await this.#db.insert_repo_map_tag.run({
-							file_id: fileId,
-							name: sym.name,
-							type: sym.type,
-							params: sym.params || null,
-							line: sym.line,
-							source: "hd",
-						});
-					}
-
-					for (const ref of extraction.references) {
-						await this.#db.insert_repo_map_ref.run({
-							file_id: fileId,
-							symbol_name: ref,
-						});
-					}
-				} else {
-					ctagsQueue.push(relPath);
-				}
-			} else {
-				ctagsQueue.push(relPath);
-			}
+			ctagsQueue.push(relPath);
 		}
 
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#ctagsExtractor.extract(ctagsQueue);
 			for (const [path, symbols] of ctagsResults.entries()) {
-				const fullPath = join(this.#ctx.root, path);
-				if (!existsSync(fullPath)) continue;
-
-				const size = readFileSync(fullPath).length;
-				const symbolWeight = this.#tokenizer.encode(
-					JSON.stringify({ path, symbols }),
-				).length;
+				const symbolWeight = estimateTokens(JSON.stringify({ path, symbols }));
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
 					path,
 					hash: null,
-					size,
+					size: null,
 					symbol_tokens: symbolWeight,
 				});
 				await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
@@ -141,7 +85,7 @@ export default class RepoMap {
 						type: sym.type,
 						params: sym.params || null,
 						line: sym.line,
-						source: "standard",
+						source: "ctags",
 					});
 				}
 			}
@@ -149,7 +93,6 @@ export default class RepoMap {
 	}
 
 	#deriveFidelity(file, currentTurn, decayThreshold) {
-		// ARCHITECTURE.md §1.3 — evaluated top-to-bottom, first match wins
 		if (file.client_constraint === "excluded") return "excluded";
 		if (file.client_constraint === "full:readonly") return "full:readonly";
 		if (file.client_constraint === "full") return "full";
@@ -216,7 +159,6 @@ export default class RepoMap {
 			10,
 		);
 
-		// Expire decayed agent promotions for this run
 		if (runId) {
 			await this.#db.decay_agent_promotions.run({
 				run_id: runId,
@@ -239,7 +181,7 @@ export default class RepoMap {
 				} catch (err) {
 					content = `Error reading file: ${err.message}`;
 				}
-				const tokens = this.#tokenizer.encode(content).length;
+				const tokens = estimateTokens(content);
 				const displayFile = {
 					path: file.path,
 					size: file.size,
@@ -249,13 +191,10 @@ export default class RepoMap {
 				};
 
 				finalFiles.push(displayFile);
-				currentTokens += this.#tokenizer.encode(
-					JSON.stringify(displayFile),
-				).length;
+				currentTokens += estimateTokens(JSON.stringify(displayFile));
 				continue;
 			}
 
-			// fidelity === "signatures" — symbols only, subject to budget
 			const symbols = tagMap.get(file.path) || [];
 			let displayFile =
 				symbols.length > 0
@@ -263,8 +202,7 @@ export default class RepoMap {
 					: { path: file.path, size: file.size, fidelity };
 
 			let finalTokens =
-				file.symbol_tokens ||
-				this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+				file.symbol_tokens || estimateTokens(JSON.stringify(displayFile));
 
 			if (currentTokens + finalTokens > budget) {
 				if (symbols.length > 0) {
@@ -274,9 +212,7 @@ export default class RepoMap {
 						symbols: symbols.map((s) => ({ name: s.name })),
 						fidelity: "signatures",
 					};
-					const sigTokens = this.#tokenizer.encode(
-						JSON.stringify(signaturesOnly),
-					).length;
+					const sigTokens = estimateTokens(JSON.stringify(signaturesOnly));
 
 					if (currentTokens + sigTokens <= budget) {
 						displayFile = signaturesOnly;
@@ -287,9 +223,7 @@ export default class RepoMap {
 							size: file.size,
 							fidelity: "path",
 						};
-						const pathTokens = this.#tokenizer.encode(
-							JSON.stringify(pathOnly),
-						).length;
+						const pathTokens = estimateTokens(JSON.stringify(pathOnly));
 
 						if (currentTokens + pathTokens <= budget) {
 							displayFile = pathOnly;

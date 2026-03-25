@@ -1,5 +1,3 @@
-import * as parse5 from "parse5";
-
 import TodoParser from "./TodoParser.js";
 
 /**
@@ -8,16 +6,7 @@ import TodoParser from "./TodoParser.js";
 export default class ResponseParser {
 	getNodeText(node) {
 		if (!node) return "";
-		// Handle our mock regex nodes from Greedy Resilience
-		if (node.isMock) {
-			return node.childNodes?.[0]?.value || "";
-		}
-		const html = parse5.serialize(node);
-		return html
-			.replace(/&lt;/g, "<")
-			.replace(/&gt;/g, ">")
-			.replace(/&amp;/g, "&")
-			.replace(/&quot;/g, '"');
+		return node.childNodes?.[0]?.value || "";
 	}
 
 	mergePrefill(prefill, content) {
@@ -37,60 +26,6 @@ export default class ResponseParser {
 		return content;
 	}
 
-	appendAssistantContent(turnObj, tagName, content) {
-		const doc = turnObj.doc;
-		const assistantEl = doc.getElementsByTagName("assistant")[0];
-		let targetEl = assistantEl.getElementsByTagName(tagName)[0];
-		if (!targetEl) {
-			targetEl = doc.createElement(tagName);
-			assistantEl.appendChild(targetEl);
-		}
-
-		const frag = parse5.parseFragment(content);
-		this.convertToXmlDom(doc, targetEl, frag);
-	}
-
-	setAssistantContent(turnObj, tagName, content) {
-		const doc = turnObj.doc;
-		const assistantEl = doc.getElementsByTagName("assistant")[0];
-		let targetEl = assistantEl.getElementsByTagName(tagName)[0];
-		if (!targetEl) {
-			targetEl = doc.createElement(tagName);
-			assistantEl.appendChild(targetEl);
-		} else {
-			// Clear existing children
-			while (targetEl.firstChild) {
-				targetEl.removeChild(targetEl.firstChild);
-			}
-		}
-
-		const frag = parse5.parseFragment(content);
-		this.convertToXmlDom(doc, targetEl, frag);
-	}
-
-	convertToXmlDom(doc, target, p5Node) {
-		if (p5Node.nodeName === "#text") {
-			target.appendChild(doc.createTextNode(p5Node.value));
-		} else if (p5Node.tagName) {
-			const el = doc.createElement(p5Node.tagName);
-			if (p5Node.attrs) {
-				for (const attr of p5Node.attrs) {
-					el.setAttribute(attr.name, attr.value);
-				}
-			}
-			target.appendChild(el);
-			if (p5Node.childNodes) {
-				for (const child of p5Node.childNodes) {
-					this.convertToXmlDom(doc, el, child);
-				}
-			}
-		} else if (p5Node.childNodes) {
-			for (const child of p5Node.childNodes) {
-				this.convertToXmlDom(doc, target, child);
-			}
-		}
-	}
-
 	parseTodoList(text) {
 		return TodoParser.parse(text);
 	}
@@ -98,7 +33,6 @@ export default class ResponseParser {
 	parsePromptUser(node) {
 		const fullText = this.getNodeText(node);
 
-		// Split by the first occurrence of the checklist marker
 		const marker = "- [ ]";
 		const firstIndex = fullText.indexOf(marker);
 
@@ -123,7 +57,6 @@ export default class ResponseParser {
 
 		const options = rawOptions.map((opt) => {
 			const text = opt.trim();
-			// Extract a label from the first line or first segment
 			const label = text.split(/\r?\n|:/)[0].trim();
 			return {
 				label: label || "Option",
@@ -131,7 +64,6 @@ export default class ResponseParser {
 			};
 		});
 
-		// Always append the "Other" option
 		options.push({
 			label: "Other",
 			description: "None of the above. Provide a freeform answer.",
@@ -160,7 +92,6 @@ export default class ResponseParser {
 		const tags = [];
 		const seenKeys = new Set();
 
-		// Helper to add unique tags
 		const addTag = (name, text, attrs = [], index = 0) => {
 			const attrKey = attrs.map((a) => `${a.name}=${a.value}`).join(",");
 			const key = `${name}:${text.substring(0, 50)}:${attrKey}`;
@@ -176,10 +107,14 @@ export default class ResponseParser {
 			});
 		};
 
-		// 1. Aggressive Regex Extraction (The "Greedy" layer)
 		for (const name of coreTagNames) {
-			// Pattern A: Standard tags <name>...</name> or <name/>
-			// We make the closing bracket mandatory to distinguish from Pattern B
+			// Self-closing: <name attr="val"/>
+			const selfClosingRegex = new RegExp(`<${name}([^>]*?)/>`, "gi");
+			for (const match of content.matchAll(selfClosingRegex)) {
+				addTag(name, "", this.#parseAttrs(match[1]), match.index);
+			}
+
+			// Standard: <name attr="val">content</name>
 			const standardRegex = new RegExp(
 				`<${name}([^/>]*)>(?:([\\s\\S]*?)</${name}>|([\\s\\S]*?)(?=<[a-z])|$)`,
 				"gi",
@@ -191,8 +126,6 @@ export default class ResponseParser {
 				addTag(name, tagContent, this.#parseAttrs(attrString), match.index);
 			}
 
-			// Pattern B: Mangled opening <name/ or <name (no closing bracket)
-			// Only if it's at the end of the content
 			const unclosedRegex = new RegExp(
 				`<${name}([^>]*?)(?:/|(?=\\s|$))$`,
 				"gi",
@@ -202,8 +135,6 @@ export default class ResponseParser {
 				addTag(name, "", this.#parseAttrs(attrString), match.index);
 			}
 
-			// Pattern C: Standalone closing tag or just name followed by /> (e.g. unknown/>)
-			// Only if Pattern A didn't find anything for this tag name
 			if (standardMatches.length === 0) {
 				const trailingRegex = new RegExp(
 					`(?:</${name}>|\\b${name}/?>)([\\s\\S]*?)$`,
@@ -214,25 +145,6 @@ export default class ResponseParser {
 					addTag(name, tagContent, [], match.index);
 				}
 			}
-		}
-
-		// 2. DOM Parsing (The "Structural" layer)
-		try {
-			const frag = parse5.parseFragment(content);
-			const traverse = (node) => {
-				if (node.tagName && coreTagNames.includes(node.tagName)) {
-					const text = this.getNodeText(node);
-					const attrs =
-						node.attrs?.map((a) => ({ name: a.name, value: a.value })) || [];
-					addTag(node.tagName, text, attrs, content.indexOf(node.tagName));
-				}
-				if (node.childNodes) {
-					for (const child of node.childNodes) traverse(child);
-				}
-			};
-			traverse(frag);
-		} catch (_err) {
-			// DOM failed, regex layer already has data
 		}
 
 		return tags.sort((a, b) => a.startIndex - b.startIndex);

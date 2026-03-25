@@ -433,3 +433,31 @@ There is no mock LLM fallback. If the model is unavailable, E2E tests fail.
 ### 7.4 Coverage Target
 
 80% lines, 80% branches, 80% functions — enforced by `npm test`.
+
+---
+
+## 8. Database Hygiene
+
+On every startup, the server runs three cleanup operations:
+
+1. **`purge_old_runs`** — Delete completed/aborted runs older than 30 days.
+   Cascades handle turns, turn_elements, findings, pending_context, and agent promotions.
+2. **`purge_stale_sessions`** — Delete sessions with no runs.
+3. **`purge_consumed_context`** — Delete pending_context entries already consumed by a turn.
+
+The server logs the DB size on startup and warns if it exceeds 100MB.
+
+---
+
+## 9. Dependencies
+
+Three runtime dependencies. Everything else is Node built-ins and ctags.
+
+| Dependency | Purpose | Deps |
+|---|---|---|
+| `@possumtech/sqlrite` | SQLite ORM (author's own) | 0 |
+| `@xmldom/xmldom` | XML DOM for turn building | 0 |
+| `ws` | WebSocket server | 0 |
+
+Symbol extraction uses `ctags` (universal-ctags CLI). Token counting uses `content.length / 4`.
+Unified diff generation is inlined. Git operations shell out to `git` CLI.

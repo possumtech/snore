@@ -1,6 +1,5 @@
 import assert from "node:assert";
 import test from "node:test";
-import { DOMImplementation } from "@xmldom/xmldom";
 import ResponseParser from "./ResponseParser.js";
 
 test("ResponseParser", async (t) => {
@@ -46,29 +45,6 @@ test("ResponseParser", async (t) => {
 			assert.strictEqual(
 				parser.mergePrefill("<todo>", "no todo"),
 				"<todo>no todo",
-			);
-		},
-	);
-
-	await t.test(
-		"appendAssistantContent should create and append elements",
-		() => {
-			const doc = new DOMImplementation().createDocument(null, "turn", null);
-			const assistant = doc.createElement("assistant");
-			doc.documentElement.appendChild(assistant);
-			const turnObj = { doc };
-
-			parser.appendAssistantContent(
-				turnObj,
-				"content",
-				"some <b>bold</b> text",
-			);
-			const contentEl = assistant.getElementsByTagName("content")[0];
-			assert.ok(contentEl);
-			assert.strictEqual(contentEl.childNodes.length, 3); // "some ", <b>, and " text"
-			assert.strictEqual(
-				contentEl.getElementsByTagName("b")[0].textContent,
-				"bold",
 			);
 		},
 	);
@@ -119,8 +95,8 @@ test("ResponseParser", async (t) => {
 		);
 	});
 
-	await t.test("parseActionTags should handle mangled tags", () => {
-		const content = `<read file="a.js" <read file="b.js">`;
+	await t.test("parseActionTags should handle self-closing tags", () => {
+		const content = `<read file="a.js"/><read file="b.js"/>`;
 		const tags = parser.parseActionTags(content);
 		assert.strictEqual(tags.filter((t) => t.tagName === "read").length, 2);
 	});

@@ -92,7 +92,29 @@ async function main() {
 		dir: ["migrations", "src"],
 	});
 
-	// 6. Start RPC Server
+	// 6. Database Hygiene (run on startup)
+	const { statSync } = await import("node:fs");
+	try {
+		const dbSizeBefore = statSync(dbPath).size;
+		await db.purge_old_runs();
+		await db.purge_stale_sessions();
+		await db.purge_consumed_context();
+		const dbSizeAfter = statSync(dbPath).size;
+		const dbSizeMB = (dbSizeAfter / 1024 / 1024).toFixed(2);
+		const freed = dbSizeBefore - dbSizeAfter;
+		if (freed > 0) {
+			console.log(`[RUMMY] Hygiene: freed ${(freed / 1024).toFixed(1)}KB, DB is ${dbSizeMB}MB`);
+		} else {
+			console.log(`[RUMMY] DB size: ${dbSizeMB}MB`);
+		}
+		if (dbSizeAfter > 100 * 1024 * 1024) {
+			console.warn(`[RUMMY] WARNING: Database exceeds 100MB. Consider manual cleanup.`);
+		}
+	} catch (err) {
+		console.warn(`[RUMMY] Hygiene skipped: ${err.message}`);
+	}
+
+	// 7. Start RPC Server
 	const port = Number.parseInt(process.env.PORT);
 	const server = new SocketServer(db, { port, hooks });
 
