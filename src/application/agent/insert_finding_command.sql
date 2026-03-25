@@ -9,4 +9,5 @@ INSERT INTO findings_commands (
 	, :turn_id
 	, :type
 	, :command
-);
+)
+RETURNING id;

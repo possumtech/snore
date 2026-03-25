@@ -6,6 +6,7 @@ export default class RepoMapPlugin {
 		hooks.onTurn(async (rummy) => {
 			const { project, db } = rummy;
 			if (!project?.path) return;
+			if (rummy.noContext) return;
 
 			const files = await db.get_project_repo_map.all({
 				project_id: project.id,

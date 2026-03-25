@@ -59,6 +59,10 @@ export default class RummyContext {
 		return this.#context.turnId || null;
 	}
 
+	get noContext() {
+		return this.#context.noContext === true;
+	}
+
 	/**
 	 * Semantic access to standard XML sections.
 	 */

@@ -30,7 +30,7 @@ export default class ClientConnection {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("run/progress", {
 					runId: payload.runId,
-					todo: payload.todo,
+					turn: payload.turn,
 					status: payload.status,
 				});
 			}
@@ -61,6 +61,17 @@ export default class ClientConnection {
 					findingId: payload.findingId,
 					question: payload.question,
 					options: payload.options,
+				});
+			}
+		});
+
+		this.#hooks.run.command.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				const method = payload.type === "env" ? "run/env" : "run/run";
+				this.#sendNotification(method, {
+					runId: payload.runId,
+					findingId: payload.findingId,
+					command: payload.command,
 				});
 			}
 		});
@@ -183,9 +194,11 @@ export default class ClientConnection {
 								params: {
 									prompt: "User message",
 									model: "Optional override",
-									runId: "Optional existing run to continue",
+									runId: "Optional existing run to continue (or fork source)",
 									projectBufferFiles: "Files open in IDE",
-									temperature: "Optional LLM temperature (overrides RUMMY_TEMPERATURE)",
+									temperature: "Optional LLM temperature",
+									noContext: "If true, skip file map (Lite mode)",
+									fork: "If true with runId, create new run branching from runId history",
 								},
 							},
 							act: {
@@ -194,9 +207,11 @@ export default class ClientConnection {
 								params: {
 									prompt: "User message",
 									model: "Optional override",
-									runId: "Optional existing run to continue",
+									runId: "Optional existing run to continue (or fork source)",
 									projectBufferFiles: "Files open in IDE",
-									temperature: "Optional LLM temperature (overrides RUMMY_TEMPERATURE)",
+									temperature: "Optional LLM temperature",
+									noContext: "If true, skip file map (Lite mode)",
+									fork: "If true with runId, create new run branching from runId history",
 								},
 							},
 							"run/resolve": {
@@ -235,6 +250,10 @@ export default class ClientConnection {
 							"ui/notify": "Toast/status notifications (text + level).",
 							"ui/prompt":
 								"Model is asking the user a question (findingId + question + options).",
+							"run/env":
+								"Proposed environment query (findingId + command). Read-only, no side effects.",
+							"run/run":
+								"Proposed shell command (findingId + command). May have side effects.",
 							"editor/diff": "Proposed file modifications (file + patch).",
 						},
 					};
@@ -392,7 +411,11 @@ export default class ClientConnection {
 						params.model,
 						params.prompt,
 						params.runId,
-						{ temperature: params.temperature },
+						{
+							temperature: params.temperature,
+							noContext: params.noContext,
+							fork: params.fork,
+						},
 					);
 					break;
 
@@ -412,7 +435,11 @@ export default class ClientConnection {
 						params.model,
 						params.prompt,
 						params.runId,
-						{ temperature: params.temperature },
+						{
+							temperature: params.temperature,
+							noContext: params.noContext,
+							fork: params.fork,
+						},
 					);
 					break;
 

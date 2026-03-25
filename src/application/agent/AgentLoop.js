@@ -88,9 +88,24 @@ export default class AgentLoop {
 			}
 		}
 
+			const noContext = options?.noContext === true;
+		const isFork = options?.fork === true;
 		let currentRunId = runId;
+		let parentRunId = null;
 
-		if (currentRunId) {
+		if (currentRunId && isFork) {
+			// Fork: create a new run that reads history from the parent
+			parentRunId = currentRunId;
+			currentRunId = crypto.randomUUID();
+			await this.#db.create_run.run({
+				id: currentRunId,
+				session_id: String(sessionId || ""),
+				parent_run_id: parentRunId,
+				type: String(type || "ask"),
+				config: JSON.stringify({ model, noContext }),
+			});
+		} else if (currentRunId) {
+			// Continue: same run
 			const existingRun = await this.#db.get_run_by_id.get({
 				id: currentRunId,
 			});
@@ -113,12 +128,14 @@ export default class AgentLoop {
 				status: "running",
 			});
 		} else {
+			// New or Lite: fresh run
 			currentRunId = crypto.randomUUID();
 			await this.#db.create_run.run({
 				id: currentRunId,
 				session_id: String(sessionId || ""),
+				parent_run_id: null,
 				type: String(type || "ask"),
-				config: JSON.stringify({ model }),
+				config: JSON.stringify({ model, noContext }),
 			});
 		}
 
@@ -142,10 +159,23 @@ export default class AgentLoop {
 					: 0;
 
 			// Fetch history from SQL (Authoritative)
+			// For forked runs, include parent run history first
+			const historyMessages = [];
+			if (parentRunId) {
+				const parentRows = await this.#db.get_turn_history.all({
+					run_id: parentRunId,
+				});
+				for (const row of parentRows) {
+					if (!row.turn_id) continue;
+					const turn = new Turn(this.#db, row.turn_id);
+					await turn.hydrate();
+					const msgs = await turn.serialize({ forHistory: true });
+					historyMessages.push(...msgs);
+				}
+			}
 			const historyRows = await this.#db.get_turn_history.all({
 				run_id: currentRunId,
 			});
-			const historyMessages = [];
 			for (const row of historyRows) {
 				if (!row.turn_id) continue;
 				const turn = new Turn(this.#db, row.turn_id);
@@ -193,6 +223,14 @@ export default class AgentLoop {
 				todoComplete,
 				turnId,
 				runId: currentRunId,
+				noContext,
+			});
+
+			await this.#hooks.run.progress.emit({
+				sessionId,
+				runId: currentRunId,
+				turn: currentTurnSequence,
+				status: "thinking",
 			});
 
 			const currentTurnMessages = await turnObj.serialize();
@@ -218,6 +256,13 @@ export default class AgentLoop {
 				prefill,
 				responseMessage?.content || "",
 			);
+
+			await this.#hooks.run.progress.emit({
+				sessionId,
+				runId: currentRunId,
+				turn: currentTurnSequence,
+				status: "processing",
+			});
 
 			const finalResponse = await this.#hooks.llm.response.filter(
 				{
@@ -368,6 +413,12 @@ export default class AgentLoop {
 
 			if (validationErrors.length > 0) {
 				protocolRetries++;
+				await this.#hooks.run.progress.emit({
+					sessionId,
+					runId: currentRunId,
+					turn: currentTurnSequence,
+					status: "retrying",
+				});
 				const contextNode = elements.find((el) => el.tag_name === "context");
 				if (contextNode) {
 					for (let j = 0; j < validationErrors.length; j++) {
@@ -430,9 +481,16 @@ export default class AgentLoop {
 				});
 			}
 			for (const cmd of atomicResult.commands) {
-				await this.#db.insert_finding_command.run({
+				const row = await this.#db.insert_finding_command.get({
 					run_id: currentRunId,
 					turn_id: turnId,
+					type: cmd.type,
+					command: cmd.command,
+				});
+				await this.#hooks.run.command.emit({
+					sessionId,
+					runId: currentRunId,
+					findingId: row?.id,
 					type: cmd.type,
 					command: cmd.command,
 				});
@@ -558,34 +616,33 @@ export default class AgentLoop {
 		const run = await this.#db.get_run_by_id.get({ id: runId });
 		if (!run) throw new Error(`Run '${runId}' not found.`);
 
-		const { category, id, action } = resolution;
+		const { category, action } = resolution;
+		const id = Number(resolution.id);
+
+		// Fetch all findings for this run once
+		const findings = await this.#db.get_findings_by_run_id.all({ run_id: runId });
+		const finding = findings.find((f) => f.category === category && f.id === id);
+		if (!finding) throw new Error(`Finding ${category}:${id} not found in run ${runId}`);
 
 		// Update finding status in DB
 		if (category === "diff") {
 			await this.#db.update_finding_diff_status.run({ id, status: action });
-			const finding = await this.#db.get_findings_by_run_id.all({ run_id: runId });
-			const diff = finding.find((f) => f.category === "diff" && f.id === id);
-			const filePath = diff?.file || "unknown";
-			const tag = action === "accepted" ? "info" : "warn";
 			const label = action === "modified" ? "edits partially accepted" : `edits ${action}`;
 			await this.#db.insert_pending_context.run({
 				run_id: runId,
-				source_turn_id: diff?.turn_id || 0,
+				source_turn_id: finding.turn_id,
 				type: "diff",
-				request: filePath,
+				request: finding.file || "unknown",
 				result: label,
 				is_error: 0,
 			});
 		} else if (category === "command") {
 			await this.#db.update_finding_command_status.run({ id, status: action });
-			const finding = await this.#db.get_findings_by_run_id.all({ run_id: runId });
-			const cmd = finding.find((f) => f.category === "command" && f.id === id);
-			const command = cmd?.patch || "unknown";
 			await this.#db.insert_pending_context.run({
 				run_id: runId,
-				source_turn_id: cmd?.turn_id || 0,
+				source_turn_id: finding.turn_id,
 				type: "command",
-				request: command,
+				request: finding.patch || "unknown",
 				result: resolution.output || action,
 				is_error: resolution.isError ? 1 : 0,
 			});
@@ -594,13 +651,11 @@ export default class AgentLoop {
 				id,
 				status: "responded",
 			});
-			const finding = await this.#db.get_findings_by_run_id.all({ run_id: runId });
-			const notif = finding.find((f) => f.category === "notification" && f.id === id);
 			await this.#db.insert_pending_context.run({
 				run_id: runId,
-				source_turn_id: notif?.turn_id || 0,
+				source_turn_id: finding.turn_id,
 				type: "notification",
-				request: notif?.patch || "prompt_user",
+				request: finding.patch || "prompt_user",
 				result: resolution.answer || action,
 				is_error: 0,
 			});
