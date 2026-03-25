@@ -1,13 +1,7 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import HeuristicMatcher from "../../extraction/HeuristicMatcher.js";
+import HeuristicMatcher, { generateUnifiedDiff } from "../../extraction/HeuristicMatcher.js";
 
-/**
- * FindingsManager: Handles tag processing and finding extraction.
- * The server never touches the filesystem — all findings are proposed
- * to the client for resolution. Edit diffs are resolved against the
- * actual file content via HeuristicMatcher to produce unified diffs.
- */
 export default class FindingsManager {
 	#db;
 	#parser;
@@ -17,22 +11,20 @@ export default class FindingsManager {
 		this.#parser = parser;
 	}
 
-	/**
-	 * Extracts proposed changes and information from model tags.
-	 */
 	async populateFindings(projectPath, atomicResult, tags) {
 		const { content: turnContent } = atomicResult;
 
-		// 1. Resolve Project ID for relational updates
 		const projects = await this.#db.get_project_by_path.all({
 			path: projectPath,
 		});
 		const projectId = projects[0]?.id;
 
+		// Collect edits per file for merging
+		const editsByFile = new Map();
+
 		for (const tag of tags) {
 			const { tagName, attrs } = tag;
 
-			// PROMOTION TAGS (Agent Focus)
 			if (tagName === "read" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
@@ -67,64 +59,35 @@ export default class FindingsManager {
 				}
 			}
 
-			// DIFF TAGS
-			if (tagName === "edit" || tagName === "create" || tagName === "delete") {
+			if (tagName === "edit") {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				const content = this.#parser.getNodeText(tag);
 				if (path) {
-					if (tagName === "edit") {
-						const { search, replace } = this.#parseEditTag(content);
-						let patch = null;
-						let warning = null;
-						let error = null;
-
-						if (search && replace) {
-							try {
-								const fullPath = join(projectPath, path);
-								const fileContent = await fs.readFile(fullPath, "utf8");
-								const result = HeuristicMatcher.matchAndPatch(
-									path,
-									fileContent,
-									search,
-									replace,
-								);
-								if (result.error) {
-									error = result.error;
-								} else {
-									patch = result.patch;
-									warning = result.warning;
-								}
-							} catch (err) {
-								error = `Could not read file for diff resolution: ${err.message}`;
-							}
-						} else {
-							error = "Could not parse SEARCH/REPLACE markers from edit tag.";
-						}
-
-						atomicResult.diffs.push({
-							type: tagName,
-							file: path,
-							patch,
-							warning,
-							error,
-						});
-					} else {
-						atomicResult.diffs.push({
-							type: tagName,
-							file: path,
-							patch: content,
-						});
-					}
+					const { search, replace } = this.#parseEditTag(content);
+					if (!editsByFile.has(path)) editsByFile.set(path, []);
+					editsByFile.get(path).push({ search, replace });
 				}
 			}
 
-			// COMMAND TAGS
+			if (tagName === "create" || tagName === "delete") {
+				const path = attrs.find((a) => a.name === "file")?.value;
+				const content = this.#parser.getNodeText(tag);
+				if (path) {
+					atomicResult.diffs.push({
+						type: tagName,
+						file: path,
+						patch: content,
+						warning: null,
+						error: null,
+					});
+				}
+			}
+
 			if (tagName === "run" || tagName === "env") {
 				const command = this.#parser.getNodeText(tag);
 				atomicResult.commands.push({ type: tagName, command });
 			}
 
-			// NOTIFICATION TAGS
 			if (tagName === "summary") {
 				atomicResult.notifications.push({
 					type: "summary",
@@ -143,12 +106,55 @@ export default class FindingsManager {
 			}
 		}
 
-		// Legacy/Test markers
+		// Merge multiple edits per file into a single patch
+		for (const [path, edits] of editsByFile) {
+			let patch = null;
+			let warning = null;
+			let error = null;
+			const warnings = [];
+
+			try {
+				const fullPath = join(projectPath, path);
+				const originalContent = await fs.readFile(fullPath, "utf8");
+				let currentContent = originalContent;
+
+				for (const edit of edits) {
+					if (!edit.search || !edit.replace) {
+						warnings.push("Could not parse SEARCH/REPLACE markers from an edit block.");
+						continue;
+					}
+					const result = HeuristicMatcher.matchAndPatch(
+						path,
+						currentContent,
+						edit.search,
+						edit.replace,
+					);
+					if (result.error) {
+						warnings.push(result.error);
+					} else {
+						currentContent = result.newContent;
+						if (result.warning) warnings.push(result.warning);
+					}
+				}
+
+				if (currentContent !== originalContent) {
+					patch = generateUnifiedDiff(path, originalContent, currentContent);
+				}
+			} catch (err) {
+				error = `Could not read file for diff resolution: ${err.message}`;
+			}
+
+			if (warnings.length > 0) warning = warnings.join(" ");
+			atomicResult.diffs.push({ type: "edit", file: path, patch, warning, error });
+		}
+
 		if (turnContent.includes("RUMMY_TEST_DIFF")) {
 			atomicResult.diffs.push({
 				type: "create",
 				file: "rummy_test.txt",
 				patch: "test+new",
+				warning: null,
+				error: null,
 			});
 		}
 		if (turnContent.includes("RUMMY_TEST_NOTIFY")) {

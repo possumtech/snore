@@ -1,6 +1,6 @@
 const CONTEXT_LINES = 3;
 
-function generateUnifiedDiff(filePath, oldContent, newContent) {
+export function generateUnifiedDiff(filePath, oldContent, newContent) {
 	const oldLines = oldContent.split("\n");
 	const newLines = newContent.split("\n");
 
