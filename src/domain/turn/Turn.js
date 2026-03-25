@@ -96,7 +96,13 @@ export default class Turn {
 
 		return {
 			sequence: Number.isNaN(sequence) ? 0 : sequence,
-			system: getDeepContent(getTag("system")) || "",
+			system: (() => {
+				const sys = getTag("system");
+				if (!sys) return "";
+				let s = sys.content || "";
+				for (const child of sys.children) s += this.toXml(child);
+				return s;
+			})(),
 			user: getDeepContent(getTag("user")) || "",
 			context: contextNode ? this.toXml(contextNode) : "",
 			errors: getTags("error").map((t) => ({

@@ -56,8 +56,8 @@ test("TurnBuilder", async (t) => {
 
 			const json = turn.toJson();
 			assert.ok(
-				json.system.includes("ASK mode"),
-				"System should contain ask mode prompt",
+				json.system.includes("You are an assistant"),
+				"System should contain identity prompt",
 			);
 			assert.ok(json.user.includes("2+2"), "User should contain prompt text");
 			assert.strictEqual(json.sequence, 0);
