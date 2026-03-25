@@ -49,7 +49,10 @@ test("TodoParser", async (t) => {
 	await t.test("should handle all completed items", () => {
 		const text = "- [x] edit: fix bug\n- [X] summary: done";
 		const { list, next } = TodoParser.parse(text);
-		assert.strictEqual(list.every((t) => t.completed), true);
+		assert.strictEqual(
+			list.every((t) => t.completed),
+			true,
+		);
 		assert.strictEqual(next, null);
 	});
 
@@ -75,24 +78,25 @@ test("TodoParser", async (t) => {
 		assert.strictEqual(list[0].text, "frobnicate: do something weird");
 	});
 
-	await t.test("crossReference should warn on checked verbs without matching tags", () => {
-		const todoList = [
-			{ verb: "edit", text: "fix bug", completed: true },
-			{ verb: "run", text: "test", completed: true },
-			{ verb: "read", text: "check file", completed: true },
-			{ verb: "summary", text: "done", completed: true },
-		];
+	await t.test(
+		"crossReference should warn on checked verbs without matching tags",
+		() => {
+			const todoList = [
+				{ verb: "edit", text: "fix bug", completed: true },
+				{ verb: "run", text: "test", completed: true },
+				{ verb: "read", text: "check file", completed: true },
+				{ verb: "summary", text: "done", completed: true },
+			];
 
-		const warnings = TodoParser.crossReference(todoList, ["edit"]);
-		assert.strictEqual(warnings.length, 1);
-		assert.ok(warnings[0].includes("run"));
-		assert.ok(warnings[0].includes("no <run> tag"));
-	});
+			const warnings = TodoParser.crossReference(todoList, ["edit"]);
+			assert.strictEqual(warnings.length, 1);
+			assert.ok(warnings[0].includes("run"));
+			assert.ok(warnings[0].includes("no <run> tag"));
+		},
+	);
 
 	await t.test("crossReference should not warn for unchecked items", () => {
-		const todoList = [
-			{ verb: "edit", text: "fix bug", completed: false },
-		];
+		const todoList = [{ verb: "edit", text: "fix bug", completed: false }];
 		const warnings = TodoParser.crossReference(todoList, []);
 		assert.strictEqual(warnings.length, 0);
 	});

@@ -11,7 +11,10 @@ const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 180_000;
 
 async function createIsolatedSession(files = {}) {
-	const projectPath = join(tmpdir(), `rummy-edl-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const projectPath = join(
+		tmpdir(),
+		`rummy-edl-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
 	await fs.mkdir(projectPath, { recursive: true });
 	for (const [name, content] of Object.entries(files)) {
 		const dir = join(projectPath, name, "..");
@@ -59,7 +62,13 @@ function notificationCollector(client) {
 	const waitForDiffs = (count, timeoutMs = 60_000) =>
 		new Promise((resolve, reject) => {
 			if (diffs.length >= count) return resolve(diffs);
-			const timer = setTimeout(() => reject(new Error(`Timeout: expected ${count} diffs, got ${diffs.length}`)), timeoutMs);
+			const timer = setTimeout(
+				() =>
+					reject(
+						new Error(`Timeout: expected ${count} diffs, got ${diffs.length}`),
+					),
+				timeoutMs,
+			);
 			const interval = setInterval(() => {
 				if (diffs.length >= count) {
 					clearTimeout(timer);
@@ -71,9 +80,14 @@ function notificationCollector(client) {
 
 	const waitForStepAfter = (seq, runId, timeoutMs = 60_000) =>
 		new Promise((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error(`Timeout waiting for step after seq ${seq}`)), timeoutMs);
+			const timer = setTimeout(
+				() => reject(new Error(`Timeout waiting for step after seq ${seq}`)),
+				timeoutMs,
+			);
 			const interval = setInterval(() => {
-				const found = steps.find((s) => s.turn.sequence > seq && s.runId === runId);
+				const found = steps.find(
+					(s) => s.turn.sequence > seq && s.runId === runId,
+				);
 				if (found) {
 					clearTimeout(timer);
 					clearInterval(interval);
@@ -91,33 +105,63 @@ function notificationCollector(client) {
 }
 
 describe("E2E: editor/diff Lifecycle", () => {
-	it("editor/diff notification should arrive with unified diff patch", { timeout: TIMEOUT }, async () => {
+	it("editor/diff notification should arrive with unified diff patch", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup: sessionCleanup } = await createIsolatedSession({
-			"math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+			"math.js":
+				"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
 		});
-		const { diffs, cleanup: notifCleanup, waitForDiffs } = notificationCollector(client);
+		const {
+			diffs,
+			cleanup: notifCleanup,
+			waitForDiffs,
+		} = notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {
 				model,
-				prompt: "The add function in math.js subtracts instead of adding. Fix it.",
+				prompt:
+					"The add function in math.js subtracts instead of adding. Fix it.",
 			});
 
-			assert.strictEqual(result.status, "proposed", `Expected proposed, got ${result.status}`);
+			assert.strictEqual(
+				result.status,
+				"proposed",
+				`Expected proposed, got ${result.status}`,
+			);
 
 			await waitForDiffs(1);
 
-			assert.ok(diffs.length > 0, "Should have received editor/diff notifications");
+			assert.ok(
+				diffs.length > 0,
+				"Should have received editor/diff notifications",
+			);
 
 			const d = diffs[0];
 			assert.ok(d.runId, "Should have runId");
 			assert.ok(d.findingId, "Should have findingId");
 			assert.strictEqual(d.type, "edit", "Should be an edit type");
-			assert.ok(d.file.includes("math.js"), `File should be math.js, got ${d.file}`);
-			assert.ok(d.patch.includes("---") && d.patch.includes("+++"), `Should be unified diff:\n${d.patch.slice(0, 300)}`);
-			assert.ok(d.patch.includes("@@"), `Should have hunk headers:\n${d.patch.slice(0, 300)}`);
-			assert.ok(d.patch.includes("-\treturn a - b;"), `Should show removed line:\n${d.patch}`);
-			assert.ok(d.patch.includes("+\treturn a + b;"), `Should show added line:\n${d.patch}`);
+			assert.ok(
+				d.file.includes("math.js"),
+				`File should be math.js, got ${d.file}`,
+			);
+			assert.ok(
+				d.patch.includes("---") && d.patch.includes("+++"),
+				`Should be unified diff:\n${d.patch.slice(0, 300)}`,
+			);
+			assert.ok(
+				d.patch.includes("@@"),
+				`Should have hunk headers:\n${d.patch.slice(0, 300)}`,
+			);
+			assert.ok(
+				d.patch.includes("-\treturn a - b;"),
+				`Should show removed line:\n${d.patch}`,
+			);
+			assert.ok(
+				d.patch.includes("+\treturn a + b;"),
+				`Should show added line:\n${d.patch}`,
+			);
 			assert.strictEqual(d.error, null, "Should have no error");
 
 			// Clean up findings
@@ -133,16 +177,24 @@ describe("E2E: editor/diff Lifecycle", () => {
 		}
 	});
 
-	it("editor/diff findingId should match proposed finding id for run/resolve", { timeout: TIMEOUT }, async () => {
+	it("editor/diff findingId should match proposed finding id for run/resolve", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup: sessionCleanup } = await createIsolatedSession({
-			"math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+			"math.js":
+				"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
 		});
-		const { diffs, cleanup: notifCleanup, waitForDiffs } = notificationCollector(client);
+		const {
+			diffs,
+			cleanup: notifCleanup,
+			waitForDiffs,
+		} = notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {
 				model,
-				prompt: "Fix the bug: add function subtracts. Change return a - b to return a + b.",
+				prompt:
+					"Fix the bug: add function subtracts. Change return a - b to return a + b.",
 			});
 
 			assert.strictEqual(result.status, "proposed");
@@ -183,16 +235,26 @@ describe("E2E: editor/diff Lifecycle", () => {
 		}
 	});
 
-	it("accepted edit should produce <info file=...> in resumed turn context", { timeout: TIMEOUT }, async () => {
+	it("accepted edit should produce <info file=...> in resumed turn context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup: sessionCleanup } = await createIsolatedSession({
-			"math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+			"math.js":
+				"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
 		});
-		const { diffs, steps, cleanup: notifCleanup, waitForDiffs, waitForStepAfter } = notificationCollector(client);
+		const {
+			diffs,
+			steps,
+			cleanup: notifCleanup,
+			waitForDiffs,
+			waitForStepAfter,
+		} = notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {
 				model,
-				prompt: "Fix the bug: add function subtracts. Change return a - b to return a + b.",
+				prompt:
+					"Fix the bug: add function subtracts. Change return a - b to return a + b.",
 			});
 
 			assert.strictEqual(result.status, "proposed");
@@ -215,23 +277,31 @@ describe("E2E: editor/diff Lifecycle", () => {
 				ctx.includes("<info") && ctx.includes("file="),
 				`Context should have <info file="..."> tag:\n${ctx.slice(0, 500)}`,
 			);
-			assert.ok(ctx.includes("accepted"), `Context should mention acceptance:\n${ctx.slice(0, 500)}`);
+			assert.ok(
+				ctx.includes("accepted"),
+				`Context should mention acceptance:\n${ctx.slice(0, 500)}`,
+			);
 		} finally {
 			notifCleanup();
 			await sessionCleanup();
 		}
 	});
 
-	it("rejected edit should produce <warn file=...> in resumed turn context", { timeout: TIMEOUT }, async () => {
+	it("rejected edit should produce <warn file=...> in resumed turn context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup: sessionCleanup } = await createIsolatedSession({
-			"math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+			"math.js":
+				"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
 		});
-		const { cleanup: notifCleanup, waitForStepAfter } = notificationCollector(client);
+		const { cleanup: notifCleanup, waitForStepAfter } =
+			notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {
 				model,
-				prompt: "Fix the bug: add function subtracts. Change return a - b to return a + b.",
+				prompt:
+					"Fix the bug: add function subtracts. Change return a - b to return a + b.",
 			});
 
 			assert.strictEqual(result.status, "proposed");
@@ -253,30 +323,52 @@ describe("E2E: editor/diff Lifecycle", () => {
 				ctx.includes("<warn") && ctx.includes("file="),
 				`Context should have <warn file="..."> for rejection:\n${ctx.slice(0, 500)}`,
 			);
-			assert.ok(ctx.includes("rejected"), `Context should mention rejection:\n${ctx.slice(0, 500)}`);
+			assert.ok(
+				ctx.includes("rejected"),
+				`Context should mention rejection:\n${ctx.slice(0, 500)}`,
+			);
 		} finally {
 			notifCleanup();
 			await sessionCleanup();
 		}
 	});
 
-	it("command finding should emit editor/diff-style notification and resolve with output", { timeout: TIMEOUT }, async () => {
+	it("command finding should emit editor/diff-style notification and resolve with output", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup: sessionCleanup } = await createIsolatedSession({
-			"package.json": JSON.stringify({ name: "test", version: "1.0.0", scripts: { test: "echo ok" } }, null, 2),
+			"package.json": JSON.stringify(
+				{ name: "test", version: "1.0.0", scripts: { test: "echo ok" } },
+				null,
+				2,
+			),
 		});
-		const { diffs, steps, cleanup: notifCleanup, waitForStepAfter } = notificationCollector(client);
+		const {
+			diffs,
+			steps,
+			cleanup: notifCleanup,
+			waitForStepAfter,
+		} = notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {
 				model,
-				prompt: 'Run "node --version" using an <env> tag. Do NOT edit any files.',
+				prompt:
+					'Run "node --version" using an <env> tag. Do NOT edit any files.',
 			});
 
-			assert.strictEqual(result.status, "proposed", `Expected proposed, got ${result.status}`);
+			assert.strictEqual(
+				result.status,
+				"proposed",
+				`Expected proposed, got ${result.status}`,
+			);
 			const proposingSeq = result.turn;
 
 			const cmdFinding = result.proposed.find((f) => f.category === "command");
-			assert.ok(cmdFinding, `Should have a command finding. Got: ${result.proposed.map((f) => f.category).join(", ")}`);
+			assert.ok(
+				cmdFinding,
+				`Should have a command finding. Got: ${result.proposed.map((f) => f.category).join(", ")}`,
+			);
 
 			// Accept with simulated output
 			for (const f of result.proposed) {
@@ -295,8 +387,14 @@ describe("E2E: editor/diff Lifecycle", () => {
 			const resumedStep = await waitForStepAfter(proposingSeq, result.runId);
 			const ctx = resumedStep.turn.context;
 
-			assert.ok(ctx.includes("command="), `Context should reference the command:\n${ctx.slice(0, 500)}`);
-			assert.ok(ctx.includes("v25.0.0"), `Context should contain command output:\n${ctx.slice(0, 500)}`);
+			assert.ok(
+				ctx.includes("command="),
+				`Context should reference the command:\n${ctx.slice(0, 500)}`,
+			);
+			assert.ok(
+				ctx.includes("v25.0.0"),
+				`Context should contain command output:\n${ctx.slice(0, 500)}`,
+			);
 		} finally {
 			notifCleanup();
 			await sessionCleanup();

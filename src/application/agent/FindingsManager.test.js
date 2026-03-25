@@ -122,36 +122,45 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(atomicResult.diffs.length, 1);
 		assert.strictEqual(atomicResult.diffs[0].type, "edit");
 		assert.strictEqual(atomicResult.diffs[0].file, "src/a.js");
-		assert.ok(atomicResult.diffs[0].patch.includes("---"), "Should be unified diff");
-		assert.ok(atomicResult.diffs[0].patch.includes("+++"), "Should be unified diff");
+		assert.ok(
+			atomicResult.diffs[0].patch.includes("---"),
+			"Should be unified diff",
+		);
+		assert.ok(
+			atomicResult.diffs[0].patch.includes("+++"),
+			"Should be unified diff",
+		);
 		assert.strictEqual(atomicResult.diffs[0].error, null);
 	});
 
-	await t.test("edit tag with missing file should produce error, no patch", async () => {
-		const atomicResult = {
-			runId,
-			sequence: 2,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
+	await t.test(
+		"edit tag with missing file should produce error, no patch",
+		async () => {
+			const atomicResult = {
+				runId,
+				sequence: 2,
+				content: "",
+				diffs: [],
+				commands: [],
+				notifications: [],
+			};
 
-		const editContent =
-			"<<<<<<< SEARCH\nold code\n=======\nnew code\n>>>>>>> REPLACE";
-		await fm.populateFindings(projectPath, atomicResult, [
-			{
-				tagName: "edit",
-				isMock: true,
-				attrs: [{ name: "file", value: "nonexistent.js" }],
-				childNodes: [{ value: editContent }],
-			},
-		]);
+			const editContent =
+				"<<<<<<< SEARCH\nold code\n=======\nnew code\n>>>>>>> REPLACE";
+			await fm.populateFindings(projectPath, atomicResult, [
+				{
+					tagName: "edit",
+					isMock: true,
+					attrs: [{ name: "file", value: "nonexistent.js" }],
+					childNodes: [{ value: editContent }],
+				},
+			]);
 
-		assert.strictEqual(atomicResult.diffs.length, 1);
-		assert.strictEqual(atomicResult.diffs[0].patch, null);
-		assert.ok(atomicResult.diffs[0].error);
-	});
+			assert.strictEqual(atomicResult.diffs.length, 1);
+			assert.strictEqual(atomicResult.diffs[0].patch, null);
+			assert.ok(atomicResult.diffs[0].error);
+		},
+	);
 
 	await t.test("create tag should populate diffs", async () => {
 		const atomicResult = {
@@ -223,5 +232,4 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(atomicResult.notifications[0].type, "summary");
 		assert.strictEqual(atomicResult.notifications[0].text, "Done.");
 	});
-
 });

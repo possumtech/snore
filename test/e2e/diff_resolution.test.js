@@ -11,7 +11,10 @@ const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
 async function createIsolatedSession() {
-	const projectPath = join(tmpdir(), `rummy-diff-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const projectPath = join(
+		tmpdir(),
+		`rummy-diff-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
 	await fs.mkdir(projectPath, { recursive: true });
 	await fs.writeFile(
 		join(projectPath, "main.js"),
@@ -47,7 +50,8 @@ async function createIsolatedSession() {
 async function actAndExpectProposed(client, prompt) {
 	const result = await client.call("act", { model, prompt });
 	assert.strictEqual(
-		result.status, "proposed",
+		result.status,
+		"proposed",
 		"Model completed instead of proposing. Non-deterministic — re-run the test.",
 	);
 	assert.ok(result.proposed.length > 0, "Should have proposed findings");
@@ -66,7 +70,9 @@ async function resolveAll(client, runId, proposed, action = "accepted") {
 }
 
 describe("E2E: Diff Resolution", () => {
-	it("act should return proposed status with findings when model emits edits", { timeout: TIMEOUT }, async () => {
+	it("act should return proposed status with findings when model emits edits", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const result = await actAndExpectProposed(
@@ -84,7 +90,9 @@ describe("E2E: Diff Resolution", () => {
 		}
 	});
 
-	it("accepting all diffs should auto-resume and complete the run", { timeout: TIMEOUT }, async () => {
+	it("accepting all diffs should auto-resume and complete the run", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const actResult = await actAndExpectProposed(
@@ -92,7 +100,12 @@ describe("E2E: Diff Resolution", () => {
 				'Fix the typo in main.js. The variable "mesage" should be "message". Only fix the variable name, nothing else.',
 			);
 
-			const resolveResult = await resolveAll(client, actResult.runId, actResult.proposed, "accepted");
+			const resolveResult = await resolveAll(
+				client,
+				actResult.runId,
+				actResult.proposed,
+				"accepted",
+			);
 
 			assert.ok(resolveResult, "Should have a resolve result");
 			assert.ok(
@@ -104,7 +117,9 @@ describe("E2E: Diff Resolution", () => {
 		}
 	});
 
-	it("rejecting all diffs should auto-resume with rejection info", { timeout: TIMEOUT }, async () => {
+	it("rejecting all diffs should auto-resume with rejection info", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const actResult = await actAndExpectProposed(
@@ -112,7 +127,12 @@ describe("E2E: Diff Resolution", () => {
 				'Fix the typo in main.js. The variable "mesage" should be "message".',
 			);
 
-			const resolveResult = await resolveAll(client, actResult.runId, actResult.proposed, "rejected");
+			const resolveResult = await resolveAll(
+				client,
+				actResult.runId,
+				actResult.proposed,
+				"rejected",
+			);
 
 			assert.ok(resolveResult, "Should have a resolve result");
 			assert.ok(
@@ -124,7 +144,9 @@ describe("E2E: Diff Resolution", () => {
 		}
 	});
 
-	it("partial resolution should return remaining count when multiple findings exist", { timeout: TIMEOUT }, async () => {
+	it("partial resolution should return remaining count when multiple findings exist", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const actResult = await actAndExpectProposed(
@@ -143,8 +165,15 @@ describe("E2E: Diff Resolution", () => {
 					},
 				});
 
-				assert.strictEqual(partialResult.status, "proposed", "Should still be proposed after partial resolution");
-				assert.ok(partialResult.remainingCount > 0, "Should have remaining findings");
+				assert.strictEqual(
+					partialResult.status,
+					"proposed",
+					"Should still be proposed after partial resolution",
+				);
+				assert.ok(
+					partialResult.remainingCount > 0,
+					"Should have remaining findings",
+				);
 				assert.ok(
 					partialResult.remainingCount < actResult.proposed.length,
 					"Remaining count should decrease",
@@ -152,7 +181,9 @@ describe("E2E: Diff Resolution", () => {
 
 				await resolveAll(client, actResult.runId, partialResult.proposed);
 			} else {
-				console.log("  [NOTE] Model produced only one finding; partial resolution not testable this run.");
+				console.log(
+					"  [NOTE] Model produced only one finding; partial resolution not testable this run.",
+				);
 				await resolveAll(client, actResult.runId, actResult.proposed);
 			}
 		} finally {

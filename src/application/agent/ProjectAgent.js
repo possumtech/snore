@@ -95,11 +95,27 @@ export default class ProjectAgent {
 	}
 
 	async ask(sessionId, model, prompt, runId = null, options = {}) {
-		return this.#agentLoop.run("ask", sessionId, model, prompt, null, runId, options);
+		return this.#agentLoop.run(
+			"ask",
+			sessionId,
+			model,
+			prompt,
+			null,
+			runId,
+			options,
+		);
 	}
 
 	async act(sessionId, model, prompt, runId = null, options = {}) {
-		return this.#agentLoop.run("act", sessionId, model, prompt, null, runId, options);
+		return this.#agentLoop.run(
+			"act",
+			sessionId,
+			model,
+			prompt,
+			null,
+			runId,
+			options,
+		);
 	}
 
 	async resolve(runId, resolution) {

@@ -11,7 +11,10 @@ const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
 async function createIsolatedSession() {
-	const projectPath = join(tmpdir(), `rummy-lifecycle-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const projectPath = join(
+		tmpdir(),
+		`rummy-lifecycle-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
 	await fs.mkdir(projectPath, { recursive: true });
 	await fs.writeFile(
 		join(projectPath, "app.js"),
@@ -45,16 +48,20 @@ async function createIsolatedSession() {
 }
 
 describe("E2E: Run Lifecycle", () => {
-	it("run/abort should set run status to aborted", { timeout: TIMEOUT }, async () => {
+	it("run/abort should set run status to aborted", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const actResult = await client.call("act", {
 				model,
-				prompt: "Edit app.js: add JSDoc comments above the greet function. Use an <edit> tag with SEARCH/REPLACE.",
+				prompt:
+					"Edit app.js: add JSDoc comments above the greet function. Use an <edit> tag with SEARCH/REPLACE.",
 			});
 
 			assert.strictEqual(
-				actResult.status, "proposed",
+				actResult.status,
+				"proposed",
 				"Model completed instead of proposing. Non-deterministic — re-run the test.",
 			);
 			assert.ok(actResult.runId);
@@ -69,16 +76,20 @@ describe("E2E: Run Lifecycle", () => {
 		}
 	});
 
-	it("state lock: act on run with unresolved findings should return proposed", { timeout: TIMEOUT }, async () => {
+	it("state lock: act on run with unresolved findings should return proposed", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const actResult = await client.call("act", {
 				model,
-				prompt: "Edit app.js: add a default parameter value to the greet function. Set name to default to 'World'. Use an <edit> tag with SEARCH/REPLACE.",
+				prompt:
+					"Edit app.js: add a default parameter value to the greet function. Set name to default to 'World'. Use an <edit> tag with SEARCH/REPLACE.",
 			});
 
 			assert.strictEqual(
-				actResult.status, "proposed",
+				actResult.status,
+				"proposed",
 				"Model completed instead of proposing. Non-deterministic — re-run the test.",
 			);
 			assert.ok(actResult.proposed.length > 0);
@@ -91,13 +102,20 @@ describe("E2E: Run Lifecycle", () => {
 			});
 
 			assert.strictEqual(secondResult.status, "proposed");
-			assert.ok(secondResult.remainingCount > 0, "Should report remaining unresolved findings");
+			assert.ok(
+				secondResult.remainingCount > 0,
+				"Should report remaining unresolved findings",
+			);
 
 			// Clean up
 			for (const finding of secondResult.proposed) {
 				await client.call("run/resolve", {
 					runId: actResult.runId,
-					resolution: { category: finding.category, id: finding.id, action: "rejected" },
+					resolution: {
+						category: finding.category,
+						id: finding.id,
+						action: "rejected",
+					},
 				});
 			}
 		} finally {
@@ -105,7 +123,9 @@ describe("E2E: Run Lifecycle", () => {
 		}
 	});
 
-	it("run continuation: ask with same runId preserves history", { timeout: TIMEOUT }, async () => {
+	it("run continuation: ask with same runId preserves history", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const turns = [];
@@ -126,7 +146,13 @@ describe("E2E: Run Lifecycle", () => {
 				for (const f of firstResult.proposed) {
 					await client.call("run/resolve", {
 						runId: firstResult.runId,
-						resolution: { category: f.category, id: f.id, action: "accepted", output: "(ok)", isError: false },
+						resolution: {
+							category: f.category,
+							id: f.id,
+							action: "accepted",
+							output: "(ok)",
+							isError: false,
+						},
 					});
 				}
 			}
@@ -156,7 +182,9 @@ describe("E2E: Run Lifecycle", () => {
 					.join(" ")
 					.toLowerCase();
 				assert.ok(
-					text.includes("greet") || text.includes("function") || text.includes("app"),
+					text.includes("greet") ||
+						text.includes("function") ||
+						text.includes("app"),
 					"Model should reference the previous question context",
 				);
 			}
@@ -167,7 +195,9 @@ describe("E2E: Run Lifecycle", () => {
 		}
 	});
 
-	it("run/step/completed notification should contain structured turn data", { timeout: TIMEOUT }, async () => {
+	it("run/step/completed notification should contain structured turn data", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const notifications = [];
@@ -178,14 +208,23 @@ describe("E2E: Run Lifecycle", () => {
 				prompt: "What programming language is app.js written in?",
 			});
 
-			assert.ok(notifications.length > 0, "Should have received at least one notification");
+			assert.ok(
+				notifications.length > 0,
+				"Should have received at least one notification",
+			);
 
 			const notif = notifications[0];
 			assert.ok(notif.runId, "Notification should have runId");
 			assert.ok(notif.turn, "Notification should have turn object");
-			assert.ok(Number.isInteger(notif.turn.sequence), "Turn should have sequence number");
+			assert.ok(
+				Number.isInteger(notif.turn.sequence),
+				"Turn should have sequence number",
+			);
 			assert.ok(notif.turn.assistant, "Turn should have assistant object");
-			assert.ok(Array.isArray(notif.turn.assistant.todo), "Todo should be an array");
+			assert.ok(
+				Array.isArray(notif.turn.assistant.todo),
+				"Todo should be an array",
+			);
 			assert.ok(Array.isArray(notif.files), "Files should be an array");
 
 			client.removeAllListeners("run/step/completed");

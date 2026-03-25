@@ -18,7 +18,15 @@ describe("E2E: Command Resolution", () => {
 		await fs.mkdir(projectPath, { recursive: true });
 		await fs.writeFile(
 			join(projectPath, "package.json"),
-			JSON.stringify({ name: "test-project", version: "1.0.0", scripts: { test: "echo ok" } }, null, 2),
+			JSON.stringify(
+				{
+					name: "test-project",
+					version: "1.0.0",
+					scripts: { test: "echo ok" },
+				},
+				null,
+				2,
+			),
 		);
 		await fs.writeFile(
 			join(projectPath, "index.js"),
@@ -52,17 +60,27 @@ describe("E2E: Command Resolution", () => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("model should emit command findings that appear as proposed", { timeout: TIMEOUT }, async () => {
+	it("model should emit command findings that appear as proposed", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("act", {
 			model,
-			prompt: 'I need you to check the Node.js version on this machine. Use an <env> tag to run "node --version". Do NOT edit any files.',
+			prompt:
+				'I need you to check the Node.js version on this machine. Use an <env> tag to run "node --version". Do NOT edit any files.',
 		});
 
-		assert.strictEqual(result.status, "proposed", `Expected proposed, got ${result.status}`);
+		assert.strictEqual(
+			result.status,
+			"proposed",
+			`Expected proposed, got ${result.status}`,
+		);
 		assert.ok(result.proposed.length > 0, "Should have proposed findings");
 
 		const cmd = result.proposed.find((f) => f.category === "command");
-		assert.ok(cmd, `Should have a command finding. Got categories: ${result.proposed.map((f) => f.category).join(", ")}`);
+		assert.ok(
+			cmd,
+			`Should have a command finding. Got categories: ${result.proposed.map((f) => f.category).join(", ")}`,
+		);
 		assert.strictEqual(cmd.status, "proposed");
 		assert.ok(
 			cmd.patch.includes("node") || cmd.patch.includes("version"),
@@ -84,7 +102,9 @@ describe("E2E: Command Resolution", () => {
 		}
 	});
 
-	it("accepted command with output should produce <info command=...> in resumed turn context", { timeout: TIMEOUT }, async () => {
+	it("accepted command with output should produce <info command=...> in resumed turn context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const turns = new Map();
 		client.on("run/step/completed", (params) => {
 			turns.set(params.turn.sequence, params);
@@ -92,10 +112,15 @@ describe("E2E: Command Resolution", () => {
 
 		const actResult = await client.call("act", {
 			model,
-			prompt: 'Run "node --version" using an <env> tag to check what Node.js version is installed. Do NOT edit any files.',
+			prompt:
+				'Run "node --version" using an <env> tag to check what Node.js version is installed. Do NOT edit any files.',
 		});
 
-		assert.strictEqual(actResult.status, "proposed", `Expected proposed, got ${actResult.status}`);
+		assert.strictEqual(
+			actResult.status,
+			"proposed",
+			`Expected proposed, got ${actResult.status}`,
+		);
 		const proposingSeq = actResult.turn;
 
 		// Accept the command with simulated output
@@ -142,7 +167,9 @@ describe("E2E: Command Resolution", () => {
 		client.removeAllListeners("run/step/completed");
 	});
 
-	it("accepted command with error should produce <error command=...> in resumed turn context", { timeout: TIMEOUT }, async () => {
+	it("accepted command with error should produce <error command=...> in resumed turn context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const turns = new Map();
 		client.on("run/step/completed", (params) => {
 			turns.set(params.turn.sequence, params);
@@ -150,10 +177,15 @@ describe("E2E: Command Resolution", () => {
 
 		const actResult = await client.call("act", {
 			model,
-			prompt: 'Use a <run> tag to execute "npm test" in the project. Do NOT edit any files.',
+			prompt:
+				'Use a <run> tag to execute "npm test" in the project. Do NOT edit any files.',
 		});
 
-		assert.strictEqual(actResult.status, "proposed", `Expected proposed, got ${actResult.status}`);
+		assert.strictEqual(
+			actResult.status,
+			"proposed",
+			`Expected proposed, got ${actResult.status}`,
+		);
 		const proposingSeq = actResult.turn;
 
 		// Accept with error output — simulating a failed command
@@ -164,7 +196,10 @@ describe("E2E: Command Resolution", () => {
 					category: f.category,
 					id: f.id,
 					action: "accepted",
-					output: f.category === "command" ? "Error: test suite failed with 3 failures" : undefined,
+					output:
+						f.category === "command"
+							? "Error: test suite failed with 3 failures"
+							: undefined,
 					isError: f.category === "command",
 				},
 			});
@@ -199,7 +234,9 @@ describe("E2E: Command Resolution", () => {
 		client.removeAllListeners("run/step/completed");
 	});
 
-	it("rejected command should not produce output in context", { timeout: TIMEOUT }, async () => {
+	it("rejected command should not produce output in context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const turns = new Map();
 		client.on("run/step/completed", (params) => {
 			turns.set(params.turn.sequence, params);
@@ -210,7 +247,11 @@ describe("E2E: Command Resolution", () => {
 			prompt: 'Use an <env> tag to run "ls -la". Do NOT edit any files.',
 		});
 
-		assert.strictEqual(actResult.status, "proposed", `Expected proposed, got ${actResult.status}`);
+		assert.strictEqual(
+			actResult.status,
+			"proposed",
+			`Expected proposed, got ${actResult.status}`,
+		);
 		const proposingSeq = actResult.turn;
 
 		// Reject the command — no output, no execution

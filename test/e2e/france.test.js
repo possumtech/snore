@@ -83,10 +83,7 @@ describe("Happy Path E2E: France", () => {
 			Array.isArray(finalTurn.assistant.todo),
 			"Todo should be an array",
 		);
-		assert.ok(
-			finalTurn.assistant.todo.length > 0,
-			"Todo should not be empty",
-		);
+		assert.ok(finalTurn.assistant.todo.length > 0, "Todo should not be empty");
 		assert.strictEqual(finalTurn.assistant.todo[0].completed, true);
 
 		assert.ok(

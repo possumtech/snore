@@ -24,7 +24,10 @@ function turnCollector(client) {
 	const waitForTurn = (seq, timeoutMs = 60_000) =>
 		new Promise((resolve, reject) => {
 			if (turns.has(seq)) return resolve(turns.get(seq));
-			const timer = setTimeout(() => reject(new Error(`Timeout waiting for turn ${seq}`)), timeoutMs);
+			const timer = setTimeout(
+				() => reject(new Error(`Timeout waiting for turn ${seq}`)),
+				timeoutMs,
+			);
 			const check = () => {
 				if (turns.has(seq)) {
 					clearTimeout(timer);
@@ -48,7 +51,7 @@ describe("E2E: Diff Content Verification", () => {
 		await fs.mkdir(projectPath, { recursive: true });
 		await fs.writeFile(
 			join(projectPath, "math.js"),
-			'function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n',
+			"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
 		);
 
 		const { execSync } = await import("node:child_process");
@@ -78,18 +81,31 @@ describe("E2E: Diff Content Verification", () => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("proposed edit diff should be a unified diff patch", { timeout: TIMEOUT }, async () => {
+	it("proposed edit diff should be a unified diff patch", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("act", {
 			model,
-			prompt: 'The add function in math.js has a bug: it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Use a single <edit> with SEARCH/REPLACE format.',
+			prompt:
+				'The add function in math.js has a bug: it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Use a single <edit> with SEARCH/REPLACE format.',
 		});
 
-		assert.strictEqual(result.status, "proposed", `Expected proposed, got ${result.status}`);
+		assert.strictEqual(
+			result.status,
+			"proposed",
+			`Expected proposed, got ${result.status}`,
+		);
 
 		const diff = result.proposed.find((f) => f.category === "diff");
-		assert.ok(diff, `No diff finding. Got categories: ${result.proposed.map((f) => f.category).join(", ")}`);
+		assert.ok(
+			diff,
+			`No diff finding. Got categories: ${result.proposed.map((f) => f.category).join(", ")}`,
+		);
 		assert.strictEqual(diff.type, "edit");
-		assert.ok(diff.file.includes("math.js"), `Expected math.js, got ${diff.file}`);
+		assert.ok(
+			diff.file.includes("math.js"),
+			`Expected math.js, got ${diff.file}`,
+		);
 		assert.ok(diff.patch, "Diff should have patch content");
 
 		// Should be a unified diff, not raw SEARCH/REPLACE
@@ -117,23 +133,30 @@ describe("E2E: Diff Content Verification", () => {
 		}
 	});
 
-	it("accepted diff should produce <info file=...> in resumed turn context", { timeout: TIMEOUT }, async () => {
+	it("accepted diff should produce <info file=...> in resumed turn context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { turns, waitForTurn, cleanup } = turnCollector(client);
 
 		const actResult = await client.call("act", {
 			model,
-			prompt: 'The add function in math.js returns a - b but should return a + b. Fix this single bug with one edit.',
+			prompt:
+				"The add function in math.js returns a - b but should return a + b. Fix this single bug with one edit.",
 		});
 
-		assert.strictEqual(actResult.status, "proposed", `Expected proposed, got ${actResult.status}`);
+		assert.strictEqual(
+			actResult.status,
+			"proposed",
+			`Expected proposed, got ${actResult.status}`,
+		);
 
 		// Find the turn sequence of the proposing turn
 		const proposingSeq = actResult.turn;
 
 		// Accept all findings
-		let resolveResult;
+		let _resolveResult;
 		for (const f of actResult.proposed) {
-			resolveResult = await client.call("run/resolve", {
+			_resolveResult = await client.call("run/resolve", {
 				runId: actResult.runId,
 				resolution: { category: f.category, id: f.id, action: "accepted" },
 			});
@@ -171,15 +194,22 @@ describe("E2E: Diff Content Verification", () => {
 		cleanup();
 	});
 
-	it("rejected diff should produce <warn file=...> in resumed turn context", { timeout: TIMEOUT }, async () => {
+	it("rejected diff should produce <warn file=...> in resumed turn context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { turns, waitForTurn, cleanup } = turnCollector(client);
 
 		const actResult = await client.call("act", {
 			model,
-			prompt: 'The add function in math.js returns a - b but should return a + b. Fix this single bug with one edit.',
+			prompt:
+				"The add function in math.js returns a - b but should return a + b. Fix this single bug with one edit.",
 		});
 
-		assert.strictEqual(actResult.status, "proposed", `Expected proposed, got ${actResult.status}`);
+		assert.strictEqual(
+			actResult.status,
+			"proposed",
+			`Expected proposed, got ${actResult.status}`,
+		);
 		const proposingSeq = actResult.turn;
 
 		// Reject all findings
@@ -220,15 +250,22 @@ describe("E2E: Diff Content Verification", () => {
 		cleanup();
 	});
 
-	it("modified diff should produce <warn file=...> with partial acceptance in context", { timeout: TIMEOUT }, async () => {
+	it("modified diff should produce <warn file=...> with partial acceptance in context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const { turns, cleanup } = turnCollector(client);
 
 		const actResult = await client.call("act", {
 			model,
-			prompt: 'The add function in math.js returns a - b but should return a + b. Fix this single bug with one edit.',
+			prompt:
+				"The add function in math.js returns a - b but should return a + b. Fix this single bug with one edit.",
 		});
 
-		assert.strictEqual(actResult.status, "proposed", `Expected proposed, got ${actResult.status}`);
+		assert.strictEqual(
+			actResult.status,
+			"proposed",
+			`Expected proposed, got ${actResult.status}`,
+		);
 		const proposingSeq = actResult.turn;
 
 		// Resolve with "modified"

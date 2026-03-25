@@ -9,7 +9,8 @@ export default class OllamaClient {
 
 	async completion(messages, model, options = {}) {
 		const body = { model, messages, think: true };
-		if (options.temperature !== undefined) body.temperature = options.temperature;
+		if (options.temperature !== undefined)
+			body.temperature = options.temperature;
 
 		const response = await fetch(`${this.#baseUrl}/v1/chat/completions`, {
 			method: "POST",

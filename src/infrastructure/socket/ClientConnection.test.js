@@ -190,7 +190,10 @@ test("ClientConnection (Real Integration)", async (t) => {
 		}
 
 		assert.ok(resultMsg, "RPC response for 'ask' never arrived");
-		assert.ok(resultMsg.result, `ask returned error: ${resultMsg.error?.message}`);
+		assert.ok(
+			resultMsg.result,
+			`ask returned error: ${resultMsg.error?.message}`,
+		);
 		assert.ok(resultMsg.result.status);
 	});
 });

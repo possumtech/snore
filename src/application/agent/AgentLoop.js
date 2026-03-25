@@ -88,7 +88,7 @@ export default class AgentLoop {
 			}
 		}
 
-			const noContext = options?.noContext === true;
+		const noContext = options?.noContext === true;
 		const isFork = options?.fork === true;
 		let currentRunId = runId;
 		let parentRunId = null;
@@ -396,7 +396,9 @@ export default class AgentLoop {
 						);
 
 					if (!hasUnknownsNow && !presentTags.has("summary")) {
-						const contextNode2 = elements.find((el) => el.tag_name === "context");
+						const contextNode2 = elements.find(
+							(el) => el.tag_name === "context",
+						);
 						if (contextNode2) {
 							await this.#db.insert_turn_element.run({
 								turn_id: turnId,
@@ -589,7 +591,8 @@ export default class AgentLoop {
 			const summaryTag = tags.find((t) => t.tagName === "summary");
 			if (!summaryTag) {
 				const knownText = turnJson.assistant.known || "";
-				const synthesized = knownText.split("\n").filter(Boolean).pop() || "Work completed.";
+				const synthesized =
+					knownText.split("\n").filter(Boolean).pop() || "Work completed.";
 				await commitAssistantTag("summary", synthesized, {}, 50);
 				await turnObj.hydrate();
 			}
@@ -620,14 +623,20 @@ export default class AgentLoop {
 		const id = Number(resolution.id);
 
 		// Fetch all findings for this run once
-		const findings = await this.#db.get_findings_by_run_id.all({ run_id: runId });
-		const finding = findings.find((f) => f.category === category && f.id === id);
-		if (!finding) throw new Error(`Finding ${category}:${id} not found in run ${runId}`);
+		const findings = await this.#db.get_findings_by_run_id.all({
+			run_id: runId,
+		});
+		const finding = findings.find(
+			(f) => f.category === category && f.id === id,
+		);
+		if (!finding)
+			throw new Error(`Finding ${category}:${id} not found in run ${runId}`);
 
 		// Update finding status in DB
 		if (category === "diff") {
 			await this.#db.update_finding_diff_status.run({ id, status: action });
-			const label = action === "modified" ? "edits partially accepted" : `edits ${action}`;
+			const label =
+				action === "modified" ? "edits partially accepted" : `edits ${action}`;
 			await this.#db.insert_pending_context.run({
 				run_id: runId,
 				source_turn_id: finding.turn_id,

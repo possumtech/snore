@@ -1,5 +1,13 @@
 const VALID_VERBS = new Set([
-	"read", "drop", "env", "edit", "create", "delete", "run", "prompt_user", "summary",
+	"read",
+	"drop",
+	"env",
+	"edit",
+	"create",
+	"delete",
+	"run",
+	"prompt_user",
+	"summary",
 ]);
 
 /**

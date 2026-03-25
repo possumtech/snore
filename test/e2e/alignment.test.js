@@ -81,7 +81,10 @@ describe("E2E: Protocol Alignment & Stability", () => {
 				finalTurn.assistant.summary,
 				finalTurn.assistant.known,
 				finalTurn.assistant.content,
-			].filter(Boolean).join(" ").toLowerCase();
+			]
+				.filter(Boolean)
+				.join(" ")
+				.toLowerCase();
 			assert.ok(
 				answer.includes("paris"),
 				"Model did not identify Paris as the capital of France",

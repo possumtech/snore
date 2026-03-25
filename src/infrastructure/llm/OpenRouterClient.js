@@ -17,7 +17,8 @@ export default class OpenRouterClient {
 		}
 
 		const body = { model, messages };
-		if (options.temperature !== undefined) body.temperature = options.temperature;
+		if (options.temperature !== undefined)
+			body.temperature = options.temperature;
 
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",

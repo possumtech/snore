@@ -82,7 +82,12 @@ export default class FindingsManager {
 							try {
 								const fullPath = join(projectPath, path);
 								const fileContent = await fs.readFile(fullPath, "utf8");
-								const result = HeuristicMatcher.matchAndPatch(path, fileContent, search, replace);
+								const result = HeuristicMatcher.matchAndPatch(
+									path,
+									fileContent,
+									search,
+									replace,
+								);
 								if (result.error) {
 									error = result.error;
 								} else {

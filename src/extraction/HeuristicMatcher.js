@@ -13,19 +13,30 @@ export default class HeuristicMatcher {
 		const exactIndex = fileContent.indexOf(searchBlock);
 		if (exactIndex !== -1) {
 			// Verify the match starts at a line boundary (start of file or after newline)
-			const atLineBoundary = exactIndex === 0 || fileContent[exactIndex - 1] === "\n";
+			const atLineBoundary =
+				exactIndex === 0 || fileContent[exactIndex - 1] === "\n";
 			if (atLineBoundary) {
 				const secondIndex = fileContent.indexOf(searchBlock, exactIndex + 1);
 				if (secondIndex === -1) {
-					const newContent = fileContent.slice(0, exactIndex) + replaceBlock + fileContent.slice(exactIndex + searchBlock.length);
-					const patch = createPatch(filePath, fileContent, newContent, "old", "new");
+					const newContent =
+						fileContent.slice(0, exactIndex) +
+						replaceBlock +
+						fileContent.slice(exactIndex + searchBlock.length);
+					const patch = createPatch(
+						filePath,
+						fileContent,
+						newContent,
+						"old",
+						"new",
+					);
 					return { patch, newContent, warning: null, error: null };
 				}
 				return {
 					patch: null,
 					newContent: null,
 					warning: null,
-					error: "The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
+					error:
+						"The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
 				};
 			}
 		}

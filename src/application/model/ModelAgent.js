@@ -14,7 +14,10 @@ export default class ModelAgent {
 	async getModels() {
 		const defaultAlias = process.env.RUMMY_MODEL_DEFAULT;
 		const models = Object.keys(process.env)
-			.filter((key) => key.startsWith("RUMMY_MODEL_") && key !== "RUMMY_MODEL_DEFAULT")
+			.filter(
+				(key) =>
+					key.startsWith("RUMMY_MODEL_") && key !== "RUMMY_MODEL_DEFAULT",
+			)
 			.map((key) => {
 				const alias = key.replace("RUMMY_MODEL_", "");
 				return {

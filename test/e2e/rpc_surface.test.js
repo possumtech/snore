@@ -46,10 +46,24 @@ describe("E2E: RPC Surface", () => {
 
 		// Verify canonical methods exist
 		const expectedMethods = [
-			"ping", "init", "getModels", "getFiles", "fileStatus",
-			"activate", "readOnly", "ignore", "drop",
-			"startRun", "ask", "act", "run/resolve", "run/abort",
-			"systemPrompt", "persona", "skill/add", "skill/remove",
+			"ping",
+			"init",
+			"getModels",
+			"getFiles",
+			"fileStatus",
+			"activate",
+			"readOnly",
+			"ignore",
+			"drop",
+			"startRun",
+			"ask",
+			"act",
+			"run/resolve",
+			"run/abort",
+			"systemPrompt",
+			"persona",
+			"skill/add",
+			"skill/remove",
 		];
 		for (const method of expectedMethods) {
 			assert.ok(result.methods[method], `Missing method: ${method}`);
@@ -57,7 +71,14 @@ describe("E2E: RPC Surface", () => {
 
 		// Verify canonical notifications exist
 		const expectedNotifications = [
-			"run/step/completed", "run/progress", "ui/render", "ui/notify", "editor/diff",
+			"run/step/completed",
+			"run/progress",
+			"ui/render",
+			"ui/notify",
+			"ui/prompt",
+			"editor/diff",
+			"run/env",
+			"run/run",
 		];
 		for (const notif of expectedNotifications) {
 			assert.ok(result.notifications[notif], `Missing notification: ${notif}`);
@@ -70,12 +91,22 @@ describe("E2E: RPC Surface", () => {
 	});
 
 	it("methods requiring init should error before init", async () => {
-		const guarded = ["getFiles", "fileStatus", "activate", "readOnly", "ignore", "drop"];
+		const guarded = [
+			"getFiles",
+			"fileStatus",
+			"activate",
+			"readOnly",
+			"ignore",
+			"drop",
+		];
 		for (const method of guarded) {
 			await assert.rejects(
 				() => client.call(method, { path: "x", pattern: "x" }),
 				(err) => {
-					assert.ok(err.message.includes("not initialized"), `${method}: ${err.message}`);
+					assert.ok(
+						err.message.includes("not initialized"),
+						`${method}: ${err.message}`,
+					);
 					return true;
 				},
 			);
@@ -125,7 +156,9 @@ describe("E2E: RPC Surface", () => {
 
 	it("file promotion RPCs should work after init", async () => {
 		// activate
-		const activateResult = await client.call("activate", { pattern: "index.js" });
+		const activateResult = await client.call("activate", {
+			pattern: "index.js",
+		});
 		assert.strictEqual(activateResult.status, "ok");
 
 		const activeStatus = await client.call("fileStatus", { path: "index.js" });
@@ -161,7 +194,9 @@ describe("E2E: RPC Surface", () => {
 	});
 
 	it("session config RPCs should work after init", async () => {
-		const spResult = await client.call("systemPrompt", { text: "You are a test agent." });
+		const spResult = await client.call("systemPrompt", {
+			text: "You are a test agent.",
+		});
 		assert.strictEqual(spResult.status, "ok");
 
 		const pResult = await client.call("persona", { text: "Friendly tester" });
@@ -170,7 +205,9 @@ describe("E2E: RPC Surface", () => {
 		const addResult = await client.call("skill/add", { name: "test-skill" });
 		assert.strictEqual(addResult.status, "ok");
 
-		const removeResult = await client.call("skill/remove", { name: "test-skill" });
+		const removeResult = await client.call("skill/remove", {
+			name: "test-skill",
+		});
 		assert.strictEqual(removeResult.status, "ok");
 	});
 });

@@ -14,7 +14,10 @@ export default class ContextPlugin {
 				if (row.type === "diff") {
 					// <info file="path">edits accepted</info>
 					// <warn file="path">edits rejected</warn>
-					const tagName = row.result.includes("rejected") || row.result.includes("partially") ? "warn" : "info";
+					const tagName =
+						row.result.includes("rejected") || row.result.includes("partially")
+							? "warn"
+							: "info";
 					el = rummy.tag(tagName, { file: row.request }, [row.result]);
 				} else if (row.type === "notification") {
 					el = rummy.tag("info", { prompt: row.request }, [row.result]);

@@ -22,8 +22,9 @@ export default class LlmProvider {
 		);
 
 		// Resolve temperature: per-request > env default
-		const temperature = options.temperature
-			?? (process.env.RUMMY_TEMPERATURE !== undefined
+		const temperature =
+			options.temperature ??
+			(process.env.RUMMY_TEMPERATURE !== undefined
 				? Number.parseFloat(process.env.RUMMY_TEMPERATURE)
 				: undefined);
 		const resolvedOptions = { ...options, temperature };
@@ -33,6 +34,10 @@ export default class LlmProvider {
 			return this.#ollama.completion(messages, localModel, resolvedOptions);
 		}
 
-		return this.#openRouter.completion(messages, resolvedModel, resolvedOptions);
+		return this.#openRouter.completion(
+			messages,
+			resolvedModel,
+			resolvedOptions,
+		);
 	}
 }
