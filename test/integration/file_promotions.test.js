@@ -263,7 +263,7 @@ describe("File Promotion Lifecycle", () => {
 		}
 	});
 
-	it("drop should revert to baseline (signatures or path)", async () => {
+	it("drop should remove client promotion", async () => {
 		const projectPath = await createTestProject({
 			"main.js": "function hello() { return 'hi'; }\n",
 		});
@@ -287,21 +287,22 @@ describe("File Promotion Lifecycle", () => {
 				pattern: "main.js",
 			});
 
+			// Verify client promotion is gone
+			const promos = await tdb.db.get_client_promotions.all({
+				project_id: "p1",
+			});
+			assert.strictEqual(
+				promos.filter((p) => p.path === "main.js").length,
+				0,
+				"Client promotion should be removed after drop",
+			);
+
+			// File should still appear in system (signatures or warmed by heat)
 			const turn = await buildTurn(tdb, hooks, projectPath);
 			const system = getSystemDocuments(turn);
-
-			// File should appear but as signatures, not full content
 			assert.ok(
 				system.includes("main.js"),
-				"Dropped file should still appear (as signatures)",
-			);
-			assert.ok(
-				system.includes("[signatures]"),
-				"Dropped file should show as signatures",
-			);
-			assert.ok(
-				!system.includes("return 'hi'"),
-				"Dropped file should NOT show full source content",
+				"Dropped file should still appear in system",
 			);
 		} finally {
 			await tdb.cleanup();

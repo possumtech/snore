@@ -5,16 +5,27 @@ import CtagsExtractor from "../../extraction/CtagsExtractor.js";
 
 const estimateTokens = (str) => Math.ceil(str.length / 4);
 
+let Antlrmap = null;
+let antlrmapSupported = null;
+try {
+	Antlrmap = (await import("@possumtech/antlrmap")).default;
+	antlrmapSupported = new Set(Object.keys(Antlrmap.extensions));
+} catch {
+	// antlrmap not installed — ctags only
+}
+
 export default class RepoMap {
 	#ctx;
 	#db;
 	#projectId;
+	#antlrmap;
 	#ctagsExtractor;
 
 	constructor(projectContext, db, projectId) {
 		this.#ctx = projectContext;
 		this.#db = db;
 		this.#projectId = projectId;
+		this.#antlrmap = Antlrmap ? new Antlrmap() : null;
 		this.#ctagsExtractor = new CtagsExtractor(projectContext.root);
 	}
 
@@ -38,6 +49,7 @@ export default class RepoMap {
 			}
 		}
 
+		const antlrQueue = [];
 		const ctagsQueue = [];
 
 		for (const relPath of mappableFiles) {
@@ -62,13 +74,64 @@ export default class RepoMap {
 				symbol_tokens: 0,
 			});
 
-			ctagsQueue.push(relPath);
+			// Route to antlrmap if supported, otherwise ctags
+			const ext = "." + relPath.split(".").pop();
+			if (this.#antlrmap && antlrmapSupported?.has(ext)) {
+				antlrQueue.push(relPath);
+			} else {
+				ctagsQueue.push(relPath);
+			}
 		}
 
+		// Antlrmap extraction
+		if (antlrQueue.length > 0 && this.#antlrmap) {
+			try {
+				const results = await this.#antlrmap.mapFiles(antlrQueue, {
+					cwd: this.#ctx.root,
+				});
+				for (const result of results) {
+					if (!result.symbols || result.symbols.length === 0) {
+						ctagsQueue.push(result.file);
+						continue;
+					}
+
+					const symbolWeight = estimateTokens(
+						JSON.stringify({ path: result.file, symbols: result.symbols }),
+					);
+
+					const { id: fileId } = await this.#db.upsert_repo_map_file.get({
+						project_id: this.#projectId,
+						path: result.file,
+						hash: null,
+						size: null,
+						symbol_tokens: symbolWeight,
+					});
+					await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
+					for (const sym of result.symbols) {
+						await this.#db.insert_repo_map_tag.run({
+							file_id: fileId,
+							name: sym.name,
+							type: sym.kind,
+							params: sym.params ? sym.params.join(", ") : null,
+							line: sym.line,
+							source: "antlrmap",
+						});
+					}
+				}
+			} catch (err) {
+				// Antlrmap failed — fall back to ctags for these files
+				console.warn(`[RUMMY] antlrmap failed: ${err.message}. Falling back to ctags.`);
+				ctagsQueue.push(...antlrQueue);
+			}
+		}
+
+		// Ctags extraction (fallback for unsupported or failed files)
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#ctagsExtractor.extract(ctagsQueue);
 			for (const [path, symbols] of ctagsResults.entries()) {
-				const symbolWeight = estimateTokens(JSON.stringify({ path, symbols }));
+				const symbolWeight = estimateTokens(
+					JSON.stringify({ path, symbols }),
+				);
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
@@ -243,6 +306,36 @@ export default class RepoMap {
 			currentTokens += finalTokens;
 		}
 
+		// Greedy warming: upgrade high-heat signature files to full content
+		// if budget permits. This gives the model more context to work with
+		// without requiring explicit <read> promotions.
+		const signatureFiles = finalFiles.filter(
+			(f) => f.fidelity === "signatures" && f.heat > 0,
+		);
+		signatureFiles.sort((a, b) => (b.heat || 0) - (a.heat || 0));
+
+		for (const sigFile of signatureFiles) {
+			const fullPath = join(this.#ctx.root, sigFile.path);
+			let content = "";
+			try {
+				content = readFileSync(fullPath, "utf8");
+			} catch {
+				continue;
+			}
+			const fullTokens = estimateTokens(JSON.stringify({ path: sigFile.path, content }));
+			const sigTokens = sigFile.tokens || 0;
+			const additionalTokens = fullTokens - sigTokens;
+
+			if (currentTokens + additionalTokens <= budget) {
+				sigFile.content = content;
+				sigFile.fidelity = "full:warmed";
+				sigFile.tokens = fullTokens;
+				currentTokens += additionalTokens;
+			} else {
+				break;
+			}
+		}
+
 		// Include client-promoted files that aren't in the index (untracked)
 		const clientPromos = await this.#db.get_client_promotions.all({
 			project_id: this.#projectId,
@@ -260,9 +353,8 @@ export default class RepoMap {
 				continue;
 			}
 
-			const fidelity = promo.constraint_type === "full:readonly"
-				? "full:readonly"
-				: "full";
+			const fidelity =
+				promo.constraint_type === "full:readonly" ? "full:readonly" : "full";
 			const tokens = estimateTokens(content);
 			finalFiles.push({
 				path: promo.path,
@@ -271,7 +363,9 @@ export default class RepoMap {
 				content,
 				fidelity,
 			});
-			currentTokens += estimateTokens(JSON.stringify({ path: promo.path, content }));
+			currentTokens += estimateTokens(
+				JSON.stringify({ path: promo.path, content }),
+			);
 		}
 
 		return {

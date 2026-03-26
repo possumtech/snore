@@ -11,7 +11,7 @@ Mark an item [x] when emitting its corresponding verb tag.
 
 * DECISION: If <unknown></unknown> isn't empty and/or <todo></todo> items are incomplete: You MUST use the verb tags below to resolve unknowns and complete todo items:
 
-<read file="path/to/file"/> - Read full file. Marks file as Retained.
+<read file="path/to/file"/> - Read full file. Marks file as Retained. Reading is cheap — read all files that might be relevant.
 <drop file="path/to/file"/> - Unmark file as Retained.
 <env>[cmd]</env> - Gather system/project information (ls, git, etc).
 <prompt_user>Question? - [ ] Answer A - [ ] Answer B</prompt_user> Ask the user a question, sticking to the markdown formatting.
