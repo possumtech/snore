@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import Turn from "../../domain/turn/Turn.js";
+import ToolExtractor from "./ToolExtractor.js";
 
 /**
  * AgentLoop: Coordinates the autonomous Rumsfeld Loop.
@@ -352,16 +353,16 @@ export default class AgentLoop {
 			);
 
 			const tags = this.#responseParser.parseActionTags(finalResponse.content);
-			for (let i = 0; i < tags.length; i++) {
-				const tag = tags[i];
-				if (["todo", "known", "unknown", "summary"].includes(tag.tagName)) {
-					await commitAssistantTag(
-						tag.tagName,
-						this.#responseParser.getNodeText(tag),
-						{},
-						i + 3,
-					);
-				}
+			const toolExtractor = new ToolExtractor(this.#responseParser);
+			const { tools, structural, flags } = toolExtractor.extract(tags);
+
+			for (let i = 0; i < structural.length; i++) {
+				await commitAssistantTag(
+					structural[i].name,
+					structural[i].content,
+					{},
+					i + 3,
+				);
 			}
 
 			// HYDRATE AND VALIDATE
@@ -457,27 +458,17 @@ export default class AgentLoop {
 				continue;
 			}
 
-			// Process Findings
-			const atomicResult = {
-				runId: currentRunId,
-				sequence: Number(currentTurnSequence),
-				content: finalResponse.content,
-				reasoning: finalResponse.reasoning_content,
-				usage,
-				diffs: [],
-				commands: [],
-				notifications: [],
-			};
-			await this.#findingsManager.populateFindings(
+			// Process tools into findings
+			const findings = await this.#findingsManager.processTools(
 				project.path,
-				atomicResult,
-				tags,
+				currentRunId,
+				Number(currentTurnSequence),
+				tools,
 			);
 
-			// PERSIST FINDINGS TO DB + EMIT NOTIFICATIONS
-			// Failed diffs (patch resolution error) are fed back to the model, not to the client.
+			// Persist findings + emit notifications
 			const diffErrors = [];
-			for (const diff of atomicResult.diffs) {
+			for (const diff of findings.diffs) {
 				if (diff.error) {
 					diffErrors.push({ file: diff.file, error: diff.error });
 					continue;
@@ -515,7 +506,7 @@ export default class AgentLoop {
 					}
 				}
 			}
-			for (const cmd of atomicResult.commands) {
+			for (const cmd of findings.commands) {
 				const row = await this.#db.insert_finding_command.get({
 					run_id: currentRunId,
 					turn_id: turnId,
@@ -530,7 +521,7 @@ export default class AgentLoop {
 					command: cmd.command,
 				});
 			}
-			for (const notif of atomicResult.notifications) {
+			for (const notif of findings.notifications) {
 				const row = await this.#db.insert_finding_notification.get({
 					run_id: currentRunId,
 					turn_id: turnId,
@@ -548,6 +539,22 @@ export default class AgentLoop {
 						findingId: row?.id,
 						question: notif.config.question,
 						options: notif.config.options,
+					});
+				}
+			}
+
+			// Summary notification
+			for (const s of structural) {
+				if (s.name === "summary") {
+					await this.#db.insert_finding_notification.get({
+						run_id: currentRunId,
+						turn_id: turnId,
+						type: "summary",
+						text: s.content,
+						level: "info",
+						status: "acknowledged",
+						config: null,
+						append: 0,
 					});
 				}
 			}
@@ -572,9 +579,8 @@ export default class AgentLoop {
 				} catch (_err) {}
 			}
 
-			// <read> tags: handled by FindingsManager (agent promotion).
+			// Reads handled by FindingsManager (agent promotion).
 			// File appears in context on the next turn via renderPerspective.
-			const readTags = tags.filter((t) => t.tagName === "read");
 
 			// FINAL HYDRATE BEFORE EMISSION
 			await turnObj.hydrate();
@@ -588,13 +594,10 @@ export default class AgentLoop {
 			});
 
 			// --- DECLARATIVE STATE TABLE ---
-			// Phase 1: Classify turn state
-			const BREAKING = new Set(["create", "delete", "edit", "run", "env", "prompt_user"]);
+			// Phase 1: Classify turn state (flags from ToolExtractor + turn content)
+			const { hasBreaking, hasReads, hasSummary } = flags;
 			const unkRaw = (turnJson.assistant.unknown || "").trim();
 			const openUnknowns = unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
-			const hasSummary = tags.some((t) => t.tagName === "summary");
-			const hasBreaking = tags.some((t) => BREAKING.has(t.tagName));
-			const hasReads = readTags.length > 0;
 			const todoList = turnJson.assistant.todo;
 			const todosIncomplete = todoList.length > 0 && todoList.some((t) => !t.completed);
 			const proposed = hasBreaking

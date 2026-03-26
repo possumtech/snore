@@ -24,7 +24,7 @@ export default class ProjectAgent {
 		const parser = new ResponseParser();
 		const llm = new LlmProvider(hooks);
 		const turnBuilder = new TurnBuilder(hooks);
-		this.#findingsManager = new FindingsManager(db, parser);
+		this.#findingsManager = new FindingsManager(db);
 
 		this.#agentLoop = new AgentLoop(
 			db,

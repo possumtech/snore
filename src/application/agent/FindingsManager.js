@@ -1,107 +1,96 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import HeuristicMatcher, { generateUnifiedDiff } from "../../extraction/HeuristicMatcher.js";
+import HeuristicMatcher, {
+	generateUnifiedDiff,
+} from "../../extraction/HeuristicMatcher.js";
 
+/**
+ * FindingsManager: Processes tool invocations into findings.
+ * Consumes structured tool calls from ToolExtractor, not raw tags.
+ */
 export default class FindingsManager {
 	#db;
-	#parser;
 
-	constructor(db, parser) {
+	constructor(db) {
 		this.#db = db;
-		this.#parser = parser;
 	}
 
-	async populateFindings(projectPath, atomicResult, tags) {
-		const { content: turnContent } = atomicResult;
-
+	/**
+	 * Process tool invocations into findings (diffs, commands, notifications)
+	 * and file promotions.
+	 */
+	async processTools(projectPath, runId, sequence, tools) {
 		const projects = await this.#db.get_project_by_path.all({
 			path: projectPath,
 		});
 		const projectId = projects[0]?.id;
 
-		// Collect edits per file for merging
 		const editsByFile = new Map();
+		const diffs = [];
+		const commands = [];
+		const notifications = [];
 
-		for (const tag of tags) {
-			const { tagName, attrs } = tag;
+		for (const invocation of tools) {
+			const { tool } = invocation;
 
-			if (tagName === "read" && projectId) {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				if (path) {
-					const { id: fileId } = await this.#db.upsert_repo_map_file.get({
-						project_id: projectId,
-						path,
-						hash: null,
-						size: null,
-						symbol_tokens: null,
-					});
-					await this.#db.upsert_agent_promotion.run({
-						file_id: fileId,
-						run_id: atomicResult.runId,
-						turn_seq: atomicResult.sequence ?? 0,
-					});
-				}
-			}
-
-			if (tagName === "drop" && projectId) {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				if (path) {
-					const file = await this.#db.get_repo_map_file.get({
-						project_id: projectId,
-						path,
-					});
-					if (file) {
-						await this.#db.delete_agent_promotion.run({
-							file_id: file.id,
-							run_id: atomicResult.runId,
-						});
-					}
-				}
-			}
-
-			if (tagName === "edit") {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				const content = this.#parser.getNodeText(tag);
-				if (path) {
-					const { search, replace } = this.#parseEditTag(content);
-					if (!editsByFile.has(path)) editsByFile.set(path, []);
-					editsByFile.get(path).push({ search, replace });
-				}
-			}
-
-			if (tagName === "create" || tagName === "delete") {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				const content = this.#parser.getNodeText(tag);
-				if (path) {
-					atomicResult.diffs.push({
-						type: tagName,
-						file: path,
-						patch: content,
-						warning: null,
-						error: null,
-					});
-				}
-			}
-
-			if (tagName === "run" || tagName === "env") {
-				const command = this.#parser.getNodeText(tag);
-				atomicResult.commands.push({ type: tagName, command });
-			}
-
-			if (tagName === "summary") {
-				atomicResult.notifications.push({
-					type: "summary",
-					text: this.#parser.getNodeText(tag),
-					level: "info",
+			if (tool === "read" && projectId) {
+				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
+					project_id: projectId,
+					path: invocation.path,
+					hash: null,
+					size: null,
+					symbol_tokens: null,
+				});
+				await this.#db.upsert_agent_promotion.run({
+					file_id: fileId,
+					run_id: runId,
+					turn_seq: sequence ?? 0,
 				});
 			}
 
-			if (tagName === "prompt_user") {
-				atomicResult.notifications.push({
+			if (tool === "drop" && projectId) {
+				const file = await this.#db.get_repo_map_file.get({
+					project_id: projectId,
+					path: invocation.path,
+				});
+				if (file) {
+					await this.#db.delete_agent_promotion.run({
+						file_id: file.id,
+						run_id: runId,
+					});
+				}
+			}
+
+			if (tool === "edit") {
+				if (!editsByFile.has(invocation.path)) {
+					editsByFile.set(invocation.path, []);
+				}
+				editsByFile.get(invocation.path).push({
+					search: invocation.search,
+					replace: invocation.replace,
+				});
+			}
+
+			if (tool === "create" || tool === "delete") {
+				diffs.push({
+					type: tool,
+					file: invocation.path,
+					patch: invocation.content || null,
+					warning: null,
+					error: null,
+				});
+			}
+
+			if (tool === "run" || tool === "env") {
+				commands.push({ type: tool, command: invocation.command });
+			}
+
+			if (tool === "prompt_user") {
+				notifications.push({
 					type: "prompt_user",
-					text: this.#parser.getNodeText(tag),
+					text: invocation.text,
 					level: "warn",
-					config: this.#parser.parsePromptUser(tag),
+					config: invocation.config,
 				});
 			}
 		}
@@ -120,7 +109,9 @@ export default class FindingsManager {
 
 				for (const edit of edits) {
 					if (!edit.search || !edit.replace) {
-						warnings.push("Could not parse SEARCH/REPLACE markers from an edit block.");
+						warnings.push(
+							"Could not parse SEARCH/REPLACE markers from an edit block.",
+						);
 						continue;
 					}
 					const result = HeuristicMatcher.matchAndPatch(
@@ -145,47 +136,9 @@ export default class FindingsManager {
 			}
 
 			if (warnings.length > 0) warning = warnings.join(" ");
-			atomicResult.diffs.push({ type: "edit", file: path, patch, warning, error });
+			diffs.push({ type: "edit", file: path, patch, warning, error });
 		}
 
-		if (turnContent.includes("RUMMY_TEST_DIFF")) {
-			atomicResult.diffs.push({
-				type: "create",
-				file: "rummy_test.txt",
-				patch: "test+new",
-				warning: null,
-				error: null,
-			});
-		}
-		if (turnContent.includes("RUMMY_TEST_NOTIFY")) {
-			atomicResult.notifications.push({
-				type: "notify",
-				text: "System notification detected in response",
-				level: "info",
-			});
-		}
-	}
-
-	#parseEditTag(content) {
-		const searchMarker = "<<<<<<< SEARCH";
-		const dividerMarker = "=======";
-		const replaceMarker = ">>>>>>> REPLACE";
-
-		const searchStart = content.indexOf(searchMarker);
-		const dividerStart = content.indexOf(dividerMarker);
-		const replaceEnd = content.indexOf(replaceMarker);
-
-		if (searchStart === -1 || dividerStart === -1 || replaceEnd === -1) {
-			return { search: null, replace: null };
-		}
-
-		const search = content
-			.substring(searchStart + searchMarker.length, dividerStart)
-			.trim();
-		const replace = content
-			.substring(dividerStart + dividerMarker.length, replaceEnd)
-			.trim();
-
-		return { search, replace };
+		return { diffs, commands, notifications };
 	}
 }

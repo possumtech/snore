@@ -5,7 +5,6 @@ import { join } from "node:path";
 import test from "node:test";
 import TestDb from "../../../test/helpers/TestDb.js";
 import FindingsManager from "./FindingsManager.js";
-import ResponseParser from "./ResponseParser.js";
 
 test("FindingsManager", async (t) => {
 	let tdb, fm, projectId, runId;
@@ -14,7 +13,7 @@ test("FindingsManager", async (t) => {
 	t.before(async () => {
 		await fs.mkdir(projectPath, { recursive: true });
 		tdb = await TestDb.create();
-		fm = new FindingsManager(tdb.db, new ResponseParser());
+		fm = new FindingsManager(tdb.db);
 
 		await tdb.db.upsert_project.run({
 			id: "p1",
@@ -43,21 +42,17 @@ test("FindingsManager", async (t) => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	await t.test("read tag should create agent promotion", async () => {
-		const atomicResult = {
-			runId,
-			sequence: 0,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
+	await t.test("read tool should create agent promotion", async () => {
+		await tdb.db.upsert_repo_map_file.get({
+			project_id: projectId,
+			path: "src/target.js",
+			hash: "abc",
+			size: 100,
+			symbol_tokens: 10,
+		});
 
-		await fm.populateFindings(projectPath, atomicResult, [
-			{
-				tagName: "read",
-				attrs: [{ name: "file", value: "src/target.js" }],
-			},
+		await fm.processTools(projectPath, runId, 0, [
+			{ tool: "read", path: "src/target.js" },
 		]);
 
 		const file = await tdb.db.get_repo_map_file.get({
@@ -65,25 +60,12 @@ test("FindingsManager", async (t) => {
 			path: "src/target.js",
 			run_id: runId,
 		});
-		assert.ok(file, "File should exist in repo_map_files");
 		assert.strictEqual(file.has_agent_promotion, 1);
 	});
 
-	await t.test("drop tag should remove agent promotion", async () => {
-		const atomicResult = {
-			runId,
-			sequence: 1,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
-
-		await fm.populateFindings(projectPath, atomicResult, [
-			{
-				tagName: "drop",
-				attrs: [{ name: "file", value: "src/target.js" }],
-			},
+	await t.test("drop tool should remove agent promotion", async () => {
+		await fm.processTools(projectPath, runId, 1, [
+			{ tool: "drop", path: "src/target.js" },
 		]);
 
 		const file = await tdb.db.get_repo_map_file.get({
@@ -94,142 +76,62 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(file.has_agent_promotion, 0);
 	});
 
-	await t.test("edit tag should produce unified diff patch", async () => {
-		// Create the target file so HeuristicMatcher can resolve
+	await t.test("edit tool should produce unified diff patch", async () => {
 		await fs.mkdir(join(projectPath, "src"), { recursive: true });
 		await fs.writeFile(join(projectPath, "src/a.js"), "old code\n");
 
-		const atomicResult = {
-			runId,
-			sequence: 2,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
-
-		const editContent =
-			"<<<<<<< SEARCH\nold code\n=======\nnew code\n>>>>>>> REPLACE";
-		await fm.populateFindings(projectPath, atomicResult, [
-			{
-				tagName: "edit",
-				isMock: true,
-				attrs: [{ name: "file", value: "src/a.js" }],
-				childNodes: [{ value: editContent }],
-			},
+		const { diffs } = await fm.processTools(projectPath, runId, 2, [
+			{ tool: "edit", path: "src/a.js", search: "old code", replace: "new code" },
 		]);
 
-		assert.strictEqual(atomicResult.diffs.length, 1);
-		assert.strictEqual(atomicResult.diffs[0].type, "edit");
-		assert.strictEqual(atomicResult.diffs[0].file, "src/a.js");
-		assert.ok(
-			atomicResult.diffs[0].patch.includes("---"),
-			"Should be unified diff",
-		);
-		assert.ok(
-			atomicResult.diffs[0].patch.includes("+++"),
-			"Should be unified diff",
-		);
-		assert.strictEqual(atomicResult.diffs[0].error, null);
+		assert.strictEqual(diffs.length, 1);
+		assert.strictEqual(diffs[0].type, "edit");
+		assert.strictEqual(diffs[0].file, "src/a.js");
+		assert.ok(diffs[0].patch.includes("---"), "Should be unified diff");
+		assert.ok(diffs[0].patch.includes("+++"), "Should be unified diff");
+		assert.strictEqual(diffs[0].error, null);
 	});
 
-	await t.test(
-		"edit tag with missing file should produce error, no patch",
-		async () => {
-			const atomicResult = {
-				runId,
-				sequence: 2,
-				content: "",
-				diffs: [],
-				commands: [],
-				notifications: [],
-			};
-
-			const editContent =
-				"<<<<<<< SEARCH\nold code\n=======\nnew code\n>>>>>>> REPLACE";
-			await fm.populateFindings(projectPath, atomicResult, [
-				{
-					tagName: "edit",
-					isMock: true,
-					attrs: [{ name: "file", value: "nonexistent.js" }],
-					childNodes: [{ value: editContent }],
-				},
-			]);
-
-			assert.strictEqual(atomicResult.diffs.length, 1);
-			assert.strictEqual(atomicResult.diffs[0].patch, null);
-			assert.ok(atomicResult.diffs[0].error);
-		},
-	);
-
-	await t.test("create tag should populate diffs", async () => {
-		const atomicResult = {
-			runId,
-			sequence: 3,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
-
-		await fm.populateFindings(projectPath, atomicResult, [
-			{
-				tagName: "create",
-				isMock: true,
-				attrs: [{ name: "file", value: "new.js" }],
-				childNodes: [{ value: "const x = 1;" }],
-			},
+	await t.test("edit tool with missing file should produce error", async () => {
+		const { diffs } = await fm.processTools(projectPath, runId, 2, [
+			{ tool: "edit", path: "nonexistent.js", search: "old", replace: "new" },
 		]);
 
-		assert.strictEqual(atomicResult.diffs.length, 1);
-		assert.strictEqual(atomicResult.diffs[0].type, "create");
-		assert.strictEqual(atomicResult.diffs[0].file, "new.js");
+		assert.strictEqual(diffs.length, 1);
+		assert.strictEqual(diffs[0].patch, null);
+		assert.ok(diffs[0].error);
 	});
 
-	await t.test("run tag should populate commands", async () => {
-		const atomicResult = {
-			runId,
-			sequence: 4,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
-
-		await fm.populateFindings(projectPath, atomicResult, [
-			{
-				tagName: "run",
-				isMock: true,
-				attrs: [],
-				childNodes: [{ value: "npm test" }],
-			},
+	await t.test("create tool should produce diff", async () => {
+		const { diffs } = await fm.processTools(projectPath, runId, 3, [
+			{ tool: "create", path: "new.js", content: "console.log('hi');" },
 		]);
 
-		assert.strictEqual(atomicResult.commands.length, 1);
-		assert.strictEqual(atomicResult.commands[0].command, "npm test");
+		assert.strictEqual(diffs.length, 1);
+		assert.strictEqual(diffs[0].type, "create");
+		assert.strictEqual(diffs[0].file, "new.js");
 	});
 
-	await t.test("summary tag should populate notifications", async () => {
-		const atomicResult = {
-			runId,
-			sequence: 5,
-			content: "",
-			diffs: [],
-			commands: [],
-			notifications: [],
-		};
+	await t.test("run tool should produce command", async () => {
+		const { commands } = await fm.processTools(projectPath, runId, 4, [
+			{ tool: "run", command: "npm test" },
+		]);
 
-		await fm.populateFindings(projectPath, atomicResult, [
+		assert.strictEqual(commands.length, 1);
+		assert.strictEqual(commands[0].command, "npm test");
+	});
+
+	await t.test("prompt_user tool should produce notification", async () => {
+		const { notifications } = await fm.processTools(projectPath, runId, 5, [
 			{
-				tagName: "summary",
-				isMock: true,
-				attrs: [],
-				childNodes: [{ value: "Done." }],
+				tool: "prompt_user",
+				text: "Which option?",
+				config: { question: "Which option?", options: [] },
 			},
 		]);
 
-		assert.strictEqual(atomicResult.notifications.length, 1);
-		assert.strictEqual(atomicResult.notifications[0].type, "summary");
-		assert.strictEqual(atomicResult.notifications[0].text, "Done.");
+		assert.strictEqual(notifications.length, 1);
+		assert.strictEqual(notifications[0].type, "prompt_user");
+		assert.strictEqual(notifications[0].text, "Which option?");
 	});
 });
