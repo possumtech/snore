@@ -56,12 +56,13 @@ if (actualModelId.startsWith("ollama/")) {
 	process.exit(1);
 }
 
-let SqlRite, SocketServer, registerPlugins, createHooks;
+let SqlRite, SocketServer, registerPlugins, createHooks, RpcRegistry;
 try {
 	SqlRite = (await import("@possumtech/sqlrite")).default;
 	SocketServer = (await import("./src/infrastructure/socket/SocketServer.js")).default;
 	registerPlugins = (await import("./src/plugins/index.js")).registerPlugins;
 	createHooks = (await import("./src/domain/hooks/Hooks.js")).default;
+	RpcRegistry = (await import("./src/infrastructure/rpc/RpcRegistry.js")).default;
 } catch (err) {
 	if (err.code === "ERR_MODULE_NOT_FOUND") {
 		console.error("RUMMY Dependency Error: node_modules not found or incomplete.");
@@ -75,6 +76,7 @@ async function main() {
 	// 1. Initialize Hooks (Agnostic Engine)
 	const debug = process.env.RUMMY_DEBUG === "true";
 	const hooks = createHooks(debug);
+	hooks.rpc.registry = new RpcRegistry();
 
 	// 2. Resolve Directories
 	const userPluginsDir = join(rummyHome, "plugins");

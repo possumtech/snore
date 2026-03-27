@@ -1,3 +1,4 @@
+import ToolRegistry from "../tools/ToolRegistry.js";
 import HookRegistry from "./HookRegistry.js";
 
 /**
@@ -6,6 +7,7 @@ import HookRegistry from "./HookRegistry.js";
  */
 export default function createHooks(debug = false) {
 	const registry = new HookRegistry(debug);
+	const tools = new ToolRegistry();
 
 	const createEvent = (tag) => ({
 		on: (callback, priority) => registry.addEvent(tag, callback, priority),
@@ -86,7 +88,13 @@ export default function createHooks(debug = false) {
 			response: {
 				result: createFilter("rpc.response.result"),
 			},
+			registry: null, // attached by service.js after RpcRegistry creation
 		},
+		agent: {
+			warn: createFilter("agent.warn"),
+			action: createFilter("agent.action"),
+		},
+		tools,
 
 		// Utility to add raw filters/events directly if needed for tests
 		addFilter: registry.addFilter.bind(registry),
