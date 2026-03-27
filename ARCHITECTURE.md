@@ -139,8 +139,35 @@ have different heat scores in different runs.
 Formula: `heat = (cross_reference_count * 2) + is_root`. A file needs `heat >= 2`
 (at least one cross-reference) to be promoted from `path` to `symbols`.
 
-The `repo_map_ranked` view in the migration schema is vestigial and unused.
 The canonical ranking query is `get_ranked_repo_map.sql`.
+
+#### 2.4.1 Cross-Reference Population
+
+The `repo_map_references` table records which files reference symbols defined
+elsewhere. A row `(file_id=B, symbol_name=X)` means "file B's content contains
+symbol X, which is defined in some other file's `repo_map_tags`."
+
+**When**: During `RepoMap.updateIndex()`, as a second pass after symbol extraction.
+When a file is re-indexed (content hash changed), its old references are cleared
+by `clear_repo_map_file_data` (which cascades tags and references), then
+references are re-scanned from the fresh content.
+
+**Algorithm**: For each re-indexed file, scan its content for whole-word
+occurrences of symbol names from `repo_map_tags` defined in *other* files.
+Each match produces one `insert_repo_map_ref` row. A symbol is counted once
+per referencing file regardless of how many times it appears.
+
+**Filtering**: Symbol names are filtered before scanning to exclude garbage
+matches that would inflate heat indiscriminately:
+
+- **Minimum length**: Names shorter than 3 characters are skipped (`id`, `x`, `db`).
+- **Whole-word match**: Names must match on word boundaries to avoid substring
+  collisions (e.g., `get` must not match inside `getUser`).
+- **Self-exclusion**: A file's own symbols are never counted as references.
+
+These filters are intentionally minimal. The system supports hundreds of
+languages via ctags/antlrmap, so filtering must be language-agnostic — no
+keyword lists, no import parsing, no language-specific heuristics.
 
 ### 2.5 Attention Decay
 

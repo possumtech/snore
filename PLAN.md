@@ -2,41 +2,14 @@
 
 ## Remaining
 
-### Implementation
-- [ ] **Wire `repo_map_references` population** — `insert_repo_map_ref.sql` exists but is never called. `RepoMap.updateIndex()` extracts symbols (tags) but never scans files for cross-references. Heat calculation in `get_ranked_repo_map.sql` joins `repo_map_references` but the table is always empty, so heat = `is_root` only. This is the core of ARCHITECTURE.md §2.4.
-
-### Questions for Review
-- **State table rule 6 (fallback → completed)**: Should a turn with zero tools and zero summary be allowed to complete? Currently the model can produce `<todo></todo><known>...</known><unknown></unknown>` with nothing actionable and the run completes after 3 inconsistency retries. Is this correct behavior or a bug?
+(empty)
 
 ## Done
 
-### Documentation Alignment (2026-03-27)
-- [x] §2.1: Documented editor promotion path→file_id resolution
-- [x] §2.4: Clarified heat is dynamic/run-specific; noted vestigial view
-- [x] §2.7: Documented client promotion upsert into repo_map_files for uniform ranking
-- [x] §3.1: Fixed incorrect claim that RUMMY_MAP_MAX_PERCENT is unused
-- [x] §3.3: Added RUMMY_RETENTION_DAYS
-- [x] §4.1: Noted discover is hand-maintained
-- [x] §4.2/§6.5: Documented structured feedback delivery to clients
-- [x] §8: Updated retention language, added orphaned editor cleanup
+- [x] **Wire `repo_map_references` population** — `RepoMap.updateIndex()` now runs a second pass after symbol extraction: scans each re-indexed file's content for whole-word matches of symbol names from other files, filtered by min length 3. ARCHITECTURE.md §2.4.1 documents the algorithm. 4 integration tests cover: basic population, self-exclusion, short-name filtering, and heat calculation.
+- [x] **State table nag warnings** — warnings now include concrete templates of correct behavior. Stray output outside `<todo>`, `<known>`, `<unknown>`, `<edit>` tags generates a warning. Rule 6 fallback allows graceful completion after 3 nag retries.
+- [x] **Structured feedback delivery** — `Turn.toJson()` exposes `feedback` array with `{ level, target, message }` objects.
 
-### Implementation Fixes (2026-03-27)
-- [x] Dropped vestigial `repo_map_ranked` view and `v_turns_summary` view from migration
-- [x] Added `RUMMY_RETENTION_DAYS=31` to `.env.example`
-- [x] Parameterized `purge_old_runs.sql` with `:retention_days`
-- [x] `SessionManager.activate()`/`readOnly()` upsert into `repo_map_files`
-- [x] Removed separate untracked-client-promo loop from `renderPerspective()`
-- [x] Created `purge_orphaned_editor_promotions.sql`
-- [x] Added structured `feedback` array to `Turn.toJson()` for client access
-
-### E2E Test Hardening (2026-03-27)
-- [x] Fixed diff_resolution tests: explicit prompts with SEARCH/REPLACE, 2-file partial resolution
-- [x] Fixed diff_content modified test: resolve only diffs with "modified", others with "accepted"
-- [x] New: prefill_workflow.test.js — verifies read→continue→prefill round-trip
-- [x] New: notification_isolation.test.js — verifies session-scoped notification delivery
-- [x] New: discover contract validation in rpc_surface.test.js
-- [x] Command resolution tests verified passing
-- [x] All 45 E2E tests pass, 161 unit tests pass, 14 integration tests pass
 
 ## Blue Skies
 

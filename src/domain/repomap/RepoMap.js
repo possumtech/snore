@@ -51,6 +51,7 @@ export default class RepoMap {
 
 		const antlrQueue = [];
 		const ctagsQueue = [];
+		const reindexedFiles = [];
 
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
@@ -66,13 +67,15 @@ export default class RepoMap {
 				continue;
 			}
 
-			await this.#db.upsert_repo_map_file.get({
+			const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 				project_id: this.#projectId,
 				path: relPath,
 				hash,
 				size,
 				symbol_tokens: 0,
 			});
+
+			reindexedFiles.push({ path: relPath, fileId, content });
 
 			// Route to antlrmap if supported, otherwise ctags
 			const ext = `.${relPath.split(".").pop()}`;
@@ -147,6 +150,56 @@ export default class RepoMap {
 						source: "ctags",
 					});
 				}
+			}
+		}
+
+		// Cross-reference scan: for each re-indexed file, find which external
+		// symbols its content references. Runs after all symbol extraction so
+		// the full tag set is available.
+		if (reindexedFiles.length > 0) {
+			await this.#populateReferences(reindexedFiles);
+		}
+	}
+
+	async #populateReferences(reindexedFiles) {
+		// Build symbol → defining file_ids map from all project tags
+		const allTags = await this.#db.get_project_repo_map.all({
+			project_id: this.#projectId,
+		});
+		const symbolDefs = new Map();
+		for (const row of allTags) {
+			if (!row.name || row.name.length < 3) continue;
+			if (!symbolDefs.has(row.name)) symbolDefs.set(row.name, new Set());
+			symbolDefs.get(row.name).add(row.id);
+		}
+
+		// Deduplicate symbol names and build a single regex for whole-word matching
+		const symbolNames = [...symbolDefs.keys()];
+		if (symbolNames.length === 0) return;
+
+		// Escape regex special chars in symbol names
+		const escaped = symbolNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+		const pattern = new RegExp(`\\b(?:${escaped.join("|")})\\b`, "g");
+
+		for (const { fileId, content } of reindexedFiles) {
+			const seen = new Set();
+			for (const match of content.matchAll(pattern)) {
+				const name = match[0];
+				if (seen.has(name)) continue;
+				seen.add(name);
+
+				const definingFileIds = symbolDefs.get(name);
+				if (!definingFileIds) continue;
+
+				// Self-exclusion: skip symbols defined in this file
+				if (definingFileIds.has(fileId)) {
+					if (definingFileIds.size === 1) continue;
+				}
+
+				await this.#db.insert_repo_map_ref.run({
+					file_id: fileId,
+					symbol_name: name,
+				});
 			}
 		}
 	}
