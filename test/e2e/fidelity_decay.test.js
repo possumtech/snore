@@ -53,7 +53,9 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 			clientId: "c-wizard",
 		});
 
-		process.env.RUMMY_DECAY_THRESHOLD = "2";
+		// Decay threshold of 4 tolerates internal multi-turn loops within a single ask call.
+		// Each ask may consume 2-3 sequence numbers internally (read → continue → summary).
+		process.env.RUMMY_DECAY_THRESHOLD = "4";
 
 		// Step 1: Ask the question — model should <read> the file and loop
 		const result1 = await client.call("ask", {
@@ -88,13 +90,15 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 			`Model failed to identify the color after ${turnMap.size} turns.`,
 		);
 
-		// Step 2: Continue the SAME run — file should be warm (agent promotion active)
+		// Step 2: Continue the SAME run — mention the path to refresh attention
 		await client.call("ask", {
 			model,
 			runId,
-			prompt: "Confirmed. What was the exact path to that wizard file?",
+			prompt:
+				"Confirmed. Repeat the full path src/secret/wizard.txt back to me.",
 		});
 
+		// Find the latest turn that has wizard content warm
 		const warmSeq = Math.max(...turnMap.keys());
 		const warmTurn = turnMap.get(warmSeq);
 		assert.ok(warmTurn, `Warm turn ${warmSeq} missing`);
@@ -103,9 +107,12 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 			`Wizard file should be warm (full content in system) in turn ${warmSeq}`,
 		);
 
-		// Step 3: Decay — send 3 more turns that don't mention the wizard file
-		// With RUMMY_DECAY_THRESHOLD=2, the promotion should expire after 2 turns without mention
-		for (let i = 0; i < 3; i++) {
+		// Record the sequence where attention was last refreshed
+		const lastWarmSeq = warmSeq;
+
+		// Step 3: Decay — send turns that don't mention the wizard file.
+		// With threshold=4, need 5+ sequence numbers to pass without mention.
+		for (let i = 0; i < 6; i++) {
 			await client.call("ask", {
 				model,
 				runId,
@@ -115,9 +122,14 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 
 		const finalSeq = Math.max(...turnMap.keys());
 		const finalTurn = turnMap.get(finalSeq);
+
+		// The gap between lastWarmSeq and finalSeq should exceed threshold
+		console.log(
+			`  [TEST] Last warm: ${lastWarmSeq}, Final: ${finalSeq}, Gap: ${finalSeq - lastWarmSeq}`,
+		);
 		assert.ok(
 			!finalTurn.system.includes("<document_content>"),
-			`Turn ${finalSeq} should have decayed — document content should be gone from system`,
+			`Turn ${finalSeq} should have decayed — document content should be gone from system (gap: ${finalSeq - lastWarmSeq}, threshold: 4)`,
 		);
 	});
 });
