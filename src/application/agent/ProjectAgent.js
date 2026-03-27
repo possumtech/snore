@@ -3,7 +3,10 @@ import TurnBuilder from "../../domain/turn/TurnBuilder.js";
 import SessionManager from "../session/SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
 import FindingsManager from "./FindingsManager.js";
+import FindingsProcessor from "./FindingsProcessor.js";
 import ResponseParser from "./ResponseParser.js";
+import StateEvaluator from "./StateEvaluator.js";
+import TurnExecutor from "./TurnExecutor.js";
 
 /**
  * ProjectAgent: Primary entry point and coordinator for the outside world.
@@ -26,13 +29,21 @@ export default class ProjectAgent {
 		const turnBuilder = new TurnBuilder(hooks);
 		this.#findingsManager = new FindingsManager(db);
 
+		const turnExecutor = new TurnExecutor(db, llm, hooks, turnBuilder, parser);
+		const findingsProcessor = new FindingsProcessor(
+			db,
+			this.#findingsManager,
+			hooks,
+		);
+		const stateEvaluator = new StateEvaluator(db, hooks);
+
 		this.#agentLoop = new AgentLoop(
 			db,
 			llm,
 			hooks,
-			turnBuilder,
-			parser,
-			this.#findingsManager,
+			turnExecutor,
+			findingsProcessor,
+			stateEvaluator,
 			this.#sessionManager,
 		);
 	}
