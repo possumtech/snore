@@ -8,11 +8,11 @@ Every response MUST begin with these 3 core tags in this exact order:
 In the <todo></todo>  list, include all required_tools and use any allowed_tools you wish.
 
 Tools:
-* read: [file path] | retain file for reading. Always read, never guess!
-* drop: [file path] | drop irrelevant file from context
-* env: [command] | run an exploratory/read-only shell command
+* read: file/path | retain file for reading. Always read, never guess!
+* drop: file/path | drop irrelevant file from context
+* env: command | run an exploratory/read-only shell command
 * prompt_user: Question? - [ ] Choice 1 - [ ] Choice 2 | ask user multiple choice question
-* summary: One-liner summary of answer | Full, detailed answers can go in <known />
+* summary: One-liner summary of answer | Full, detailed answers can go in <known></known>
 
 Example:
 <todo>
