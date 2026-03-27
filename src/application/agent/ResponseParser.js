@@ -10,9 +10,7 @@ export default class ResponseParser {
 	}
 
 	mergePrefill(prefill, content) {
-		if (content.startsWith(prefill)) {
-			return content;
-		}
+		if (content.startsWith(prefill)) return content;
 		if (
 			content.startsWith("] ") ||
 			content.startsWith("x] ") ||
@@ -20,9 +18,11 @@ export default class ResponseParser {
 		) {
 			return prefill + content;
 		}
-		if (!content.includes("<todo>")) {
-			return prefill + content;
+		// Provider echoed the trailing "- [ ] " but not the checked items
+		if (prefill.endsWith("- [ ] ") && content.startsWith("- [ ] ")) {
+			return prefill.slice(0, -6) + content;
 		}
+		if (!content.includes("<todo>")) return prefill + content;
 		return content;
 	}
 

@@ -46,6 +46,14 @@ export default class AgentLoop {
 		return modelId;
 	}
 
+	#buildPrefill(processedItems) {
+		if (processedItems.length === 0) return "<todo>\n- [ ] ";
+		const checked = processedItems
+			.map((item) => `- [x] ${item.tool}: ${item.argument}`)
+			.join("\n");
+		return `<todo>\n${checked}\n- [ ] `;
+	}
+
 	async run(
 		type,
 		sessionId,
@@ -166,6 +174,7 @@ export default class AgentLoop {
 		let currentTurnSequence = 0;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
+		let processedItems = [];
 
 		// --- THE ATOMIC TURN LOOP ---
 		while (loopIteration < MAX_LOOP_ITERATIONS) {
@@ -265,7 +274,7 @@ export default class AgentLoop {
 				{ model: requestedModel, sessionId, runId: currentRunId },
 			);
 
-			const prefill = "<todo>\n- [ ] ";
+			const prefill = this.#buildPrefill(processedItems);
 			const result = await this.#llmProvider.completion(
 				[...filteredMessages, { role: "assistant", content: prefill }],
 				requestedModel,
@@ -374,6 +383,13 @@ export default class AgentLoop {
 				tags,
 				parsedTodo,
 			);
+
+			// Accumulate processed items for continuation prefill
+			for (const item of parsedTodo) {
+				if (!item.completed && item.tool) {
+					processedItems.push({ tool: item.tool, argument: item.argument });
+				}
+			}
 
 			for (let i = 0; i < structural.length; i++) {
 				await commitAssistantTag(
@@ -702,6 +718,7 @@ export default class AgentLoop {
 			}
 			if (rule.action === "retry") {
 				inconsistencyRetries++;
+				processedItems = [];
 				await turnObj.hydrate();
 				continue;
 			}
