@@ -211,7 +211,7 @@ export default class AgentLoop {
 				const lastTurn = new Turn(this.#db, lastTurnRow.turn_id);
 				await lastTurn.hydrate();
 				const lastJson = lastTurn.toJson();
-				const unknownText = (lastJson.assistant.unknown || "").trim();
+				const unknownText = (lastJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
 				hasUnknowns =
 					unknownText.length > 0 &&
 					!/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownText) &&
@@ -619,7 +619,7 @@ export default class AgentLoop {
 			// --- DECLARATIVE STATE TABLE ---
 			// Phase 1: Classify turn state (flags from ToolExtractor + turn content)
 			const { hasBreaking, hasReads, hasSummary } = flags;
-			const unkRaw = (turnJson.assistant.unknown || "").trim();
+			const unkRaw = (turnJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
 			const openUnknowns =
 				unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
 			const todoList = turnJson.assistant.todo;

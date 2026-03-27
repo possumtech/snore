@@ -363,47 +363,91 @@ are implemented server-side.
 
 ## 6. The Rumsfeld Loop
 
-Every turn follows the same cognitive discipline, enforced by protocol validation.
+Every turn follows the same cognitive discipline, enforced by the state table.
 
 ### 6.1 Required Structure
 
 The model must begin every response with three tags in order:
 
-1. `<todo>` — Plan of action. Each item starts with a verb prefix matching
-   the tag the model will emit to complete it. Verbs: `read`, `drop`, `env`,
-   `edit`, `create`, `delete`, `run`, `prompt_user`, `summary`.
-   Example: `- [ ] edit: fix the add function`
+1. `<todo>` — The action plan. Each item uses the format `- [ ] tool: argument # description`.
+   Checking an item `[x]` means the tool was performed. The todo list is the primary
+   source of tool invocations — the server parses checked items as executed tools.
 2. `<known>` — Facts, analysis, and plans gathered so far.
 3. `<unknown>` — What the model still needs to find out. Empty (`<unknown></unknown>`)
    when nothing remains unknown.
 
-This structure is identical in ASK and ACT modes. The system prompts
-(`system.ask.md`, `system.act.md`) are the authoritative reference for
-model-facing tag definitions.
+### 6.2 Tool Execution Model
 
-### 6.2 Exit Conditions
+Tools are divided into two categories:
 
-Three outcomes per turn, evaluated in order:
+**Todo-driven tools** — the checked todo item IS the action. The server extracts
+the tool name and argument from the todo line. No separate tag is emitted.
 
-| Condition | Status returned | What happens next |
+| Tool | Argument | Effect |
 |---|---|---|
-| Breaking tags emitted (`<edit>`, `<create>`, `<delete>`, `<run>`, `<env>`, `<prompt_user>`) | `proposed` | Findings persisted, client notified. Trigger blocks next turn until all resolved. |
-| `<read>` tags emitted | Agent continues | Loop forces next turn — file appears in context via renderPerspective. |
-| Neither | `completed` | If no `<summary>` tag, one is synthesized from `<known>`. |
+| `read` | file path | Creates agent promotion. File appears in context next turn. |
+| `drop` | file path | Removes agent promotion. File reverts to baseline. |
+| `env` | shell command | Read-only command. Proposed to client for execution. |
+| `run` | shell command | Mutating command. Proposed to client for execution. |
+| `delete` | file path | Proposed file deletion. Client resolves. |
+| `prompt_user` | question + choices | Proposed question. Client presents to user. |
+| `summary` | one-liner | Signals termination. |
 
-The model's self-reported todo checkmarks and unknowns do not gate the exit.
-The only authority is whether action tags were emitted.
+**Tag-driven tools** — require structured content that cannot fit in a todo line.
+The model checks the todo item AND emits a tag after the three core tags.
 
-### 6.3 Protocol Validation
+| Tool | Tag | Content |
+|---|---|---|
+| `edit` | `<edit file="path">SEARCH/REPLACE</edit>` | File modification or creation. |
 
-The server validates each response against mode-specific constraints:
+An `<edit>` without SEARCH/REPLACE markers creates a new file or replaces all content.
 
-- **Required tags** must be present (`todo`, `known`, `unknown`).
-- **Allowed tags** are mode-dependent (ASK cannot use edit/create/delete/run).
-- Constraints are carried as attributes on the `<ask>`/`<act>` mode tag wrapping
-  the user prompt.
-- Violations trigger a retry (up to 5 attempts) with the validation error
-  fed back to the model as `<error>` elements.
+### 6.3 State Table
+
+The server evaluates each turn through a declarative state table.
+
+**Phase 1 — Warnings** (always collected, always injected as feedback):
+
+| Condition | Warning |
+|---|---|
+| `summary` checked but unknowns present | Resolve unknowns before terminating |
+| `summary` checked but todos incomplete | Complete todos before terminating |
+| Unknowns present, no tools checked | Use tools to resolve unknowns |
+| Todos incomplete, no tools checked | Use tools to complete your plan |
+
+**Phase 2 — Action** (first matching rule wins):
+
+| # | Condition | Action |
+|---|---|---|
+| 1 | Findings persisted in DB | `proposed` — client resolves |
+| 2 | Breaking tools checked, findings failed | `continue` — errors in feedback |
+| 3 | `read` tools checked | `continue` — files appear next turn |
+| 4 | Warnings present, retries remaining | `retry` — model sees warnings |
+| 5 | `summary` checked | `completed` |
+| 6 | No unknowns, no incomplete todos | `completed` |
+| 7 | Fallback | `completed` |
+
+### 6.4 Feedback Format
+
+The model receives feedback as plain text lines in the user message:
+
+```
+info: AGENTS.md # file retained
+info: src/old.js # file dropped
+warn: config.js # edits rejected
+error: utils.js # SEARCH block matched multiple locations
+warn: <todo> has unchecked items but no tools were used
+```
+
+Format: `level: target # message` — same shape as the tool definitions.
+
+### 6.5 Protocol Validation
+
+- **Required tags**: `todo`, `known`, `unknown` must be present.
+- **Allowed tools**: mode-dependent. ASK mode cannot use edit/delete/run.
+- **Tool constraints** are delivered as `required_tools:` and `allowed_tools:`
+  lines at the top of the user message.
+- Violations trigger a retry (up to 5 attempts) with errors in feedback.
 
 ---
 
