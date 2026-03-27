@@ -293,7 +293,7 @@ export default class TurnExecutor {
 		};
 	}
 
-	async #validate(type, hasUnknowns, tags, turnObj, elements, turnId) {
+	async #validate(type, hasUnknowns, tags, _turnObj, _elements, _turnId) {
 		const validationErrors = [];
 		const constraints = await this.#db.get_protocol_constraints.get({
 			type,

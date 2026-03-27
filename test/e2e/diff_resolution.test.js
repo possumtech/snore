@@ -120,9 +120,10 @@ describe("E2E: Diff Resolution", () => {
 			);
 
 			assert.ok(resolveResult, "Should have a resolve result");
-			assert.ok(
-				["completed", "proposed", "running"].includes(resolveResult.status),
-				`Expected valid status after accept, got ${resolveResult.status}`,
+			assert.strictEqual(
+				resolveResult.status,
+				"completed",
+				`Accepting all diffs should complete the run, got ${resolveResult.status}`,
 			);
 		} finally {
 			await cleanup();

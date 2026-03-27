@@ -366,6 +366,19 @@ export default class AgentLoop {
 			return { runId, status: "resolved" };
 		}
 
+		// If the proposing turn included a summary, the model signaled completion.
+		// Accept findings and complete — don't auto-resume into a new turn.
+		const hasSummaryFinding = allFindings.some(
+			(f) => f.category === "notification" && f.type === "summary",
+		);
+		if (hasSummaryFinding) {
+			await this.#db.update_run_status.run({
+				id: runId,
+				status: "completed",
+			});
+			return { runId, status: "completed" };
+		}
+
 		return this.run(run.type, run.session_id, null, "", null, runId);
 	}
 

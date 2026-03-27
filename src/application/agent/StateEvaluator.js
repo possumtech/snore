@@ -47,8 +47,8 @@ export default class StateEvaluator {
 		const todoHasEdit = todoItems.some(
 			(t) => !t.completed && (t.tool === "edit" || t.tool === "create"),
 		);
-		const allTodoComplete = todoItems.length > 0
-			&& todoItems.every((t) => t.completed);
+		const allTodoComplete =
+			todoItems.length > 0 && todoItems.every((t) => t.completed);
 
 		// Collect warnings — hookable via agent.warn filter
 		let warnRules = [
@@ -70,7 +70,7 @@ export default class StateEvaluator {
 			},
 			{
 				when: todoHasEdit && editTags.length === 0,
-				msg: "Todo lists edit: or create: but no <edit> tag was provided. Include an <edit file=\"path\"> block after the core tags.",
+				msg: 'Todo lists edit: or create: but no <edit> tag was provided. Include an <edit file="path"> block after the core tags.',
 			},
 			{
 				when: allTodoComplete && !hasSummary,

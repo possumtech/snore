@@ -116,14 +116,18 @@ test("ResponseParser", async (t) => {
 		assert.ok(!tags.some((t) => t.tagName === "invalid"));
 	});
 
-	await t.test("parseActionTags should extract edit tags with file attr", () => {
-		const content = '<edit file="a.js">content</edit><edit file="b.js">more</edit>';
-		const tags = parser.parseActionTags(content);
-		assert.strictEqual(tags.filter((t) => t.tagName === "edit").length, 2);
-		const first = tags.find((t) => t.tagName === "edit");
-		assert.strictEqual(
-			first.attrs.find((a) => a.name === "file").value,
-			"a.js",
-		);
-	});
+	await t.test(
+		"parseActionTags should extract edit tags with file attr",
+		() => {
+			const content =
+				'<edit file="a.js">content</edit><edit file="b.js">more</edit>';
+			const tags = parser.parseActionTags(content);
+			assert.strictEqual(tags.filter((t) => t.tagName === "edit").length, 2);
+			const first = tags.find((t) => t.tagName === "edit");
+			assert.strictEqual(
+				first.attrs.find((a) => a.name === "file").value,
+				"a.js",
+			);
+		},
+	);
 });

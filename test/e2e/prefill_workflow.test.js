@@ -65,8 +65,8 @@ describe("E2E: Prefill Workflow (Option D)", () => {
 		});
 
 		assert.ok(
-			["completed", "proposed", "running"].includes(result.status),
-			`Expected completed, proposed, or running — got ${result.status}`,
+			["completed", "proposed"].includes(result.status),
+			`Expected completed or proposed, got ${result.status}`,
 		);
 
 		// The model should have used read: config.js, causing the loop to continue.
@@ -107,8 +107,8 @@ describe("E2E: Prefill Workflow (Option D)", () => {
 		});
 
 		assert.ok(
-			["completed", "proposed", "running"].includes(result.status),
-			`Expected completed, proposed, or running — got ${result.status}`,
+			["completed", "proposed"].includes(result.status),
+			`Expected completed or proposed, got ${result.status}`,
 		);
 
 		// After the read is processed and loop continues, the second turn's

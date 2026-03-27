@@ -374,7 +374,10 @@ findings exist on the run. The client must resolve all findings before the
 agent can continue.
 
 **Resolution behavior**: When all findings are resolved:
-- **All accepted** → the server auto-resumes the run (next turn begins immediately).
+- **All accepted + summary present** → the run completes. `{ status: "completed" }`.
+  The model signaled completion with `summary:` and the client accepted the work.
+- **All accepted, no summary** → the server auto-resumes the run (next turn begins).
+  The model has more work to do.
 - **Any rejected or modified** → the server returns `{ status: "resolved" }` and
   stops. The client decides whether to continue (`:` prefix) or abandon. Rejection
   feedback is stored in `pending_context` and appears in the next turn the client

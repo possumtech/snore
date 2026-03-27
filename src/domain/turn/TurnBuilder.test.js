@@ -111,7 +111,7 @@ test("TurnBuilder", async (t) => {
 
 		let capturedNoContext = null;
 		const hooks = createHooks();
-			CoreToolsPlugin.register(hooks);
+		CoreToolsPlugin.register(hooks);
 		hooks.onTurn(async (rummy) => {
 			capturedNoContext = rummy.noContext;
 		});
@@ -144,7 +144,7 @@ test("TurnBuilder", async (t) => {
 		});
 
 		const hooks = createHooks();
-			CoreToolsPlugin.register(hooks);
+		CoreToolsPlugin.register(hooks);
 		const builder = new TurnBuilder(hooks);
 		await builder.build({
 			type: "ask",

@@ -73,12 +73,7 @@ export default class ResponseParser {
 	}
 
 	parseActionTags(content) {
-		const coreTagNames = [
-			"todo",
-			"known",
-			"unknown",
-			"edit",
-		];
+		const coreTagNames = ["todo", "known", "unknown", "edit"];
 
 		const tags = [];
 		const seenKeys = new Set();
