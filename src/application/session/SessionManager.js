@@ -165,6 +165,13 @@ export default class SessionManager {
 			path,
 			constraint_type: "full",
 		});
+		await this.#db.upsert_repo_map_file.get({
+			project_id: projectId,
+			path,
+			hash: null,
+			size: null,
+			symbol_tokens: 0,
+		});
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
@@ -190,6 +197,13 @@ export default class SessionManager {
 			project_id: projectId,
 			path,
 			constraint_type: "full:readonly",
+		});
+		await this.#db.upsert_repo_map_file.get({
+			project_id: projectId,
+			path,
+			hash: null,
+			size: null,
+			symbol_tokens: 0,
 		});
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });

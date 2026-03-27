@@ -88,6 +88,9 @@ or pre-indexed. Untracked files are read from disk at render time.
 Agent promotions are scoped to a `run_id` — they do not leak across runs.
 
 **Editor promotions** carry no constraint. They always resolve to `full:readonly`.
+Editor promotions are created by path — `upsert_editor_promotion` resolves the
+path to `file_id` via a subquery on `repo_map_files`. Files not yet in the index
+are silently skipped (the subquery returns no rows).
 
 **`drop` RPC** removes the client promotion from the project. The file reverts to
 its baseline (agent/editor promotions may still apply).
@@ -127,9 +130,17 @@ actively working with, it is promoted to `symbols` so the model can see those
 names. This promotion is subject to the context budget; when budget is exhausted,
 files remain at `path` or are omitted entirely.
 
-Heat is computed by the `get_ranked_repo_map` query:
-`heat = (cross_reference_count * 2) + is_root`. A file needs `heat >= 2`
+Heat is computed dynamically per turn by `get_ranked_repo_map.sql`, scoped to
+the current run. A file's heat depends on which files have `full` fidelity this
+turn — agent promotions for the specific `run_id`, client promotions for the
+project, and editor promotions for the current buffer state. The same file will
+have different heat scores in different runs.
+
+Formula: `heat = (cross_reference_count * 2) + is_root`. A file needs `heat >= 2`
 (at least one cross-reference) to be promoted from `path` to `symbols`.
+
+The `repo_map_ranked` view in the migration schema is vestigial and unused.
+The canonical ranking query is `get_ranked_repo_map.sql`.
 
 ### 2.5 Attention Decay
 
@@ -159,12 +170,16 @@ Internal code and documentation use "agent promotion." Model-facing text uses
 
 ### 2.7 Ranking
 
-Files are ranked for inclusion in the context window by:
+Files are ranked for inclusion in the context window by `get_ranked_repo_map.sql`:
 
-1. Promoted files first (any source), ordered by promotion recency.
+1. Promoted files first (any source: client, agent, or editor).
 2. Unpromoted files ordered by heat (symbol cross-references from promoted files).
-3. Root-level files get a minor boost.
+3. Root-level files get a minor boost (`is_root` adds 1 to heat).
 4. Alphabetical tiebreaker.
+
+Client promotions (`activate`, `readOnly`) upsert the path into `repo_map_files`
+so the ranked query covers all promoted files uniformly — including files that
+are not git-tracked or were not previously indexed.
 
 ### 2.8 Schema
 
@@ -204,13 +219,16 @@ the file map within each turn.
 ### 3.1 Computation
 
 ```
-budget = RUMMY_MAP_TOKEN_BUDGET
+budget = floor(contextSize * RUMMY_MAP_MAX_PERCENT / 100)
+budget = min(budget, RUMMY_MAP_TOKEN_BUDGET)   # if set
 ```
 
-- `RUMMY_MAP_TOKEN_BUDGET` is the token budget for the file map. Required.
-- `RUMMY_MAP_MAX_PERCENT` is defined for future use when `contextSize` is
-  fetched from provider metadata. Currently unused.
-- If `RUMMY_MAP_TOKEN_BUDGET` is unset, `renderPerspective()` throws.
+- `RUMMY_MAP_MAX_PERCENT` is the primary budget: percent of the model's context
+  window. `contextSize` is fetched from the provider on each run.
+- `RUMMY_MAP_TOKEN_BUDGET` is an optional hard cap in tokens. If both are
+  available, the budget is `min(percent-derived, hard-cap)`.
+- If neither produces a budget (no `contextSize` and no hard cap),
+  `renderPerspective()` throws.
 
 ### 3.2 Per-Turn Evaluation
 
@@ -236,6 +254,7 @@ Defined in `.env`. No magic numbers in code.
 RUMMY_MAP_MAX_PERCENT=10        # Primary: percent of model context window
 RUMMY_MAP_TOKEN_BUDGET=         # Optional: hard cap in tokens
 RUMMY_DECAY_THRESHOLD=12        # Turns before agent promotion decays
+RUMMY_RETENTION_DAYS=31         # Days to keep completed/aborted runs
 ```
 
 ---
@@ -252,7 +271,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 | Method | Params | Description |
 |---|---|---|
 | `ping` | — | Liveness check. |
-| `discover` | — | Returns full method & notification catalog. |
+| `discover` | — | Returns full method & notification catalog. Hand-maintained in `ClientConnection.js`. |
 | `init` | `projectPath`, `projectName`, `clientId`, `projectBufferFiles?` | Initialize project and session. |
 
 #### Model Discovery
@@ -501,12 +520,15 @@ There is no mock LLM fallback. If the model is unavailable, E2E tests fail.
 
 ## 8. Database Hygiene
 
-On every startup, the server runs three cleanup operations:
+On every startup, the server runs cleanup operations:
 
-1. **`purge_old_runs`** — Delete completed/aborted runs older than 30 days.
-   Cascades handle turns, turn_elements, findings, pending_context, and agent promotions.
+1. **`purge_old_runs`** — Delete completed/aborted runs older than `RUMMY_RETENTION_DAYS`
+   (default: 31). Cascades handle turns, turn_elements, findings, pending_context,
+   and agent promotions.
 2. **`purge_stale_sessions`** — Delete sessions with no runs.
 3. **`purge_consumed_context`** — Delete pending_context entries already consumed by a turn.
+4. **`purge_orphaned_editor_promotions`** — Delete editor promotions whose `file_id`
+   no longer exists in `repo_map_files` (stale from crashed sessions or re-indexing).
 
 The server logs the DB size on startup and warns if it exceeds 100MB.
 

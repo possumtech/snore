@@ -146,11 +146,18 @@ describe("File Promotion Lifecycle", () => {
 		try {
 			await indexProject(tdb, projectPath);
 
-			// Client promotion is now path-based — no need to pre-index
+			// Client promotion + repo_map_files upsert (mirrors SessionManager.activate)
 			await tdb.db.upsert_client_promotion.run({
 				project_id: "p1",
 				path: "GAMEPLAN.md",
 				constraint_type: "full",
+			});
+			await tdb.db.upsert_repo_map_file.get({
+				project_id: "p1",
+				path: "GAMEPLAN.md",
+				hash: null,
+				size: null,
+				symbol_tokens: 0,
 			});
 
 			await hooks.project.files.update.completed.emit({

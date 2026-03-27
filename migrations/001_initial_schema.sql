@@ -238,29 +238,7 @@ VALUES
 	|| 'summary'
 );
 
--- RANKING VIEW (Heat Calculation)
-CREATE VIEW IF NOT EXISTS repo_map_ranked AS
-SELECT
-	f.id
-	, f.project_id
-	, f.path
-	, f.hash
-	, f.size
-	, f.symbol_tokens
-	, f.is_root
-	, f.last_indexed_at
-	, EXISTS(SELECT 1 FROM file_promotions WHERE file_id = f.id) AS is_promoted
-	, COALESCE((
-		SELECT COUNT(DISTINCT t.name)
-		FROM repo_map_tags AS t
-		JOIN repo_map_references AS r ON t.name = r.symbol_name
-		JOIN repo_map_files AS f2 ON r.file_id = f2.id
-		JOIN file_promotions AS fp ON f2.id = fp.file_id
-		WHERE
-			t.file_id = f.id
-			AND f2.id != f.id
-	), 0) + f.is_root AS heat
-FROM repo_map_files AS f;
+-- Canonical ranking query: src/domain/repomap/get_ranked_repo_map.sql
 
 -- FINDINGS VIEWS
 CREATE VIEW IF NOT EXISTS v_unresolved_findings AS
