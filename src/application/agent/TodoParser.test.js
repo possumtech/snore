@@ -85,44 +85,4 @@ test("TodoParser", async (t) => {
 		assert.strictEqual(list[0].description, "count errors");
 	});
 
-	await t.test(
-		"crossReference should warn on checked tools without matching tags",
-		() => {
-			const todoList = [
-				{ tool: "edit", argument: "fix.js", completed: true },
-				{ tool: "run", argument: "npm test", completed: true },
-				{ tool: "read", argument: "file.js", completed: true },
-				{ tool: "summary", argument: "done", completed: true },
-			];
-
-			const warnings = TodoParser.crossReference(todoList, ["edit"]);
-			assert.strictEqual(warnings.length, 1);
-			assert.ok(warnings[0].includes("run"));
-		},
-	);
-
-	await t.test("crossReference should not warn for unchecked items", () => {
-		const todoList = [{ tool: "edit", argument: "fix.js", completed: false }];
-		const warnings = TodoParser.crossReference(todoList, []);
-		assert.strictEqual(warnings.length, 0);
-	});
-
-	await t.test("crossReference should skip read/summary tools", () => {
-		const todoList = [
-			{ tool: "read", argument: "file.js", completed: true },
-			{ tool: "summary", argument: "done", completed: true },
-		];
-		const warnings = TodoParser.crossReference(todoList, []);
-		assert.strictEqual(warnings.length, 0);
-	});
-
-	await t.test(
-		"crossReference should warn on checked env tool without tag",
-		() => {
-			const todoList = [{ tool: "env", argument: "df -h", completed: true }];
-			const warnings = TodoParser.crossReference(todoList, []);
-			assert.strictEqual(warnings.length, 1);
-			assert.ok(warnings[0].includes("env"));
-		},
-	);
 });

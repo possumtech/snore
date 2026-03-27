@@ -369,77 +369,76 @@ Every turn follows the same cognitive discipline, enforced by the state table.
 
 The model must begin every response with three tags in order:
 
-1. `<todo>` — The action plan. Each item uses the format `- [ ] tool: argument # description`.
-   Checking an item `[x]` means the tool was performed. The todo list is the primary
-   source of tool invocations — the server parses checked items as executed tools.
-2. `<known>` — Facts, analysis, and plans gathered so far.
+1. `<todo>` — The action manifest. Each item uses `- [ ] tool: argument # description`.
+   All items are executed immediately by the server. The model never checks items —
+   the server marks them `[x]` after execution.
+2. `<known>` — Facts, analysis, and plans. Future plans go here, not in `<todo>`.
 3. `<unknown>` — What the model still needs to find out. Empty (`<unknown></unknown>`)
    when nothing remains unknown.
 
-### 6.2 Tool Execution Model
+### 6.2 Tool Execution Model (Option D)
 
-Tools are divided into two categories:
+All todo items are executed. The server processes them in order.
 
-**Todo-driven tools** — the checked todo item IS the action. The server extracts
-the tool name and argument from the todo line. No separate tag is emitted.
+**Soft tools** — executed directly by the server:
 
 | Tool | Argument | Effect |
 |---|---|---|
 | `read` | file path | Creates agent promotion. File appears in context next turn. |
 | `drop` | file path | Removes agent promotion. File reverts to baseline. |
-| `env` | shell command | Read-only command. Proposed to client for execution. |
-| `run` | shell command | Mutating command. Proposed to client for execution. |
-| `delete` | file path | Proposed file deletion. Client resolves. |
-| `prompt_user` | question + choices | Proposed question. Client presents to user. |
-| `summary` | one-liner | Signals termination. |
+| `summary` | one-liner | Signals completion. |
 
-**Tag-driven tools** — require structured content that cannot fit in a todo line.
-The model checks the todo item AND emits a tag after the three core tags.
+**Hard tools** — create findings for client resolution:
 
-| Tool | Tag | Content |
+| Tool | Argument | Effect |
 |---|---|---|
-| `edit` | `<edit file="path">SEARCH/REPLACE</edit>` | File modification or creation. |
+| `edit` | file path | Requires `<edit file="...">SEARCH/REPLACE</edit>` tag after core tags. |
+| `create` | file path | `<edit>` tag without SEARCH/REPLACE markers. |
+| `delete` | file path | Proposed file deletion. |
+| `env` | shell command | Read-only command. Proposed to client. |
+| `run` | shell command | Mutating command. Proposed to client. |
+| `prompt_user` | question + choices | Proposed question for user. |
 
-An `<edit>` without SEARCH/REPLACE markers creates a new file or replaces all content.
+When hard tools create findings, the run pauses at `proposed` for client resolution.
 
-### 6.3 State Table
+### 6.3 Prefill
 
-The server evaluates each turn through a declarative state table.
+The server prefills the assistant response with `<todo>\n- [ ] ` to anchor the
+model into producing the todo list. On continuation turns (after processing),
+the server can populate the prefill with already-checked items, leaving `</todo>`
+unclosed so the model fills in remaining work.
 
-**Phase 1 — Warnings** (always collected, always injected as feedback):
+### 6.4 State Table
+
+**Phase 1 — Warnings** (always injected as feedback):
 
 | Condition | Warning |
 |---|---|
-| `summary` checked but unknowns present | Resolve unknowns before terminating |
-| `summary` checked but todos incomplete | Complete todos before terminating |
-| Unknowns present, no tools checked | Use tools to resolve unknowns |
-| Todos incomplete, no tools checked | Use tools to complete your plan |
+| Summary present but unknowns not empty | Summary provided but unknowns remain |
+| Unknowns present, no tools listed | No tools to resolve unknowns |
+| No tools and no summary | Empty turn |
 
 **Phase 2 — Action** (first matching rule wins):
 
 | # | Condition | Action |
 |---|---|---|
-| 1 | Findings persisted in DB | `proposed` — client resolves |
-| 2 | Breaking tools checked, findings failed | `continue` — errors in feedback |
-| 3 | `read` tools checked | `continue` — files appear next turn |
+| 1 | Unresolved findings in DB | `proposed` — client resolves |
+| 2 | Hard tools processed | `continue` — findings may have errors |
+| 3 | Reads processed | `continue` — files appear next turn |
 | 4 | Warnings present, retries remaining | `retry` — model sees warnings |
-| 5 | `summary` checked | `completed` |
-| 6 | No unknowns, no incomplete todos | `completed` |
-| 7 | Fallback | `completed` |
+| 5 | Summary present | `completed` |
+| 6 | Fallback | `completed` |
 
-### 6.4 Feedback Format
-
-The model receives feedback as plain text lines in the user message:
+### 6.5 Feedback Format
 
 ```
 info: AGENTS.md # file retained
 info: src/old.js # file dropped
 warn: config.js # edits rejected
 error: utils.js # SEARCH block matched multiple locations
-warn: <todo> has unchecked items but no tools were used
 ```
 
-Format: `level: target # message` — same shape as the tool definitions.
+Format: `level: target # message`.
 
 ### 6.5 Protocol Validation
 

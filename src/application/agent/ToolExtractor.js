@@ -1,19 +1,17 @@
 /**
  * ToolExtractor: Extracts tool invocations from model output.
  *
- * The todo list IS the command interface. Checked items are executed tools.
- * The server parses tool invocations from checked todo items, not from XML tags.
+ * Option D: All todo items are executed. The server processes them in order.
+ * Items already checked (from a prior prefill) are skipped.
  *
  * Two categories:
  * - Todo-driven tools: read, drop, env, run, delete, prompt_user, summary
- *   The checked todo item IS the action.
+ *   The todo item IS the action.
  * - Tag-driven tools: edit only
  *   Requires <edit file="...">SEARCH/REPLACE</edit> tag after the core tags.
  */
 
-import TodoParser from "./TodoParser.js";
-
-const BREAKING_TOOLS = new Set([
+const HARD_TOOLS = new Set([
 	"edit",
 	"create",
 	"delete",
@@ -31,9 +29,9 @@ export default class ToolExtractor {
 
 	/**
 	 * Extract tool invocations from:
-	 * 1. Checked todo items (todo-driven tools)
-	 * 2. <edit> tags in content (tag-driven tools)
-	 * 3. Structural content (todo, known, unknown, summary)
+	 * 1. Structural content (todo, known, unknown, summary)
+	 * 2. Unchecked todo items (all executed; checked items already processed)
+	 * 3. <edit> tags in content (tag-driven tools)
 	 */
 	extract(tags, todoList) {
 		const tools = [];
@@ -49,9 +47,9 @@ export default class ToolExtractor {
 			}
 		}
 
-		// 2. Todo-driven tools from checked items
+		// 2. Todo-driven tools — skip already-checked (processed in prior prefill)
 		for (const item of todoList) {
-			if (!item.completed || !item.tool) continue;
+			if (item.completed || !item.tool) continue;
 
 			const { tool, argument } = item;
 
@@ -90,16 +88,14 @@ export default class ToolExtractor {
 			}
 		}
 
-		const hasBreaking = tools.some((t) => BREAKING_TOOLS.has(t.tool));
+		const hasHard = tools.some((t) => HARD_TOOLS.has(t.tool));
 		const hasReads = tools.some((t) => t.tool === "read");
-		const hasSummary = todoList.some(
-			(t) => t.tool === "summary" && t.completed,
-		);
+		const hasSummary = todoList.some((t) => t.tool === "summary");
 
 		return {
 			tools,
 			structural,
-			flags: { hasBreaking, hasReads, hasSummary },
+			flags: { hasHard, hasReads, hasSummary },
 		};
 	}
 
@@ -145,4 +141,4 @@ export default class ToolExtractor {
 	}
 }
 
-export { BREAKING_TOOLS };
+export { HARD_TOOLS };

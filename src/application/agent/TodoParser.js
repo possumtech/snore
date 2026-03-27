@@ -79,28 +79,6 @@ export default class TodoParser {
 		return { list, next };
 	}
 
-	/**
-	 * Cross-references checked tool todos against emitted tool tags.
-	 * Returns warnings for mismatches.
-	 */
-	static crossReference(todoList, emittedToolNames) {
-		const warnings = [];
-		const emittedSet = new Set(emittedToolNames);
-
-		for (const item of todoList) {
-			if (!item.tool || !item.completed) continue;
-			if (item.tool === "read") continue;
-			if (item.tool === "summary") continue;
-
-			if (!emittedSet.has(item.tool)) {
-				warnings.push(
-					`todo "${item.tool}: ${item.argument}" marked complete but no ${item.tool} tool was emitted`,
-				);
-			}
-		}
-
-		return warnings;
-	}
 }
 
 export { VALID_TOOLS };

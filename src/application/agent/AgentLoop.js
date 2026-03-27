@@ -265,7 +265,7 @@ export default class AgentLoop {
 				{ model: requestedModel, sessionId, runId: currentRunId },
 			);
 
-			const prefill = "<todo>\n- [";
+			const prefill = "<todo>\n- [ ] ";
 			const result = await this.#llmProvider.completion(
 				[...filteredMessages, { role: "assistant", content: prefill }],
 				requestedModel,
@@ -629,34 +629,29 @@ export default class AgentLoop {
 			});
 
 			// --- DECLARATIVE STATE TABLE ---
-			// Phase 1: Classify turn state (flags from ToolExtractor + turn content)
-			const { hasBreaking, hasReads, hasSummary } = flags;
+			// Phase 1: Classify turn state
+			const { hasHard, hasReads, hasSummary } = flags;
 			const unkRaw = (turnJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
 			const openUnknowns =
 				unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
-			const todosIncomplete =
-				parsedTodo.length > 0 && parsedTodo.some((t) => !t.completed);
-			const proposed = hasBreaking
+			const hasTools = tools.length > 0;
+			const proposed = hasHard
 				? await this.#db.get_unresolved_findings.all({ run_id: currentRunId })
 				: [];
 
-			// Phase 2: Collect warnings (always injected, regardless of action)
+			// Phase 2: Collect warnings
 			const WARN_RULES = [
 				{
 					when: hasSummary && openUnknowns,
-					msg: "You emitted <summary> but <unknown> is not empty. Resolve unknowns before terminating.",
+					msg: "Summary provided but <unknown> is not empty.",
 				},
 				{
-					when: hasSummary && todosIncomplete,
-					msg: "You emitted <summary> but <todo> has unchecked items. Complete todos before terminating.",
+					when: openUnknowns && !hasTools,
+					msg: "<unknown> has content but no tools were listed.",
 				},
 				{
-					when: openUnknowns && !hasBreaking && !hasReads,
-					msg: "<unknown> has content but no tools were used. Use tools to resolve unknowns.",
-				},
-				{
-					when: todosIncomplete && !hasBreaking && !hasReads && !hasSummary,
-					msg: "<todo> has unchecked items but no tools were used. Use tools to complete your plan.",
+					when: !hasTools && !hasSummary,
+					msg: "No tools and no summary. Use tools or provide a summary.",
 				},
 			];
 			const warnings = WARN_RULES.filter((w) => w.when);
@@ -680,7 +675,7 @@ export default class AgentLoop {
 			// Phase 3: Determine action (first matching rule wins)
 			const ACTION_TABLE = [
 				{ when: proposed.length > 0, action: "proposed" },
-				{ when: hasBreaking, action: "continue" },
+				{ when: hasHard, action: "continue" },
 				{ when: hasReads, action: "continue" },
 				{
 					when:
@@ -689,7 +684,6 @@ export default class AgentLoop {
 					action: "retry",
 				},
 				{ when: hasSummary, action: "completed" },
-				{ when: !openUnknowns && !todosIncomplete, action: "completed" },
 				{ when: true, action: "completed" },
 			];
 			const rule = ACTION_TABLE.find((r) => r.when);
