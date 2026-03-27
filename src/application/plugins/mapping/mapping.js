@@ -8,17 +8,11 @@ export default class RepoMapPlugin {
 			if (!project?.path) return;
 			if (rummy.noContext) return;
 
-			const files = await db.get_project_repo_map.all({
-				project_id: project.id,
-				run_id: rummy.runId,
-			});
-			const dbFiles = new Set();
-			for (const f of files) {
-				dbFiles.add(f.path);
-			}
-
-			const ctx = await ProjectContext.open(project.path, dbFiles);
+			const ctx = await ProjectContext.open(project.path);
 			const repoMap = new RepoMap(ctx, db, project.id);
+
+			// Reindex changed files before rendering so symbols stay current
+			await repoMap.updateIndex();
 			const perspective = await repoMap.renderPerspective({
 				sequence: rummy.sequence,
 				runId: rummy.runId,

@@ -96,7 +96,7 @@ export default class RepoMap {
 					}
 
 					const symbolWeight = estimateTokens(
-						JSON.stringify({ path: relPath, symbols }),
+						JSON.stringify({ path: relPath, symbols: symbols.map((s) => s.params ? `${s.name}(${s.params.join(", ")})` : s.name) }),
 					);
 
 					const { id: fileId } = await this.#db.upsert_repo_map_file.get({
@@ -127,7 +127,7 @@ export default class RepoMap {
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#ctagsExtractor.extract(ctagsQueue);
 			for (const [path, symbols] of ctagsResults.entries()) {
-				const symbolWeight = estimateTokens(JSON.stringify({ path, symbols }));
+				const symbolWeight = estimateTokens(JSON.stringify({ path, symbols: symbols.map((s) => s.params ? `${s.name}(${s.params})` : s.name) }));
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
@@ -164,7 +164,10 @@ export default class RepoMap {
 
 		if (file.has_editor_promotion) return "full:readonly";
 
-		return "symbols";
+		// Unpromoted: root files get symbols, everything else is path.
+		// Heat-based promotion (path → symbols) happens in renderPerspective.
+		if (file.is_root) return "symbols";
+		return "path";
 	}
 
 	async renderPerspective(options = {}) {
@@ -227,12 +230,13 @@ export default class RepoMap {
 		}
 
 		for (const file of rankedFiles) {
-			const fidelity = this.#deriveFidelity(file, currentTurn, decayThreshold);
+			const baseFidelity = this.#deriveFidelity(file, currentTurn, decayThreshold);
 
-			if (fidelity === "excluded") continue;
-			if (fidelity === "decayed") continue;
+			if (baseFidelity === "excluded") continue;
+			if (baseFidelity === "decayed") continue;
 
-			if (fidelity === "full" || fidelity === "full:readonly") {
+			// Full-content files: promoted by client, agent, or editor
+			if (baseFidelity === "full" || baseFidelity === "full:readonly") {
 				const fullPath = join(this.#ctx.root, file.path);
 				let content = "";
 				try {
@@ -246,7 +250,7 @@ export default class RepoMap {
 					size: file.size,
 					tokens,
 					content,
-					fidelity,
+					fidelity: baseFidelity,
 				};
 
 				finalFiles.push(displayFile);
@@ -254,26 +258,29 @@ export default class RepoMap {
 				continue;
 			}
 
-			const symbols = (tagMap.get(file.path) || []).map((s) => s.name);
-			let displayFile =
-				symbols.length > 0
-					? { path: file.path, size: file.size, symbols, fidelity }
-					: { path: file.path, size: file.size, fidelity };
+			// Symbols fidelity: root files, or path files promoted by heat
+			let fidelity = baseFidelity;
+			if (fidelity === "path" && file.heat >= 2) {
+				fidelity = "symbols";
+			}
+
+			const symbols = fidelity === "symbols"
+				? (tagMap.get(file.path) || []).map((s) => s.params ? `${s.name}(${s.params})` : s.name)
+				: [];
+
+			let displayFile = symbols.length > 0
+				? { path: file.path, size: file.size, symbols, fidelity }
+				: { path: file.path, size: file.size, fidelity: "path" };
 
 			let finalTokens =
 				file.symbol_tokens || estimateTokens(JSON.stringify(displayFile));
 
 			if (currentTokens + finalTokens > budget) {
-				const pathOnly = {
-					path: file.path,
-					size: file.size,
-					fidelity: "path",
-				};
-				const pathTokens = estimateTokens(JSON.stringify(pathOnly));
-
-				if (currentTokens + pathTokens <= budget) {
-					displayFile = pathOnly;
-					finalTokens = pathTokens;
+				// Degrade to path if symbols don't fit
+				if (fidelity === "symbols") {
+					displayFile = { path: file.path, size: file.size, fidelity: "path" };
+					finalTokens = estimateTokens(JSON.stringify(displayFile));
+					if (currentTokens + finalTokens > budget) continue;
 				} else {
 					continue;
 				}

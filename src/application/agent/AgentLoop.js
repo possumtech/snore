@@ -646,12 +646,12 @@ export default class AgentLoop {
 
 			// --- DECLARATIVE STATE TABLE ---
 			// Phase 1: Classify turn state
-			const { hasHard, hasReads, hasSummary } = flags;
+			const { hasAct, hasReads, hasSummary } = flags;
 			const unkRaw = (turnJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
 			const openUnknowns =
 				unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
 			const hasTools = tools.length > 0;
-			const proposed = hasHard
+			const proposed = hasAct
 				? await this.#db.get_unresolved_findings.all({ run_id: currentRunId })
 				: [];
 
@@ -691,7 +691,7 @@ export default class AgentLoop {
 			// Phase 3: Determine action (first matching rule wins)
 			const ACTION_TABLE = [
 				{ when: proposed.length > 0, action: "proposed" },
-				{ when: hasHard, action: "continue" },
+				{ when: hasAct, action: "continue" },
 				{ when: hasReads, action: "continue" },
 				{
 					when:

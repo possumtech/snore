@@ -94,7 +94,8 @@ its baseline (agent/editor promotions may still apply).
 
 ### 2.2 Fidelity Levels
 
-Fidelity is never stored. It is computed by `renderPerspective()` each turn.
+Fidelity is derived at render time by `renderPerspective()`. Never stored.
+The model sees fidelity as the `visibility` attribute on documents.
 
 | Level          | Content in context      | Model can edit? |
 |----------------|-------------------------|-----------------|
@@ -104,25 +105,33 @@ Fidelity is never stored. It is computed by `renderPerspective()` each turn.
 | `path`         | File path only          | No              |
 | `excluded`     | Invisible               | No              |
 
-### 2.3 Fidelity Derivation Rules
+### 2.3 Fidelity Derivation
 
-At render time, all three scopes are merged. Evaluated top-to-bottom, first match wins.
+Base fidelity is derived top-to-bottom, first match wins:
 
 1. **Client `excluded`** → `excluded`. Nothing overrides this.
-2. **Client `full:readonly`** → `full:readonly`. Agent `<read>` cannot escalate
-   past a client read-only constraint.
+2. **Client `full:readonly`** → `full:readonly`. Prevents agent escalation.
 3. **Client `full`** → `full`. Immune to decay.
-4. **Agent promotion (this run), within decay window** → `full`. The model `<read>`
-   a file to work with it and is still actively referencing it. Editable unless
-   rule 2 applies.
-5. **Agent promotion (this run), outside decay window** → promotion is **removed**.
-   The file reverts to its unpromoted state as if never `<read>`.
-6. **Editor promotion** → `full:readonly`. IDE has the file open. Always full
-   source, never editable.
-7. **No promotion, symbols extracted** → `symbols`.
-8. **No promotion, no symbols or budget exhausted** → `path`.
+4. **Agent promotion, within decay window** → `full`.
+5. **Agent promotion, outside decay window** → promotion **removed**. Reverts.
+6. **Editor promotion** → `full:readonly`.
+7. **Root file** (`path NOT LIKE '%/%'`) → `symbols`.
+8. **Default** → `path`.
 
-### 2.4 Attention Decay
+### 2.4 Heat-Based Promotion
+
+After base fidelity is assigned, `renderPerspective` promotes `path` files to
+`symbols` based on **heat** — a score derived from cross-references to `full`
+fidelity files. If a `path` file's symbols are referenced by files the model is
+actively working with, it is promoted to `symbols` so the model can see those
+names. This promotion is subject to the context budget; when budget is exhausted,
+files remain at `path` or are omitted entirely.
+
+Heat is computed by the `get_ranked_repo_map` query:
+`heat = (cross_reference_count * 2) + is_root`. A file needs `heat >= 2`
+(at least one cross-reference) to be promoted from `path` to `symbols`.
+
+### 2.5 Attention Decay
 
 Decay is the mechanism by which agent-promoted files lose their promotion when
 the model stops referencing them.
@@ -136,7 +145,7 @@ the model stops referencing them.
 - Decay only affects agent promotions. Client and editor promotions are immune.
 - Decay is scoped to the run — it only touches agent promotions for the current run.
 
-### 2.5 Model-Facing Language
+### 2.6 Model-Facing Language
 
 The system prompts (`system.ask.md`, `system.act.md`) use the term **"Retained"**
 to describe agent-promoted files. This is intentional — the model does not need to
@@ -148,7 +157,7 @@ know about the internal promotion/fidelity machinery. From the model's perspecti
 Internal code and documentation use "agent promotion." Model-facing text uses
 "Retained." These refer to the same mechanism.
 
-### 2.6 Ranking
+### 2.7 Ranking
 
 Files are ranked for inclusion in the context window by:
 
@@ -157,7 +166,7 @@ Files are ranked for inclusion in the context window by:
 3. Root-level files get a minor boost.
 4. Alphabetical tiebreaker.
 
-### 2.7 Schema
+### 2.8 Schema
 
 ```sql
 -- Client intent: stored by path, no FK to file index
@@ -354,7 +363,7 @@ are implemented server-side.
 | **Turn**    | A single LLM request/response cycle within a run. Owns editor promotions (transient). |
 | **Finding** | A proposed action extracted from a turn: **diff** (edit/create/delete), **command** (run/env), or **notification** (summary/prompt_user). |
 | **Promotion** | A record that a file was placed into context. Client promotions are stored by path in `client_promotions`. Agent/editor promotions are stored by file_id in `file_promotions`. |
-| **Fidelity** | The level of detail the model receives for a file (full, full:readonly, symbols, path, excluded). Derived at render time, never stored. |
+| **Fidelity** | The level of detail for a file: `full`, `full:readonly`, `symbols`, `path`, `excluded`. Derived at render time, never stored. Default is `path`; root files get `symbols`; heat promotes `path` → `symbols`; promotions give `full`. |
 | **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. Run-scoped. |
 | **Retained** | Model-facing term for an agent-promoted file (used in system prompts). |
 | **Rumsfeld Loop** | The turn cycle: the model must declare `<todo>`, `<known>`, `<unknown>` before acting. Forces discovery before modification. |
@@ -380,7 +389,7 @@ The model must begin every response with three tags in order:
 
 All todo items are executed. The server processes them in order.
 
-**Soft tools** — executed directly by the server:
+**Ask tools** — executed directly by the server:
 
 | Tool | Argument | Effect |
 |---|---|---|
@@ -388,7 +397,7 @@ All todo items are executed. The server processes them in order.
 | `drop` | file path | Removes agent promotion. File reverts to baseline. |
 | `summary` | one-liner | Signals completion. |
 
-**Hard tools** — create findings for client resolution:
+**Act-only tools** — create findings for client resolution:
 
 | Tool | Argument | Effect |
 |---|---|---|
@@ -399,7 +408,7 @@ All todo items are executed. The server processes them in order.
 | `run` | shell command | Mutating command. Proposed to client. |
 | `prompt_user` | question + choices | Proposed question for user. |
 
-When hard tools create findings, the run pauses at `proposed` for client resolution.
+When act-only tools create findings, the run pauses at `proposed` for client resolution.
 
 ### 6.3 Prefill
 
@@ -423,7 +432,7 @@ unclosed so the model fills in remaining work.
 | # | Condition | Action |
 |---|---|---|
 | 1 | Unresolved findings in DB | `proposed` — client resolves |
-| 2 | Hard tools processed | `continue` — findings may have errors |
+| 2 | Act-only tools processed | `continue` — findings may have errors |
 | 3 | Reads processed | `continue` — files appear next turn |
 | 4 | Warnings present, retries remaining | `retry` — model sees warnings |
 | 5 | Summary present | `completed` |

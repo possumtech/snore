@@ -11,7 +11,7 @@
  *   Requires <edit file="...">SEARCH/REPLACE</edit> tag after the core tags.
  */
 
-const HARD_TOOLS = new Set([
+const ACT_TOOLS = new Set([
 	"edit",
 	"create",
 	"delete",
@@ -88,14 +88,14 @@ export default class ToolExtractor {
 			}
 		}
 
-		const hasHard = tools.some((t) => HARD_TOOLS.has(t.tool));
+		const hasAct = tools.some((t) => ACT_TOOLS.has(t.tool));
 		const hasReads = tools.some((t) => t.tool === "read");
 		const hasSummary = todoList.some((t) => t.tool === "summary");
 
 		return {
 			tools,
 			structural,
-			flags: { hasHard, hasReads, hasSummary },
+			flags: { hasAct, hasReads, hasSummary },
 		};
 	}
 
@@ -141,4 +141,4 @@ export default class ToolExtractor {
 	}
 }
 
-export { HARD_TOOLS };
+export { ACT_TOOLS };
