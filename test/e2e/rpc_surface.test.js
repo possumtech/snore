@@ -179,7 +179,7 @@ describe("E2E: RPC Surface", () => {
 		await client.call("drop", { pattern: "index.js" });
 		const dropStatus = await client.call("fileStatus", { path: "index.js" });
 		assert.ok(
-			["signatures", "path"].includes(dropStatus.fidelity),
+			["symbols", "path"].includes(dropStatus.fidelity),
 			`Expected baseline fidelity, got ${dropStatus.fidelity}`,
 		);
 		assert.strictEqual(dropStatus.client_constraint, null);

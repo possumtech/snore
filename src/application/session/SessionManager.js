@@ -126,7 +126,7 @@ export default class SessionManager {
 		});
 		const clientPromo = clientPromos.find((p) => p.path === path);
 
-		let fidelity = "signatures";
+		let fidelity = "symbols";
 		if (clientPromo?.constraint_type === "excluded") fidelity = "excluded";
 		else if (clientPromo?.constraint_type === "full:readonly")
 			fidelity = "full:readonly";

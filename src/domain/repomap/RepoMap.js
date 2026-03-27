@@ -164,7 +164,7 @@ export default class RepoMap {
 
 		if (file.has_editor_promotion) return "full:readonly";
 
-		return "signatures";
+		return "symbols";
 	}
 
 	async renderPerspective(options = {}) {
@@ -254,7 +254,7 @@ export default class RepoMap {
 				continue;
 			}
 
-			const symbols = tagMap.get(file.path) || [];
+			const symbols = (tagMap.get(file.path) || []).map((s) => s.name);
 			let displayFile =
 				symbols.length > 0
 					? { path: file.path, size: file.size, symbols, fidelity }
@@ -264,33 +264,16 @@ export default class RepoMap {
 				file.symbol_tokens || estimateTokens(JSON.stringify(displayFile));
 
 			if (currentTokens + finalTokens > budget) {
-				if (symbols.length > 0) {
-					const signaturesOnly = {
-						path: file.path,
-						size: file.size,
-						symbols: symbols.map((s) => ({ name: s.name })),
-						fidelity: "signatures",
-					};
-					const sigTokens = estimateTokens(JSON.stringify(signaturesOnly));
+				const pathOnly = {
+					path: file.path,
+					size: file.size,
+					fidelity: "path",
+				};
+				const pathTokens = estimateTokens(JSON.stringify(pathOnly));
 
-					if (currentTokens + sigTokens <= budget) {
-						displayFile = signaturesOnly;
-						finalTokens = sigTokens;
-					} else {
-						const pathOnly = {
-							path: file.path,
-							size: file.size,
-							fidelity: "path",
-						};
-						const pathTokens = estimateTokens(JSON.stringify(pathOnly));
-
-						if (currentTokens + pathTokens <= budget) {
-							displayFile = pathOnly;
-							finalTokens = pathTokens;
-						} else {
-							continue;
-						}
-					}
+				if (currentTokens + pathTokens <= budget) {
+					displayFile = pathOnly;
+					finalTokens = pathTokens;
 				} else {
 					continue;
 				}
@@ -300,48 +283,6 @@ export default class RepoMap {
 			displayFile.heat = file.heat;
 			finalFiles.push(displayFile);
 			currentTokens += finalTokens;
-		}
-
-		// Greedy warming: upgrade high-heat signature files to full content.
-		// Capped at 30% of total budget — protects small-context models
-		// while letting large-context models benefit from more code.
-		const warmingBudget = Math.floor(budget * 0.3);
-		let warmingUsed = 0;
-		const signatureFiles = finalFiles.filter(
-			(f) => f.fidelity === "signatures" && f.heat > 0,
-		);
-		signatureFiles.sort((a, b) => (b.heat || 0) - (a.heat || 0));
-
-		for (const sigFile of signatureFiles) {
-			const fullPath = join(this.#ctx.root, sigFile.path);
-			let content = "";
-			try {
-				content = readFileSync(fullPath, "utf8");
-			} catch {
-				continue;
-			}
-
-			// Skip binary/non-text content
-			if (content.includes("\0")) continue;
-
-			const fullTokens = estimateTokens(
-				JSON.stringify({ path: sigFile.path, content }),
-			);
-			const sigTokens = sigFile.tokens || 0;
-			const additionalTokens = fullTokens - sigTokens;
-
-			if (
-				warmingUsed + additionalTokens <= warmingBudget &&
-				currentTokens + additionalTokens <= budget
-			) {
-				sigFile.content = content;
-				sigFile.fidelity = "full:warmed";
-				sigFile.tokens = fullTokens;
-				currentTokens += additionalTokens;
-				warmingUsed += additionalTokens;
-			} else if (warmingUsed >= warmingBudget) {
-				break;
-			}
 		}
 
 		// Include client-promoted files that aren't in the index (untracked)

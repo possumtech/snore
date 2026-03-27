@@ -296,7 +296,7 @@ describe("File Promotion Lifecycle", () => {
 				"Client promotion should be removed after drop",
 			);
 
-			// File should still appear in system (signatures or warmed by heat)
+			// File should still appear in system (symbols or path)
 			const turn = await buildTurn(tdb, hooks, projectPath);
 			const system = getSystemDocuments(turn);
 			assert.ok(

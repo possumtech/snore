@@ -100,8 +100,8 @@ Fidelity is never stored. It is computed by `renderPerspective()` each turn.
 |----------------|-------------------------|-----------------|
 | `full`         | Complete source         | Yes             |
 | `full:readonly`| Complete source         | No              |
-| `signatures`   | Symbols/signatures only | No              |
-| `path`         | File path exists        | No              |
+| `symbols`      | Symbol names only       | No              |
+| `path`         | File path only          | No              |
 | `excluded`     | Invisible               | No              |
 
 ### 2.3 Fidelity Derivation Rules
@@ -119,7 +119,7 @@ At render time, all three scopes are merged. Evaluated top-to-bottom, first matc
    The file reverts to its unpromoted state as if never `<read>`.
 6. **Editor promotion** → `full:readonly`. IDE has the file open. Always full
    source, never editable.
-7. **No promotion, symbols extracted** → `signatures`.
+7. **No promotion, symbols extracted** → `symbols`.
 8. **No promotion, no symbols or budget exhausted** → `path`.
 
 ### 2.4 Attention Decay
@@ -354,7 +354,7 @@ are implemented server-side.
 | **Turn**    | A single LLM request/response cycle within a run. Owns editor promotions (transient). |
 | **Finding** | A proposed action extracted from a turn: **diff** (edit/create/delete), **command** (run/env), or **notification** (summary/prompt_user). |
 | **Promotion** | A record that a file was placed into context. Client promotions are stored by path in `client_promotions`. Agent/editor promotions are stored by file_id in `file_promotions`. |
-| **Fidelity** | The level of detail the model receives for a file (full, full:readonly, signatures, path, excluded). Derived at render time, never stored. |
+| **Fidelity** | The level of detail the model receives for a file (full, full:readonly, symbols, path, excluded). Derived at render time, never stored. |
 | **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. Run-scoped. |
 | **Retained** | Model-facing term for an agent-promoted file (used in system prompts). |
 | **Rumsfeld Loop** | The turn cycle: the model must declare `<todo>`, `<known>`, `<unknown>` before acting. Forces discovery before modification. |

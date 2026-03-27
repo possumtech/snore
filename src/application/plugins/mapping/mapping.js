@@ -44,10 +44,7 @@ export default class RepoMapPlugin {
 				if (f.content) {
 					docEl.appendChild(rummy.tag("document_content", {}, [f.content]));
 				} else if (f.symbols && f.symbols.length > 0) {
-					const syms = f.symbols
-						.map((s) => (s.params ? `${s.name}${s.params}` : s.name))
-						.join(", ");
-					docEl.appendChild(rummy.tag("document_content", {}, [syms]));
+					docEl.appendChild(rummy.tag("document_content", {}, [f.symbols.join(", ")]));
 				}
 
 				docsEl.appendChild(docEl);
