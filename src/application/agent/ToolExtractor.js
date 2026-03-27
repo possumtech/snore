@@ -11,28 +11,17 @@
  *   Requires <edit file="...">SEARCH/REPLACE</edit> tag after the core tags.
  */
 
-const ACT_TOOLS = new Set([
-	"edit",
-	"create",
-	"delete",
-	"run",
-	"env",
-	"prompt_user",
-]);
-
 export default class ToolExtractor {
 	#parser;
+	#actTools;
 
-	constructor(parser) {
+	constructor(parser, toolRegistry) {
 		this.#parser = parser;
+		this.#actTools =
+			toolRegistry?.actTools ??
+			new Set(["edit", "create", "delete", "run", "env", "prompt_user"]);
 	}
 
-	/**
-	 * Extract tool invocations from:
-	 * 1. Structural content (todo, known, unknown, summary)
-	 * 2. Unchecked todo items (all executed; checked items already processed)
-	 * 3. <edit> tags in content (tag-driven tools)
-	 */
 	extract(tags, todoList) {
 		const tools = [];
 		const structural = [];
@@ -88,7 +77,7 @@ export default class ToolExtractor {
 			}
 		}
 
-		const hasAct = tools.some((t) => ACT_TOOLS.has(t.tool));
+		const hasAct = tools.some((t) => this.#actTools.has(t.tool));
 		const hasReads = tools.some((t) => t.tool === "read");
 		const hasSummary = todoList.some((t) => t.tool === "summary");
 
@@ -119,7 +108,6 @@ export default class ToolExtractor {
 			.substring(dividerStart + dividerMarker.length, replaceEnd)
 			.trim();
 
-		// Markers present → always return strings (even if empty)
 		return { search, replace, hasMarkers: true };
 	}
 
@@ -144,5 +132,3 @@ export default class ToolExtractor {
 		return { question, options };
 	}
 }
-
-export { ACT_TOOLS };

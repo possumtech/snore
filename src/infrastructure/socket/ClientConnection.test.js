@@ -1,7 +1,10 @@
 import assert from "node:assert";
 import test from "node:test";
 import TestDb from "../../../test/helpers/TestDb.js";
+import CoreRpcPlugin from "../../application/plugins/rpc/rpc.js";
+import CoreToolsPlugin from "../../application/plugins/tools/tools.js";
 import createHooks from "../../domain/hooks/Hooks.js";
+import RpcRegistry from "../rpc/RpcRegistry.js";
 import ClientConnection from "./ClientConnection.js";
 
 test("ClientConnection (Real Integration)", async (t) => {
@@ -25,7 +28,11 @@ test("ClientConnection (Real Integration)", async (t) => {
 			},
 			readyState: 1,
 		};
-		const conn = new ClientConnection(ws, tdb.db, createHooks());
+		const hooks = createHooks();
+		hooks.rpc.registry = new RpcRegistry();
+		CoreToolsPlugin.register(hooks);
+		CoreRpcPlugin.register(hooks);
+		const conn = new ClientConnection(ws, tdb.db, hooks);
 		return { conn, state };
 	};
 

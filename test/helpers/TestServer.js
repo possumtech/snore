@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import createHooks from "../../src/domain/hooks/Hooks.js";
+import RpcRegistry from "../../src/infrastructure/rpc/RpcRegistry.js";
 import SocketServer from "../../src/infrastructure/socket/SocketServer.js";
 import { registerPlugins } from "../../src/plugins/index.js";
 
@@ -15,6 +16,7 @@ export default class TestServer {
 
 	static async start(db) {
 		const hooks = createHooks(false);
+		hooks.rpc.registry = new RpcRegistry();
 
 		// Register internal and core plugins so hooks like RepoMap work in tests
 		const internalPluginsDir = join(__dirname, "../../src/application/plugins");

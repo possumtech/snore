@@ -37,6 +37,10 @@ async function createTestProject(files = {}) {
 async function setupDb(projectPath) {
 	const tdb = await TestDb.create();
 	const hooks = createHooks(false);
+	const { default: RpcRegistry } = await import(
+		"../../src/infrastructure/rpc/RpcRegistry.js"
+	);
+	hooks.rpc.registry = new RpcRegistry();
 	const internalDir = join(__dirname, "../../src/application/plugins");
 	const coreDir = join(__dirname, "../../src/plugins");
 	await registerPlugins([internalDir, coreDir], hooks);

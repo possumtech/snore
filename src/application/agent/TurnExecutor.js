@@ -241,7 +241,10 @@ export default class TurnExecutor {
 			: "";
 		const { list: parsedTodo } = TodoParser.parse(todoContent);
 
-		const toolExtractor = new ToolExtractor(this.#responseParser);
+		const toolExtractor = new ToolExtractor(
+			this.#responseParser,
+			this.#hooks.tools,
+		);
 		const { tools, structural, flags } = toolExtractor.extract(
 			tags,
 			parsedTodo,

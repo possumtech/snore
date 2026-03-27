@@ -7,6 +7,7 @@ export default class ClientConnection {
 	#projectAgent;
 	#modelAgent;
 	#hooks;
+	#rpcRegistry;
 	#context = {
 		projectId: null,
 		sessionId: null,
@@ -17,6 +18,7 @@ export default class ClientConnection {
 		this.#ws = ws;
 		this.#db = db;
 		this.#hooks = hooks;
+		this.#rpcRegistry = hooks.rpc.registry;
 		this.#projectAgent = new ProjectAgent(db, hooks);
 		this.#modelAgent = new ModelAgent(db, hooks);
 
@@ -107,6 +109,23 @@ export default class ClientConnection {
 		});
 	}
 
+	#buildHandlerContext() {
+		return {
+			projectAgent: this.#projectAgent,
+			modelAgent: this.#modelAgent,
+			db: this.#db,
+			rpcRegistry: this.#rpcRegistry,
+			projectId: this.#context.projectId,
+			sessionId: this.#context.sessionId,
+			projectPath: this.#context.projectPath,
+			setContext: (projectId, sessionId, projectPath) => {
+				this.#context.projectId = projectId;
+				this.#context.sessionId = sessionId;
+				this.#context.projectPath = projectPath;
+			},
+		};
+	}
+
 	async handleMessageForTest(data) {
 		return this.#handleMessage(data);
 	}
@@ -131,321 +150,19 @@ export default class ClientConnection {
 				sessionId: this.#context.sessionId,
 			});
 
-			let result;
+			// rpc/discover is an alias for discover
+			const resolvedMethod = method === "rpc/discover" ? "discover" : method;
+			const registration = this.#rpcRegistry.get(resolvedMethod);
+			if (!registration) throw new Error(`Method '${method}' not found.`);
 
-			switch (method) {
-				case "ping":
-					result = {};
-					break;
-
-				case "discover":
-				case "rpc/discover":
-					result = {
-						methods: {
-							ping: { description: "Check server liveness", params: {} },
-							init: {
-								description: "Initialize a project session",
-								params: {
-									projectPath: "Absolute path to project",
-									projectName: "Display name",
-									clientId: "Unique client identifier",
-									projectBufferFiles: "Optional array of open files in IDE",
-								},
-							},
-							getModels: {
-								description: "Get available local and aliased models",
-								params: {},
-							},
-							getFiles: {
-								description: "List all files in the current project",
-								params: {},
-							},
-							fileStatus: {
-								description: "Get detailed status for a single file",
-								params: { path: "Relative file path" },
-							},
-							activate: {
-								description: "Make files matching a glob pattern fully active",
-								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
-							},
-							readOnly: {
-								description: "Make files matching a glob pattern read-only",
-								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
-							},
-							ignore: {
-								description:
-									"Hide files matching a glob pattern from the model",
-								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
-							},
-							drop: {
-								description:
-									"Demote files matching a glob pattern to 'mappable'",
-								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
-							},
-							startRun: {
-								description: "Pre-create a run with config. Returns runId.",
-								params: {
-									model: "Optional override model",
-									projectBufferFiles: "Array of files currently open in IDE",
-								},
-							},
-							ask: {
-								description: "Send a non-mutating query to the agent",
-								params: {
-									prompt: "User message",
-									model: "Optional override",
-									runId: "Optional existing run to continue (or fork source)",
-									projectBufferFiles: "Files open in IDE",
-									temperature: "Optional LLM temperature",
-									noContext: "If true, skip file map (Lite mode)",
-									fork: "If true with runId, create new run branching from runId history",
-								},
-							},
-							act: {
-								description:
-									"Send a mutating directive to the agent (can propose edits)",
-								params: {
-									prompt: "User message",
-									model: "Optional override",
-									runId: "Optional existing run to continue (or fork source)",
-									projectBufferFiles: "Files open in IDE",
-									temperature: "Optional LLM temperature",
-									noContext: "If true, skip file map (Lite mode)",
-									fork: "If true with runId, create new run branching from runId history",
-								},
-							},
-							"run/resolve": {
-								description: "Resolve a single finding (accept/reject)",
-								params: {
-									runId: "Run ID",
-									resolution: "{ category, id, action: 'accepted'|'rejected' }",
-								},
-							},
-							"run/abort": {
-								description: "Abandon run. Discard unresolved findings.",
-								params: { runId: "Run ID" },
-							},
-							systemPrompt: {
-								description: "Set the base system prompt override",
-								params: { text: "XML/Text content" },
-							},
-							persona: {
-								description: "Set the agent persona",
-								params: { text: "Text content" },
-							},
-							"skill/add": {
-								description: "Enable a skill for this session",
-								params: { name: "Skill ID" },
-							},
-							"skill/remove": {
-								description: "Disable a session skill",
-								params: { name: "Skill ID" },
-							},
-						},
-						notifications: {
-							"run/step/completed":
-								"A turn finished. Contains structured turn object.",
-							"run/progress": "Agent task status and intermediate updates.",
-							"ui/render": "Streaming output fragments for display.",
-							"ui/notify": "Toast/status notifications (text + level).",
-							"ui/prompt":
-								"Model is asking the user a question (findingId + question + options).",
-							"run/env":
-								"Proposed environment query (findingId + command). Read-only, no side effects.",
-							"run/run":
-								"Proposed shell command (findingId + command). May have side effects.",
-							"editor/diff": "Proposed file modifications (file + patch).",
-						},
-					};
-					break;
-
-				case "init":
-					result = await this.#projectAgent.init(
-						params.projectPath,
-						params.projectName,
-						params.clientId,
-						params.projectBufferFiles || [],
-					);
-					this.#context.projectId = result.projectId;
-					this.#context.sessionId = result.sessionId;
-					this.#context.projectPath = params.projectPath;
-					break;
-
-				case "getModels":
-					result = await this.#modelAgent.getModels();
-					break;
-
-				case "getFiles":
-					if (!this.#context.projectPath)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.getFiles(this.#context.projectPath);
-					break;
-
-				case "fileStatus":
-					if (!this.#context.projectId)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.fileStatus(
-						this.#context.projectId,
-						params.path,
-					);
-					break;
-
-				case "activate":
-					if (!this.#context.projectId)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.activate(
-						this.#context.projectId,
-						params.pattern,
-					);
-					break;
-
-				case "readOnly":
-					if (!this.#context.projectId)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.readOnly(
-						this.#context.projectId,
-						params.pattern,
-					);
-					break;
-
-				case "ignore":
-					if (!this.#context.projectId)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.ignore(
-						this.#context.projectId,
-						params.pattern,
-					);
-					break;
-
-				case "drop":
-					if (!this.#context.projectId)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.drop(
-						this.#context.projectId,
-						params.pattern,
-					);
-					break;
-
-				case "startRun":
-					if (!this.#context.sessionId)
-						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.startRun(
-						this.#context.sessionId,
-						params,
-					);
-					break;
-
-				case "run/resolve":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-					result = await this.#projectAgent.resolve(
-						params.runId,
-						params.resolution, // { category, id, action: 'accepted'|'rejected', answer: '...' }
-					);
-					break;
-
-				case "run/abort":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-					// Typically here we would revert files or cancel the state in the DB
-					await this.#db.update_run_status.run({
-						id: params.runId,
-						status: "aborted",
-					});
-					result = { status: "ok" };
-					break;
-
-				case "systemPrompt":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-					await this.#projectAgent.setSystemPrompt(
-						this.#context.sessionId,
-						params.text,
-					);
-					result = { status: "ok" };
-					break;
-
-				case "persona":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-					await this.#projectAgent.setPersona(
-						this.#context.sessionId,
-						params.text,
-					);
-					result = { status: "ok" };
-					break;
-
-				case "skill/add":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-					await this.#projectAgent.addSkill(
-						this.#context.sessionId,
-						params.name,
-					);
-					result = { status: "ok" };
-					break;
-
-				case "skill/remove":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-					await this.#projectAgent.removeSkill(
-						this.#context.sessionId,
-						params.name,
-					);
-					result = { status: "ok" };
-					break;
-
-				case "ask":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-
-					if (params.projectBufferFiles && this.#context.projectId) {
-						await this.#projectAgent.syncBuffered(
-							this.#context.projectId,
-							params.projectBufferFiles,
-						);
-					}
-
-					result = await this.#projectAgent.ask(
-						this.#context.sessionId,
-						params.model,
-						params.prompt,
-						params.runId,
-						{
-							temperature: params.temperature,
-							noContext: params.noContext,
-							fork: params.fork,
-						},
-					);
-					break;
-
-				case "act":
-					if (!this.#context.sessionId)
-						throw new Error("Session not initialized.");
-
-					if (params.projectBufferFiles && this.#context.projectId) {
-						await this.#projectAgent.syncBuffered(
-							this.#context.projectId,
-							params.projectBufferFiles,
-						);
-					}
-
-					result = await this.#projectAgent.act(
-						this.#context.sessionId,
-						params.model,
-						params.prompt,
-						params.runId,
-						{
-							temperature: params.temperature,
-							noContext: params.noContext,
-							fork: params.fork,
-						},
-					);
-					break;
-
-				default:
-					throw new Error(`Method '${method}' not found.`);
+			if (registration.requiresInit && !this.#context.sessionId) {
+				throw new Error("Project not initialized.");
 			}
+
+			const result = await registration.handler(
+				params || {},
+				this.#buildHandlerContext(),
+			);
 
 			const finalResult = await this.#hooks.rpc.response.result.filter(result, {
 				method,
@@ -458,7 +175,11 @@ export default class ClientConnection {
 				id,
 			});
 
-			await this.#hooks.rpc.completed.emit({ method, id, result: finalResult });
+			await this.#hooks.rpc.completed.emit({
+				method,
+				id,
+				result: finalResult,
+			});
 		} catch (error) {
 			if (debug) {
 				console.error(`[SOCKET] ERR: ${error.message}`);
