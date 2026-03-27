@@ -9,25 +9,21 @@ export default class ContextPlugin {
 			});
 			if (pending.length === 0) return;
 
+			const lines = [];
 			for (const row of pending) {
-				let el;
 				if (row.type === "diff") {
-					// <info file="path">edits accepted</info>
-					// <warn file="path">edits rejected</warn>
-					const tagName =
-						row.result.includes("rejected") || row.result.includes("partially")
+					const level =
+						row.result.includes("rejected") ||
+						row.result.includes("partially")
 							? "warn"
 							: "info";
-					el = rummy.tag(tagName, { file: row.request }, [row.result]);
+					lines.push(`${level}: ${row.request} # ${row.result}`);
 				} else if (row.type === "notification") {
-					el = rummy.tag("info", { prompt: row.request }, [row.result]);
+					lines.push(`info: ${row.request} # ${row.result}`);
 				} else {
-					// command / env
-					const tagName = row.is_error ? "error" : "info";
-					const attrs = { command: row.request, type: row.type };
-					el = rummy.tag(tagName, attrs, [row.result]);
+					const level = row.is_error ? "error" : "info";
+					lines.push(`${level}: ${row.request} # ${row.result}`);
 				}
-				rummy.contextEl.appendChild(el);
 
 				if (rummy.turnId) {
 					await db.consume_pending_context.run({
@@ -35,6 +31,11 @@ export default class ContextPlugin {
 						turn_id: rummy.turnId,
 					});
 				}
+			}
+
+			if (lines.length > 0) {
+				const feedbackEl = rummy.tag("feedback", {}, [lines.join("\n")]);
+				rummy.contextEl.appendChild(feedbackEl);
 			}
 		}, 5);
 	}

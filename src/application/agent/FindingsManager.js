@@ -29,6 +29,7 @@ export default class FindingsManager {
 		const diffs = [];
 		const commands = [];
 		const notifications = [];
+		const feedback = [];
 
 		for (const invocation of tools) {
 			const { tool } = invocation;
@@ -46,6 +47,7 @@ export default class FindingsManager {
 					run_id: runId,
 					turn_seq: sequence ?? 0,
 				});
+				feedback.push(`info: ${invocation.path} # file retained`);
 			}
 
 			if (tool === "drop" && projectId) {
@@ -59,6 +61,7 @@ export default class FindingsManager {
 						run_id: runId,
 					});
 				}
+				feedback.push(`info: ${invocation.path} # file dropped`);
 			}
 
 			if (tool === "edit") {
@@ -139,6 +142,6 @@ export default class FindingsManager {
 			diffs.push({ type: "edit", file: path, patch, warning, error });
 		}
 
-		return { diffs, commands, notifications };
+		return { diffs, commands, notifications, feedback };
 	}
 }

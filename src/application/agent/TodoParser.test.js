@@ -3,30 +3,31 @@ import test from "node:test";
 import TodoParser from "./TodoParser.js";
 
 test("TodoParser", async (t) => {
-	await t.test("should parse verb-prefixed todo items", () => {
+	await t.test("should parse tool-prefixed todo items", () => {
 		const text = `
-- [x] read: examine wizard.txt
-- [ ] edit: change robe color
-- [x] run: verify tests
-- [ ] summary: describe changes
+- [x] read: AGENTS.md # review project status
+- [ ] edit: src/main.js # fix the bug
+- [x] run: npm test # verify tests pass
+- [ ] summary: Fixed the bug # done
 `;
 		const { list, next } = TodoParser.parse(text);
 
 		assert.strictEqual(list.length, 4);
-		assert.strictEqual(list[0].verb, "read");
-		assert.strictEqual(list[0].text, "examine wizard.txt");
+		assert.strictEqual(list[0].tool, "read");
+		assert.strictEqual(list[0].argument, "AGENTS.md");
+		assert.strictEqual(list[0].description, "review project status");
 		assert.strictEqual(list[0].completed, true);
-		assert.strictEqual(list[1].verb, "edit");
-		assert.strictEqual(list[1].text, "change robe color");
+		assert.strictEqual(list[1].tool, "edit");
+		assert.strictEqual(list[1].argument, "src/main.js");
 		assert.strictEqual(list[1].completed, false);
-		assert.strictEqual(list[2].verb, "run");
-		assert.strictEqual(list[3].verb, "summary");
+		assert.strictEqual(list[2].tool, "run");
+		assert.strictEqual(list[3].tool, "summary");
 
 		assert.ok(next);
-		assert.strictEqual(next.verb, "edit");
+		assert.strictEqual(next.tool, "edit");
 	});
 
-	await t.test("should fall back for lines without verb prefix", () => {
+	await t.test("should fall back for lines without tool prefix", () => {
 		const text = `
 - [x] Completed task
 - [ ] Pending task
@@ -34,10 +35,10 @@ test("TodoParser", async (t) => {
 		const { list } = TodoParser.parse(text);
 
 		assert.strictEqual(list.length, 2);
-		assert.strictEqual(list[0].verb, null);
-		assert.strictEqual(list[0].text, "Completed task");
+		assert.strictEqual(list[0].tool, null);
+		assert.strictEqual(list[0].argument, "Completed task");
 		assert.strictEqual(list[0].completed, true);
-		assert.strictEqual(list[1].verb, null);
+		assert.strictEqual(list[1].tool, null);
 	});
 
 	await t.test("should handle empty input", () => {
@@ -47,78 +48,76 @@ test("TodoParser", async (t) => {
 	});
 
 	await t.test("should handle all completed items", () => {
-		const text = "- [x] edit: fix bug\n- [X] summary: done";
+		const text = "- [x] edit: fix.js # fix bug\n- [X] summary: done # finished";
 		const { list, next } = TodoParser.parse(text);
-		assert.strictEqual(
-			list.every((t) => t.completed),
-			true,
-		);
+		assert.strictEqual(list.every((t) => t.completed), true);
 		assert.strictEqual(next, null);
 	});
 
-	await t.test("should parse verb without colon separator", () => {
+	await t.test("should parse tool without colon separator", () => {
 		const text = `
-- [ ] edit math.js to fix add function
-- [x] read math.js
-- [ ] summary of changes
+- [ ] edit src/main.js
+- [x] read AGENTS.md
+- [ ] summary done
 `;
 		const { list } = TodoParser.parse(text);
-		assert.strictEqual(list[0].verb, "edit");
-		assert.strictEqual(list[0].text, "math.js to fix add function");
-		assert.strictEqual(list[1].verb, "read");
-		assert.strictEqual(list[1].text, "math.js");
-		assert.strictEqual(list[2].verb, "summary");
-		assert.strictEqual(list[2].text, "of changes");
+		assert.strictEqual(list[0].tool, "edit");
+		assert.strictEqual(list[0].argument, "src/main.js");
+		assert.strictEqual(list[1].tool, "read");
+		assert.strictEqual(list[2].tool, "summary");
 	});
 
-	await t.test("should ignore invalid verb prefixes", () => {
-		const text = "- [ ] frobnicate: do something weird";
+	await t.test("should ignore invalid tool names", () => {
+		const text = "- [ ] frobnicate: something weird";
 		const { list } = TodoParser.parse(text);
-		assert.strictEqual(list[0].verb, null);
-		assert.strictEqual(list[0].text, "frobnicate: do something weird");
+		assert.strictEqual(list[0].tool, null);
+		assert.strictEqual(list[0].argument, "frobnicate: something weird");
 	});
 
-	await t.test(
-		"crossReference should warn on checked verbs without matching tags",
-		() => {
-			const todoList = [
-				{ verb: "edit", text: "fix bug", completed: true },
-				{ verb: "run", text: "test", completed: true },
-				{ verb: "read", text: "check file", completed: true },
-				{ verb: "summary", text: "done", completed: true },
-			];
+	await t.test("should handle env commands with shell pipes", () => {
+		const text = "- [ ] env: cat file.txt | grep error | wc -l # count errors";
+		const { list } = TodoParser.parse(text);
+		assert.strictEqual(list[0].tool, "env");
+		assert.strictEqual(list[0].argument, "cat file.txt | grep error | wc -l");
+		assert.strictEqual(list[0].description, "count errors");
+	});
 
-			const warnings = TodoParser.crossReference(todoList, ["edit"]);
-			assert.strictEqual(warnings.length, 1);
-			assert.ok(warnings[0].includes("run"));
-			assert.ok(warnings[0].includes("no <run> tag"));
-		},
-	);
+	await t.test("crossReference should warn on checked tools without matching tags", () => {
+		const todoList = [
+			{ tool: "edit", argument: "fix.js", completed: true },
+			{ tool: "run", argument: "npm test", completed: true },
+			{ tool: "read", argument: "file.js", completed: true },
+			{ tool: "summary", argument: "done", completed: true },
+		];
+
+		const warnings = TodoParser.crossReference(todoList, ["edit"]);
+		assert.strictEqual(warnings.length, 1);
+		assert.ok(warnings[0].includes("run"));
+	});
 
 	await t.test("crossReference should not warn for unchecked items", () => {
-		const todoList = [{ verb: "edit", text: "fix bug", completed: false }];
-		const warnings = TodoParser.crossReference(todoList, []);
-		assert.strictEqual(warnings.length, 0);
-	});
-
-	await t.test("crossReference should skip read/summary verbs", () => {
 		const todoList = [
-			{ verb: "read", text: "check file", completed: true },
-			{ verb: "summary", text: "done", completed: true },
+			{ tool: "edit", argument: "fix.js", completed: false },
 		];
 		const warnings = TodoParser.crossReference(todoList, []);
 		assert.strictEqual(warnings.length, 0);
 	});
 
-	await t.test(
-		"crossReference should warn on checked env verb without tag",
-		() => {
-			const todoList = [
-				{ verb: "env", text: "check disk space", completed: true },
-			];
-			const warnings = TodoParser.crossReference(todoList, []);
-			assert.strictEqual(warnings.length, 1);
-			assert.ok(warnings[0].includes("env"));
-		},
-	);
+	await t.test("crossReference should skip read/summary tools", () => {
+		const todoList = [
+			{ tool: "read", argument: "file.js", completed: true },
+			{ tool: "summary", argument: "done", completed: true },
+		];
+		const warnings = TodoParser.crossReference(todoList, []);
+		assert.strictEqual(warnings.length, 0);
+	});
+
+	await t.test("crossReference should warn on checked env tool without tag", () => {
+		const todoList = [
+			{ tool: "env", argument: "df -h", completed: true },
+		];
+		const warnings = TodoParser.crossReference(todoList, []);
+		assert.strictEqual(warnings.length, 1);
+		assert.ok(warnings[0].includes("env"));
+	});
 });

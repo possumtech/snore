@@ -42,19 +42,19 @@ export default class TurnBuilder {
 		const contextEl = doc.createElement("context");
 		root.appendChild(contextEl);
 
-		// 3. User Prompt wrapped in mode tag
+		// 3. User Prompt with tool constraints as plain text
 		const userEl = doc.createElement("user");
-		const modeEl = doc.createElement(type);
 		const constraints = await db.get_protocol_constraints.get({
 			type,
 			has_unknowns: hasUnknowns ? 1 : 0,
 		});
+		let userText = "";
 		if (constraints) {
-			modeEl.setAttribute("required_tags", constraints.required_tags);
-			modeEl.setAttribute("allowed_tags", constraints.allowed_tags);
+			userText += `required_tools: ${constraints.required_tags}\n`;
+			userText += `allowed_tools: ${constraints.allowed_tags}\n\n`;
 		}
-		modeEl.appendChild(doc.createTextNode(prompt));
-		userEl.appendChild(modeEl);
+		userText += prompt;
+		userEl.appendChild(doc.createTextNode(userText));
 		root.appendChild(userEl);
 
 		// 4. Assistant placeholder

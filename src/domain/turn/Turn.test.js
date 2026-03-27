@@ -317,13 +317,13 @@ test("Turn", async (t) => {
 			assert.strictEqual(json.assistant.todo.length, 2);
 
 			const first = json.assistant.todo[0];
-			assert.strictEqual(first.verb, "read");
-			assert.strictEqual(first.text, "src/a.js");
+			assert.strictEqual(first.tool, "read");
+			assert.strictEqual(first.argument, "src/a.js");
 			assert.strictEqual(first.completed, true);
 
 			const second = json.assistant.todo[1];
-			assert.strictEqual(second.verb, "edit");
-			assert.strictEqual(second.text, "fix the thing");
+			assert.strictEqual(second.tool, "edit");
+			assert.strictEqual(second.argument, "fix the thing");
 			assert.strictEqual(second.completed, false);
 
 			// next_todo should be the first incomplete item

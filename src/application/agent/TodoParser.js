@@ -1,20 +1,13 @@
-const VALID_VERBS = new Set([
-	"read",
-	"drop",
-	"env",
-	"edit",
-	"create",
-	"delete",
-	"run",
-	"prompt_user",
-	"summary",
+const VALID_TOOLS = new Set([
+	"read", "drop", "env", "edit", "create", "delete", "run", "prompt_user", "summary",
 ]);
 
 /**
- * TodoParser: Parses verb-prefixed markdown todo lists.
+ * TodoParser: Parses tool-prefixed markdown todo lists.
  *
- * Format: `- [x] verb: description`
- * Falls back gracefully for lines without verb prefix (verb = null).
+ * Format: `- [x] tool: argument # description`
+ * The `# description` part is optional (for the model's own planning notes).
+ * Falls back gracefully for lines without tool prefix (tool = null).
  */
 export default class TodoParser {
 	static parse(text) {
@@ -33,30 +26,41 @@ export default class TodoParser {
 				const completed = match[1].toLowerCase() === "x";
 				const rest = match[2].trim();
 
-				// Extract verb: try "verb: description" first, then "verb description"
-				let verb = null;
-				let text = rest;
+				// Extract tool: try "tool: argument # description"
+				let tool = null;
+				let argument = rest;
+				let description = null;
 
 				const colonMatch = rest.match(/^(\w+):\s*(.*)$/);
-				if (colonMatch && VALID_VERBS.has(colonMatch[1])) {
-					verb = colonMatch[1];
-					text = colonMatch[2];
+				if (colonMatch && VALID_TOOLS.has(colonMatch[1])) {
+					tool = colonMatch[1];
+					const afterColon = colonMatch[2];
+					// Split on " # " to separate argument from description
+					const hashIdx = afterColon.indexOf(" # ");
+					if (hashIdx !== -1) {
+						argument = afterColon.substring(0, hashIdx).trim();
+						description = afterColon.substring(hashIdx + 3).trim();
+					} else {
+						argument = afterColon.trim();
+					}
 				} else {
+					// Fallback: try "tool argument" (no colon)
 					const spaceMatch = rest.match(/^(\w+)\s+(.*)$/);
-					if (spaceMatch && VALID_VERBS.has(spaceMatch[1])) {
-						verb = spaceMatch[1];
-						text = spaceMatch[2];
+					if (spaceMatch && VALID_TOOLS.has(spaceMatch[1])) {
+						tool = spaceMatch[1];
+						argument = spaceMatch[2];
 					}
 				}
 
-				const item = { verb, text, completed };
+				const item = { tool, argument, description, completed };
 				list.push(item);
 
 				if (!completed && !next) next = item;
 			} else {
 				const item = {
-					verb: null,
-					text: trimmed.replace(/^[-*]\s*/, ""),
+					tool: null,
+					argument: trimmed.replace(/^[-*]\s*/, ""),
+					description: null,
 					completed: false,
 				};
 				list.push(item);
@@ -68,23 +72,21 @@ export default class TodoParser {
 	}
 
 	/**
-	 * Cross-references checked action verbs against emitted action tags.
+	 * Cross-references checked tool todos against emitted tool tags.
 	 * Returns warnings for mismatches.
 	 */
-	static crossReference(todoList, emittedTagNames) {
+	static crossReference(todoList, emittedToolNames) {
 		const warnings = [];
-		const emittedSet = new Set(emittedTagNames);
+		const emittedSet = new Set(emittedToolNames);
 
 		for (const item of todoList) {
-			if (!item.verb || !item.completed) continue;
-			// read: file may already be in context, skip silently
-			if (item.verb === "read") continue;
-			// summary is handled separately by the summary fallback
-			if (item.verb === "summary") continue;
+			if (!item.tool || !item.completed) continue;
+			if (item.tool === "read") continue;
+			if (item.tool === "summary") continue;
 
-			if (!emittedSet.has(item.verb)) {
+			if (!emittedSet.has(item.tool)) {
 				warnings.push(
-					`todo "${item.verb}: ${item.text}" marked complete but no <${item.verb}> tag was emitted`,
+					`todo "${item.tool}: ${item.argument}" marked complete but no ${item.tool} tool was emitted`,
 				);
 			}
 		}
@@ -92,3 +94,5 @@ export default class TodoParser {
 		return warnings;
 	}
 }
+
+export { VALID_TOOLS };

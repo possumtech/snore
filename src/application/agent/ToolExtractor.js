@@ -57,7 +57,12 @@ export default class ToolExtractor {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
 					const { search, replace } = this.#parseEditContent(content);
-					tools.push({ tool: "edit", path, search, replace, raw: content });
+					if (search && replace) {
+						tools.push({ tool: "edit", path, search, replace });
+					} else {
+						// No SEARCH/REPLACE markers = create/overwrite
+						tools.push({ tool: "create", path, content });
+					}
 				}
 			} else if (name === "create") {
 				const path = attrs.find((a) => a.name === "file")?.value;

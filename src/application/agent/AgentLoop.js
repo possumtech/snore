@@ -494,16 +494,17 @@ export default class AgentLoop {
 			if (diffErrors.length > 0) {
 				const contextNode = elements.find((el) => el.tag_name === "context");
 				if (contextNode) {
-					for (let i = 0; i < diffErrors.length; i++) {
-						await this.#db.insert_turn_element.run({
-							turn_id: turnId,
-							parent_id: contextNode.id,
-							tag_name: "error",
-							content: `Edit failed for ${diffErrors[i].file}: ${diffErrors[i].error}`,
-							attributes: JSON.stringify({ file: diffErrors[i].file }),
-							sequence: 180 + i,
-						});
-					}
+					const errorLines = diffErrors.map(
+						(d) => `error: ${d.file} # ${d.error}`,
+					).join("\n");
+					await this.#db.insert_turn_element.run({
+						turn_id: turnId,
+						parent_id: contextNode.id,
+						tag_name: "feedback",
+						content: errorLines,
+						attributes: "{}",
+						sequence: 180,
+					});
 				}
 			}
 			for (const cmd of findings.commands) {
@@ -555,6 +556,21 @@ export default class AgentLoop {
 						status: "acknowledged",
 						config: null,
 						append: 0,
+					});
+				}
+			}
+
+			// Inject tool feedback into context
+			if (findings.feedback.length > 0) {
+				const ctxNode = elements.find((el) => el.tag_name === "context");
+				if (ctxNode) {
+					await this.#db.insert_turn_element.run({
+						turn_id: turnId,
+						parent_id: ctxNode.id,
+						tag_name: "feedback",
+						content: findings.feedback.join("\n"),
+						attributes: "{}",
+						sequence: 175,
 					});
 				}
 			}
@@ -611,24 +627,23 @@ export default class AgentLoop {
 				{ when: hasSummary && todosIncomplete,
 					msg: "You emitted <summary> but <todo> has unchecked items. Complete todos before terminating." },
 				{ when: openUnknowns && !hasBreaking && !hasReads,
-					msg: "<unknown> has content but no verb tags were emitted. Emit verb tags to resolve unknowns." },
+					msg: "<unknown> has content but no tools were used. Use tools to resolve unknowns." },
 				{ when: todosIncomplete && !hasBreaking && !hasReads && !hasSummary,
-					msg: "<todo> has unchecked items but no verb tags were emitted. Emit verb tags to complete your plan." },
+					msg: "<todo> has unchecked items but no tools were used. Use tools to complete your plan." },
 			];
 			const warnings = WARN_RULES.filter((w) => w.when);
 			if (warnings.length > 0) {
 				const ctxNode = elements.find((el) => el.tag_name === "context");
 				if (ctxNode) {
-					for (let i = 0; i < warnings.length; i++) {
-						await this.#db.insert_turn_element.run({
-							turn_id: turnId,
-							parent_id: ctxNode.id,
-							tag_name: "warn",
-							content: warnings[i].msg,
-							attributes: JSON.stringify({ consistency: "violation" }),
-							sequence: 190 + i,
-						});
-					}
+					const feedbackLines = warnings.map((w) => `warn: ${w.msg}`).join("\n");
+					await this.#db.insert_turn_element.run({
+						turn_id: turnId,
+						parent_id: ctxNode.id,
+						tag_name: "feedback",
+						content: feedbackLines,
+						attributes: "{}",
+						sequence: 190,
+					});
 				}
 			}
 

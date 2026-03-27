@@ -90,12 +90,12 @@ test("TurnBuilder", async (t) => {
 			const userMsg = msgs.find((m) => m.role === "user");
 			assert.ok(userMsg, "Should have user message");
 			assert.ok(
-				userMsg.content.includes("required_tags"),
-				"Mode tag should have required_tags attribute",
+				userMsg.content.includes("required_tools:"),
+				"User message should have required_tools",
 			);
 			assert.ok(
-				userMsg.content.includes("allowed_tags"),
-				"Mode tag should have allowed_tags attribute",
+				userMsg.content.includes("allowed_tools:"),
+				"User message should have allowed_tools",
 			);
 			assert.ok(
 				userMsg.content.includes("edit"),
