@@ -85,7 +85,16 @@ export default class OpenRouterClient {
 			}
 			throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
 		}
-		return response.json();
+		const data = await response.json();
+
+		for (const choice of data.choices || []) {
+			const msg = choice.message;
+			if (msg?.reasoning && !msg.reasoning_content) {
+				msg.reasoning_content = msg.reasoning;
+			}
+		}
+
+		return data;
 	}
 
 	async getContextSize(model) {

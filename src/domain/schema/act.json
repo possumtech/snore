@@ -2,11 +2,11 @@
 	"type": "object",
 	"required": ["todo", "known", "unknown", "summary"],
 	"additionalProperties": false,
-	"description": "Structured response for act mode. Gather information, run code, modify the project. Always use the edits array to modify or create files.",
+	"description": "Structured response for act mode. Gather information, run code, modify the project.",
 	"properties": {
 		"todo": {
 			"type": "array",
-			"description": "Tools to execute. Use read to retain files. Always read before editing, never guess file contents.",
+			"description": "Tools to execute. Only read files that exist in the project file listing. Never edit a file before reading it.",
 			"items": {
 				"type": "object",
 				"required": ["tool", "argument", "description"],
@@ -15,12 +15,12 @@
 					"tool": {
 						"type": "string",
 						"enum": ["read", "drop", "env", "delete", "run"],
-						"description": "read: retain file for reading. drop: drop irrelevant file. env: exploratory/read-only command. delete: delete a file. run: shell command that changes the environment."
+						"description": "read: retain a project file for reading. drop: remove an irrelevant file from context. env: exploratory read-only command. delete: delete a file. run: shell command that changes the environment."
 					},
 					"argument": {
 						"type": "string",
 						"minLength": 1,
-						"description": "File path or shell command depending on tool."
+						"description": "File path (must exist in project) or shell command depending on tool."
 					},
 					"description": {
 						"type": "string",
@@ -47,7 +47,7 @@
 		},
 		"edits": {
 			"type": "array",
-			"description": "File modifications. MUST be used when asked to create, edit, or modify files. Do not describe changes in known/summary — put them here.",
+			"description": "File modifications. Use edits to create, edit, or modify files. Do not describe changes in known/summary — put them here.",
 			"items": {
 				"type": "object",
 				"required": ["file", "search", "replace"],
