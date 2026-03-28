@@ -1,4 +1,4 @@
-import { strictEqual } from "node:assert";
+import { ok, strictEqual } from "node:assert";
 import { describe, it } from "node:test";
 import createHooks from "../../domain/hooks/Hooks.js";
 import StateEvaluator from "./StateEvaluator.js";
@@ -96,7 +96,7 @@ describe("StateEvaluator", () => {
 				elements: [ctxNode],
 			}),
 		);
-		assert.ok(result.warnings.length > 0);
+		ok(result.warnings.length > 0);
 	});
 
 	it("should not retry when retries exhausted", async () => {
@@ -111,7 +111,7 @@ describe("StateEvaluator", () => {
 			}),
 		);
 		// Warnings present but retries exhausted — falls through to completed
-		assert.strictEqual(result.action, "completed");
+		strictEqual(result.action, "completed");
 	});
 
 	it("proposed takes priority over hasAct", async () => {

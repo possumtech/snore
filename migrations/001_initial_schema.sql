@@ -174,8 +174,8 @@ ON file_promotions (file_id, source, run_id) WHERE run_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS pending_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, source_turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
-	, type TEXT NOT NULL CHECK (type IN ('command', 'env', 'diff', 'notification'))
+	, source_turn_id INTEGER REFERENCES turns (id) ON DELETE CASCADE
+	, type TEXT NOT NULL CHECK (type IN ('command', 'env', 'diff', 'notification', 'inject'))
 	, request TEXT NOT NULL
 	, result TEXT NOT NULL
 	, is_error BOOLEAN DEFAULT 0

@@ -6,7 +6,7 @@
 (none pending)
 
 ### Quality
-- [ ] Unit tests achieve 80/80/80 coverage
+- [x] ~~Unit tests achieve 80/80/80 coverage~~ — 90/81/89
 - [ ] Apply a slug and numbering convention to readme and architecture documents, then use that lexicon for integration test file naming that defends every documented claim
 - [ ] Maintain twelve e2e tests against live models covering distinct, realistic use cases
 - [ ] Never run integration or e2e tests against mock models, only live models
@@ -14,6 +14,23 @@
 ### Docs
 - [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, Markdown context, run aliases, model alias enforcement)
 - [ ] Update PLUGINS.md for plain-object node API and Markdown rendering
+
+### Client to Server
+
+Things the client does that we wish to move server-side:
+
+- [ ] Token/cost accumulation — The client sums usage.prompt_tokens and usage.cost across turns. The server could send cumulative totals in
+each turn in addition to per-turn deltas. Would make the client even simpler.
+
+- [ ] Temperature state — The client tracks temperature and sends it per request. If the server stored it per-session, the client would just
+send tempUp/tempDown RPCs instead of managing the value.
+
+- [ ] Skill active state — The client tracks which skills are on. The server already knows (it processes skill/add/skill/remove). We could
+query it instead of caching.
+
+- [ ] The normalize() function — If the server sent nil instead of JSON null in optional fields... but that's a JSON limitation, not the
+server's fault. Consider adjusting how json is sent to be easier on clients? Or would that just be making a weird exception for lua quirks?
+
 
 ## Done
 
