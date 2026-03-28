@@ -218,8 +218,8 @@ export default class TurnExecutor {
 		}
 
 		// Extract tools from structured JSON
-		const toolExtractor = new ToolExtractor(null, this.#hooks.tools);
-		const { tools, flags } = toolExtractor.extractFromJson(parsed);
+		const toolExtractor = new ToolExtractor(this.#hooks.tools);
+		const { tools, flags } = toolExtractor.extract(parsed);
 
 		await turnObj.hydrate();
 

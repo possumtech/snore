@@ -199,44 +199,6 @@ CREATE TABLE IF NOT EXISTS repo_map_references (
 	, symbol_name TEXT NOT NULL
 );
 
--- PROTOCOL CONSTRAINTS
-CREATE TABLE IF NOT EXISTS protocol_constraints (
-	type TEXT NOT NULL
-	, has_unknowns BOOLEAN NOT NULL
-	, required_tags TEXT NOT NULL
-	, allowed_tags TEXT NOT NULL
-	, PRIMARY KEY (type, has_unknowns)
-);
-
-INSERT OR IGNORE INTO protocol_constraints (
-	type, has_unknowns, required_tags, allowed_tags
-)
-VALUES
-(
-	'ask'
-	, 1
-	, 'todo known unknown'
-	, 'todo known unknown'
-),
-(
-	'ask'
-	, 0
-	, 'todo known unknown'
-	, 'todo known unknown'
-),
-(
-	'act'
-	, 1
-	, 'todo known unknown'
-	, 'todo known unknown edit'
-),
-(
-	'act'
-	, 0
-	, 'todo known unknown'
-	, 'todo known unknown edit'
-);
-
 -- Canonical ranking query: src/domain/repomap/get_ranked_repo_map.sql
 
 -- FINDINGS VIEWS

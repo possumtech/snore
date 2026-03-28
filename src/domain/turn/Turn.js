@@ -1,5 +1,3 @@
-import TodoParser from "../../application/agent/TodoParser.js";
-
 /**
  * Turn: The thin JS glue representing a single orchestration round.
  * The database is the single source of truth.
@@ -93,21 +91,21 @@ export default class Turn {
 		let todo = [];
 		let next_todo = null;
 		try {
-			const parsed = JSON.parse(contentRaw);
+			let jsonContent = contentRaw.trim();
+			if (jsonContent.startsWith("```")) {
+				jsonContent = jsonContent
+					.replace(/^```(?:json)?\s*\n?/, "")
+					.replace(/\n?```\s*$/, "");
+			}
+			const parsed = JSON.parse(jsonContent);
 			todo = (parsed.todo || []).map((t) => ({
 				tool: t.tool,
 				argument: t.argument,
 				description: t.description,
-				completed: false,
 			}));
 			next_todo = todo[0] || null;
 		} catch {
-			// Fallback for non-JSON content (legacy XML turns in history)
-			const { list, next } = TodoParser.parse(
-				getChildContent(assistantNode, "todo") || "",
-			);
-			todo = list;
-			next_todo = next;
+			todo = [];
 		}
 
 		// FETCH SEQUENCE FROM ROOT TURN NODE ATTRIBUTES OR SQL DATA

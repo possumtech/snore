@@ -25,9 +25,7 @@ export default class StateEvaluator {
 		const unkRaw = (turnJson.assistant.unknown || "").trim();
 		const openUnknowns = unkRaw.length > 0;
 		const hasTools = tools.length > 0;
-		const proposed = hasAct
-			? await this.#db.get_unresolved_findings.all({ run_id: runId })
-			: [];
+		const proposed = await this.#db.get_unresolved_findings.all({ run_id: runId });
 
 		// Cross-validate: todo lists edit but no edits array entries
 		const todoItems = parsedTodo || [];

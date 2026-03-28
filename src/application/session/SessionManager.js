@@ -154,6 +154,7 @@ export default class SessionManager {
 
 	async activate(projectId, pattern) {
 		const path = await this.#normalizePath(projectId, pattern);
+		if (!path) return { status: "ok" };
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
 			pattern: path,

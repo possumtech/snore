@@ -143,7 +143,15 @@ test("Turn", async (t) => {
 			turn_id: turnId,
 			parent_id: assistantEl.id,
 			tag_name: "content",
-			content: "I fixed the bug.",
+			content: JSON.stringify({
+				todo: [
+					{ tool: "read", argument: "src/a.js", description: "check file" },
+					{ tool: "edit", argument: "fix the thing", description: "fix bug" },
+				],
+				known: "The file has a bug",
+				unknown: "Why it was written this way",
+				summary: "Fixed a bug in src/a.js",
+			}),
 			attributes: "{}",
 			sequence: seq++,
 		});
@@ -153,15 +161,6 @@ test("Turn", async (t) => {
 			parent_id: assistantEl.id,
 			tag_name: "reasoning_content",
 			content: "Let me think...",
-			attributes: "{}",
-			sequence: seq++,
-		});
-
-		await ins({
-			turn_id: turnId,
-			parent_id: assistantEl.id,
-			tag_name: "todo",
-			content: "- [x] read: src/a.js\n- [ ] edit: fix the thing",
 			attributes: "{}",
 			sequence: seq++,
 		});
@@ -289,7 +288,10 @@ test("Turn", async (t) => {
 			assert.strictEqual(json.files[0].content, "const a = 1;");
 
 			// Assistant
-			assert.strictEqual(json.assistant.content, "I fixed the bug.");
+			assert.ok(
+				json.assistant.content.includes("read"),
+				"Content should be JSON with todo",
+			);
 			assert.strictEqual(json.assistant.reasoning_content, "Let me think...");
 			assert.strictEqual(json.assistant.known, "The file has a bug");
 			assert.strictEqual(json.assistant.unknown, "Why it was written this way");
@@ -319,15 +321,13 @@ test("Turn", async (t) => {
 			const first = json.assistant.todo[0];
 			assert.strictEqual(first.tool, "read");
 			assert.strictEqual(first.argument, "src/a.js");
-			assert.strictEqual(first.completed, true);
 
 			const second = json.assistant.todo[1];
 			assert.strictEqual(second.tool, "edit");
 			assert.strictEqual(second.argument, "fix the thing");
-			assert.strictEqual(second.completed, false);
 
-			// next_todo should be the first incomplete item
-			assert.strictEqual(json.assistant.next_todo, second);
+			// next_todo should be the first item
+			assert.strictEqual(json.assistant.next_todo, first);
 		},
 	);
 
@@ -357,7 +357,10 @@ test("Turn", async (t) => {
 			);
 
 			assert.strictEqual(messages[2].role, "assistant");
-			assert.strictEqual(messages[2].content, "I fixed the bug.");
+			assert.ok(
+				messages[2].content.includes("read"),
+				"Assistant content should be JSON",
+			);
 		},
 	);
 
@@ -384,7 +387,10 @@ test("Turn", async (t) => {
 			// Assistant still present
 			const assistantMsg = messages.find((m) => m.role === "assistant");
 			assert.ok(assistantMsg);
-			assert.strictEqual(assistantMsg.content, "I fixed the bug.");
+			assert.ok(
+				assistantMsg.content.includes("read"),
+				"Assistant content should be JSON",
+			);
 		},
 	);
 

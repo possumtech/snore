@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import CtagsExtractor from "../../extraction/CtagsExtractor.js";
 
@@ -56,6 +56,7 @@ export default class RepoMap {
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
 			if (!existsSync(fullPath)) continue;
+			if (statSync(fullPath).isDirectory()) continue;
 
 			const content = readFileSync(fullPath, "utf8");
 			const size = content.length;

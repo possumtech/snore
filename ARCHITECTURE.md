@@ -582,15 +582,20 @@ directly with a single env file.
 
 ### 7.3 E2E Model Requirement
 
-E2E tests execute real turns against a live LLM. This is intentional — the
-Rumsfeld Loop's value is in how it constrains real model behavior, which cannot
-be verified with mocks.
+E2E tests execute real turns against a live LLM. This is a hard rule, not a
+guideline. **E2E tests must NEVER mock the LLM.** No `globalThis.fetch`
+overrides, no canned responses, no fake model behavior. The entire point of
+E2E testing is simulating genuine app usage as closely as technically possible.
+
+If a test can be satisfied with a mock, it belongs in unit tests (`src/`),
+not E2E (`test/e2e/`). E2E tests exist specifically to verify that real models
+produce real structured output that the server correctly processes.
 
 **Setup:**
 1. Configure `.env.test` with `RUMMY_MODEL_DEFAULT` pointing to a capable model.
 2. Ensure the model provider is available (Ollama running, or OpenRouter API key set).
 
-There is no mock LLM fallback. If the model is unavailable, E2E tests fail.
+If the model is unavailable, E2E tests fail. This is correct behavior.
 
 ### 7.4 Coverage Target
 
