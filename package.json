@@ -39,7 +39,6 @@
 	},
 	"dependencies": {
 		"@possumtech/sqlrite": "^2.0.3",
-		"@xmldom/xmldom": "^0.8.11",
 		"ws": "^8.19.0"
 	},
 	"optionalDependencies": {

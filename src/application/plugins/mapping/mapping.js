@@ -11,7 +11,6 @@ export default class RepoMapPlugin {
 			const ctx = await ProjectContext.open(project.path);
 			const repoMap = new RepoMap(ctx, db, project.id);
 
-			// Reindex changed files before rendering so symbols stay current
 			await repoMap.updateIndex();
 			const perspective = await repoMap.renderPerspective({
 				sequence: rummy.sequence,
@@ -33,20 +32,20 @@ export default class RepoMapPlugin {
 					visibility,
 				});
 
-				docEl.appendChild(rummy.tag("source", {}, [f.path]));
+				docEl.children.push(rummy.tag("source", {}, [f.path]));
 
 				if (f.content) {
-					docEl.appendChild(rummy.tag("document_content", {}, [f.content]));
+					docEl.children.push(rummy.tag("document_content", {}, [f.content]));
 				} else if (f.symbols && f.symbols.length > 0) {
-					docEl.appendChild(
+					docEl.children.push(
 						rummy.tag("document_content", {}, [f.symbols.join(", ")]),
 					);
 				}
 
-				docsEl.appendChild(docEl);
+				docsEl.children.push(docEl);
 			}
 
-			rummy.system.appendChild(docsEl);
+			rummy.system.children.push(docsEl);
 		});
 
 		hooks.project.init.completed.on(async (payload) => {

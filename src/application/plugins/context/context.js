@@ -54,7 +54,7 @@ export default class ContextPlugin {
 
 			if (lines.length > 0) {
 				const feedbackEl = rummy.tag("feedback", {}, [lines.join("\n")]);
-				rummy.contextEl.appendChild(feedbackEl);
+				rummy.contextEl.children.push(feedbackEl);
 			}
 		}, 5);
 	}

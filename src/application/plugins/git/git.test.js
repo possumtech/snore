@@ -4,9 +4,9 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import createHooks from "../../../domain/hooks/Hooks.js";
-import GitPlugin from "./git.js";
+import FileChangePlugin from "./git.js";
 
-test("GitPlugin", async (t) => {
+test("FileChangePlugin", async (t) => {
 	const projectPath = join(process.cwd(), "test_git_plugin");
 	await fs.mkdir(projectPath, { recursive: true });
 	const filePath = "test.txt";
@@ -20,9 +20,8 @@ test("GitPlugin", async (t) => {
 
 	await t.test("onTurn should detect modified files", async () => {
 		const hooks = createHooks();
-		GitPlugin.register(hooks);
+		FileChangePlugin.register(hooks);
 
-		// Modify file to trigger hash mismatch
 		await fs.writeFile(join(projectPath, filePath), "modified");
 
 		let tagCalled = false;
@@ -33,14 +32,14 @@ test("GitPlugin", async (t) => {
 			},
 			tag: (name, _attrs, children) => {
 				tagCalled = true;
-				assert.strictEqual(name, "git_changes");
+				assert.strictEqual(name, "modified_files");
 				assert.ok(children[0].includes(filePath));
-				return {};
+				return { tag: name, attrs: {}, content: children[0], children: [] };
 			},
-			contextEl: { appendChild: () => {} },
+			contextEl: { children: [] },
 		};
 
 		await hooks.processTurn(mockRummy);
-		assert.ok(tagCalled, "git_changes tag should have been created");
+		assert.ok(tagCalled, "modified_files tag should have been created");
 	});
 });

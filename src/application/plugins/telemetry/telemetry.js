@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * DebugLoggerPlugin: Writes comprehensive XML audits for every turn.
+ * DebugLoggerPlugin: Writes audit files for every turn.
  */
 export default class DebugLoggerPlugin {
 	static register(hooks) {
@@ -19,21 +19,18 @@ export default class DebugLoggerPlugin {
 		try {
 			mkdirSync(runDir, { recursive: true });
 
-			// Get the current turn count from the context to name the file
-			const seq =
-				turn.doc.documentElement.getAttribute("sequence") || Date.now();
-			const fileName = `turn_${seq}.xml`;
+			const json = turn.toJson();
+			const seq = json.sequence ?? Date.now();
+			const fileName = `turn_${seq}.json`;
 			const filePath = join(runDir, fileName);
 
-			const xml = turn.toXml();
-			writeFileSync(filePath, xml);
-
-			// Also maintain a symlink or "latest" file for convenience
-			writeFileSync(join(auditBase, "audit_latest.xml"), xml);
+			const content = JSON.stringify(json, null, 2);
+			writeFileSync(filePath, content);
+			writeFileSync(join(auditBase, "audit_latest.json"), content);
 
 			console.log(`[DEBUG] Audit written: ${filePath}`);
 		} catch (err) {
-			console.error(`[DEBUG] Failed to write audit XML: ${err.message}`);
+			console.error(`[DEBUG] Failed to write audit: ${err.message}`);
 		}
 	}
 }

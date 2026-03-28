@@ -1,28 +1,28 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { describe, it } from "node:test";
-import { DOMImplementation } from "@xmldom/xmldom";
 import RummyContext from "./RummyContext.js";
 
 describe("RummyContext", () => {
-	const dom = new DOMImplementation();
-	const createDoc = () => {
-		const doc = dom.createDocument(null, "turn", null);
-		const root = doc.documentElement;
-		root.appendChild(doc.createElement("system"));
-		root.appendChild(doc.createElement("context"));
-		root.appendChild(doc.createElement("user"));
-		root.appendChild(doc.createElement("assistant"));
-		return doc;
-	};
+	const createRoot = () => ({
+		tag: "turn",
+		attrs: { sequence: "0" },
+		content: null,
+		children: [
+			{ tag: "system", attrs: {}, content: null, children: [] },
+			{ tag: "context", attrs: {}, content: null, children: [] },
+			{ tag: "user", attrs: {}, content: null, children: [] },
+			{ tag: "assistant", attrs: {}, content: null, children: [] },
+		],
+	});
 
-	it("should provide access to standard XML sections", () => {
-		const doc = createDoc();
-		const ctx = new RummyContext(doc, {});
+	it("should provide access to standard sections", () => {
+		const root = createRoot();
+		const ctx = new RummyContext(root, {});
 
-		strictEqual(ctx.system.tagName, "system");
-		strictEqual(ctx.contextEl.tagName, "context");
-		strictEqual(ctx.user.tagName, "user");
-		strictEqual(ctx.assistant.tagName, "assistant");
+		strictEqual(ctx.system.tag, "system");
+		strictEqual(ctx.contextEl.tag, "context");
+		strictEqual(ctx.user.tag, "user");
+		strictEqual(ctx.assistant.tag, "assistant");
 	});
 
 	it("should provide access to context data", () => {
@@ -33,7 +33,7 @@ describe("RummyContext", () => {
 			type: "act",
 			sessionId: "s-1",
 		};
-		const ctx = new RummyContext(createDoc(), mockContext);
+		const ctx = new RummyContext(createRoot(), mockContext);
 
 		strictEqual(ctx.db.id, "db-1");
 		strictEqual(ctx.project.id, "p-1");
@@ -43,16 +43,16 @@ describe("RummyContext", () => {
 	});
 
 	it("should create new tags with attributes and children", () => {
-		const ctx = new RummyContext(createDoc(), {});
-		const tag = ctx.tag("myTag", { id: "123" }, [
+		const ctx = new RummyContext(createRoot(), {});
+		const node = ctx.tag("myTag", { id: "123" }, [
 			"Hello",
 			ctx.tag("child", {}, []),
 		]);
 
-		strictEqual(tag.tagName, "myTag");
-		strictEqual(tag.getAttribute("id"), "123");
-		strictEqual(tag.childNodes.length, 2);
-		strictEqual(tag.childNodes[0].nodeValue, "Hello");
-		strictEqual(tag.childNodes[1].tagName, "child");
+		strictEqual(node.tag, "myTag");
+		strictEqual(node.attrs.id, "123");
+		strictEqual(node.content, "Hello");
+		strictEqual(node.children.length, 1);
+		strictEqual(node.children[0].tag, "child");
 	});
 });

@@ -1,18 +1,14 @@
 import assert from "node:assert";
 import crypto from "node:crypto";
 import test from "node:test";
-import { DOMImplementation } from "@xmldom/xmldom";
 import TestDb from "../../../../test/helpers/TestDb.js";
 import createHooks from "../../../domain/hooks/Hooks.js";
 import RummyContext from "../../../domain/turn/RummyContext.js";
 import ContextPlugin from "./context.js";
 
-const dom = new DOMImplementation();
-
 function getFeedbackText(rummy) {
-	const feedbackEls = rummy.contextEl.getElementsByTagName("feedback");
-	if (feedbackEls.length === 0) return "";
-	return feedbackEls[0].textContent || "";
+	const feedbackNode = rummy.contextEl.children.find((c) => c.tag === "feedback");
+	return feedbackNode?.content || "";
 }
 
 async function setup() {
@@ -47,10 +43,15 @@ async function setup() {
 }
 
 function makeRummy(db, runId, turnId) {
-	const doc = dom.createDocument(null, "turn", null);
-	const contextEl = doc.createElement("context");
-	doc.documentElement.appendChild(contextEl);
-	return new RummyContext(doc, {
+	const root = {
+		tag: "turn",
+		attrs: {},
+		content: null,
+		children: [
+			{ tag: "context", attrs: {}, content: null, children: [] },
+		],
+	};
+	return new RummyContext(root, {
 		db,
 		project: {},
 		type: "ask",

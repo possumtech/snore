@@ -21,14 +21,13 @@ test("DebugLoggerPlugin", async (t) => {
 		DebugLoggerPlugin.register(hooks);
 
 		const mockTurn = {
-			doc: { documentElement: { getAttribute: () => "0" } },
-			toXml: () => "<turn/>",
+			toJson: () => ({ sequence: 0, system: "", user: "test" }),
 		};
 
 		await hooks.run.turn.audit.emit({ runId: "r1", turn: mockTurn });
 
-		const filePath = join(auditDir, "run_r1", "turn_0.xml");
-		const content = await fs.readFile(filePath, "utf8");
-		assert.strictEqual(content, "<turn/>");
+		const filePath = join(auditDir, "run_r1", "turn_0.json");
+		const content = JSON.parse(await fs.readFile(filePath, "utf8"));
+		assert.strictEqual(content.user, "test");
 	});
 });

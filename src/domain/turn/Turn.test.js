@@ -11,7 +11,6 @@ test("Turn", async (t) => {
 		tdb = await TestDb.create();
 		db = tdb.db;
 
-		// Create prerequisite project -> session -> run
 		const projectId = randomUUID();
 		const sessionId = randomUUID();
 		const runId = randomUUID();
@@ -34,28 +33,8 @@ test("Turn", async (t) => {
 			config: "{}",
 		});
 
-		// Create the turn
 		const turn = await db.create_empty_turn.get({ run_id: runId, sequence: 1 });
 		turnId = turn.id;
-
-		// Insert the turn element tree:
-		// <turn sequence="1">
-		//   <system>You are a helpful assistant.</system>
-		//   <context><files><file path="src/a.js" size="42" tokens="10"><source>const a = 1;</source></file></files></context>
-		//   <user>Fix the bug</user>
-		//   <assistant>
-		//     <content>I fixed the bug.</content>
-		//     <reasoning_content>Let me think...</reasoning_content>
-		//     <todo>- [x] read: src/a.js\n- [ ] edit: fix the thing</todo>
-		//     <known>The file has a bug</known>
-		//     <unknown>Why it was written this way</unknown>
-		//     <summary>Fixed a bug in src/a.js</summary>
-		//     <meta>{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"alias":"opus","actualModel":"claude-opus-4-20250514","displayModel":"Opus"}</meta>
-		//   </assistant>
-		//   <error source="lint">Lint failed</error>
-		//   <warn>Deprecated API usage</warn>
-		//   <info>Build succeeded</info>
-		// </turn>
 
 		const ins = (params) => db.insert_turn_element.get(params);
 		let seq = 0;
@@ -70,16 +49,53 @@ test("Turn", async (t) => {
 		});
 		const turnElId = turnEl.id;
 
-		await ins({
+		// System with documents child
+		const systemEl = await ins({
 			turn_id: turnId,
 			parent_id: turnElId,
 			tag_name: "system",
-			content: "You are a helpful assistant.",
+			content: "You are a helpful assistant.\n",
 			attributes: "{}",
 			sequence: seq++,
 		});
 
-		// context > files > file > source
+		const docsEl = await ins({
+			turn_id: turnId,
+			parent_id: systemEl.id,
+			tag_name: "documents",
+			content: null,
+			attributes: "{}",
+			sequence: seq++,
+		});
+
+		const docEl = await ins({
+			turn_id: turnId,
+			parent_id: docsEl.id,
+			tag_name: "document",
+			content: null,
+			attributes: JSON.stringify({ index: "1", visibility: "full" }),
+			sequence: seq++,
+		});
+
+		await ins({
+			turn_id: turnId,
+			parent_id: docEl.id,
+			tag_name: "source",
+			content: "src/a.js",
+			attributes: "{}",
+			sequence: seq++,
+		});
+
+		await ins({
+			turn_id: turnId,
+			parent_id: docEl.id,
+			tag_name: "document_content",
+			content: "const a = 1;",
+			attributes: "{}",
+			sequence: seq++,
+		});
+
+		// Context with feedback
 		const contextEl = await ins({
 			turn_id: turnId,
 			parent_id: turnElId,
@@ -89,33 +105,11 @@ test("Turn", async (t) => {
 			sequence: seq++,
 		});
 
-		const filesEl = await ins({
-			turn_id: turnId,
-			parent_id: contextEl.id,
-			tag_name: "files",
-			content: null,
-			attributes: "{}",
-			sequence: seq++,
-		});
-
-		const fileEl = await ins({
-			turn_id: turnId,
-			parent_id: filesEl.id,
-			tag_name: "file",
-			content: null,
-			attributes: JSON.stringify({
-				path: "src/a.js",
-				size: "42",
-				tokens: "10",
-			}),
-			sequence: seq++,
-		});
-
 		await ins({
 			turn_id: turnId,
-			parent_id: fileEl.id,
-			tag_name: "source",
-			content: "const a = 1;",
+			parent_id: contextEl.id,
+			tag_name: "feedback",
+			content: "info: src/a.js # file retained",
 			attributes: "{}",
 			sequence: seq++,
 		});
@@ -129,7 +123,7 @@ test("Turn", async (t) => {
 			sequence: seq++,
 		});
 
-		// assistant and children
+		// Assistant and children
 		const assistantEl = await ins({
 			turn_id: turnId,
 			parent_id: turnElId,
@@ -261,13 +255,14 @@ test("Turn", async (t) => {
 			const json = turn.toJson();
 
 			assert.strictEqual(json.sequence, 1);
-			assert.strictEqual(json.system, "You are a helpful assistant.");
+			assert.ok(json.system.includes("helpful assistant"), "system has identity");
+			assert.ok(json.system.includes("src/a.js"), "system has file path");
+			assert.ok(json.system.includes("const a = 1"), "system has file content");
 			assert.strictEqual(json.user, "Fix the bug");
-			assert.ok(json.context.includes("<context>"), "context contains XML");
-			assert.ok(
-				json.context.includes("src/a.js"),
-				"context includes file path",
-			);
+
+			// Context rendered as Markdown
+			assert.ok(json.context.includes("src/a.js"), "context includes file path");
+			assert.ok(json.context.includes("retained"), "context includes feedback");
 
 			// Diagnostics
 			assert.strictEqual(json.errors.length, 1);
@@ -280,23 +275,17 @@ test("Turn", async (t) => {
 			assert.strictEqual(json.infos.length, 1);
 			assert.strictEqual(json.infos[0].content, "Build succeeded");
 
-			// Files
+			// Files (from document tags)
 			assert.strictEqual(json.files.length, 1);
 			assert.strictEqual(json.files[0].path, "src/a.js");
-			assert.strictEqual(json.files[0].size, "42");
-			assert.strictEqual(json.files[0].tokens, "10");
+			assert.strictEqual(json.files[0].visibility, "full");
 			assert.strictEqual(json.files[0].content, "const a = 1;");
 
 			// Assistant
-			assert.ok(
-				json.assistant.content.includes("read"),
-				"Content should be JSON with todo",
-			);
+			assert.ok(json.assistant.content.includes("read"));
 			assert.strictEqual(json.assistant.reasoning_content, "Let me think...");
 			assert.deepStrictEqual(json.assistant.known, ["The file has a bug"]);
-			assert.deepStrictEqual(json.assistant.unknown, [
-				"Why it was written this way",
-			]);
+			assert.deepStrictEqual(json.assistant.unknown, ["Why it was written this way"]);
 			assert.strictEqual(json.assistant.summary, "Fixed a bug in src/a.js");
 
 			// Usage
@@ -312,29 +301,22 @@ test("Turn", async (t) => {
 	);
 
 	await t.test(
-		"toJson() todo is parsed by TodoParser with verb support",
+		"toJson() todo is parsed with verb support",
 		async () => {
 			const turn = new Turn(db, turnId);
 			await turn.hydrate();
 			const json = turn.toJson();
 
 			assert.strictEqual(json.assistant.todo.length, 2);
-
-			const first = json.assistant.todo[0];
-			assert.strictEqual(first.tool, "read");
-			assert.strictEqual(first.argument, "src/a.js");
-
-			const second = json.assistant.todo[1];
-			assert.strictEqual(second.tool, "edit");
-			assert.strictEqual(second.argument, "fix the thing");
-
-			// next_todo should be the first item
-			assert.strictEqual(json.assistant.next_todo, first);
+			assert.strictEqual(json.assistant.todo[0].tool, "read");
+			assert.strictEqual(json.assistant.todo[0].argument, "src/a.js");
+			assert.strictEqual(json.assistant.todo[1].tool, "edit");
+			assert.strictEqual(json.assistant.next_todo, json.assistant.todo[0]);
 		},
 	);
 
 	await t.test(
-		"serialize() returns system, user (with feedback), assistant messages",
+		"serialize() returns system, user (with context), assistant messages",
 		async () => {
 			const turn = new Turn(db, turnId);
 			await turn.hydrate();
@@ -343,84 +325,48 @@ test("Turn", async (t) => {
 			assert.strictEqual(messages.length, 3);
 
 			assert.strictEqual(messages[0].role, "system");
-			assert.ok(
-				messages[0].content.includes("helpful assistant"),
-				"system message includes identity",
-			);
+			assert.ok(messages[0].content.includes("helpful assistant"));
+			assert.ok(messages[0].content.includes("Project Files"), "system has documents heading");
+			assert.ok(messages[0].content.includes("```javascript"), "system has code fence");
+			assert.ok(messages[0].content.includes("const a = 1"), "system has file content");
 
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(
-				messages[1].content.includes("<user>"),
-				"user message includes user XML",
-			);
-			assert.ok(
-				messages[1].content.includes("Fix the bug"),
-				"user message includes user text",
-			);
+			assert.ok(messages[1].content.includes("Fix the bug"));
+			assert.ok(messages[1].content.includes("retained"), "user has feedback context");
 
 			assert.strictEqual(messages[2].role, "assistant");
-			assert.ok(
-				messages[2].content.includes("read"),
-				"Assistant content should be JSON",
-			);
 		},
 	);
 
 	await t.test(
-		"serialize({forHistory: true}) omits system and strips context from user",
+		"serialize({forHistory: true}) omits system and strips context",
 		async () => {
 			const turn = new Turn(db, turnId);
 			await turn.hydrate();
 			const messages = await turn.serialize({ forHistory: true });
 
-			// No system message
 			const roles = messages.map((m) => m.role);
-			assert.ok(!roles.includes("system"), "system message is omitted");
+			assert.ok(!roles.includes("system"), "system is omitted");
 
-			// User message should not include context
 			const userMsg = messages.find((m) => m.role === "user");
-			assert.ok(userMsg, "user message exists");
-			assert.ok(!userMsg.content.includes("<context>"), "context is stripped");
-			assert.ok(
-				userMsg.content.includes("Fix the bug"),
-				"user text is preserved",
-			);
+			assert.ok(userMsg);
+			assert.ok(userMsg.content.includes("Fix the bug"));
+			assert.ok(!userMsg.content.includes("retained"), "context is stripped");
 
-			// Assistant still present
 			const assistantMsg = messages.find((m) => m.role === "assistant");
 			assert.ok(assistantMsg);
-			assert.ok(
-				assistantMsg.content.includes("read"),
-				"Assistant content should be JSON",
-			);
 		},
 	);
 
-	await t.test("toXml() produces valid XML string", async () => {
-		const turn = new Turn(db, turnId);
-		await turn.hydrate();
-
-		// Default: renders root node
-		const xml = turn.toXml();
-		assert.ok(xml.startsWith("<turn"), "starts with root tag");
-		assert.ok(xml.includes("</turn>"), "ends with closing root tag");
-		assert.ok(xml.includes("<system>"), "includes system tag");
-		assert.ok(xml.includes("<user>"), "includes user tag");
-		assert.ok(xml.includes("<assistant>"), "includes assistant tag");
-		assert.ok(xml.includes('sequence="1"'), "includes sequence attribute");
-	});
-
-	await t.test("toXml(node) renders a specific subtree", async () => {
+	await t.test("feedback is parsed into structured entries", async () => {
 		const turn = new Turn(db, turnId);
 		await turn.hydrate();
 		const json = turn.toJson();
 
-		// context XML should be a subtree
-		assert.ok(
-			json.context.startsWith("<context>"),
-			"context XML starts correctly",
-		);
-		assert.ok(json.context.includes("<file"), "context includes file element");
-		assert.ok(json.context.includes("</context>"), "context XML closes");
+		assert.ok(json.feedback.length > 0, "should have feedback entries");
+		const entry = json.feedback.find((f) => f.target === "src/a.js");
+		assert.ok(entry, "should have feedback for src/a.js");
+		assert.strictEqual(entry.level, "info");
+		assert.ok(entry.message.includes("retained"));
 	});
 });

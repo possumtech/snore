@@ -1,3 +1,16 @@
+import { extname } from "node:path";
+
+const EXT_LANG = {
+	".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+	".ts": "typescript", ".tsx": "typescript", ".jsx": "javascript",
+	".py": "python", ".rb": "ruby", ".go": "go", ".rs": "rust",
+	".java": "java", ".kt": "kotlin", ".cs": "csharp", ".cpp": "cpp",
+	".c": "c", ".h": "c", ".hpp": "cpp", ".lua": "lua", ".sh": "bash",
+	".sql": "sql", ".json": "json", ".yaml": "yaml", ".yml": "yaml",
+	".toml": "toml", ".xml": "xml", ".html": "html", ".css": "css",
+	".md": "markdown", ".swift": "swift", ".php": "php", ".r": "r",
+};
+
 /**
  * Turn: The thin JS glue representing a single orchestration round.
  * The database is the single source of truth.
@@ -16,16 +29,12 @@ export default class Turn {
 		return this.#turnId;
 	}
 
-	/**
-	 * Hydrates the turn data from the database.
-	 */
 	async hydrate() {
 		const elements =
 			(await this.#db?.get_turn_elements.all({
 				turn_id: this.#turnId,
 			})) || [];
 
-		// Build flat map for O(1) tag access
 		const tagMap = new Map();
 		const allNodes = [];
 
@@ -40,7 +49,6 @@ export default class Turn {
 			tagMap.get(el.tag_name).push(node);
 		}
 
-		// Rebuild parent-child links for XML serialization
 		const nodeLookup = new Map(allNodes.map((n) => [n.id, n]));
 		const root = [];
 		for (const node of allNodes) {
@@ -56,9 +64,6 @@ export default class Turn {
 		return this;
 	}
 
-	/**
-	 * Serializes the turn for the Client (JSON-RPC).
-	 */
 	toJson() {
 		if (!this.#data) throw new Error("Turn not hydrated.");
 		const { tagMap, root } = this.#data;
@@ -66,9 +71,8 @@ export default class Turn {
 		const getTag = (name) => tagMap.get(name)?.[0];
 		const getTags = (name) => tagMap.get(name) || [];
 
-		const turnNode = root[0]; // The root is always the <turn> element
+		const turnNode = root[0];
 		const assistantNode = getTag("assistant");
-		const contextNode = getTag("context");
 
 		const getDeepContent = (node) => {
 			if (!node) return null;
@@ -87,7 +91,6 @@ export default class Turn {
 		const meta = JSON.parse(getChildContent(assistantNode, "meta") || "{}");
 		const contentRaw = getChildContent(assistantNode, "content") || "";
 
-		// Parse structured JSON response for todo items
 		let todo = [];
 		let next_todo = null;
 		try {
@@ -108,12 +111,9 @@ export default class Turn {
 			todo = [];
 		}
 
-		// FETCH SEQUENCE FROM ROOT TURN NODE ATTRIBUTES OR SQL DATA
 		const rawSeq = turnNode?.attributes?.sequence ?? turnNode?.sequence ?? 0;
 		const sequence = Number.parseInt(String(rawSeq), 10);
 
-		// Parse feedback lines from <feedback> elements into structured entries.
-		// Format: "level: target # message"
 		const feedback = getTags("feedback").flatMap((f) =>
 			(f.content || "")
 				.split("\n")
@@ -136,11 +136,15 @@ export default class Turn {
 				const sys = getTag("system");
 				if (!sys) return "";
 				let s = sys.content || "";
-				for (const child of sys.children) s += this.toXml(child);
+				for (const child of sys.children) s += this.#renderNode(child);
 				return s;
 			})(),
 			user: getDeepContent(getTag("user")) || "",
-			context: contextNode ? this.toXml(contextNode) : "",
+			context: (() => {
+				const ctx = getTag("context");
+				if (!ctx) return "";
+				return ctx.children.map((c) => this.#renderNode(c)).join("");
+			})(),
 			feedback,
 			errors: getTags("error").map((t) => ({
 				content: t.content,
@@ -154,15 +158,13 @@ export default class Turn {
 				content: t.content,
 				...t.attributes,
 			})),
-			files: getTags("file").map((f) => {
-				const source = f.children.find((c) => c.tag_name === "source");
-				const symbols = f.children.find((c) => c.tag_name === "symbols");
+			files: getTags("document").map((d) => {
+				const source = d.children.find((c) => c.tag_name === "source");
+				const docContent = d.children.find((c) => c.tag_name === "document_content");
 				return {
-					path: f.attributes.path,
-					size: f.attributes.size,
-					tokens: f.attributes.tokens,
-					content: source ? source.content : null,
-					symbols: symbols ? symbols.content?.split("\t") : null,
+					path: source?.content || d.attributes.path,
+					visibility: d.attributes.visibility,
+					content: docContent?.content || null,
 				};
 			}),
 			assistant: {
@@ -191,12 +193,9 @@ export default class Turn {
 
 	/**
 	 * Serializes the turn for the LLM history.
-	 */
-	/**
-	 * Serializes the turn for the LLM history.
 	 * @param {object} opts
 	 * @param {boolean} opts.forHistory - If true, omits system message and
-	 *   strips context XML from user message. Prior turns' context is stale —
+	 *   strips context from user message. Prior turns' context is stale —
 	 *   only the current turn should include live file contents and git state.
 	 */
 	async serialize({ forHistory = false } = {}) {
@@ -206,14 +205,13 @@ export default class Turn {
 		const messages = [];
 
 		if (!forHistory) {
-			// System = identity text + document children (rendered as XML)
 			const systemNode = this.#data.root[0]?.children.find(
 				(c) => c.tag_name === "system",
 			);
 			if (systemNode) {
 				let systemContent = systemNode.content || "";
 				for (const child of systemNode.children) {
-					systemContent += this.toXml(child);
+					systemContent += this.#renderNode(child);
 				}
 				if (systemContent) {
 					messages.push({ role: "system", content: systemContent });
@@ -221,26 +219,22 @@ export default class Turn {
 			}
 		}
 
-		// User = feedback (context children) + prompt
 		const contextNode = this.#data.root[0]?.children.find(
 			(c) => c.tag_name === "context",
 		);
-		const userNode = this.#data.root[0]?.children.find(
-			(c) => c.tag_name === "user",
-		);
-		const userXml = userNode ? this.toXml(userNode) : json.user || "";
+		const userContent = json.user || "";
 
 		if (forHistory) {
-			if (userXml) messages.push({ role: "user", content: userXml });
+			if (userContent) messages.push({ role: "user", content: userContent });
 		} else {
-			let feedback = "";
+			let contextMd = "";
 			if (contextNode) {
 				for (const child of contextNode.children) {
-					feedback += this.toXml(child);
+					contextMd += this.#renderNode(child);
 				}
 			}
-			const userContent = feedback + userXml;
-			if (userContent) messages.push({ role: "user", content: userContent });
+			const fullUser = contextMd + userContent;
+			if (fullUser) messages.push({ role: "user", content: fullUser });
 		}
 
 		if (json.assistant.content) {
@@ -251,45 +245,57 @@ export default class Turn {
 	}
 
 	/**
-	 * Renders a node and its children to faithful XML.
+	 * Renders a node tree to Markdown.
 	 */
-	toXml(node = null) {
-		if (!node && this.#data) node = this.#data.root[0];
+	#renderNode(node) {
 		if (!node) return "";
+		const tag = node.tag_name;
 
-		let xml = `<${node.tag_name}`;
-		for (const [k, v] of Object.entries(node.attributes)) {
-			xml += ` ${k}="${this.#escapeXml(String(v))}"`;
+		if (tag === "documents") {
+			return "\n# Project Files\n\n" +
+				node.children.map((c) => this.#renderNode(c)).join("\n");
 		}
 
-		if (node.content === null && node.children.length === 0) {
-			return `${xml}/>\n`;
-		}
+		if (tag === "document") {
+			const source = node.children.find((c) => c.tag_name === "source");
+			const docContent = node.children.find((c) => c.tag_name === "document_content");
+			const path = source?.content || "";
+			const visibility = node.attributes.visibility || "path";
 
-		xml += ">";
-		if (node.content !== null) xml += node.content;
-		for (const child of node.children) {
-			xml += this.toXml(child);
-		}
-		xml += `</${node.tag_name}>\n`;
-		return xml;
-	}
-
-	#escapeXml(unsafe) {
-		return unsafe.replace(/[<>&"']/g, (c) => {
-			switch (c) {
-				case "<":
-					return "&lt;";
-				case ">":
-					return "&gt;";
-				case "&":
-					return "&amp;";
-				case '"':
-					return "&quot;";
-				case "'":
-					return "&apos;";
+			if (visibility === "path") {
+				return `### \`${path}\`\n`;
 			}
-			return c;
-		});
+
+			if (visibility === "symbols") {
+				return `### \`${path}\` (symbols)\n${docContent?.content || ""}\n`;
+			}
+
+			const lang = EXT_LANG[extname(path)] || "";
+			const content = docContent?.content || "";
+			return `### \`${path}\`\n\`\`\`${lang}\n${content}\n\`\`\`\n`;
+		}
+
+		if (tag === "feedback") {
+			return (node.content || "")
+				.split("\n")
+				.filter(Boolean)
+				.map((line) => `> ${line}`)
+				.join("\n") + "\n\n";
+		}
+
+		if (tag === "modified_files" || tag === "git_changes") {
+			return `## Modified Files\n${node.content || ""}\n\n`;
+		}
+
+		if (tag === "error") {
+			return `> **Error**: ${node.content || ""}\n\n`;
+		}
+
+		// Generic fallback
+		let md = node.content || "";
+		for (const child of node.children) {
+			md += this.#renderNode(child);
+		}
+		return md;
 	}
 }

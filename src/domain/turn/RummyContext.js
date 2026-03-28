@@ -1,40 +1,24 @@
 /**
  * RummyContext provides a unified, semantic API for plugins to interact with
- * the Turn XML Document and core resources like the Database and Project metadata.
+ * the Turn node tree and core resources like the Database and Project metadata.
  */
 export default class RummyContext {
-	#doc;
+	#root;
 	#context;
 
-	constructor(doc, context) {
-		this.#doc = doc;
+	constructor(root, context) {
+		this.#root = root;
 		this.#context = context;
 	}
 
-	/**
-	 * Access to the raw XML Document.
-	 */
-	get doc() {
-		return this.#doc;
-	}
-
-	/**
-	 * Access to the project's SQLite database.
-	 */
 	get db() {
 		return this.#context.db;
 	}
 
-	/**
-	 * Metadata for the current project (id, path, name).
-	 */
 	get project() {
 		return this.#context.project;
 	}
 
-	/**
-	 * List of files currently "active" or focused in the UI.
-	 */
 	get activeFiles() {
 		return this.#context.activeFiles || [];
 	}
@@ -67,42 +51,32 @@ export default class RummyContext {
 		return this.#context.contextSize || null;
 	}
 
-	/**
-	 * Semantic access to standard XML sections.
-	 */
 	get system() {
-		return this.#doc.getElementsByTagName("system")[0];
+		return this.#root.children.find((c) => c.tag === "system");
 	}
 
 	get contextEl() {
-		return this.#doc.getElementsByTagName("context")[0];
+		return this.#root.children.find((c) => c.tag === "context");
 	}
 
 	get user() {
-		return this.#doc.getElementsByTagName("user")[0];
+		return this.#root.children.find((c) => c.tag === "user");
 	}
 
 	get assistant() {
-		return this.#doc.getElementsByTagName("assistant")[0];
+		return this.#root.children.find((c) => c.tag === "assistant");
 	}
 
-	/**
-	 * Creates a new XML element (Tag) with attributes and children.
-	 */
 	tag(name, attrs = {}, children = []) {
-		const el = this.#doc.createElement(name);
-		for (const [k, v] of Object.entries(attrs)) {
-			el.setAttribute(k, v);
-		}
-
+		const node = { tag: name, attrs, content: null, children: [] };
 		const childArray = Array.isArray(children) ? children : [children];
 		for (const child of childArray) {
 			if (typeof child === "string") {
-				el.appendChild(this.#doc.createTextNode(child));
+				node.content = (node.content || "") + child;
 			} else if (child && typeof child === "object") {
-				el.appendChild(child);
+				node.children.push(child);
 			}
 		}
-		return el;
+		return node;
 	}
 }

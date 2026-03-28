@@ -1,7 +1,12 @@
+import crypto from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 /**
- * GitPlugin: Logic for tracking local changes since the last turn.
+ * FileChangePlugin: Detects files modified since they were last indexed.
+ * Compares stored SHA-256 hashes against current disk content.
  */
-export default class GitPlugin {
+export default class FileChangePlugin {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
 			const { project, db } = rummy;
@@ -14,10 +19,6 @@ export default class GitPlugin {
 			const modified = [];
 
 			for (const f of indexedFiles) {
-				const { join } = await import("node:path");
-				const { existsSync, readFileSync } = await import("node:fs");
-				const crypto = await import("node:crypto");
-
 				const fullPath = join(project.path, f.path);
 				if (!existsSync(fullPath)) continue;
 
@@ -33,10 +34,10 @@ export default class GitPlugin {
 			}
 
 			if (modified.length > 0) {
-				const gitEl = rummy.tag("git_changes", {}, [
+				const el = rummy.tag("modified_files", {}, [
 					modified.map((p) => `Modified: ${p}`).join("\n"),
 				]);
-				rummy.contextEl.appendChild(gitEl);
+				rummy.contextEl.children.push(el);
 			}
 		});
 	}

@@ -19,11 +19,18 @@
 
 
 ### Architecture
-- [ ] Remove xmldom — replace Turn XML serialization with Markdown + code fences
-- [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, no XML)
-- [ ] Update PLUGINS.md for JSON response format
+- [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, Markdown context)
+- [ ] Update PLUGINS.md for plain-object node API and Markdown rendering
 
 ## Done
+
+### XML Elimination (2026-03-28)
+- [x] **@xmldom/xmldom removed** — zero XML in codebase. Dependency uninstalled.
+- [x] **TurnBuilder** — plain objects `{ tag, attrs, content, children }` replace DOM. `saveTurnToDb` traverses object tree.
+- [x] **RummyContext** — `tag()` returns plain objects. Section getters find nodes in tree. Plugin API: `.children.push()` replaces `.appendChild()`.
+- [x] **Turn rendering** — `toXml()` replaced with `#renderNode()` Markdown renderer. Documents render as `### \`path\`` + code fences with language detection. Feedback renders as blockquotes. Git changes as headings.
+- [x] **All plugins updated** — RepoMapPlugin, GitPlugin, ContextPlugin, DebugLoggerPlugin (now outputs JSON audits).
+- [x] **All tests updated** — 135 unit tests pass with zero XML.
 
 ### Dead Code Sweep + Bug Fixes (2026-03-28)
 - [x] **Act file creation hang** — ToolExtractor routed `search: ""` edits to HeuristicMatcher (which rejects empty search), causing `hasAct` infinite loop. Fix: emit `tool: "create"` for `search === ""`, handled by existing FindingsManager create path.
