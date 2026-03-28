@@ -1,5 +1,4 @@
 import { DOMImplementation } from "@xmldom/xmldom";
-import msg from "../i18n/messages.js";
 import PromptManager from "../prompt/PromptManager.js";
 import RummyContext from "./RummyContext.js";
 import Turn from "./Turn.js";
@@ -43,14 +42,9 @@ export default class TurnBuilder {
 		const contextEl = doc.createElement("context");
 		root.appendChild(contextEl);
 
-		// 3. User Prompt with tool constraints from ToolRegistry
+		// 3. User Prompt
 		const userEl = doc.createElement("user");
-		const allowedTools = this.#hooks.tools.allForMode(type);
-		let userText = "";
-		if (allowedTools.length > 0) {
-			userText += `${msg("protocol.allowed_tools", { tools: allowedTools.join(" ") })}\n\n`;
-		}
-		userText += prompt;
+		const userText = prompt;
 		userEl.appendChild(doc.createTextNode(userText));
 		root.appendChild(userEl);
 

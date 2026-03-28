@@ -12,8 +12,6 @@
 	"warn.todo_edit_no_tag": "Todo lists edit tool but no entries in the edits array. Include edits with file, search, and replace.",
 	"warn.parse_edit_markers": "Could not parse edit content.",
 
-	"protocol.allowed_tools": "Allowed tools: {tools}",
-
 	"error.assistant_node_missing": "Critical Error: assistant node not found in database for turn {turnId}",
 	"error.session_not_found": "Session '{sessionId}' not found.",
 	"error.project_not_found": "Project '{projectId}' not found.",

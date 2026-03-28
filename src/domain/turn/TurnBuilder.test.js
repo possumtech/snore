@@ -93,12 +93,8 @@ test("TurnBuilder", async (t) => {
 			const userMsg = msgs.find((m) => m.role === "user");
 			assert.ok(userMsg, "Should have user message");
 			assert.ok(
-				userMsg.content.includes("Allowed tools:"),
-				"User message should have Allowed tools",
-			);
-			assert.ok(
-				userMsg.content.includes("edit"),
-				"Act mode should list edit in allowed tools",
+				userMsg.content.includes("Fix the bug"),
+				"User message should contain the prompt",
 			);
 		},
 	);

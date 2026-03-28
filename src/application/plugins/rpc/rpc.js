@@ -4,12 +4,12 @@ export default class CoreRpcPlugin {
 
 		r.register("ping", {
 			handler: async () => ({}),
-			description: "Check server liveness",
+			description: "Liveness check. Returns {}.",
 		});
 
 		r.register("discover", {
 			handler: async (_params, ctx) => ctx.rpcRegistry.discover(),
-			description: "Returns full method & notification catalog",
+			description: "Returns { methods, notifications } catalog.",
 		});
 
 		r.register("init", {
@@ -23,72 +23,75 @@ export default class CoreRpcPlugin {
 				ctx.setContext(result.projectId, result.sessionId, params.projectPath);
 				return result;
 			},
-			description: "Initialize a project session",
+			description: "Initialize project session. Returns { projectId, sessionId, context }.",
 			params: {
-				projectPath: "Absolute path to project",
-				projectName: "Display name",
-				clientId: "Unique client identifier",
-				projectBufferFiles: "Optional array of open files in IDE",
+				projectPath: "string — absolute path",
+				projectName: "string — display name",
+				clientId: "string — unique client ID",
+				projectBufferFiles: "string[] — open files in IDE (optional)",
 			},
 		});
 
 		r.register("getModels", {
 			handler: async (_params, ctx) => ctx.modelAgent.getModels(),
-			description: "Get available local and aliased models",
+			description: "List available model aliases. Returns [{ alias, actual, display, default }].",
 		});
 
 		r.register("getFiles", {
 			handler: async (_params, ctx) =>
 				ctx.projectAgent.getFiles(ctx.projectPath),
-			description: "List all files in the current project",
+			description: "List project files with fidelity. Returns [{ path, fidelity, size }].",
 			requiresInit: true,
 		});
 
 		r.register("fileStatus", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.fileStatus(ctx.projectId, params.path),
-			description: "Get detailed status for a single file",
-			params: { path: "Relative file path" },
+			description: "File promotion state. Returns { path, fidelity, client_constraint, has_agent_promotion, has_editor_promotion }.",
+			params: { path: "string — relative file path" },
 			requiresInit: true,
 		});
 
 		r.register("activate", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.activate(ctx.projectId, params.pattern),
-			description: "Make files matching a glob pattern fully active",
-			params: { pattern: "Glob pattern" },
+			description: "Set file to full fidelity (editable).",
+			params: { pattern: "string — file path or glob" },
 			requiresInit: true,
 		});
 
 		r.register("readOnly", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.readOnly(ctx.projectId, params.pattern),
-			description: "Make files matching a glob pattern read-only",
-			params: { pattern: "Glob pattern" },
+			description: "Set file to full:readonly fidelity.",
+			params: { pattern: "string — file path or glob" },
 			requiresInit: true,
 		});
 
 		r.register("ignore", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.ignore(ctx.projectId, params.pattern),
-			description: "Hide files matching a glob pattern from the model",
-			params: { pattern: "Glob pattern" },
+			description: "Exclude file from model context.",
+			params: { pattern: "string — file path or glob" },
 			requiresInit: true,
 		});
 
 		r.register("drop", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.drop(ctx.projectId, params.pattern),
-			description: "Demote files matching a glob pattern to mappable",
-			params: { pattern: "Glob pattern" },
+			description: "Remove client promotion. File reverts to baseline fidelity.",
+			params: { pattern: "string — file path or glob" },
 			requiresInit: true,
 		});
 
 		r.register("startRun", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.startRun(ctx.sessionId, params),
-			description: "Pre-create a run with config. Returns runId.",
-			params: { model: "Optional override", projectBufferFiles: "Open files" },
+			description: "Pre-create a run. Returns runId.",
+			params: {
+				model: "string — optional model override",
+				projectBufferFiles: "string[] — open files in IDE",
+			},
 			requiresInit: true,
 		});
 
@@ -112,11 +115,13 @@ export default class CoreRpcPlugin {
 					},
 				);
 			},
-			description: "Send a non-mutating query to the agent",
+			description: "Non-mutating query. Model responds with JSON: { todo, known[], unknown[], summary }. Returns { runId, status, turn }.",
 			params: {
-				prompt: "User message",
-				model: "Optional override",
-				runId: "Optional run to continue",
+				prompt: "string — user message",
+				model: "string — optional override",
+				runId: "string — continue existing run",
+				noContext: "boolean — skip file map (Lite mode)",
+				fork: "boolean — branch from runId history",
 			},
 			requiresInit: true,
 		});
@@ -141,11 +146,13 @@ export default class CoreRpcPlugin {
 					},
 				);
 			},
-			description: "Send a mutating directive to the agent (can propose edits)",
+			description: "Mutating directive. Model responds with JSON: { todo, known[], unknown[], summary, edits[] }. Returns { runId, status, turn, proposed? }.",
 			params: {
-				prompt: "User message",
-				model: "Optional override",
-				runId: "Optional run to continue",
+				prompt: "string — user message",
+				model: "string — optional override",
+				runId: "string — continue existing run",
+				noContext: "boolean — skip file map (Lite mode)",
+				fork: "boolean — branch from runId history",
 			},
 			requiresInit: true,
 		});
@@ -153,8 +160,11 @@ export default class CoreRpcPlugin {
 		r.register("run/resolve", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.resolve(params.runId, params.resolution),
-			description: "Resolve a single finding (accept/reject)",
-			params: { runId: "Run ID", resolution: "{ category, id, action }" },
+			description: "Resolve a finding. Returns { runId, status } — 'proposed' if more remain, 'resolved' if rejected, 'completed' if done, or auto-resumes.",
+			params: {
+				runId: "string",
+				resolution: "{ category: 'diff'|'command'|'notification', id: number, action: 'accepted'|'rejected'|'modified', output?: string }",
+			},
 			requiresInit: true,
 		});
 
@@ -166,8 +176,8 @@ export default class CoreRpcPlugin {
 				});
 				return { status: "ok" };
 			},
-			description: "Abandon run. Discard unresolved findings.",
-			params: { runId: "Run ID" },
+			description: "Abandon run. Unresolved findings discarded.",
+			params: { runId: "string" },
 			requiresInit: true,
 		});
 
@@ -176,8 +186,8 @@ export default class CoreRpcPlugin {
 				await ctx.projectAgent.setSystemPrompt(ctx.sessionId, params.text);
 				return { status: "ok" };
 			},
-			description: "Set the base system prompt override",
-			params: { text: "Text content" },
+			description: "Override the base system prompt for this session.",
+			params: { text: "string" },
 			requiresInit: true,
 		});
 
@@ -186,8 +196,8 @@ export default class CoreRpcPlugin {
 				await ctx.projectAgent.setPersona(ctx.sessionId, params.text);
 				return { status: "ok" };
 			},
-			description: "Set the agent persona",
-			params: { text: "Text content" },
+			description: "Set agent persona for this session.",
+			params: { text: "string" },
 			requiresInit: true,
 		});
 
@@ -196,8 +206,8 @@ export default class CoreRpcPlugin {
 				await ctx.projectAgent.addSkill(ctx.sessionId, params.name);
 				return { status: "ok" };
 			},
-			description: "Enable a skill for this session",
-			params: { name: "Skill ID" },
+			description: "Enable a named skill.",
+			params: { name: "string" },
 			requiresInit: true,
 		});
 
@@ -206,31 +216,43 @@ export default class CoreRpcPlugin {
 				await ctx.projectAgent.removeSkill(ctx.sessionId, params.name);
 				return { status: "ok" };
 			},
-			description: "Disable a session skill",
-			params: { name: "Skill ID" },
+			description: "Disable a named skill.",
+			params: { name: "string" },
 			requiresInit: true,
 		});
 
-		// Notification metadata (for discover)
+		// Notifications
 		r.registerNotification(
 			"run/step/completed",
-			"A turn finished. Contains structured turn object.",
+			"Turn finished. Payload: { runId, turn: { sequence, assistant: { todo[], known[], unknown[], summary, content }, feedback[], usage: { prompt_tokens, completion_tokens, cost } }, files[] }.",
 		);
 		r.registerNotification(
 			"run/progress",
-			"Agent task status and intermediate updates.",
+			"Turn status. Payload: { runId, turn, status: 'thinking'|'processing'|'retrying' }.",
+		);
+		r.registerNotification(
+			"editor/diff",
+			"Proposed edit. Payload: { runId, findingId, type: 'edit', file, patch (unified diff) }.",
+		);
+		r.registerNotification(
+			"run/env",
+			"Proposed read-only command. Payload: { runId, findingId, command }.",
+		);
+		r.registerNotification(
+			"run/run",
+			"Proposed shell command. Payload: { runId, findingId, command }.",
+		);
+		r.registerNotification(
+			"ui/prompt",
+			"Model question. Payload: { runId, findingId, question, options[] }.",
 		);
 		r.registerNotification(
 			"ui/render",
-			"Streaming output fragments for display.",
+			"Streaming output. Payload: { text, append }.",
 		);
-		r.registerNotification("ui/notify", "Toast/status notifications.");
-		r.registerNotification("ui/prompt", "Model is asking the user a question.");
-		r.registerNotification("run/env", "Proposed environment query. Read-only.");
 		r.registerNotification(
-			"run/run",
-			"Proposed shell command. May have side effects.",
+			"ui/notify",
+			"Toast notification. Payload: { text, level }.",
 		);
-		r.registerNotification("editor/diff", "Proposed file modifications.");
 	}
 }
