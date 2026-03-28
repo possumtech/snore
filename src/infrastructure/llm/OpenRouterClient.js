@@ -96,12 +96,20 @@ export default class OpenRouterClient {
 			},
 			signal: AbortSignal.timeout(timeout),
 		});
-		if (!response.ok) return null;
+		if (!response.ok) {
+			throw new Error(`OpenRouter /models failed: ${response.status}. Check your OPENROUTER_API_KEY.`);
+		}
 		const data = await response.json();
 		const found = data.data?.find((m) => m.id === model);
-		if (found && this.#capabilities) {
+		if (!found) {
+			throw new Error(`Model '${model}' not found in OpenRouter /models catalog.`);
+		}
+		if (this.#capabilities) {
 			this.#capabilities.set(model, found);
 		}
-		return found?.context_length || null;
+		if (!found.context_length) {
+			throw new Error(`OpenRouter reports no context_length for model '${model}'.`);
+		}
+		return found.context_length;
 	}
 }

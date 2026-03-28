@@ -21,7 +21,7 @@ export default class StateEvaluator {
 		maxInconsistencyRetries,
 		parsedTodo,
 	} = {}) {
-		const { hasAct, hasSummary, newReads = 0 } = flags;
+		const { hasAct, newReads = 0 } = flags;
 		const unknowns = turnJson.assistant.unknown || [];
 		const openUnknowns = Array.isArray(unknowns) ? unknowns.length > 0 : false;
 		const hasTools = tools.length > 0;
@@ -33,10 +33,6 @@ export default class StateEvaluator {
 
 		// Collect warnings — hookable via agent.warn filter
 		let warnRules = [
-			{
-				when: openUnknowns && hasSummary,
-				msg: msg("warn.unknown_with_summary"),
-			},
 			{ when: openUnknowns && !hasTools, msg: msg("warn.unknown_no_tools") },
 		];
 		warnRules = await this.#hooks.agent.warn.filter(warnRules, {
@@ -75,7 +71,6 @@ export default class StateEvaluator {
 					warnings.length > 0 && inconsistencyRetries < maxInconsistencyRetries,
 				action: "retry",
 			},
-			{ when: hasSummary, action: "completed" },
 			{ when: true, action: "completed" },
 		];
 		actionTable = await this.#hooks.agent.action.filter(actionTable, {
@@ -92,7 +87,6 @@ export default class StateEvaluator {
 			action: rule.action,
 			warnings,
 			proposed,
-			hasSummary,
 		};
 	}
 }

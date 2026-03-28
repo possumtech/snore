@@ -55,6 +55,7 @@ test("§6 Rumsfeld Loop — schema and tool extraction", async (t) => {
 	await t.test("ToolExtractor routes empty search to create", () => {
 		const extractor = new ToolExtractor();
 		const { tools } = extractor.extract({
+			todo: [], known: [], unknown: [], summary: "",
 			edits: [{ file: "new.md", search: "", replace: "# Hello" }],
 		});
 		assert.strictEqual(tools[0].tool, "create");

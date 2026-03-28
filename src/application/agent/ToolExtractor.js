@@ -11,7 +11,7 @@ export default class ToolExtractor {
 		const tools = [];
 
 		// Todo-driven tools
-		for (const item of parsed.todo || []) {
+		for (const item of parsed.todo) {
 			const { tool, argument } = item;
 			if (!tool) continue;
 
@@ -25,7 +25,7 @@ export default class ToolExtractor {
 		}
 
 		// Edits from the structured edits array
-		for (const edit of parsed.edits || []) {
+		for (const edit of parsed.edits ?? []) {
 			if (!edit.file) continue;
 			if (edit.search === "") {
 				tools.push({
@@ -60,8 +60,7 @@ export default class ToolExtractor {
 
 		const hasAct = tools.some((t) => this.#actTools.has(t.tool));
 		const hasReads = tools.some((t) => t.tool === "read");
-		const hasSummary = Boolean(parsed.summary);
 
-		return { tools, flags: { hasAct, hasReads, hasSummary } };
+		return { tools, flags: { hasAct, hasReads } };
 	}
 }

@@ -137,16 +137,7 @@ export default class AgentLoop {
 			});
 		}
 
-		// Always fetch model metadata (populates capabilities for schema selection).
-		// Context size is also needed for budget computation in non-Lite mode.
-		let contextSize = null;
-		try {
-			contextSize = await this.#llmProvider.getContextSize(requestedModel);
-		} catch (err) {
-			console.warn(
-				`[RUMMY] Failed to fetch model metadata for '${requestedModel}': ${err.message}`,
-			);
-		}
+		const contextSize = await this.#llmProvider.getContextSize(requestedModel);
 
 		let inconsistencyRetries = 0;
 		const MAX_INCONSISTENCY_RETRIES = 3;
@@ -154,6 +145,7 @@ export default class AgentLoop {
 		const MAX_LOOP_ITERATIONS = 15;
 
 		// --- THE ATOMIC TURN LOOP ---
+		try {
 		while (loopIteration < MAX_LOOP_ITERATIONS) {
 			loopIteration++;
 
@@ -252,6 +244,13 @@ export default class AgentLoop {
 			status: "running",
 			turn: 0,
 		};
+		} catch (err) {
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "failed",
+			});
+			throw err;
+		}
 	}
 
 	async resolve(runAlias, resolution) {

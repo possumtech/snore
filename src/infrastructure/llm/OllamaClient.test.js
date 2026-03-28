@@ -64,16 +64,14 @@ test("OllamaClient", async (t) => {
 		assert.strictEqual(size, 8192);
 	});
 
-	await t.test("getContextSize should return null on error", async () => {
+	await t.test("getContextSize should throw on error", async () => {
 		globalThis.fetch = async () => new Response("fail", { status: 500 });
-		const size = await client.getContextSize("m1");
-		assert.strictEqual(size, null);
+		await assert.rejects(client.getContextSize("m1"), /Ollama/);
 	});
 
-	await t.test("getContextSize should return null when no context_length key", async () => {
+	await t.test("getContextSize should throw when no context_length key", async () => {
 		globalThis.fetch = async () =>
 			new Response(JSON.stringify({ model_info: { other_key: 42 } }));
-		const size = await client.getContextSize("m1");
-		assert.strictEqual(size, null);
+		await assert.rejects(client.getContextSize("m1"), /no context_length/);
 	});
 });

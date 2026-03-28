@@ -60,16 +60,14 @@ test("OpenRouterClient", async (t) => {
 		assert.strictEqual(size, 16384);
 	});
 
-	await t.test("getContextSize should return null on error", async () => {
+	await t.test("getContextSize should throw on error", async () => {
 		globalThis.fetch = async () => new Response("fail", { status: 500 });
-		const size = await client.getContextSize("m1");
-		assert.strictEqual(size, null);
+		await assert.rejects(client.getContextSize("m1"), /OpenRouter/);
 	});
 
-	await t.test("getContextSize should return null for unknown model", async () => {
+	await t.test("getContextSize should throw for unknown model", async () => {
 		globalThis.fetch = async () =>
 			new Response(JSON.stringify({ data: [{ id: "other", context_length: 4096 }] }));
-		const size = await client.getContextSize("m1");
-		assert.strictEqual(size, null);
+		await assert.rejects(client.getContextSize("m1"), /not found/);
 	});
 });

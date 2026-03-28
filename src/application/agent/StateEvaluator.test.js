@@ -13,7 +13,7 @@ const mockDb = (unresolvedFindings = []) => ({
 });
 
 const baseArgs = (overrides = {}) => ({
-	flags: { hasAct: false, hasSummary: false, newReads: 0 },
+	flags: { hasAct: false,  newReads: 0 },
 	tools: [],
 	turnJson: mockTurnJson(),
 	finalResponse: { content: "" },
@@ -31,7 +31,7 @@ describe("StateEvaluator", () => {
 		const hooks = createHooks();
 		const evaluator = new StateEvaluator(mockDb(), hooks);
 		const result = await evaluator.evaluate(
-			baseArgs({ flags: { hasAct: false, hasSummary: true, newReads: 0 } }),
+			baseArgs({ flags: { hasAct: false,  newReads: 0 } }),
 		);
 		strictEqual(result.action, "completed");
 	});
@@ -50,7 +50,7 @@ describe("StateEvaluator", () => {
 		const hooks = createHooks();
 		const evaluator = new StateEvaluator(mockDb(), hooks);
 		const result = await evaluator.evaluate(
-			baseArgs({ flags: { hasAct: true, hasSummary: false, newReads: 0 } }),
+			baseArgs({ flags: { hasAct: true,  newReads: 0 } }),
 		);
 		strictEqual(result.action, "continue");
 	});
@@ -59,7 +59,7 @@ describe("StateEvaluator", () => {
 		const hooks = createHooks();
 		const evaluator = new StateEvaluator(mockDb(), hooks);
 		const result = await evaluator.evaluate(
-			baseArgs({ flags: { hasAct: false, hasSummary: false, newReads: 2 } }),
+			baseArgs({ flags: { hasAct: false,  newReads: 2 } }),
 		);
 		strictEqual(result.action, "continue");
 	});
@@ -69,7 +69,7 @@ describe("StateEvaluator", () => {
 		const evaluator = new StateEvaluator(mockDb(), hooks);
 		const result = await evaluator.evaluate(
 			baseArgs({
-				flags: { hasAct: false, hasSummary: true, newReads: 0 },
+				flags: { hasAct: false,  newReads: 0 },
 				turnJson: mockTurnJson({ unknown: ["something unclear"] }),
 				tools: [],
 			}),
@@ -91,7 +91,7 @@ describe("StateEvaluator", () => {
 		const ctxNode = { tag_name: "context", id: 99 };
 		const result = await evaluator.evaluate(
 			baseArgs({
-				flags: { hasAct: false, hasSummary: true, newReads: 0 },
+				flags: { hasAct: false,  newReads: 0 },
 				turnJson: mockTurnJson({ unknown: ["question"] }),
 				elements: [ctxNode],
 			}),
@@ -104,7 +104,7 @@ describe("StateEvaluator", () => {
 		const evaluator = new StateEvaluator(mockDb(), hooks);
 		const result = await evaluator.evaluate(
 			baseArgs({
-				flags: { hasAct: false, hasSummary: true, newReads: 0 },
+				flags: { hasAct: false,  newReads: 0 },
 				turnJson: mockTurnJson({ unknown: ["question"] }),
 				inconsistencyRetries: 3,
 				maxInconsistencyRetries: 3,
@@ -121,7 +121,7 @@ describe("StateEvaluator", () => {
 			hooks,
 		);
 		const result = await evaluator.evaluate(
-			baseArgs({ flags: { hasAct: true, hasSummary: false, newReads: 0 } }),
+			baseArgs({ flags: { hasAct: true,  newReads: 0 } }),
 		);
 		strictEqual(result.action, "proposed");
 	});

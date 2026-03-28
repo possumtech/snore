@@ -44,7 +44,7 @@ test("§4.4 Run Modes — continue, new, lite, fork", async (t) => {
 
 		const hooks = createHooks();
 		loop = new AgentLoop(
-			tdb.db, {}, hooks,
+			tdb.db, { getContextSize: async () => 8192 }, hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator(),

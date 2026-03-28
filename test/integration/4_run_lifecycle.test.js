@@ -48,7 +48,7 @@ test("§4.3 Run Lifecycle — status transitions", async (t) => {
 	await t.test("new run starts queued, transitions to completed", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, {}, hooks,
+			tdb.db, { getContextSize: async () => 8192 }, hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
@@ -65,7 +65,7 @@ test("§4.3 Run Lifecycle — status transitions", async (t) => {
 	await t.test("run with findings transitions to proposed", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, {}, hooks,
+			tdb.db, { getContextSize: async () => 8192 }, hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator("proposed"),
@@ -82,7 +82,7 @@ test("§4.3 Run Lifecycle — status transitions", async (t) => {
 	await t.test("abort transitions to aborted", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, {}, hooks,
+			tdb.db, { getContextSize: async () => 8192 }, hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
@@ -100,7 +100,7 @@ test("§4.3 Run Lifecycle — status transitions", async (t) => {
 		// Create a run and manually insert an unresolved finding
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, {}, hooks,
+			tdb.db, { getContextSize: async () => 8192 }, hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),

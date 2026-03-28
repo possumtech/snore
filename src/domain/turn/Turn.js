@@ -101,7 +101,7 @@ export default class Turn {
 					.replace(/\n?```\s*$/, "");
 			}
 			const parsed = JSON.parse(jsonContent);
-			todo = (parsed.todo || []).map((t) => ({
+			todo = parsed.todo.map((t) => ({
 				tool: t.tool,
 				argument: t.argument,
 				description: t.description,

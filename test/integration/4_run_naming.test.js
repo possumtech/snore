@@ -44,7 +44,7 @@ test("§4 Run Naming — alias generation and uniqueness", async (t) => {
 
 		const hooks = createHooks();
 		loop = new AgentLoop(
-			tdb.db, {}, hooks,
+			tdb.db, { getContextSize: async () => 8192 }, hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator(),

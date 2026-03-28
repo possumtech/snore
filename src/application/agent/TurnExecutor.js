@@ -101,7 +101,6 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Serialize and call LLM (no prefill — structured output enforces schema)
 		const currentTurnMessages = await turnObj.serialize();
 		const newUserMsg = currentTurnMessages.find((m) => m.role === "user");
 		const filteredMessages = await this.#hooks.llm.messages.filter(
@@ -145,6 +144,7 @@ export default class TurnExecutor {
 				.replace(/^```(?:json)?\s*\n?/, "")
 				.replace(/\n?```\s*$/, "");
 		}
+
 		const parsed = JSON.parse(jsonContent);
 
 		// Commit usage stats
@@ -210,8 +210,8 @@ export default class TurnExecutor {
 		);
 
 		// Commit structured fields as DB elements
-		await commitTag("known", JSON.stringify(parsed.known || []), {}, 3);
-		await commitTag("unknown", JSON.stringify(parsed.unknown || []), {}, 4);
+		await commitTag("known", JSON.stringify(parsed.known), {}, 3);
+		await commitTag("unknown", JSON.stringify(parsed.unknown), {}, 4);
 		if (parsed.summary) {
 			await commitTag("summary", parsed.summary, {}, 5);
 		}
@@ -228,8 +228,8 @@ export default class TurnExecutor {
 			turnSequence: currentTurnSequence,
 			tools,
 			structural: [
-				{ name: "known", content: parsed.known || [] },
-				{ name: "unknown", content: parsed.unknown || [] },
+				{ name: "known", content: parsed.known },
+				{ name: "unknown", content: parsed.unknown },
 				...(parsed.summary
 					? [{ name: "summary", content: parsed.summary }]
 					: []),
@@ -239,7 +239,7 @@ export default class TurnExecutor {
 			finalResponse,
 			turnJson: turnObj.toJson(),
 			commitTag,
-			parsedTodo: parsed.todo || [],
+			parsedTodo: parsed.todo,
 		};
 	}
 }

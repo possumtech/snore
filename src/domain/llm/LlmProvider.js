@@ -1,10 +1,12 @@
 import ModelCapabilities from "../../infrastructure/llm/ModelCapabilities.js";
 import OllamaClient from "../../infrastructure/llm/OllamaClient.js";
+import OpenAiClient from "../../infrastructure/llm/OpenAiClient.js";
 import OpenRouterClient from "../../infrastructure/llm/OpenRouterClient.js";
 
 export default class LlmProvider {
 	#openRouter;
 	#ollama;
+	#openAi;
 	#capabilities;
 
 	constructor(hooks) {
@@ -15,8 +17,11 @@ export default class LlmProvider {
 			this.#capabilities,
 		);
 
-		const ollamaUrl = process.env.OLLAMA_BASE_URL;
-		this.#ollama = new OllamaClient(ollamaUrl, hooks);
+		this.#ollama = new OllamaClient(process.env.OLLAMA_BASE_URL, hooks);
+		this.#openAi = new OpenAiClient(
+			process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE,
+			process.env.OPENAI_API_KEY,
+		);
 	}
 
 	get capabilities() {
@@ -44,6 +49,11 @@ export default class LlmProvider {
 			return this.#ollama.completion(messages, localModel, resolvedOptions);
 		}
 
+		if (resolvedModel.startsWith("openai/")) {
+			const localModel = resolvedModel.replace("openai/", "");
+			return this.#openAi.completion(messages, localModel, resolvedOptions);
+		}
+
 		return this.#openRouter.completion(
 			messages,
 			resolvedModel,
@@ -56,6 +66,9 @@ export default class LlmProvider {
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
 			return this.#ollama.getContextSize(localModel);
+		}
+		if (resolvedModel.startsWith("openai/")) {
+			return this.#openAi.getContextSize(resolvedModel);
 		}
 		return this.#openRouter.getContextSize(resolvedModel);
 	}
