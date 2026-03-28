@@ -23,7 +23,8 @@ export default class CoreRpcPlugin {
 				ctx.setContext(result.projectId, result.sessionId, params.projectPath);
 				return result;
 			},
-			description: "Initialize project session. Returns { projectId, sessionId, context }.",
+			description:
+				"Initialize project session. Returns { projectId, sessionId, context }.",
 			params: {
 				projectPath: "string — absolute path",
 				projectName: "string — display name",
@@ -34,20 +35,23 @@ export default class CoreRpcPlugin {
 
 		r.register("getModels", {
 			handler: async (_params, ctx) => ctx.modelAgent.getModels(),
-			description: "List available model aliases. Returns [{ alias, actual, display, default }].",
+			description:
+				"List available model aliases. Returns [{ alias, actual, display, default }].",
 		});
 
 		r.register("getFiles", {
 			handler: async (_params, ctx) =>
 				ctx.projectAgent.getFiles(ctx.projectPath),
-			description: "List project files with fidelity. Returns [{ path, fidelity, size }].",
+			description:
+				"List project files with fidelity. Returns [{ path, fidelity, size }].",
 			requiresInit: true,
 		});
 
 		r.register("fileStatus", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.fileStatus(ctx.projectId, params.path),
-			description: "File promotion state. Returns { path, fidelity, client_constraint, has_agent_promotion, has_editor_promotion }.",
+			description:
+				"File promotion state. Returns { path, fidelity, client_constraint, has_agent_promotion, has_editor_promotion }.",
 			params: { path: "string — relative file path" },
 			requiresInit: true,
 		});
@@ -79,7 +83,8 @@ export default class CoreRpcPlugin {
 		r.register("drop", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.drop(ctx.projectId, params.pattern),
-			description: "Remove client promotion. File reverts to baseline fidelity.",
+			description:
+				"Remove client promotion. File reverts to baseline fidelity.",
 			params: { pattern: "string — file path or glob" },
 			requiresInit: true,
 		});
@@ -115,7 +120,9 @@ export default class CoreRpcPlugin {
 					},
 				);
 			},
-			description: "Non-mutating query. Model responds with JSON: { todo, known[], unknown[], summary }. Returns { runId, status, turn }.",
+			description:
+				"Non-mutating query. Model responds with JSON: { todo, known[], unknown[], summary }. Returns { runId, status, turn }.",
+			longRunning: true,
 			params: {
 				prompt: "string — user message",
 				model: "string — optional override",
@@ -146,7 +153,9 @@ export default class CoreRpcPlugin {
 					},
 				);
 			},
-			description: "Mutating directive. Model responds with JSON: { todo, known[], unknown[], summary, edits[] }. Returns { runId, status, turn, proposed? }.",
+			description:
+				"Mutating directive. Model responds with JSON: { todo, known[], unknown[], summary, edits[] }. Returns { runId, status, turn, proposed? }.",
+			longRunning: true,
 			params: {
 				prompt: "string — user message",
 				model: "string — optional override",
@@ -160,10 +169,13 @@ export default class CoreRpcPlugin {
 		r.register("run/resolve", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.resolve(params.runId, params.resolution),
-			description: "Resolve a finding. Returns { runId, status } — 'proposed' if more remain, 'resolved' if rejected, 'completed' if done, or auto-resumes.",
+			description:
+				"Resolve a finding. Returns { runId, status } — 'proposed' if more remain, 'resolved' if rejected, 'completed' if done, or auto-resumes.",
+			longRunning: true,
 			params: {
 				runId: "string",
-				resolution: "{ category: 'diff'|'command'|'notification', id: number, action: 'accepted'|'rejected'|'modified', output?: string }",
+				resolution:
+					"{ category: 'diff'|'command'|'notification', id: number, action: 'accepted'|'rejected'|'modified', output?: string }",
 			},
 			requiresInit: true,
 		});

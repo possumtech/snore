@@ -2,7 +2,16 @@
 
 ## Remaining
 
-(empty — feature freeze reached)
+### Bugs
+- [ ] **Act file creation hangs** — "Create HELLO.md" test hangs after first model call. Model returns JSON without edits, server enters turn loop and never exits. Debug from DB records of the stuck run.
+- [ ] **Foundation test 5 flaky** — "read and retain" test intermittently fails. Redundant read detection (`newReads`) may not be wired correctly through all paths.
+
+### Cleanup
+- [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, no XML)
+- [ ] Update PLUGINS.md for JSON response format
+- [ ] Remove xmldom dependency if Turn building can use plain objects
+- [ ] Remove dead `protocol_constraints` references from any remaining code
+- [ ] Delete `ToolRegistry.allForMode()` and related code (schema enums replaced it)
 
 ## Done
 

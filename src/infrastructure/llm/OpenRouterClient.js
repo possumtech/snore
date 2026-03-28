@@ -47,8 +47,8 @@ export default class OpenRouterClient {
 			body.temperature = options.temperature;
 
 		const supportsStructured =
-			this.#capabilities?.supports(model, "structured_outputs") ??
-			this.#capabilities?.supports(model, "response_format") ??
+			this.#capabilities?.supports(model, "structured_outputs") ||
+			this.#capabilities?.supports(model, "response_format") ||
 			false;
 
 		if (supportsStructured) {
@@ -63,6 +63,7 @@ export default class OpenRouterClient {
 			};
 		}
 
+		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
@@ -72,6 +73,7 @@ export default class OpenRouterClient {
 				"X-Title": process.env.RUMMY_X_TITLE,
 			},
 			body: JSON.stringify(body),
+			signal: AbortSignal.timeout(timeout),
 		});
 
 		if (!response.ok) {
@@ -87,10 +89,12 @@ export default class OpenRouterClient {
 	}
 
 	async getContextSize(model) {
+		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const response = await fetch(`${this.#baseUrl}/models`, {
 			headers: {
 				Authorization: `Bearer ${this.#apiKey}`,
 			},
+			signal: AbortSignal.timeout(timeout),
 		});
 		if (!response.ok) return null;
 		const data = await response.json();

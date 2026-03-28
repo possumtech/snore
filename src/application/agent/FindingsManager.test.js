@@ -97,14 +97,13 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(diffs[0].error, null);
 	});
 
-	await t.test("edit tool with missing file should produce error", async () => {
+	await t.test("edit on nonexistent file with search should warn", async () => {
 		const { diffs } = await fm.processTools(projectPath, runId, 2, [
 			{ tool: "edit", path: "nonexistent.js", search: "old", replace: "new" },
 		]);
 
 		assert.strictEqual(diffs.length, 1);
-		assert.strictEqual(diffs[0].patch, null);
-		assert.ok(diffs[0].error);
+		assert.ok(diffs[0].warning, "Should warn that search block was not found");
 	});
 
 	await t.test("create tool should produce diff", async () => {

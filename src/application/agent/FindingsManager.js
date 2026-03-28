@@ -31,6 +31,7 @@ export default class FindingsManager {
 		const commands = [];
 		const notifications = [];
 		const feedback = [];
+		let newReads = 0;
 
 		for (const invocation of tools) {
 			const { tool } = invocation;
@@ -43,11 +44,17 @@ export default class FindingsManager {
 					size: null,
 					symbol_tokens: null,
 				});
+				// Check if already promoted in this run
+				const existing = await this.#db.get_agent_promotion.get({
+					file_id: fileId,
+					run_id: runId,
+				});
 				await this.#db.upsert_agent_promotion.run({
 					file_id: fileId,
 					run_id: runId,
 					turn_seq: sequence ?? 0,
 				});
+				if (!existing) newReads++;
 				feedback.push(msg("feedback.file_retained", { path: invocation.path }));
 			}
 
@@ -108,7 +115,12 @@ export default class FindingsManager {
 
 			try {
 				const fullPath = join(projectPath, path);
-				const originalContent = await fs.readFile(fullPath, "utf8");
+				let originalContent;
+				try {
+					originalContent = await fs.readFile(fullPath, "utf8");
+				} catch {
+					originalContent = "";
+				}
 				let currentContent = originalContent;
 
 				for (const edit of edits) {
@@ -141,6 +153,6 @@ export default class FindingsManager {
 			diffs.push({ type: "edit", file: path, patch, warning, error });
 		}
 
-		return { diffs, commands, notifications, feedback };
+		return { diffs, commands, notifications, feedback, newReads };
 	}
 }

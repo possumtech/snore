@@ -21,11 +21,13 @@ export default class StateEvaluator {
 		maxInconsistencyRetries,
 		parsedTodo,
 	}) {
-		const { hasAct, hasReads, hasSummary } = flags;
+		const { hasAct, hasSummary, newReads = 0 } = flags;
 		const unknowns = turnJson.assistant.unknown || [];
 		const openUnknowns = Array.isArray(unknowns) ? unknowns.length > 0 : false;
 		const hasTools = tools.length > 0;
-		const proposed = await this.#db.get_unresolved_findings.all({ run_id: runId });
+		const proposed = await this.#db.get_unresolved_findings.all({
+			run_id: runId,
+		});
 
 		// Cross-validate: todo lists edit but no edits array entries
 		const todoItems = parsedTodo || [];
@@ -74,7 +76,7 @@ export default class StateEvaluator {
 		let actionTable = [
 			{ when: proposed.length > 0, action: "proposed" },
 			{ when: hasAct, action: "continue" },
-			{ when: hasReads, action: "continue" },
+			{ when: newReads > 0, action: "continue" },
 			{
 				when:
 					warnings.length > 0 && inconsistencyRetries < maxInconsistencyRetries,

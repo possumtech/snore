@@ -38,10 +38,12 @@ export default class OllamaClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
+		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const response = await fetch(`${this.#baseUrl}/v1/chat/completions`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
+			signal: AbortSignal.timeout(timeout),
 		});
 
 		if (!response.ok) {
@@ -70,7 +72,9 @@ export default class OllamaClient {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ model }),
-					signal: AbortSignal.timeout(30_000),
+					signal: AbortSignal.timeout(
+						Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000,
+					),
 				});
 				if (!response.ok) return null;
 				const data = await response.json();

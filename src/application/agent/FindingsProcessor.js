@@ -164,5 +164,7 @@ export default class FindingsProcessor {
 				});
 			} catch (_err) {}
 		}
+
+		return { newReads: findings.newReads };
 	}
 }

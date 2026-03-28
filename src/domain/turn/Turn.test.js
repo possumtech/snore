@@ -294,7 +294,9 @@ test("Turn", async (t) => {
 			);
 			assert.strictEqual(json.assistant.reasoning_content, "Let me think...");
 			assert.deepStrictEqual(json.assistant.known, ["The file has a bug"]);
-			assert.deepStrictEqual(json.assistant.unknown, ["Why it was written this way"]);
+			assert.deepStrictEqual(json.assistant.unknown, [
+				"Why it was written this way",
+			]);
 			assert.strictEqual(json.assistant.summary, "Fixed a bug in src/a.js");
 
 			// Usage

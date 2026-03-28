@@ -144,12 +144,7 @@ export default class TurnExecutor {
 				.replace(/^```(?:json)?\s*\n?/, "")
 				.replace(/\n?```\s*$/, "");
 		}
-		let parsed;
-		try {
-			parsed = JSON.parse(jsonContent);
-		} catch {
-			parsed = { todo: [], known: finalResponse.content, unknown: "" };
-		}
+		const parsed = JSON.parse(jsonContent);
 
 		// Commit usage stats
 		const usage = result.usage || {
@@ -202,6 +197,9 @@ export default class TurnExecutor {
 				completion_tokens: usage.completion_tokens,
 				total_tokens: usage.total_tokens,
 				cost: usage.cost || 0,
+				temperature:
+					options?.temperature ??
+					Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
 				alias: requestedModel,
 				actualModel: result.model,
 				displayModel: this.#resolveAlias(requestedModel),

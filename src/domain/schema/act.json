@@ -2,9 +2,11 @@
 	"type": "object",
 	"required": ["todo", "known", "unknown", "summary"],
 	"additionalProperties": false,
+	"description": "Structured response for act mode. Gather information, run code, modify the project. Always use the edits array to modify or create files.",
 	"properties": {
 		"todo": {
 			"type": "array",
+			"description": "Tools to execute. Use read to retain files. Always read before editing, never guess file contents.",
 			"items": {
 				"type": "object",
 				"required": ["tool", "argument", "description"],
@@ -12,38 +14,73 @@
 				"properties": {
 					"tool": {
 						"type": "string",
-						"enum": ["read", "drop", "env", "summary", "delete", "run"]
+						"enum": ["read", "drop", "env", "delete", "run"],
+						"description": "read: retain file for reading. drop: drop irrelevant file. env: exploratory/read-only command. delete: delete a file. run: shell command that changes the environment."
 					},
-					"argument": { "type": "string" },
-					"description": { "type": "string" }
+					"argument": {
+						"type": "string",
+						"minLength": 1,
+						"description": "File path or shell command depending on tool."
+					},
+					"description": {
+						"type": "string",
+						"minLength": 1,
+						"description": "Brief explanation of why this tool is being used."
+					}
 				}
 			}
 		},
-		"known": { "type": "array", "items": { "type": "string" } },
-		"unknown": { "type": "array", "items": { "type": "string" } },
-		"summary": { "type": "string" },
+		"known": {
+			"type": "array",
+			"description": "Facts, analysis, and plans relating to the plan of action.",
+			"items": { "type": "string", "minLength": 1 }
+		},
+		"unknown": {
+			"type": "array",
+			"description": "Things you still need to find out before acting. Empty array if nothing is unknown.",
+			"items": { "type": "string", "minLength": 1 }
+		},
+		"summary": {
+			"type": "string",
+			"minLength": 1,
+			"description": "One-liner status update or answer."
+		},
 		"edits": {
 			"type": "array",
+			"description": "File modifications. MUST be used when asked to create, edit, or modify files. Do not describe changes in known/summary — put them here.",
 			"items": {
 				"type": "object",
 				"required": ["file", "search", "replace"],
 				"additionalProperties": false,
 				"properties": {
-					"file": { "type": "string" },
-					"search": { "type": "string" },
-					"replace": { "type": "string" }
+					"file": {
+						"type": "string",
+						"minLength": 1,
+						"description": "File path to modify or create."
+					},
+					"search": {
+						"type": "string",
+						"description": "Exact text to find in the file. Empty string to create a new file or append to end."
+					},
+					"replace": {
+						"type": "string",
+						"minLength": 1,
+						"description": "Replacement text, or full content for new files."
+					}
 				}
 			}
 		},
 		"prompt": {
 			"type": "object",
+			"description": "Optional. Ask the user a multiple choice question.",
 			"required": ["question", "options"],
 			"additionalProperties": false,
 			"properties": {
-				"question": { "type": "string" },
+				"question": { "type": "string", "minLength": 1 },
 				"options": {
 					"type": "array",
-					"items": { "type": "string" }
+					"items": { "type": "string", "minLength": 1 },
+					"minItems": 2
 				}
 			}
 		}

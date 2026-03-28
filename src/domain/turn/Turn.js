@@ -179,6 +179,7 @@ export default class Turn {
 				completion_tokens: meta.completion_tokens || 0,
 				total_tokens: meta.total_tokens || 0,
 				cost: meta.cost || 0,
+				temperature: meta.temperature ?? null,
 			},
 			model: {
 				alias: meta.alias,

@@ -4,13 +4,25 @@ export default class RpcRegistry {
 
 	register(
 		name,
-		{ handler, description = "", params = {}, requiresInit = false },
+		{
+			handler,
+			description = "",
+			params = {},
+			requiresInit = false,
+			longRunning = false,
+		},
 	) {
 		if (this.#methods.has(name))
 			throw new Error(`RPC method '${name}' already registered.`);
 		this.#methods.set(
 			name,
-			Object.freeze({ handler, description, params, requiresInit }),
+			Object.freeze({
+				handler,
+				description,
+				params,
+				requiresInit,
+				longRunning,
+			}),
 		);
 	}
 

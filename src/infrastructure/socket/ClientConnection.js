@@ -159,10 +159,29 @@ export default class ClientConnection {
 				throw new Error("Project not initialized.");
 			}
 
-			const result = await registration.handler(
-				params || {},
-				this.#buildHandlerContext(),
-			);
+			let result;
+			if (registration.longRunning) {
+				result = await registration.handler(
+					params || {},
+					this.#buildHandlerContext(),
+				);
+			} else {
+				const timeout = Number(process.env.RUMMY_RPC_TIMEOUT) || 10_000;
+				result = await Promise.race([
+					registration.handler(params || {}, this.#buildHandlerContext()),
+					new Promise((_, reject) =>
+						setTimeout(
+							() =>
+								reject(
+									new Error(
+										`RPC '${resolvedMethod}' timed out after ${timeout}ms`,
+									),
+								),
+							timeout,
+						),
+					),
+				]);
+			}
 
 			const finalResult = await this.#hooks.rpc.response.result.filter(result, {
 				method,

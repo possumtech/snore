@@ -2,9 +2,11 @@
 	"type": "object",
 	"required": ["todo", "known", "unknown", "summary"],
 	"additionalProperties": false,
+	"description": "Structured response for ask mode. Gather information, analyze codebases, answer questions. Cannot modify anything.",
 	"properties": {
 		"todo": {
 			"type": "array",
+			"description": "Tools to execute. Use read to retain files for reading. Always read, never guess.",
 			"items": {
 				"type": "object",
 				"required": ["tool", "argument", "description"],
@@ -12,25 +14,48 @@
 				"properties": {
 					"tool": {
 						"type": "string",
-						"enum": ["read", "drop", "env", "summary"]
+						"enum": ["read", "drop", "env"],
+						"description": "read: retain file for reading. drop: drop irrelevant file from context. env: run an exploratory/read-only shell command."
 					},
-					"argument": { "type": "string" },
-					"description": { "type": "string" }
+					"argument": {
+						"type": "string",
+						"minLength": 1,
+						"description": "File path or shell command depending on tool."
+					},
+					"description": {
+						"type": "string",
+						"minLength": 1,
+						"description": "Brief explanation of why this tool is being used."
+					}
 				}
 			}
 		},
-		"known": { "type": "array", "items": { "type": "string" } },
-		"unknown": { "type": "array", "items": { "type": "string" } },
-		"summary": { "type": "string" },
+		"known": {
+			"type": "array",
+			"description": "Facts, analysis, and plans relating to the question and answer.",
+			"items": { "type": "string", "minLength": 1 }
+		},
+		"unknown": {
+			"type": "array",
+			"description": "Things you still need to find out. Empty array if nothing is unknown.",
+			"items": { "type": "string", "minLength": 1 }
+		},
+		"summary": {
+			"type": "string",
+			"minLength": 1,
+			"description": "One-liner status or answer. If you know the answer, this IS the answer."
+		},
 		"prompt": {
 			"type": "object",
+			"description": "Optional. Ask the user a multiple choice question.",
 			"required": ["question", "options"],
 			"additionalProperties": false,
 			"properties": {
-				"question": { "type": "string" },
+				"question": { "type": "string", "minLength": 1 },
 				"options": {
 					"type": "array",
-					"items": { "type": "string" }
+					"items": { "type": "string", "minLength": 1 },
+					"minItems": 2
 				}
 			}
 		}

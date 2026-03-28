@@ -119,24 +119,15 @@ export default class AgentLoop {
 
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
+		// Always fetch model metadata (populates capabilities for schema selection).
+		// Context size is also needed for budget computation in non-Lite mode.
 		let contextSize = null;
-		if (!noContext) {
-			try {
-				contextSize = await this.#llmProvider.getContextSize(requestedModel);
-				if (contextSize) {
-					console.log(
-						`[RUMMY] Context size for '${requestedModel}': ${contextSize} tokens`,
-					);
-				} else {
-					console.warn(
-						`[RUMMY] Context size returned null for '${requestedModel}'. Set RUMMY_MAP_TOKEN_BUDGET as fallback.`,
-					);
-				}
-			} catch (err) {
-				console.warn(
-					`[RUMMY] Failed to fetch context size for '${requestedModel}': ${err.message}`,
-				);
-			}
+		try {
+			contextSize = await this.#llmProvider.getContextSize(requestedModel);
+		} catch (err) {
+			console.warn(
+				`[RUMMY] Failed to fetch model metadata for '${requestedModel}': ${err.message}`,
+			);
 		}
 
 		let inconsistencyRetries = 0;
@@ -200,7 +191,7 @@ export default class AgentLoop {
 			}
 
 			// Process findings
-			await this.#findingsProcessor.process({
+			const findingsResult = await this.#findingsProcessor.process({
 				projectPath: project.path,
 				projectId,
 				runId: currentRunId,
@@ -223,7 +214,7 @@ export default class AgentLoop {
 
 			// Evaluate state
 			const state = await this.#stateEvaluator.evaluate({
-				flags: turn.flags,
+				flags: { ...turn.flags, newReads: findingsResult.newReads },
 				tools: turn.tools,
 				turnJson: turn.turnJson,
 				finalResponse: turn.finalResponse,
