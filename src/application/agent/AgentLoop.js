@@ -152,44 +152,6 @@ export default class AgentLoop {
 				options,
 			});
 
-			// Protocol violation — retry
-			if (
-				turn.validationErrors.length > 0 &&
-				protocolRetries < MAX_PROTOCOL_RETRIES
-			) {
-				protocolRetries++;
-				await this.#hooks.run.progress.emit({
-					sessionId,
-					runId: currentRunId,
-					turn: turn.turnSequence,
-					status: "retrying",
-				});
-				const contextNode = turn.elements.find(
-					(el) => el.tag_name === "context",
-				);
-				if (contextNode) {
-					for (let j = 0; j < turn.validationErrors.length; j++) {
-						const err = turn.validationErrors[j];
-						await this.#db.insert_turn_element.run({
-							turn_id: turn.turnId,
-							parent_id: contextNode.id,
-							tag_name: "error",
-							content: String(err.content || ""),
-							attributes: JSON.stringify(err.attrs || {}),
-							sequence: 100 + j,
-						});
-					}
-				}
-				await turn.turnObj.hydrate();
-				await this.#hooks.run.step.completed.emit({
-					runId: currentRunId,
-					sessionId,
-					turn: turn.turnObj,
-					projectFiles: await this.#sessionManager.getFiles(project.path),
-				});
-				continue;
-			}
-
 			// Process findings
 			const findingsResult = await this.#findingsProcessor.process({
 				projectPath: project.path,
@@ -224,7 +186,6 @@ export default class AgentLoop {
 				inconsistencyRetries,
 				maxInconsistencyRetries: MAX_INCONSISTENCY_RETRIES,
 				parsedTodo: turn.parsedTodo,
-				tags: turn.tags,
 			});
 
 			if (state.action === "proposed") {

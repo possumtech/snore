@@ -15,14 +15,6 @@ export default class ToolRegistry {
 		return this.#tools.has(name);
 	}
 
-	allForMode(mode) {
-		const result = [];
-		for (const [name, def] of this.#tools) {
-			if (def.modes.has(mode)) result.push(name);
-		}
-		return result;
-	}
-
 	get actTools() {
 		return new Set(
 			[...this.#tools.entries()]

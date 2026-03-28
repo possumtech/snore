@@ -20,7 +20,7 @@ export default class StateEvaluator {
 		inconsistencyRetries,
 		maxInconsistencyRetries,
 		parsedTodo,
-	}) {
+	} = {}) {
 		const { hasAct, hasSummary, newReads = 0 } = flags;
 		const unknowns = turnJson.assistant.unknown || [];
 		const openUnknowns = Array.isArray(unknowns) ? unknowns.length > 0 : false;
@@ -29,14 +29,7 @@ export default class StateEvaluator {
 			run_id: runId,
 		});
 
-		// Cross-validate: todo lists edit but no edits array entries
 		const todoItems = parsedTodo || [];
-		const _todoHasEdit = todoItems.some(
-			(t) => t.tool === "edit" || t.tool === "create",
-		);
-		const _hasEdits = tools.some(
-			(t) => t.tool === "edit" || t.tool === "create",
-		);
 
 		// Collect warnings — hookable via agent.warn filter
 		let warnRules = [

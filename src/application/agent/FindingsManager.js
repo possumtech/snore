@@ -82,11 +82,22 @@ export default class FindingsManager {
 				});
 			}
 
-			if (tool === "create" || tool === "delete") {
+			if (tool === "create") {
+				const content = invocation.content || "";
 				diffs.push({
-					type: tool,
+					type: "create",
 					file: invocation.path,
-					patch: invocation.content || null,
+					patch: generateUnifiedDiff(invocation.path, "", content),
+					warning: null,
+					error: null,
+				});
+			}
+
+			if (tool === "delete") {
+				diffs.push({
+					type: "delete",
+					file: invocation.path,
+					patch: null,
 					warning: null,
 					error: null,
 				});

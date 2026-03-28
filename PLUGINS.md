@@ -50,7 +50,7 @@ hooks.tools.register("mytool", {
 
 The tool name becomes valid in `<todo>` items: `- [ ] mytool: argument # description`.
 
-**Methods**: `get(name)`, `has(name)`, `allForMode(mode)`, `actTools` (getter),
+**Methods**: `get(name)`, `has(name)`, `actTools` (getter),
 `names` (getter), `entries()`.
 
 ### RPC Registry (`hooks.rpc.registry`)

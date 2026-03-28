@@ -32,26 +32,6 @@ describe("ToolRegistry", () => {
 		strictEqual(reg.has("nonexistent"), false);
 	});
 
-	it("allForMode should return tools available in the given mode", () => {
-		const reg = new ToolRegistry();
-		reg.register("read", { modes: new Set(["ask", "act"]), category: "ask" });
-		reg.register("edit", { modes: new Set(["act"]), category: "act" });
-		reg.register("summary", {
-			modes: new Set(["ask", "act"]),
-			category: "structural",
-		});
-
-		const askTools = reg.allForMode("ask");
-		ok(askTools.includes("read"));
-		ok(!askTools.includes("edit"));
-		ok(askTools.includes("summary"));
-
-		const actTools = reg.allForMode("act");
-		ok(actTools.includes("read"));
-		ok(actTools.includes("edit"));
-		ok(actTools.includes("summary"));
-	});
-
 	it("actTools should return only tools with category 'act'", () => {
 		const reg = new ToolRegistry();
 		reg.register("read", { modes: new Set(["ask", "act"]), category: "ask" });

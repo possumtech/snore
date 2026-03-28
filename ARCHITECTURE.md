@@ -546,15 +546,9 @@ are mode-dependent — `allowed_tools:` is injected into the user message per tu
 
 ### 6.7 Protocol Validation
 
-Two levels of validation:
-
-1. **Tag validation** (static): `todo`, `known`, `unknown` are required.
-   `edit` is allowed only in act mode. Stored in `protocol_constraints` table.
-2. **Tool validation** (dynamic): tool names in `<todo>` items are checked
-   against `ToolRegistry.allForMode(type)`. Delivered as `allowed_tools:`
-   in the user message.
-
-Violations trigger a retry (up to 5 attempts) with errors in feedback.
+Validation is enforced by the provider's JSON schema (`ask.json` / `act.json`).
+Tool names are constrained via `enum` in the schema. `edits` is only present
+in the act schema. Invalid responses fail JSON parsing and surface as errors.
 
 ---
 

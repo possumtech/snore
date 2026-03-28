@@ -3,35 +3,36 @@
 ## Remaining
 
 ### Bugs
-- [ ] **Act file creation hangs** — "Create HELLO.md" test hangs after first model call. Model returns JSON without edits, server enters turn loop and never exits. Debug from DB records of the stuck run.
-- [ ] **Foundation test 5 flaky** — "read and retain" test intermittently fails. Redundant read detection (`newReads`) may not be wired correctly through all paths.
+- [ ] **Foundation test 5 flaky** — "read and retain" test intermittently fails. Likely model non-determinism; observe now that create hang is fixed.
+- [ ] no more allowing direct model stuff, requiring an alias for all models, change paradigm
+- [ ] replace runId with runAlias - We must generate a unique runalias for each run that's the modelalias plus the next number
+- [ ] create endpoints allowing clients to rename runalias, enforcing uniqueness with error handling on uniqueness and [a-z_]{1,20} enforcement
 
-### Cleanup
+- [ ] no more allowing direct model stuff, requiring an alias for all models, change paradigm
+- [ ] replace runId with runAlias - We must generate a unique runalias for each run that's the modelalias plus the next number
+- [ ] create endpoints allowing clients to rename runalias, enforcing uniqueness with error handling on uniqueness and [a-z_]{1,20} enforcement
+- [ ] new run/inject endpoint with {runalias, message} params, which copies the previous turn's ask/act mode and sends a new prompt/turn to the run if the run isn't running, but sends an info with the message to the next turn if the run is ongoing. a "btw" option
+- [ ] Unit tests achieve 80/80/80 coverage
+- [ ] Apply a slug and numbering convention to our readme and architecture documents, then apply that lexicon to the file naming convention for a suite of integration tests that defend against regressions on every claim and promise made in our documentation.
+- [ ] Maintain twelve e2e tests against live models that each cover a distinct, realistic use case
+- [ ] Never run any integration or e2e test against mock models, only live models
+
+
+### Architecture
+- [ ] Remove xmldom — replace Turn XML serialization with Markdown + code fences
 - [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, no XML)
 - [ ] Update PLUGINS.md for JSON response format
-- [ ] Remove xmldom dependency if Turn building can use plain objects
-- [ ] Remove dead `protocol_constraints` references from any remaining code
-- [ ] Delete `ToolRegistry.allForMode()` and related code (schema enums replaced it)
 
 ## Done
 
-### Pluginification Refactor (2026-03-27)
-- [x] **ToolRegistry** — `hooks.tools.register()` replaces hardcoded ACT_TOOLS. ToolExtractor queries the registry.
-- [x] **RpcRegistry** — `hooks.rpc.registry.register()` replaces 300-line switch. `discover` auto-generates.
-- [x] **AgentLoop decomposition** — TurnExecutor, FindingsProcessor, StateEvaluator extracted. AgentLoop is orchestrator only.
-- [x] **CoreToolsPlugin** — 9 core tools registered via `hooks.tools.register()`.
-- [x] **CoreRpcPlugin** — 20 RPC methods registered via `hooks.rpc.registry.register()`.
-- [x] **Hookable state table** — `hooks.agent.warn` and `hooks.agent.action` filters let plugins modify rules.
-- [x] **PLUGINS.md** — Plugin author contract documented.
-
-### Earlier Work (2026-03-27)
-- [x] Cross-reference population, heat wiring, fidelity decay fix
-- [x] Structured feedback delivery, concrete nag templates, stray output detection
-- [x] Empty SEARCH append fix, rejection flow (no auto-resume)
-- [x] Doc/impl alignment, retention policies, client promo ranking integration
-- [x] E2E test hardening (prefill workflow, notification isolation, discover contract)
+### Dead Code Sweep + Bug Fixes (2026-03-28)
+- [x] **Act file creation hang** — ToolExtractor routed `search: ""` edits to HeuristicMatcher (which rejects empty search), causing `hasAct` infinite loop. Fix: emit `tool: "create"` for `search === ""`, handled by existing FindingsManager create path.
+- [x] **Timeout wiring** — `RUMMY_FETCH_TIMEOUT` (AbortSignal.timeout on all LLM fetches) and `RUMMY_RPC_TIMEOUT` (Promise.race on non-longRunning RPCs) now enforced.
+- [x] **Dead code removed** — `ToolRegistry.allForMode()`, `_todoHasEdit`/`_hasEdits` stubs, `tags: []` pass-through, unreachable protocol violation retry block, `validationErrors` field, `protocol_constraints` doc references.
+- [x] **Create diffs** — now generate proper unified diffs via `generateUnifiedDiff()`.
+- [x] **Undeclared variables** — `protocolRetries`/`MAX_PROTOCOL_RETRIES` were referenced but never declared (latent ReferenceError in dead code, removed with the block).
 
 ## Next
 
 The system is at feature freeze. The plugin contract (`PLUGINS.md`) is documented.
-Next stage: third-party plugin development and real-world testing.
+Next stage: eliminate XML from Turn building/serialization (Markdown + code fences), then third-party plugin development and real-world testing.

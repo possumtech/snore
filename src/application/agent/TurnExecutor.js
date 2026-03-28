@@ -237,10 +237,8 @@ export default class TurnExecutor {
 			elements,
 			finalResponse,
 			turnJson: turnObj.toJson(),
-			validationErrors: [],
 			commitTag,
 			parsedTodo: parsed.todo || [],
-			tags: [],
 		};
 	}
 }
