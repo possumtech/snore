@@ -173,12 +173,11 @@ test("ClientConnection (Real Integration)", async (t) => {
 	await t.test("run/abort should update run status", async () => {
 		const { conn, state } = await initConn();
 
-		// Create a run via startRun
 		await rpc(conn, "startRun", { type: "ask" }, 2);
 		const startResult = state.sent.find((m) => m.id === 2);
-		const runId = startResult.result;
+		const run = startResult.result.run;
 
-		await rpc(conn, "run/abort", { runId }, 3);
+		await rpc(conn, "run/abort", { run }, 3);
 		const abortResult = state.sent.find((m) => m.id === 3);
 		assert.deepStrictEqual(abortResult.result, { status: "ok" });
 	});
@@ -202,5 +201,6 @@ test("ClientConnection (Real Integration)", async (t) => {
 			`ask returned error: ${resultMsg.error?.message}`,
 		);
 		assert.ok(resultMsg.result.status);
+		assert.ok(resultMsg.result.run, "Should have run alias in response");
 	});
 });

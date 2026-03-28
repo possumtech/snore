@@ -132,6 +132,10 @@ export default class ProjectAgent {
 		return this.#agentLoop.resolve(run, resolution);
 	}
 
+	async inject(run, message) {
+		return this.#agentLoop.inject(run, message);
+	}
+
 	async getRunHistory(run) {
 		return this.#agentLoop.getRunHistory(run);
 	}

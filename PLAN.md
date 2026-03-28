@@ -2,44 +2,44 @@
 
 ## Remaining
 
-### Bugs
-- [ ] **Foundation test 5 flaky** — "read and retain" test intermittently fails. Likely model non-determinism; observe now that create hang is fixed.
-- [ ] no more allowing direct model stuff, requiring an alias for all models, change paradigm
-- [ ] replace runId with runAlias - We must generate a unique runalias for each run that's the modelalias plus the next number
-- [ ] create endpoints allowing clients to rename runalias, enforcing uniqueness with error handling on uniqueness and [a-z_]{1,20} enforcement
+### Features
+(none pending)
 
-- [ ] no more allowing direct model stuff, requiring an alias for all models, change paradigm
-- [ ] replace runId with runAlias - We must generate a unique runalias for each run that's the modelalias plus the next number
-- [ ] create endpoints allowing clients to rename runalias, enforcing uniqueness with error handling on uniqueness and [a-z_]{1,20} enforcement
-- [ ] new run/inject endpoint with {runalias, message} params, which copies the previous turn's ask/act mode and sends a new prompt/turn to the run if the run isn't running, but sends an info with the message to the next turn if the run is ongoing. a "btw" option
+### Quality
 - [ ] Unit tests achieve 80/80/80 coverage
-- [ ] Apply a slug and numbering convention to our readme and architecture documents, then apply that lexicon to the file naming convention for a suite of integration tests that defend against regressions on every claim and promise made in our documentation.
-- [ ] Maintain twelve e2e tests against live models that each cover a distinct, realistic use case
-- [ ] Never run any integration or e2e test against mock models, only live models
+- [ ] Apply a slug and numbering convention to readme and architecture documents, then use that lexicon for integration test file naming that defends every documented claim
+- [ ] Maintain twelve e2e tests against live models covering distinct, realistic use cases
+- [ ] Never run integration or e2e tests against mock models, only live models
 
-
-### Architecture
-- [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, Markdown context)
+### Docs
+- [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, Markdown context, run aliases, model alias enforcement)
 - [ ] Update PLUGINS.md for plain-object node API and Markdown rendering
 
 ## Done
 
+### Run Inject + Run Naming + Model Enforcement (2026-03-28)
+- [x] **run/inject** — `{ run, message }`. If run is active, queues message as pending context for next turn. If idle, resumes the run with injected context. Uses existing `pending_context` pipeline via ContextPlugin.
+
+### Run Naming + Model Enforcement (2026-03-28)
+- [x] **Model alias enforcement** — `LlmProvider.resolve()` requires `RUMMY_MODEL_{alias}` env var. Raw model IDs rejected.
+- [x] **Run aliases** — `alias TEXT NOT NULL UNIQUE` on runs table. Auto-generated as `{model}_{N}` (e.g. `ccp_1`). Clients use `run` field, never see UUIDs.
+- [x] **RPC contract** — all params/responses renamed `runId` → `run`. Notifications emit `run` (alias).
+- [x] **New RPCs** — `getRuns` (list all session runs), `run/rename` (validate `[a-z_]{1,20}`, enforce uniqueness).
+- [x] **FileChangePlugin** — renamed from GitPlugin, VCS-agnostic (hash comparison only). Tag `modified_files`.
+
 ### XML Elimination (2026-03-28)
 - [x] **@xmldom/xmldom removed** — zero XML in codebase. Dependency uninstalled.
-- [x] **TurnBuilder** — plain objects `{ tag, attrs, content, children }` replace DOM. `saveTurnToDb` traverses object tree.
-- [x] **RummyContext** — `tag()` returns plain objects. Section getters find nodes in tree. Plugin API: `.children.push()` replaces `.appendChild()`.
-- [x] **Turn rendering** — `toXml()` replaced with `#renderNode()` Markdown renderer. Documents render as `### \`path\`` + code fences with language detection. Feedback renders as blockquotes. Git changes as headings.
-- [x] **All plugins updated** — RepoMapPlugin, GitPlugin, ContextPlugin, DebugLoggerPlugin (now outputs JSON audits).
-- [x] **All tests updated** — 135 unit tests pass with zero XML.
+- [x] **TurnBuilder** — plain objects `{ tag, attrs, content, children }` replace DOM.
+- [x] **RummyContext** — `tag()` returns plain objects. Plugin API: `.children.push()`.
+- [x] **Turn rendering** — Markdown renderer. Code fences with language detection, blockquote feedback, heading sections.
+- [x] **All plugins updated** — RepoMapPlugin, FileChangePlugin, ContextPlugin, DebugLoggerPlugin (JSON audits).
 
 ### Dead Code Sweep + Bug Fixes (2026-03-28)
-- [x] **Act file creation hang** — ToolExtractor routed `search: ""` edits to HeuristicMatcher (which rejects empty search), causing `hasAct` infinite loop. Fix: emit `tool: "create"` for `search === ""`, handled by existing FindingsManager create path.
-- [x] **Timeout wiring** — `RUMMY_FETCH_TIMEOUT` (AbortSignal.timeout on all LLM fetches) and `RUMMY_RPC_TIMEOUT` (Promise.race on non-longRunning RPCs) now enforced.
-- [x] **Dead code removed** — `ToolRegistry.allForMode()`, `_todoHasEdit`/`_hasEdits` stubs, `tags: []` pass-through, unreachable protocol violation retry block, `validationErrors` field, `protocol_constraints` doc references.
-- [x] **Create diffs** — now generate proper unified diffs via `generateUnifiedDiff()`.
-- [x] **Undeclared variables** — `protocolRetries`/`MAX_PROTOCOL_RETRIES` were referenced but never declared (latent ReferenceError in dead code, removed with the block).
+- [x] **Act file creation hang** — ToolExtractor routes `search: ""` to `tool: "create"`.
+- [x] **Timeout wiring** — `RUMMY_FETCH_TIMEOUT` and `RUMMY_RPC_TIMEOUT` enforced.
+- [x] **Dead code removed** — `allForMode()`, unused variables, unreachable protocol retry block.
+- [x] **Create diffs** — proper unified diffs via `generateUnifiedDiff()`.
 
 ## Next
 
-The system is at feature freeze. The plugin contract (`PLUGINS.md`) is documented.
-Next stage: eliminate XML from Turn building/serialization (Markdown + code fences), then third-party plugin development and real-world testing.
+Next up: coverage push to 80/80/80, then doc updates.

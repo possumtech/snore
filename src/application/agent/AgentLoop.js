@@ -343,6 +343,33 @@ export default class AgentLoop {
 		return { run: runAlias, status: "completed" };
 	}
 
+	async inject(runAlias, message) {
+		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
+		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+
+		const isActive = runRow.status === "running" || runRow.status === "queued";
+
+		// Get the latest turn to use as source_turn_id
+		const lastSeq = await this.#db.get_last_turn_sequence.get({ run_id: runRow.id });
+		const sourceTurnId = lastSeq?.last_turn_id || null;
+
+		await this.#db.insert_pending_context.run({
+			run_id: runRow.id,
+			source_turn_id: sourceTurnId,
+			type: "inject",
+			request: "user",
+			result: message,
+			is_error: 0,
+		});
+
+		if (isActive) {
+			return { run: runAlias, status: runRow.status, injected: "queued" };
+		}
+
+		// Idle run — resume with the injected message as context
+		return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
+	}
+
 	async getRunHistory(runAlias) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));

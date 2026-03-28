@@ -227,6 +227,19 @@ export default class CoreRpcPlugin {
 			requiresInit: true,
 		});
 
+		r.register("run/inject", {
+			handler: async (params, ctx) =>
+				ctx.projectAgent.inject(params.run, params.message),
+			description:
+				"Inject a message into a run. If idle, resumes with the message as context. If active, queues it for the next turn.",
+			longRunning: true,
+			params: {
+				run: "string — run name",
+				message: "string — message to inject",
+			},
+			requiresInit: true,
+		});
+
 		r.register("getRuns", {
 			handler: async (_params, ctx) => {
 				const rows = await ctx.db.get_runs_by_session.all({

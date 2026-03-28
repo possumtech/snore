@@ -135,6 +135,17 @@ test("SessionManager", async (t) => {
 		assert.ok(result.alias.includes("_"), "alias should be model_N format");
 	});
 
+	await t.test("activate with absolute path should normalize", async () => {
+		const result = await manager.activate(projectId, "/tmp/sm-test/src/a.js");
+		assert.strictEqual(result.status, "ok");
+		const file = await tdb.db.get_repo_map_file.get({
+			project_id: projectId,
+			path: "src/a.js",
+			run_id: null,
+		});
+		assert.strictEqual(file.client_constraint, "full");
+	});
+
 	await t.test("addSkill and removeSkill should work", async () => {
 		await manager.addSkill(sessionId, "test-skill");
 		await manager.removeSkill(sessionId, "test-skill");
