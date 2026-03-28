@@ -190,11 +190,11 @@ The system prompts (`system.ask.md`, `system.act.md`) use the term **"Retained"*
 to describe agent-promoted files. This is intentional — the model does not need to
 know about the internal promotion/fidelity machinery. From the model's perspective:
 
-- `{ "tool": "read", "argument": "path" }` → "Marks file as Retained" (creates agent promotion)
-- `{ "tool": "drop", "argument": "path" }` → "Unmark file as Retained" (removes agent promotion)
+- `read` tool → "Marks file as Retained" (creates agent promotion)
+- `drop` tool → "Unmark file as Retained" (removes agent promotion)
 
-Internal code and documentation use "agent promotion." Model-facing text uses
-"Retained." These refer to the same mechanism.
+Internal code and docs use "agent promotion." Model-facing text uses "Retained."
+These refer to the same mechanism.
 
 ### 2.7 Ranking
 
@@ -260,19 +260,8 @@ budget = min(budget, RUMMY_MAP_TOKEN_BUDGET)   # if set
 
 ### 3.2 Per-Turn Evaluation
 
-Budget is computed every `renderPerspective()` call (once per turn). The budget
-and actual token usage are reported in the turn's `usage` object:
-
-```json
-{
-  "usage": {
-    "prompt_tokens": 4200,
-    "completion_tokens": 800,
-    "context_budget": 12800,
-    "context_used": 9400
-  }
-}
-```
+Budget is computed every `renderPerspective()` call (once per turn). Files are
+included in priority order until the budget is exhausted.
 
 ### 3.3 Configuration
 
@@ -380,14 +369,14 @@ startRun (optional)
     └──→ run/abort  (abandon: discard unresolved findings)
 ```
 
-**Findings gate**: A SQLite trigger blocks new turn insertion while unresolved
-findings exist on the run. The client must resolve all findings before the
-agent can continue.
+**Findings gate**: The agent loop checks for unresolved findings before each
+turn. If findings exist, the server returns them to the client instead of
+proceeding. The client must resolve all findings before the agent can continue.
 
 **Resolution behavior**: When all findings are resolved:
 - **Any rejected** → the server returns `{ status: "resolved" }` and stops.
-  The client decides whether to continue (`:` prefix) or abandon. Rejection
-  feedback is stored in `pending_context` and appears in the next turn.
+  The client decides whether to continue or abandon. Rejection feedback is
+  stored in `pending_context` and appears in the next turn.
 - **Accepted or modified findings** → the server auto-resumes. The model needs
   a continuation turn to see results (command output, edit confirmation,
   prompt_user response). Modified diffs are a positive outcome.
@@ -397,25 +386,16 @@ agent can continue.
 The client resolves them (accept/reject) and writes accepted changes to its own
 filesystem. The server never touches the working tree.
 
-### 4.4 Client Intent Prefixes
+### 4.4 Run Modes
 
-The client controls run continuity through prefix conventions. All four modes
-are implemented server-side.
+The server supports four run modes, controlled by params on `ask`/`act`:
 
-| Prefix | Intent    | Server params                                           |
-|--------|-----------|---------------------------------------------------------|
-| `:`    | Continue  | `run = <current>` — same run, same history              |
-| `::`   | New       | `run = nil` — new run, fresh agent promotions           |
-| `:::`  | Lite      | `run = nil, noContext = true` — new run, no file map    |
-| `::::` | Fork      | `run = <current>, fork = true` — new run, copies history from source |
-
-- **Continue**: Default. Conversation continues with full history and decay tracking.
-- **New**: Fresh conversation. Old run stays idle. Client promotions (project-scoped)
-  carry over. Agent promotions do not.
-- **Lite**: Fresh run with no file context. System prompt and protocol still apply.
-  Useful for quick questions that don't need codebase awareness.
-- **Fork**: Branch the conversation. New run reads turn history from `parent_run_id`
-  up to the fork point — no data copying, just a pointer and sequence number.
+| Mode | Params | Behavior |
+|---|---|---|
+| **Continue** | `run = <name>` | Same run, same history, decay tracking. |
+| **New** | `run` omitted | New run, fresh agent promotions. Client promotions carry over. |
+| **Lite** | `run` omitted, `noContext = true` | New run, no file map. System prompt still applies. |
+| **Fork** | `run = <name>`, `fork = true` | New run, reads turn history from parent via `parent_run_id`. |
 
 ---
 
@@ -478,23 +458,26 @@ Tool names are constrained by `enum` in the schema — the provider rejects inva
 
 All todo items are executed. The server processes them in order.
 
-**Ask tools** — executed directly by the server:
+**Direct tools** — executed by the server, no client involvement:
 
 | Tool | Argument | Effect |
 |---|---|---|
 | `read` | file path | Creates agent promotion. File appears in context next turn. |
 | `drop` | file path | Removes agent promotion. File reverts to baseline. |
-| `env` | shell command | Read-only exploratory command. Proposed to client. |
 
-**Act-only tools** (in addition to ask tools):
+**Finding tools** — create proposed actions for client resolution:
 
 | Tool | Argument | Effect |
 |---|---|---|
+| `env` | shell command | Proposed read-only command. Same mechanism as `run`; the distinction nudges the model toward non-destructive exploration. |
+| `run` | shell command | Proposed shell command (may have side effects). |
 | `delete` | file path | Proposed file deletion. |
-| `run` | shell command | Mutating command. Proposed to client. |
 
 **Edits** are extracted from the `edits` array, not from todo. `search: ""` emits
 a `create` tool internally. The `prompt` object emits a `prompt_user` tool.
+
+`summary` is a top-level required field on the response, not a tool. Its presence
+signals completion to the state table.
 
 When act-only tools create findings, the run pauses at `proposed` for client resolution.
 

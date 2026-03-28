@@ -7,7 +7,7 @@
 
 ### Quality
 - [x] ~~Unit tests achieve 80/80/80 coverage~~ — 90/81/89
-- [ ] Apply a slug and numbering convention to readme and architecture documents, then use that lexicon for integration test file naming that defends every documented claim
+- [x] ~~Doc-driven integration tests~~ — 9 test files, slug convention `{section}_{topic}.test.js`, 47 tests defending §1-§8 claims
 - [ ] Maintain twelve e2e tests against live models covering distinct, realistic use cases
 - [ ] Never run integration or e2e tests against mock models, only live models
 

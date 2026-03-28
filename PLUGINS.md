@@ -33,7 +33,7 @@ are skipped.
 
 ### Tool Registry (`hooks.tools`)
 
-Register tools the model can invoke via `<todo>` items.
+Register tools the model can invoke via `todo` items.
 
 ```js
 hooks.tools.register("mytool", {
