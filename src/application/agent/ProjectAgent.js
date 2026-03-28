@@ -104,6 +104,18 @@ export default class ProjectAgent {
 		return this.#sessionManager.removeSkill(sessionId, name);
 	}
 
+	async getSkills(sessionId) {
+		return this.#sessionManager.getSkills(sessionId);
+	}
+
+	async setTemperature(sessionId, temperature) {
+		return this.#sessionManager.setTemperature(sessionId, temperature);
+	}
+
+	async getTemperature(sessionId) {
+		return this.#sessionManager.getTemperature(sessionId);
+	}
+
 	async ask(sessionId, model, prompt, run = null, options = {}) {
 		return this.#agentLoop.run(
 			"ask",

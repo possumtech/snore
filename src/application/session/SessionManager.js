@@ -318,4 +318,20 @@ export default class SessionManager {
 	async removeSkill(sessionId, name) {
 		await this.#db.delete_session_skill.run({ session_id: sessionId, name });
 	}
+
+	async getSkills(sessionId) {
+		const rows = await this.#db.get_session_skills.all({ session_id: sessionId });
+		return rows.map((r) => r.name);
+	}
+
+	async setTemperature(sessionId, temperature) {
+		const clamped = Math.max(0, Math.min(2, temperature));
+		await this.#db.update_session_temperature.run({ id: sessionId, temperature: clamped });
+		return clamped;
+	}
+
+	async getTemperature(sessionId) {
+		const row = await this.#db.get_session_temperature.get({ id: sessionId });
+		return row?.temperature ?? null;
+	}
 }

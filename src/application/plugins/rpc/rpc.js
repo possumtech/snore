@@ -296,10 +296,39 @@ export default class CoreRpcPlugin {
 			requiresInit: true,
 		});
 
+		r.register("getSkills", {
+			handler: async (_params, ctx) =>
+				ctx.projectAgent.getSkills(ctx.sessionId),
+			description: "List active skills. Returns string[].",
+			requiresInit: true,
+		});
+
+		r.register("setTemperature", {
+			handler: async (params, ctx) => {
+				const value = await ctx.projectAgent.setTemperature(
+					ctx.sessionId,
+					Number(params.temperature),
+				);
+				return { temperature: value };
+			},
+			description: "Set session temperature (clamped 0-2). Returns { temperature }.",
+			params: { temperature: "number — 0 to 2" },
+			requiresInit: true,
+		});
+
+		r.register("getTemperature", {
+			handler: async (_params, ctx) => {
+				const value = await ctx.projectAgent.getTemperature(ctx.sessionId);
+				return { temperature: value };
+			},
+			description: "Get session temperature. Returns { temperature } (null = env default).",
+			requiresInit: true,
+		});
+
 		// Notifications
 		r.registerNotification(
 			"run/step/completed",
-			"Turn finished. Payload: { run, turn: { sequence, assistant: { todo[], known[], unknown[], summary, content }, feedback[], usage: { prompt_tokens, completion_tokens, cost } }, files[] }.",
+			"Turn finished. Payload: { run, turn, files[], cumulative: { prompt_tokens, completion_tokens, total_tokens, cost } }.",
 		);
 		r.registerNotification(
 			"run/progress",

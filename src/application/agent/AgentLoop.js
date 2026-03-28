@@ -76,6 +76,14 @@ export default class AgentLoop {
 		const noContext = options?.noContext === true;
 		const isFork = options?.fork === true;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
+
+		// Resolve temperature: explicit option > session > env default
+		if (options?.temperature === undefined) {
+			const tempRow = await this.#db.get_session_temperature.get({ id: String(sessionId || "") });
+			if (tempRow?.temperature !== null && tempRow?.temperature !== undefined) {
+				options = { ...options, temperature: tempRow.temperature };
+			}
+		}
 		let currentRunId = null;
 		let currentAlias = null;
 		let parentRunId = null;
@@ -179,11 +187,18 @@ export default class AgentLoop {
 			});
 
 			await turn.turnObj.hydrate();
+			const runUsage = await this.#db.get_run_usage.get({ run_id: currentRunId });
 			await this.#hooks.run.step.completed.emit({
 				run: currentAlias,
 				sessionId,
 				turn: turn.turnObj,
 				projectFiles: await this.#sessionManager.getFiles(project.path),
+				cumulative: {
+					prompt_tokens: runUsage.prompt_tokens,
+					completion_tokens: runUsage.completion_tokens,
+					total_tokens: runUsage.total_tokens,
+					cost: runUsage.cost,
+				},
 			});
 
 			// Evaluate state

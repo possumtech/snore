@@ -48,7 +48,7 @@ hooks.tools.register("mytool", {
   - `"act"` — creates findings for client resolution (e.g., `edit`, `run`)
   - `"structural"` — captured as metadata, not executed (e.g., `summary`)
 
-The tool name becomes valid in `<todo>` items: `- [ ] mytool: argument # description`.
+The tool name becomes valid in `todo` items: `{ "tool": "mytool", "argument": "...", "description": "..." }`.
 
 **Methods**: `get(name)`, `has(name)`, `actTools` (getter),
 `names` (getter), `entries()`.
@@ -92,8 +92,8 @@ Inject content into the turn context before the LLM sees it.
 hooks.onTurn(async (rummy) => {
     if (rummy.noContext) return;  // skip in Lite mode
 
-    const el = rummy.tag("mycontent", { source: "myplugin" }, ["data here"]);
-    rummy.contextEl.appendChild(el);
+    const node = rummy.tag("mycontent", { source: "myplugin" }, ["data here"]);
+    rummy.contextEl.children.push(node);
 }, 10);  // priority: lower = runs first
 ```
 
@@ -101,21 +101,20 @@ hooks.onTurn(async (rummy) => {
 
 | Property | Type | Description |
 |---|---|---|
-| `doc` | Document | Raw XML Document (@xmldom) |
 | `db` | SqlRite | Database with all prepared queries |
 | `project` | Object | `{ id, path, name }` |
 | `type` | String | `"ask"` or `"act"` |
 | `sessionId` | String | Current session ID |
-| `runId` | String | Current run ID |
+| `runId` | String | Current run ID (UUID, internal) |
 | `turnId` | Number | Current turn ID |
 | `sequence` | Number | Turn sequence number |
 | `noContext` | Boolean | True in Lite mode (skip file context) |
 | `contextSize` | Number | Token budget for context |
-| `system` | Element | `<system>` XML element |
-| `contextEl` | Element | `<context>` XML element |
-| `user` | Element | `<user>` XML element |
-| `assistant` | Element | `<assistant>` XML element |
-| `tag(name, attrs?, children?)` | Function | Create XML element |
+| `system` | Object | System node `{ tag, attrs, content, children }` |
+| `contextEl` | Object | Context node `{ tag, attrs, content, children }` |
+| `user` | Object | User node `{ tag, attrs, content, children }` |
+| `assistant` | Object | Assistant node `{ tag, attrs, content, children }` |
+| `tag(name, attrs?, children?)` | Function | Create a plain node. String children become `content`, object children go into `children[]`. |
 
 ---
 
@@ -135,18 +134,18 @@ hooks.project.init.completed.on(async (payload) => {
 | `project.init.completed` | `{ projectId, sessionId, projectPath, db }` | After project setup |
 | `project.files.update.started` | `{ projectId, pattern, constraint }` | Before file promotion change |
 | `project.files.update.completed` | `{ projectId, projectPath, pattern, constraint, db }` | After file promotion change |
-| `run.started` | `{ runId, sessionId, type }` | Run created |
-| `run.progress` | `{ sessionId, runId, turn, status }` | Turn status: `thinking`, `processing`, `retrying` |
-| `run.command` | `{ sessionId, runId, findingId, type, command }` | Command proposed |
-| `run.step.completed` | `{ runId, sessionId, turn, projectFiles }` | Turn finished |
+| `run.started` | `{ run, sessionId, type }` | Run created |
+| `run.progress` | `{ sessionId, run, turn, status }` | Turn status: `thinking`, `processing`, `retrying` |
+| `run.command` | `{ sessionId, run, findingId, type, command }` | Command proposed |
+| `run.step.completed` | `{ run, sessionId, turn, projectFiles, cumulative }` | Turn finished |
 | `run.turn.audit` | `{ ... }` | Debug audit data |
 | `ask.started` / `ask.completed` | `{ sessionId, model, prompt, ... }` | Ask lifecycle |
 | `act.started` / `act.completed` | `{ sessionId, model, prompt, ... }` | Act lifecycle |
 | `llm.request.started` / `completed` | `{ ... }` | LLM call lifecycle |
 | `ui.render` | `{ sessionId, text, append }` | Streaming output |
 | `ui.notify` | `{ sessionId, text, level }` | Toast notification |
-| `ui.prompt` | `{ sessionId, runId, findingId, question, options }` | Model question |
-| `editor.diff` | `{ sessionId, runId, findingId, type, file, patch, ... }` | Proposed edit |
+| `ui.prompt` | `{ sessionId, run, findingId, question, options }` | Model question |
+| `editor.diff` | `{ sessionId, run, findingId, type, file, patch, ... }` | Proposed edit |
 | `rpc.started` | `{ method, params, id, sessionId }` | RPC call received |
 | `rpc.completed` | `{ method, id, result }` | RPC call succeeded |
 | `rpc.error` | `{ id, error }` | RPC call failed |
@@ -218,7 +217,7 @@ export default class WeatherPlugin {
 }
 ```
 
-The model can now use `- [ ] weather: London # check forecast`.
+The model can now use `{ "tool": "weather", "argument": "London", "description": "check forecast" }`.
 FindingsManager processes the tool invocation into a finding.
 
 ### Custom RPC Method Plugin
@@ -246,11 +245,11 @@ Clients can now call `getStats` via JSON-RPC. It appears in `discover` automatic
 export default class TimestampPlugin {
     static register(hooks) {
         hooks.onTurn(async (rummy) => {
-            const el = rummy.tag("timestamp", {}, [new Date().toISOString()]);
-            rummy.contextEl.appendChild(el);
+            const node = rummy.tag("timestamp", {}, [new Date().toISOString()]);
+            rummy.contextEl.children.push(node);
         }, 99);  // low priority = runs last
     }
 }
 ```
 
-Every turn's context will include `<timestamp>2026-03-27T...</timestamp>`.
+Every turn's context will include a timestamp node rendered as Markdown in the user message.

@@ -12,24 +12,15 @@
 - [ ] Never run integration or e2e tests against mock models, only live models
 
 ### Docs
-- [ ] Update ARCHITECTURE.md for structured output protocol (JSON schema, Markdown context, run aliases, model alias enforcement)
-- [ ] Update PLUGINS.md for plain-object node API and Markdown rendering
+- [x] ~~Update ARCHITECTURE.md~~ — JSON structured output, run aliases, model enforcement, new RPCs, cumulative usage, temperature, skills, Markdown context, no XML
+- [x] ~~Update PLUGINS.md~~ — plain-object node API, `.children.push()`, `run` in events, updated examples
 
 ### Client to Server
 
-Things the client does that we wish to move server-side:
-
-- [ ] Token/cost accumulation — The client sums usage.prompt_tokens and usage.cost across turns. The server could send cumulative totals in
-each turn in addition to per-turn deltas. Would make the client even simpler.
-
-- [ ] Temperature state — The client tracks temperature and sends it per request. If the server stored it per-session, the client would just
-send tempUp/tempDown RPCs instead of managing the value.
-
-- [ ] Skill active state — The client tracks which skills are on. The server already knows (it processes skill/add/skill/remove). We could
-query it instead of caching.
-
-- [ ] The normalize() function — If the server sent nil instead of JSON null in optional fields... but that's a JSON limitation, not the
-server's fault. Consider adjusting how json is sent to be easier on clients? Or would that just be making a weird exception for lua quirks?
+- [x] ~~Token/cost accumulation~~ — `run/step/completed` now includes `cumulative: { prompt_tokens, completion_tokens, total_tokens, cost }` alongside per-turn usage.
+- [x] ~~Temperature state~~ — `setTemperature` / `getTemperature` RPCs. Session stores temperature, AgentLoop resolves: explicit option > session > env default. Clamped 0-2.
+- [x] ~~Skill active state~~ — `getSkills` RPC returns `string[]` from `session_skills` table.
+- [x] ~~The normalize() function~~ — Won't fix server-side. JSON null → Lua nil is a client concern. Fix with a `defaults(t, shape)` helper or `cjson.null` sentinel.
 
 
 ## Done

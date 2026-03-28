@@ -1,14 +1,22 @@
 # RUMMY: Relational Underpinned Model Manager & Yield-engine
 
-Rummy is a high-integrity agent service that orchestrates LLM sessions via the **Rumsfeld Loop** architecture. It treats your codebase as a relational source of truth, managing state, discovery, and file modifications through a shared SQLite backend.
+Rummy is the first and only client/server architecture LLM agent service dedicated to the memory and legacy of former Secretary of State Donald Henry Rumsfeld. Unlike the hermes agent, which lacks a Rumsfeld Loop, The rummy architecture contains a Rumsfeld Loop inspired by Donald "rummy" Rumsfeld. By enforcing a schema-driven key/value store of "knowns" and "unknowns" that relies on a sqlite engine to externalize and extend model memory, rummy is capable of turning that Mac Mini with quantized qwen into a reliable agent instead of the awkward conversation piece it has become.
 
 ## Key Features
 
-- **The Rumsfeld Loop:** A strict cognitive lifecycle (Observe, Orient, Decide, Act) that enforces discovery before modification to eliminate hallucinations.
-- **Relational Integrity:** SQLite-backed state machine with declarative diff resolution and mandatory user-approval gates.
-- **Adaptive Context:** Dynamic repository mapping that "squishes" file details (Full -> Signatures -> Paths) based on relevance and token budget.
-- **Atomic Turns:** Consolidated WebSocket protocol that bundles content, diffs, and commands into single, deterministic responses.
-- **Dumb Client Philosophy:** Designed to run lean on hardware like Raspberry Pi 5 by offloading all heavy parsing and state management to the server.
+- **The Rumsfeld Loop:** Forcing models to catalog what they don't know is a powerful weapon against hallucination and laziness.
+
+- **Relevance Algorithms:** Both the repo map and the memory maps rely on bespoke relevance algorithms that detect patterns in the model's attention to deterministically guess what remains in the context and what can be degraded to paths and keys. Externalizing the model's memory with key/value storage will turn your potato of a local model into a potato gun. And please don't point this thing at a frontier model, as that could raise grave philosophical, national security, and even existential risk (xrisk) concerns.
+
+- **Antlrmap:** Ctags, LSPs, and Treesitter are all inferior to antlrmap for extracting symbols for your repomap. Antlrmap relies on Antlr4's "Grammar Zoo," mapping the symbol extraction process from the formal EBNF grammars of languages. Not only is this more academically rigorous, it's more amenable to obscure and domain-specific language needs. It's the right way to do it, and we're the only ones doing it.
+
+- **Client/Server:** rummy runs on your device, and then you have dozens of neovim (or whatever) instances scattered across your tmux sessions, windows, and panes -- each one of them containing a thin client that relies on the rummy service. Makes much more sense than having a whole instance for every project and worktree branch you're juggling.
+
+- **Plugin Architecture:** Don't send us a pull request for your cool feature, just build a plugin. Our service was built from the ground up with extensibility in mind. Between the service-oriented architecture and the plugin hooks and event signals, rummy was built to integrate into even the most bespoke contexts.
+
+- **Sqlite Done Right:** While rummy's technically a NodeJS project, it's better understood as a sql project that relies on JS as the glue for imperative and interactive steps. Our sql queries are all compiled prepared statements, all carefully indexed, all delivering the nosebleed speed and reliability you expect from sqlite. This does wonders for your memory footprint.
+
+- **Hermes Replacement:** All former hermes agent users receive a limited time 50% discount on the MSRP retail price ($0).
 
 ## Installation
 
@@ -17,7 +25,7 @@ git clone https://github.com/possumtech/rummy
 cd rummy/main
 npm install
 cp .env.example .env
-# Add your OPENROUTER_API_KEY to .env
+# Add your OPENROUTER_API_KEY to .env (or your .bashrc, or whatever)
 ```
 
 ## Usage
@@ -27,21 +35,6 @@ cp .env.example .env
 npm start   # Production mode (port 3044)
 npm run dev # Watch mode with dev database (port 3045)
 ```
-
-### Protocol
-Rummy communicates via JSON-RPC 2.0 over WebSockets. It uses a structured XML pipeline internally to build prompts and parse agent actions.
-
-## The Rumsfeld Loop
-
-Every turn, the model must declare what it knows, what it doesn't, and what it
-plans to do — before it can act. This is enforced by protocol validation:
-
-1. `<todo>`: Plan of action with verb-prefixed items (`- [ ] edit: fix the bug`).
-2. `<known>`: Facts, analysis, and plans gathered so far.
-3. `<unknown>`: What still needs to be discovered. Empty when nothing remains.
-
-The model cannot skip steps or fabricate confidence. Discovery before modification
-is structurally enforced, not requested.
 
 See `ARCHITECTURE.md` for the full specification and `system.ask.md`/`system.act.md`
 for the model-facing prompts. The `discover` RPC method returns the live protocol

@@ -33,8 +33,9 @@ time and included in every run.
 
 ### 1.2 Run Scope
 
-A run is a single conversation. Each run has its own independent agent promotion
-state. A file `<read>` in one run is not visible in another.
+A run is a single conversation identified by a human-readable name (e.g. `ccp_1`).
+Each run has its own independent agent promotion state. A file read in one run
+is not visible in another.
 
 - `file_promotions` where `source = 'agent'` — model focus, scoped to `run_id`
 - `turns` — the conversation history
@@ -189,8 +190,8 @@ The system prompts (`system.ask.md`, `system.act.md`) use the term **"Retained"*
 to describe agent-promoted files. This is intentional — the model does not need to
 know about the internal promotion/fidelity machinery. From the model's perspective:
 
-- `- [ ] read: path` → "Marks file as Retained" (creates agent promotion)
-- `- [ ] drop: path` → "Unmark file as Retained" (removes agent promotion)
+- `{ "tool": "read", "argument": "path" }` → "Marks file as Retained" (creates agent promotion)
+- `{ "tool": "drop", "argument": "path" }` → "Unmark file as Retained" (removes agent promotion)
 
 Internal code and documentation use "agent promotion." Model-facing text uses
 "Retained." These refer to the same mechanism.
@@ -298,7 +299,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 | Method | Params | Description |
 |---|---|---|
 | `ping` | — | Liveness check. |
-| `discover` | — | Returns full method & notification catalog. Hand-maintained in `ClientConnection.js`. |
+| `discover` | — | Returns full method & notification catalog. Auto-generated from RPC registry. |
 | `init` | `projectPath`, `projectName`, `clientId`, `projectBufferFiles?` | Initialize project and session. |
 
 #### Model Discovery
@@ -322,11 +323,18 @@ returns the canonical, machine-readable protocol reference at runtime.
 
 | Method | Params | Description |
 |---|---|---|
-| `startRun` | `model?`, `projectBufferFiles?` | Pre-create a run. Returns `runId`. Optional. |
-| `ask` | `prompt`, `model?`, `runId?`, `projectBufferFiles?`, `temperature?`, `noContext?`, `fork?` | Non-mutating query. Auto-creates run if no `runId`. |
-| `act` | `prompt`, `model?`, `runId?`, `projectBufferFiles?`, `temperature?`, `noContext?`, `fork?` | Mutating directive. Auto-creates run if no `runId`. |
-| `run/resolve` | `runId`, `resolution` | Resolve a single finding (accept/reject). |
-| `run/abort` | `runId` | Abandon run. Discard unresolved findings. |
+| `startRun` | `model?`, `projectBufferFiles?` | Pre-create a run. Returns `{ run }`. Optional. |
+| `ask` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Non-mutating query. Auto-creates run if no `run`. |
+| `act` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Mutating directive. Auto-creates run if no `run`. |
+| `run/resolve` | `run`, `resolution` | Resolve a single finding (accept/reject). |
+| `run/abort` | `run` | Abandon run. Discard unresolved findings. |
+| `run/rename` | `run`, `name` | Rename a run. `[a-z_]{1,20}`, must be unique. |
+| `run/inject` | `run`, `message` | Inject context. If idle, resumes. If active, queues for next turn. |
+| `getRuns` | — | List all runs for the session. Returns `[{ run, type, status, created }]`. |
+
+All run params accept the **run name** (e.g. `ccp_1`), not a UUID. Run names are auto-generated as `{model_alias}_{N}` on creation.
+
+**Model aliases**: The `model` param must be a defined alias (e.g. `ccp`, not `deepseek/deepseek-chat`). Aliases are defined via `RUMMY_MODEL_{alias}` env vars. Undefined aliases throw.
 
 #### Session Configuration
 
@@ -336,17 +344,20 @@ returns the canonical, machine-readable protocol reference at runtime.
 | `persona` | `text` | Set agent persona. |
 | `skill/add` | `name` | Enable a session skill. |
 | `skill/remove` | `name` | Disable a session skill. |
+| `getSkills` | — | List active skills. Returns `string[]`. |
+| `setTemperature` | `temperature` | Set session temperature (clamped 0-2). |
+| `getTemperature` | — | Get session temperature. `null` = env default. |
 
 ### 4.2 Notifications (Server → Client)
 
 | Notification | Payload | Description |
 |---|---|---|
-| `run/step/completed` | `runId`, `turn`, `files` | A turn finished. `turn` includes structured `feedback` array (see §6.5). |
-| `run/progress` | `runId`, `turn`, `status` | Turn progress: `thinking`, `processing`, `retrying`. |
-| `editor/diff` | `runId`, `findingId`, `type`, `file`, `patch`, `warning?`, `error?` | Proposed file modification (unified diff). |
-| `run/env` | `runId`, `findingId`, `command` | Proposed environment query (read-only, no side effects). |
-| `run/run` | `runId`, `findingId`, `command` | Proposed shell command (may have side effects). |
-| `ui/prompt` | `runId`, `findingId`, `question`, `options` | Model is asking the user a question. |
+| `run/step/completed` | `run`, `turn`, `files`, `cumulative` | A turn finished. `cumulative` has `{ prompt_tokens, completion_tokens, total_tokens, cost }` for the entire run. |
+| `run/progress` | `run`, `turn`, `status` | Turn progress: `thinking`, `processing`, `retrying`. |
+| `editor/diff` | `run`, `findingId`, `type`, `file`, `patch`, `warning?`, `error?` | Proposed file modification (unified diff). |
+| `run/env` | `run`, `findingId`, `command` | Proposed environment query (read-only, no side effects). |
+| `run/run` | `run`, `findingId`, `command` | Proposed shell command (may have side effects). |
+| `ui/prompt` | `run`, `findingId`, `question`, `options` | Model is asking the user a question. |
 | `ui/render` | `text`, `append` | Streaming output fragment for display. |
 | `ui/notify` | `text`, `level` | Toast/status notification. |
 
@@ -393,10 +404,10 @@ are implemented server-side.
 
 | Prefix | Intent    | Server params                                           |
 |--------|-----------|---------------------------------------------------------|
-| `:`    | Continue  | `runId = <current>` — same run, same history            |
-| `::`   | New       | `runId = nil` — new run, fresh agent promotions         |
-| `:::`  | Lite      | `runId = nil, noContext = true` — new run, no file map  |
-| `::::` | Fork      | `runId = <current>, fork = true` — new run, copies history from source |
+| `:`    | Continue  | `run = <current>` — same run, same history              |
+| `::`   | New       | `run = nil` — new run, fresh agent promotions           |
+| `:::`  | Lite      | `run = nil, noContext = true` — new run, no file map    |
+| `::::` | Fork      | `run = <current>, fork = true` — new run, copies history from source |
 
 - **Continue**: Default. Conversation continues with full history and decay tracking.
 - **New**: Fresh conversation. Old run stays idle. Client promotions (project-scoped)
@@ -421,7 +432,7 @@ are implemented server-side.
 | **Fidelity** | The level of detail for a file: `full`, `full:readonly`, `symbols`, `path`, `excluded`. Derived at render time, never stored. Default is `path`; root files get `symbols`; heat promotes `path` → `symbols`; promotions give `full`. |
 | **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. Run-scoped. |
 | **Retained** | Model-facing term for an agent-promoted file (used in system prompts). |
-| **Rumsfeld Loop** | The turn cycle: the model must declare `<todo>`, `<known>`, `<unknown>` before acting. Forces discovery before modification. |
+| **Rumsfeld Loop** | The turn cycle: the model must declare `todo`, `known`, `unknown` before acting. Forces discovery before modification. |
 
 ---
 
@@ -431,16 +442,39 @@ Every turn follows the same cognitive discipline, enforced by the state table.
 
 ### 6.1 Required Structure
 
-The model must begin every response with three tags in order:
+The model responds with provider-enforced JSON matching a schema (`ask.json` or
+`act.json`). Required fields:
 
-1. `<todo>` — The action manifest. Each item uses `- [ ] tool: argument # description`.
-   All items are executed immediately by the server. The model never checks items —
-   the server marks them `[x]` after execution.
-2. `<known>` — Facts, analysis, and plans. Future plans go here, not in `<todo>`.
-3. `<unknown>` — What the model still needs to find out. Empty (`<unknown></unknown>`)
-   when nothing remains unknown.
+```json
+{
+  "todo": [{ "tool": "read", "argument": "src/a.js", "description": "check file" }],
+  "known": ["The function takes two params"],
+  "unknown": [],
+  "summary": "The greet function returns 'hello'."
+}
+```
 
-### 6.2 Tool Execution Model (Option D)
+- `todo` — Tool invocations. Each has `tool` (enum), `argument`, `description`.
+  All items are executed immediately by the server.
+- `known` — Facts, analysis, and plans.
+- `unknown` — What the model still needs to find out. Empty array when nothing remains.
+- `summary` — One-liner status or answer. Signals completion.
+
+Act mode adds:
+
+```json
+{
+  "edits": [{ "file": "src/a.js", "search": "old", "replace": "new" }],
+  "prompt": { "question": "Which option?", "options": ["A", "B"] }
+}
+```
+
+- `edits` — File modifications. `search: ""` creates a new file.
+- `prompt` — Optional multiple-choice question for the user.
+
+Tool names are constrained by `enum` in the schema — the provider rejects invalid tools.
+
+### 6.2 Tool Execution Model
 
 All todo items are executed. The server processes them in order.
 
@@ -450,44 +484,31 @@ All todo items are executed. The server processes them in order.
 |---|---|---|
 | `read` | file path | Creates agent promotion. File appears in context next turn. |
 | `drop` | file path | Removes agent promotion. File reverts to baseline. |
-| `summary` | one-liner | Signals completion. |
+| `env` | shell command | Read-only exploratory command. Proposed to client. |
 
-**Act-only tools** — create findings for client resolution:
+**Act-only tools** (in addition to ask tools):
 
 | Tool | Argument | Effect |
 |---|---|---|
-| `edit` | file path | Requires `<edit file="...">SEARCH/REPLACE</edit>` tag after core tags. |
-| `create` | file path | `<edit>` tag without SEARCH/REPLACE markers. |
 | `delete` | file path | Proposed file deletion. |
-| `env` | shell command | Read-only command. Proposed to client. |
 | `run` | shell command | Mutating command. Proposed to client. |
-| `prompt_user` | question + choices | Proposed question for user. |
+
+**Edits** are extracted from the `edits` array, not from todo. `search: ""` emits
+a `create` tool internally. The `prompt` object emits a `prompt_user` tool.
 
 When act-only tools create findings, the run pauses at `proposed` for client resolution.
 
-### 6.3 Prefill
+### 6.3 State Table
 
-The server prefills the assistant response with `<todo>\n- [ ] ` to anchor the
-model into producing the todo list. On continuation turns (after processing),
-the server can populate the prefill with already-checked items, leaving `</todo>`
-unclosed so the model fills in remaining work.
-
-### 6.4 State Table
-
-**Phase 1 — Warnings** (always injected as feedback):
+**Phase 1 — Warnings** (injected as feedback):
 
 | Condition | Warning |
 |---|---|
-| Summary present but unknowns not empty | Resolve unknowns or clear `<unknown>` before summarizing |
-| Unknowns present, no tools listed | Concrete example: `- [ ] read: path/to/file # investigate` |
-| No tools and no summary | Concrete example: `- [ ] summary: Described the architecture` |
-| Output outside structured tags | All output must be inside `<todo>`, `<known>`, `<unknown>`, `<edit>` |
-| `edit:` in todo but no `<edit>` tag | Todo promised an edit but no `<edit file="...">` block was provided |
-| All todo items checked, no summary | Work appears complete but no `summary:` tool signals completion |
+| Summary present but unknowns not empty | Resolve unknowns before summarizing |
+| Unknowns present, no tools listed | Use tools to investigate unknowns |
 
-Warnings include concrete templates of correct behavior. Both the warning rules
-and the action table are hookable via `hooks.agent.warn` and `hooks.agent.action`
-filters — plugins can add, remove, or reorder rules.
+Warnings are hookable via `hooks.agent.warn` filter — plugins can add, remove,
+or reorder rules.
 
 **Phase 2 — Action** (first matching rule wins):
 
@@ -495,12 +516,14 @@ filters — plugins can add, remove, or reorder rules.
 |---|---|---|
 | 1 | Unresolved findings in DB | `proposed` — client resolves |
 | 2 | Act-only tools processed | `continue` — findings may have errors |
-| 3 | Reads processed | `continue` — files appear next turn |
+| 3 | New reads processed | `continue` — files appear next turn |
 | 4 | Warnings present, retries < 3 | `retry` — model sees warnings |
 | 5 | Summary present | `completed` |
-| 6 | Fallback | `completed` — allows graceful exit after nag retries exhausted |
+| 6 | Fallback | `completed` — graceful exit after retries exhausted |
 
-### 6.5 Feedback Format
+The action table is hookable via `hooks.agent.action` filter.
+
+### 6.4 Feedback Format
 
 ```
 info: AGENTS.md # file retained
@@ -523,28 +546,19 @@ object in `run/step/completed` notifications:
 }
 ```
 
-### 6.6 Tags vs Tools
+### 6.5 Structured Fields vs Tools
 
-This distinction is critical and must not be conflated.
+The model's JSON response has **structural fields** (`todo`, `known`, `unknown`,
+`summary`, `edits`, `prompt`) and **tool verbs** inside `todo` items.
 
-**Tags** are XML structural elements in the model's output. The model produces
-exactly these tags:
+**Structural fields** are top-level JSON keys enforced by the schema.
+**Tools** are the `tool` enum values within `todo` items (`read`, `drop`, `env`,
+`delete`, `run`). Edits come from the `edits` array, not from todo.
 
-| Tag | Mode | Purpose |
-|---|---|---|
-| `<todo>` | Both | Contains `- [ ] tool: arg # desc` items |
-| `<known>` | Both | Facts, analysis, plans |
-| `<unknown>` | Both | What remains unknown |
-| `<edit file="path">` | Act | SEARCH/REPLACE block for file edits |
+Tools are registered in the `ToolRegistry` and are mode-dependent — the schema
+`enum` constrains which tools are valid per mode.
 
-There are no `<read>`, `<drop>`, `<summary>`, `<env>`, `<run>`, `<create>`,
-`<delete>`, or `<prompt_user>` tags. These are **tool verbs**, not tags.
-
-**Tools** are verb-prefixed items inside `<todo>`. The server parses them from
-the todo list and executes them. Tools are registered in the `ToolRegistry` and
-are mode-dependent — `allowed_tools:` is injected into the user message per turn.
-
-### 6.7 Protocol Validation
+### 6.6 Protocol Validation
 
 Validation is enforced by the provider's JSON schema (`ask.json` / `act.json`).
 Tool names are constrained via `enum` in the schema. `edits` is only present
@@ -615,12 +629,11 @@ The server logs the DB size on startup and warns if it exceeds 100MB.
 
 ## 9. Dependencies
 
-Three runtime dependencies. Everything else is Node built-ins and ctags.
+Two runtime dependencies. Everything else is Node built-ins and ctags.
 
 | Dependency | Purpose | Deps |
 |---|---|---|
 | `@possumtech/sqlrite` | SQLite ORM (author's own) | 0 |
-| `@xmldom/xmldom` | XML DOM for turn building | 0 |
 | `ws` | WebSocket server | 0 |
 
 Symbol extraction uses `ctags` (universal-ctags CLI). Token counting uses `content.length / 4`.

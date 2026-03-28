@@ -90,6 +90,7 @@ export default class ClientConnection {
 					run: payload.run,
 					turn,
 					files: payload.projectFiles,
+					cumulative: payload.cumulative,
 				});
 			}
 		});
