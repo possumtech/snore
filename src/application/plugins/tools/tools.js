@@ -19,6 +19,6 @@ export default class CoreToolsPlugin {
 		tools.register("edit", { modes: ACT_ONLY, category: "act" });
 		tools.register("delete", { modes: ACT_ONLY, category: "act" });
 		tools.register("run", { modes: ACT_ONLY, category: "act" });
-		tools.register("prompt", { modes: BOTH, category: "act" });
+		tools.register("ask_user", { modes: BOTH, category: "act" });
 	}
 }

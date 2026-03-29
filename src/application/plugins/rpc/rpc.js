@@ -341,7 +341,7 @@ export default class CoreRpcPlugin {
 			"Proposed command. Payload: { run, key, type, command }.",
 		);
 		r.registerNotification(
-			"ui/prompt",
+			"ui/ask_user",
 			"Model question. Payload: { run, key, question, options[] }.",
 		);
 		r.registerNotification(

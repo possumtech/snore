@@ -179,14 +179,14 @@ describe("ToolSchema", () => {
 		});
 
 		it("valid prompt passes", () => {
-			const { valid } = ToolSchema.validate("prompt", {
+			const { valid } = ToolSchema.validate("ask_user", {
 				question: "Which?", options: ["A", "B"],
 			});
 			assert.ok(valid);
 		});
 
 		it("prompt with one option fails (minItems: 2)", () => {
-			const { valid } = ToolSchema.validate("prompt", {
+			const { valid } = ToolSchema.validate("ask_user", {
 				question: "Which?", options: ["only one"],
 			});
 			assert.ok(!valid);
@@ -226,7 +226,7 @@ describe("ToolSchema", () => {
 
 		it("act mode accepts all tools", () => {
 			const { valid } = ToolSchema.validateMode("act", [
-				"write", "summary", "read", "drop", "env", "prompt",
+				"write", "summary", "read", "drop", "env", "ask_user",
 				"run", "delete", "edit",
 			]);
 			assert.ok(valid);
@@ -234,7 +234,7 @@ describe("ToolSchema", () => {
 
 		it("ask mode accepts all shared tools", () => {
 			const { valid } = ToolSchema.validateMode("ask", [
-				"write", "summary", "unknown", "read", "drop", "env", "prompt",
+				"write", "summary", "unknown", "read", "drop", "env", "ask_user",
 			]);
 			assert.ok(valid);
 		});

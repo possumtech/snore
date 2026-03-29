@@ -1,26 +1,16 @@
 import ToolSchema from "../../domain/schema/ToolSchema.js";
 
 /**
- * Assembles the LLM messages array from the known store and user input.
- * No message history. The known entries array IS the model's memory,
- * embedded in the system prompt.
+ * Assembles the LLM messages from the known store context.
  *
- * Message structure:
- *   1. system — role description + tool schemas + log + unknown + known entries
- *   2. user — current input
+ * The model receives:
+ *   1. system — role description + tool schemas + ordered known context
+ *   2. user — empty (prompt is in the known context as the last entry)
+ *
+ * If no prompt entry exists in context (first turn), user message carries the prompt.
  */
 export default class ContextAssembler {
-	/**
-	 * @param {object} opts
-	 * @param {string} opts.systemPrompt - Role description from system.ask.md/system.act.md
-	 * @param {string} opts.mode - "ask" or "act"
-	 * @param {Array} opts.knownEntries - [{key, state, value}] model-facing projection
-	 * @param {Array} opts.unknownList - string[] from previous turn
-	 * @param {Array} opts.summaryLog - [{tool, target, status, key, value}]
-	 * @param {string} opts.userMessage
-	 * @returns {Array} messages array for the LLM API
-	 */
-	static assemble({ systemPrompt, mode, knownEntries, unknownList, summaryLog, userMessage }) {
+	static assemble({ systemPrompt, mode, context, userMessage }) {
 		const sections = [systemPrompt];
 
 		// Inject tool JSON schemas
@@ -31,21 +21,19 @@ export default class ContextAssembler {
 		});
 		sections.push(`## Tool Schemas\n\n${schemaLines.join("\n\n")}`);
 
-		if (summaryLog.length > 0) {
-			sections.push(`## Log\n\`\`\`json\n${JSON.stringify(summaryLog)}\n\`\`\``);
+		// The ordered known context — one flat array
+		if (context.length > 0) {
+			sections.push(`## Context\n\`\`\`json\n${JSON.stringify(context)}\n\`\`\``);
 		}
 
-		if (unknownList.length > 0) {
-			sections.push(`## Unknown\n\`\`\`json\n${JSON.stringify(unknownList)}\n\`\`\``);
+		const messages = [{ role: "system", content: sections.join("\n\n") }];
+
+		// User message only if there's no /:prompt/ entry in context
+		const hasPrompt = context.some((e) => e.state === "prompt");
+		if (!hasPrompt && userMessage) {
+			messages.push({ role: "user", content: userMessage });
 		}
 
-		if (knownEntries.length > 0) {
-			sections.push(`## Known\n\`\`\`json\n${JSON.stringify(knownEntries)}\n\`\`\``);
-		}
-
-		return [
-			{ role: "system", content: sections.join("\n\n") },
-			{ role: "user", content: userMessage },
-		];
+		return messages;
 	}
 }

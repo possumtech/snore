@@ -122,7 +122,7 @@ export default class AgentLoop {
 				loopIteration++;
 
 				let result;
-				const turnPrompt = loopIteration === 1 ? prompt : "Continue.";
+				const turnPrompt = loopIteration === 1 ? prompt : "";
 				try {
 					result = await this.#turnExecutor.execute({
 						type,
@@ -181,13 +181,13 @@ export default class AgentLoop {
 						});
 					}
 				}
-				if (result.promptCall) {
+				if (result.askUserCall) {
 					await this.#hooks.ui.prompt.emit({
 						sessionId,
 						run: currentAlias,
-						key: result.promptCall.resultKey,
-						question: result.promptCall.args.question,
-						options: result.promptCall.args.options,
+						key: result.askUserCall.resultKey,
+						question: result.askUserCall.args.question,
+						options: result.askUserCall.args.options,
 					});
 				}
 

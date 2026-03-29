@@ -78,20 +78,17 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Assemble context from known store
+		// Store user prompt as a known entry (visible to model at bottom of context)
+		await this.#knownStore.upsert(currentRunId, turn, `/:prompt/${turn}`, loopPrompt, "info");
+
+		// Assemble context from known store — one ordered array
 		const systemPrompt = await PromptManager.getSystemPrompt(type);
-		const knownEntries = await this.#knownStore.getModelEntries(currentRunId, turn);
-		const summaryLog = await this.#knownStore.getLog(currentRunId);
-		const unknownEntry = (await this.#knownStore.getAll(currentRunId))
-			.find((r) => r.key === "/:unknown");
-		const unknownList = unknownEntry ? JSON.parse(unknownEntry.value || "[]") : [];
+		const context = await this.#knownStore.getModelContext(currentRunId);
 
 		const messages = ContextAssembler.assemble({
 			systemPrompt,
 			mode: type,
-			knownEntries,
-			unknownList,
-			summaryLog,
+			context,
 			userMessage: loopPrompt,
 		});
 
@@ -127,7 +124,7 @@ export default class TurnExecutor {
 
 		// Extract and validate tool calls
 		const extracted = ToolExtractor.extract(responseMessage);
-		const { actionCalls, writeCalls, unknownCalls, summaryCall, promptCall, flags } = extracted;
+		const { actionCalls, writeCalls, unknownCalls, summaryCall, askUserCall, flags } = extracted;
 
 		const validationError = ToolExtractor.validate({ summaryCall });
 		if (validationError) throw new Error(validationError);
@@ -199,15 +196,15 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Step 1b: Prompt (also proposed)
-		if (promptCall) {
-			const resultKey = await this.#knownStore.nextResultKey(currentRunId, "prompt");
-			promptCall.resultKey = resultKey;
+		// Step 1b: ask_user (also proposed)
+		if (askUserCall) {
+			const resultKey = await this.#knownStore.nextResultKey(currentRunId, "ask_user");
+			askUserCall.resultKey = resultKey;
 			await this.#knownStore.upsert(
 				currentRunId, turn, resultKey,
 				"",
 				"proposed",
-				{ meta: { ...promptCall.args } },
+				{ meta: { ...askUserCall.args } },
 			);
 		}
 
@@ -249,7 +246,7 @@ export default class TurnExecutor {
 			writeCalls,
 			unknownCalls,
 			summaryCall,
-			promptCall,
+			askUserCall,
 			flags,
 		};
 	}

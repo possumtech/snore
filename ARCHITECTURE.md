@@ -155,10 +155,10 @@ content body. No message history. Content is suppressed.
 | `read` | `key: string, reason: string` | No |
 | `drop` | `key: string, reason: string` | No |
 | `env` | `command: string, reason: string` | No |
-| `prompt` | `question: string, options: string[]` | No |
+| `ask_user` | `question: string, options: string[]` | No |
 
 All high-frequency tools have flat string parameters (1-2 strings). No nested
-objects, no arrays. Only `prompt` uses an array (for multiple-choice options).
+objects, no arrays. Only `ask_user` uses an array (for multiple-choice options).
 
 **Act-only (extends shared):**
 
@@ -212,7 +212,7 @@ Blocks until resolved. On resolution, value is updated with command output.
 **`delete`** — creates a `/:delete/N` entry with domain `result`, state `proposed`.
 Blocks until resolved.
 
-**`prompt`** — creates a `/:prompt/N` entry with domain `result`, state `proposed`.
+**`ask_user`** — creates a `/:prompt/N` entry with domain `result`, state `proposed`.
 Blocks until user responds. On resolution, value is the selected answer.
 
 ### 2.3 Namespace Routing
@@ -236,29 +236,50 @@ Blocks until user responds. On resolution, value is the selected answer.
 
 The model emits all tool calls as a parallel batch. The server processes in strict order:
 
-1. **Execute action tools** — `read`, `drop`, `env`, `run`, `delete`, `edit`, `prompt`. Generate result keys (`/:read/1`, `/:edit/2`). Write entries to known store. Non-proposed tools (read, drop, env) resolve immediately. Proposed tools (edit, run, delete, prompt) block the loop.
-2. **Process unknowns** — collect all `unknown` calls into an array, store as `/:unknown` entry. Delete `/:unknown` if model made no `unknown` calls.
-3. **Process writes** — UPSERT each `write` call's key/value pair.
-4. **Store summary** — create `/:summary/N` entry.
+1. **Store user prompt** — create `/:prompt/{turn}` entry.
+2. **Execute action tools** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`.
+3. **Process unknowns** — collect all `unknown` calls into an array, store as `/:unknown`. Delete `/:unknown` if model made no `unknown` calls.
+4. **Process writes** — UPSERT each `write` call's key/value pair.
+5. **Store summary** — create `/:summary/N` entry.
 5. **Done** — results are now in the known store. Next turn's context assembly reads from it.
 
 ---
 
 ## 3. Model Context
 
-No message history. The model's entire context is assembled each turn from the
-known store and system prompt. Two messages: `system` + `user`.
+No message history. The model's entire context is one ordered array embedded in
+the system prompt. On the first turn, the user message carries the prompt. On
+continuation turns, the user message is empty — the prompt is in the context
+array as a `/:prompt/{turn}` entry.
 
 ### 3.1 System Message Contents
 
 1. **Role description** — from `system.ask.md` or `system.act.md`
-2. **Summary log** — all result-domain entries ordered by `id`, formatted as `[{tool, target, status, key, value}]`. Summary entries have full text; others have empty value (recallable). The `tool` field is derived from key prefix. The `target` field is derived from `meta` (command, file, key, or question).
-3. **Unknown list** — previous turn's `/:unknown` value, if present
-4. **Known entries** — `[{key, state, value}]` with model-facing state projection. Includes file keys, `/:known/*` entries, and `/:[tool]/*` result keys. `file:ignore` and `proposed` entries are hidden.
+2. **Tool schemas** — JSON schema for each tool's parameters
+3. **Context array** — one flat ordered list of `[{key, state, value}]` entries
 
-### 3.2 User Message
+### 3.2 Context Ordering
 
-The current user input (prompt).
+The context array is ordered to optimize the model's attention gradient.
+Stable background at the top, actionable items at the bottom:
+
+1. **Active non-file keys** — `/:known/*` at turn > 0 (working memory)
+2. **Stored non-file keys** — `/:known/*` at turn 0 (discoverable, key only)
+3. **Stored file paths** — files at turn 0 (project index, path only)
+4. **Symbol files** — files with `file:symbols` state
+5. **Full files** — files at turn > 0 (actual code being worked on)
+6. **Chronological results** — tool calls and summaries in id order
+7. **Unknowns** — previous turn's `unknown` entries (uncertainty boundary)
+8. **User prompt** — `/:prompt/{turn}` (the actual task, always last)
+
+### 3.3 Expansion Rule
+
+- `turn > 0` → expanded (value included in context)
+- `turn == 0` → collapsed (key only, no value — purgatory)
+
+`read(key)` promotes by setting turn to current turn. `drop(key)` demotes by
+setting turn to 0. All files start at turn 0 unless promoted by the client,
+the model, or the relevance engine.
 
 ### 3.3 File Bootstrap
 
@@ -392,7 +413,7 @@ defined via `RUMMY_MODEL_{alias}` env vars.
 | `run/progress` | `run`, `turn`, `status` | Turn progress: `thinking`, `processing` |
 | `editor/diff` | `run`, `key`, `type`, `file`, `search`, `replace` | Proposed edit (raw tool args) |
 | `run/command` | `run`, `key`, `type`, `command` | Proposed command |
-| `ui/prompt` | `run`, `key`, `question`, `options` | Model question |
+| `ui/ask_user` | `run`, `key`, `question`, `options` | Model question |
 | `ui/render` | `text`, `append` | Streaming output |
 | `ui/notify` | `text`, `level` | Notification |
 
@@ -582,7 +603,7 @@ hooks.project.init.completed.on(async (payload) => {
 | `act.started` / `act.completed` | `{ sessionId, model, prompt, ... }` | Act lifecycle |
 | `ui.render` | `{ sessionId, text, append }` | Streaming output |
 | `ui.notify` | `{ sessionId, text, level }` | Notification |
-| `ui.prompt` | `{ sessionId, run, key, question, options }` | Model question |
+| `ui.ask_user` | `{ sessionId, run, key, question, options }` | Model question |
 | `editor.diff` | `{ sessionId, run, key, type, file, ... }` | Proposed edit |
 | `run.turn.audit` | `{ ... }` | Debug audit data |
 | `llm.request.started` | `{ ... }` | LLM call started |

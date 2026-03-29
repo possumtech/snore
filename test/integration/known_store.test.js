@@ -170,13 +170,13 @@ describe("KnownStore integration", () => {
 
 		it("hides file:ignore entries", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "node_modules/x.js", "", "ignore");
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			assert.ok(!model.find((e) => e.key === "node_modules/x.js"));
 		});
 
 		it("hides proposed entries", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:edit/99", "", "proposed", { meta: { file: "x.js" } });
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			assert.ok(!model.find((e) => e.key === "/:edit/99"));
 			await store.resolve(RUN_ID, "/:edit/99", "pass", "done");
 		});
@@ -185,7 +185,7 @@ describe("KnownStore integration", () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "readme.md", "# Hi", "readonly");
 			await store.upsert(RUN_ID, CURRENT_TURN, "main.js", "export default {}", "active");
 
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			const readme = model.find((e) => e.key === "readme.md");
 			const main = model.find((e) => e.key === "main.js");
 
@@ -197,7 +197,7 @@ describe("KnownStore integration", () => {
 
 		it("collapsed files (turn == 0) show as file:path with empty value", async () => {
 			await store.upsert(RUN_ID, 0, "utils.js", "const add = (a,b) => a+b;", "full");
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			const utils = model.find((e) => e.key === "utils.js");
 
 			assert.strictEqual(utils.state, "file:path");
@@ -206,22 +206,23 @@ describe("KnownStore integration", () => {
 
 		it("expanded file:full shows as 'file'", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "src/app.js", "const x = 1;", "full");
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			const app = model.find((e) => e.key === "src/app.js");
 			assert.strictEqual(app.state, "file");
 			assert.strictEqual(app.value, "const x = 1;");
 		});
 
-		it("result entries always show as stored with empty value", async () => {
+		it("result entries show with their status and empty value (recallable)", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:read/1", "file contents", "pass");
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			const read = model.find((e) => e.key === "/:read/1");
-			assert.strictEqual(read.state, "stored");
+			assert.strictEqual(read.state, "pass");
+			assert.strictEqual(read.value, "");
 		});
 
 		it("expanded known shows as full with value", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:known/db_type", "PostgreSQL", "full");
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			const known = model.find((e) => e.key === "/:known/db_type");
 			assert.strictEqual(known.state, "full");
 			assert.strictEqual(known.value, "PostgreSQL");
@@ -229,36 +230,38 @@ describe("KnownStore integration", () => {
 
 		it("collapsed known shows as stored with empty value", async () => {
 			await store.upsert(RUN_ID, 0, "/:known/old_fact", "stale info", "full");
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const model = await store.getModelContext(RUN_ID);
 			const old = model.find((e) => e.key === "/:known/old_fact");
 			assert.strictEqual(old.state, "stored");
 			assert.strictEqual(old.value, "");
 		});
 
-		it("hides internal keys (/:unknown, /:system/*, /:user/*, /:reasoning/*)", async () => {
+		it("hides internal keys (/:system/*, /:user/*, /:reasoning/*) but shows /:unknown", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:unknown", "[\"test\"]", "full");
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:system/5", "prompt text", "info");
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:user/5", "user text", "info");
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:reasoning/5", "thinking...", "info");
 
-			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
-			assert.ok(!model.find((e) => e.key === "/:unknown"));
+			const model = await store.getModelContext(RUN_ID);
 			assert.ok(!model.find((e) => e.key === "/:system/5"));
 			assert.ok(!model.find((e) => e.key === "/:user/5"));
 			assert.ok(!model.find((e) => e.key === "/:reasoning/5"));
+			// /:unknown is now shown in context as unknown items
+			const unknowns = model.filter((e) => e.state === "unknown");
+			assert.ok(unknowns.length > 0, "unknowns should appear in context");
 		});
 	});
 
 	describe("promote and demote", () => {
 		it("promote sets turn to current", async () => {
 			await store.upsert(RUN_ID, 0, "src/promoted.js", "content", "full");
-			let model = await store.getModelEntries(RUN_ID, 10);
+			let model = await store.getModelContext(RUN_ID);
 			let entry = model.find((e) => e.key === "src/promoted.js");
 			assert.strictEqual(entry.state, "file:path");
 			assert.strictEqual(entry.value, "");
 
 			await store.promote(RUN_ID, "src/promoted.js", 10);
-			model = await store.getModelEntries(RUN_ID, 10);
+			model = await store.getModelContext(RUN_ID);
 			entry = model.find((e) => e.key === "src/promoted.js");
 			assert.strictEqual(entry.state, "file");
 			assert.strictEqual(entry.value, "content");
@@ -268,7 +271,7 @@ describe("KnownStore integration", () => {
 			await store.upsert(RUN_ID, 10, "src/demoted.js", "content", "full");
 			await store.demote(RUN_ID, "src/demoted.js");
 
-			const model = await store.getModelEntries(RUN_ID, 10);
+			const model = await store.getModelContext(RUN_ID);
 			const entry = model.find((e) => e.key === "src/demoted.js");
 			assert.strictEqual(entry.state, "file:path");
 			assert.strictEqual(entry.value, "");
@@ -288,14 +291,14 @@ describe("KnownStore integration", () => {
 	});
 
 	describe("turn generation", () => {
-		it("generates sequential turn numbers", async () => {
-			const t0 = await store.nextTurn(RUN_ID);
+		it("generates sequential turn numbers starting at 1", async () => {
 			const t1 = await store.nextTurn(RUN_ID);
 			const t2 = await store.nextTurn(RUN_ID);
+			const t3 = await store.nextTurn(RUN_ID);
 
-			assert.strictEqual(t0, 0);
 			assert.strictEqual(t1, 1);
 			assert.strictEqual(t2, 2);
+			assert.strictEqual(t3, 3);
 		});
 	});
 

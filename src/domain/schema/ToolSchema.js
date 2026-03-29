@@ -6,7 +6,7 @@ import Ajv from "ajv";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOOLS_DIR = join(__dirname, "tools");
 
-const SHARED_TOOLS = ["write", "summary", "unknown", "read", "drop", "env", "prompt"];
+const SHARED_TOOLS = ["write", "summary", "unknown", "read", "drop", "env", "ask_user"];
 const ACT_TOOLS = ["run", "delete", "edit"];
 const ALL_TOOL_NAMES = [...SHARED_TOOLS, ...ACT_TOOLS];
 

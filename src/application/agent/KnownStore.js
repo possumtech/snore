@@ -5,34 +5,22 @@ export default class KnownStore {
 		this.#db = db;
 	}
 
-	/**
-	 * Determine domain from key prefix.
-	 */
 	static domain(key) {
 		if (key.startsWith("/:known/") || key === "/:unknown") return "known";
 		if (key.startsWith("/:")) return "result";
 		return "file";
 	}
 
-	/**
-	 * Advance turn counter and return the new turn number.
-	 */
 	async nextTurn(runId) {
 		const row = await this.#db.next_turn.get({ run_id: runId });
 		return row.turn;
 	}
 
-	/**
-	 * Generate the next result key for a tool call.
-	 */
 	async nextResultKey(runId, toolName) {
 		const row = await this.#db.next_result_key.get({ run_id: runId });
 		return `/:${toolName}/${row.seq}`;
 	}
 
-	/**
-	 * UPSERT an entry. Domain is derived from the key.
-	 */
 	async upsert(runId, turn, key, value, state, { meta = null, hash = null } = {}) {
 		const domain = KnownStore.domain(key);
 		await this.#db.upsert_known_entry.run({
@@ -47,32 +35,18 @@ export default class KnownStore {
 		});
 	}
 
-	/**
-	 * Promote a key — set turn to current turn.
-	 * read() calls this. The value is already in the store.
-	 */
 	async promote(runId, key, turn) {
 		await this.#db.promote_key.run({ run_id: runId, key, turn });
 	}
 
-	/**
-	 * Demote a key — set turn to 0 (purgatory).
-	 * drop() calls this. Value stays in the store but hidden from model.
-	 */
 	async demote(runId, key) {
 		await this.#db.demote_key.run({ run_id: runId, key });
 	}
 
-	/**
-	 * Delete an entry by key.
-	 */
 	async remove(runId, key) {
 		await this.#db.delete_known_entry.run({ run_id: runId, key });
 	}
 
-	/**
-	 * Resolve a proposed entry (change state from proposed to pass/warn/error).
-	 */
 	async resolve(runId, key, state, value) {
 		await this.#db.resolve_known_entry.run({
 			run_id: runId,
@@ -82,56 +56,129 @@ export default class KnownStore {
 		});
 	}
 
-	/**
-	 * Get all entries for a run (raw rows).
-	 */
 	async getAll(runId) {
 		return this.#db.get_known_entries.all({ run_id: runId });
 	}
 
 	/**
-	 * Get the model-facing known entries.
+	 * Build the ordered model context array.
+	 * One flat list. No separate sections. Order is the attention gradient:
 	 *
-	 * Expansion rule:
-	 *   turn == currentTurn → expanded (value included)
-	 *   turn == 0 → collapsed (key only, no value)
-	 *   other → collapsed
-	 *
-	 * Hidden entries (not shown to model):
-	 *   file:ignore, result:proposed, internal keys (/:unknown, /:system/*, etc.)
+	 *   1. Active non-file keys (/:known/* at turn > 0)
+	 *   2. Stored non-file keys (/:known/* at turn 0)
+	 *   3. Stored file paths (files at turn 0)
+	 *   4. Symbol files (files with symbols state)
+	 *   5. Full files (files at turn > 0)
+	 *   6. Chronological tool + summary results
+	 *   7. Last turn's unknowns
+	 *   8. Most recent user prompt
 	 */
-	async getModelEntries(runId, currentTurn = 0) {
+	async getModelContext(runId) {
 		const rows = await this.getAll(runId);
-		const entries = [];
+
+		const activeKnown = [];
+		const storedKnown = [];
+		const storedFiles = [];
+		const symbolFiles = [];
+		const fullFiles = [];
+		const results = [];
+		let unknowns = null;
+		let prompt = null;
 
 		for (const row of rows) {
-			// Hide internal entries
-			if (row.key === "/:unknown") continue;
+			// Hide internals
 			if (row.key.startsWith("/:system/")) continue;
 			if (row.key.startsWith("/:user/")) continue;
 			if (row.key.startsWith("/:reasoning/")) continue;
-
-			// Hide ignored files
 			if (row.domain === "file" && row.state === "ignore") continue;
-
-			// Hide proposed results
 			if (row.domain === "result" && row.state === "proposed") continue;
 
 			const expanded = row.turn > 0;
-			const modelState = KnownStore.#modelState(row.domain, row.state, expanded);
 
-			entries.push({
-				key: row.key,
-				state: modelState,
-				value: expanded ? row.value : "",
-			});
+			// Unknowns — collect for position 7
+			if (row.key === "/:unknown") {
+				try {
+					const items = JSON.parse(row.value || "[]");
+					unknowns = items.map((text) => ({ key: "/:unknown", state: "unknown", value: text }));
+				} catch {
+					unknowns = [{ key: "/:unknown", state: "unknown", value: row.value }];
+				}
+				continue;
+			}
+
+			// User prompt — collect for position 8
+			if (row.key.startsWith("/:prompt/")) {
+				prompt = row;
+				continue;
+			}
+
+			// Knowledge entries
+			if (row.domain === "known") {
+				if (expanded) {
+					activeKnown.push({ key: row.key, state: "full", value: row.value });
+				} else {
+					storedKnown.push({ key: row.key, state: "stored", value: "" });
+				}
+				continue;
+			}
+
+			// File entries
+			if (row.domain === "file") {
+				if (expanded) {
+					const fileState = row.state === "readonly" ? "file:readonly"
+						: row.state === "active" ? "file:active"
+						: "file";
+					fullFiles.push({ key: row.key, state: fileState, value: row.value });
+				} else if (row.state === "symbols") {
+					const meta = row.meta ? JSON.parse(row.meta) : null;
+					symbolFiles.push({
+						key: row.key,
+						state: "file:symbols",
+						value: meta?.symbols || row.value || "",
+					});
+				} else {
+					storedFiles.push({ key: row.key, state: "file:path", value: "" });
+				}
+				continue;
+			}
+
+			// Result entries (tool calls, summaries) — chronological by id
+			if (row.domain === "result") {
+				const tool = KnownStore.toolFromKey(row.key);
+				const meta = row.meta ? JSON.parse(row.meta) : {};
+				results.push({
+					key: row.key,
+					state: row.state,
+					value: row.state === "summary" ? row.value : "",
+					tool: tool || row.state,
+					target: meta.command || meta.file || meta.key || meta.question || "",
+				});
+				continue;
+			}
 		}
 
-		return entries;
+		// Assemble in order
+		const context = [
+			...activeKnown,
+			...storedKnown,
+			...storedFiles,
+			...symbolFiles,
+			...fullFiles,
+			...results,
+		];
+
+		if (unknowns) context.push(...unknowns);
+
+		// Most recent prompt last
+		if (prompt) {
+			context.push({ key: prompt.key, state: "prompt", value: prompt.value });
+		}
+
+		return context;
 	}
 
 	/**
-	 * Get the chronological log (summary tool result).
+	 * Get the chronological log (result-domain entries).
 	 */
 	async getLog(runId) {
 		const rows = await this.#db.get_run_log.all({ run_id: runId });
@@ -156,38 +203,11 @@ export default class KnownStore {
 		return all.filter((r) => r.domain === "result" && r.state === "proposed");
 	}
 
-	/**
-	 * Map domain:state + expansion to model-facing state string.
-	 */
-	static #modelState(domain, state, expanded) {
-		if (domain === "file") {
-			if (expanded) {
-				if (state === "readonly") return "file:readonly";
-				if (state === "active") return "file:active";
-				return "file";
-			}
-			return "file:path";
-		}
-		if (domain === "known") {
-			return expanded ? "full" : "stored";
-		}
-		if (domain === "result") {
-			return "stored";
-		}
-		return "stored";
-	}
-
-	/**
-	 * Extract tool name from a result key.
-	 */
 	static toolFromKey(key) {
-		const match = key.match(/^\/:([a-z]+)\//);
+		const match = key.match(/^\/:([a-z_]+)\//);
 		return match ? match[1] : null;
 	}
 
-	/**
-	 * Check if a key is a system key (starts with /:).
-	 */
 	static isSystemKey(key) {
 		return key.startsWith("/:");
 	}

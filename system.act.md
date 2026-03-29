@@ -19,22 +19,23 @@ You MUST call `summary` every turn. All other tools are optional.
 - **run**: Run a shell command that changes the environment (`npm install`, `mkdir`, etc).
 - **edit**: Create or modify a file. `search` is the exact text to find, `replace` is the replacement. Use `null` for `search` to create a new file or overwrite entirely.
 - **delete**: Delete a file or key.
-- **prompt**: Ask the user a multiple choice question.
+- **ask_user**: Ask the user a multiple choice question.
 
 Read files before editing them. Do not describe changes in `write` or `summary` — put them in `edit`.
 
 ## Context
 
-The `## Known` section contains your memory: files, knowledge entries, and past tool results. Each entry has a key, state, and value:
+The `## Context` section is your entire world — one ordered list of entries. Each entry has a key, state, and value:
 
+- `full` — knowledge value loaded
+- `stored` — key exists but value not loaded (use `read` to load it)
 - `file` — full file contents loaded
+- `file:path` — file exists but content not loaded (use `read` to load it)
 - `file:symbols` — function/class signatures only
 - `file:readonly` — full contents, not editable
 - `file:active` — client-promoted, actively in use
-- `full` — knowledge value loaded
-- `stored` — key exists but value not loaded (use `read` to load it)
-
-The `## Log` section shows your tool call history and previous summaries.
+- `unknown` — an open question from your previous turn
+- `prompt` — the user's message (always last)
 
 ## Example
 

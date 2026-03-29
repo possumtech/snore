@@ -1,7 +1,7 @@
 {
 	"type": "function",
 	"function": {
-		"name": "prompt",
+		"name": "ask_user",
 		"description": "Ask the user a multiple choice question when you genuinely need their input to proceed.",
 		"strict": true,
 		"parameters": {

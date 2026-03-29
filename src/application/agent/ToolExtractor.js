@@ -12,7 +12,7 @@ export default class ToolExtractor {
 		const writeCalls = [];
 		const unknownCalls = [];
 		let summaryCall = null;
-		let promptCall = null;
+		let askUserCall = null;
 
 		for (const tc of toolCalls) {
 			const name = tc.function?.name;
@@ -23,7 +23,7 @@ export default class ToolExtractor {
 			if (name === "write") writeCalls.push(call);
 			else if (name === "unknown") unknownCalls.push(call);
 			else if (name === "summary") summaryCall = call;
-			else if (name === "prompt") promptCall = call;
+			else if (name === "ask_user") askUserCall = call;
 			else actionCalls.push(call);
 		}
 
@@ -35,7 +35,7 @@ export default class ToolExtractor {
 			writeCalls,
 			unknownCalls,
 			summaryCall,
-			promptCall,
+			askUserCall,
 			flags: { hasAct, hasReads },
 		};
 	}
