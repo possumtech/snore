@@ -115,14 +115,24 @@ export default class AgentLoop {
 		const contextSize = await this.#llmProvider.getContextSize(requestedModel);
 
 		let loopIteration = 0;
+		let unknownWarnings = 0;
 		const MAX_LOOP_ITERATIONS = 15;
+		const MAX_UNKNOWN_WARNINGS = 3;
 
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				loopIteration++;
 
+				// Build turn prompt: first turn = user prompt, continuation = unknown count or empty
+				let turnPrompt;
+				if (loopIteration === 1) {
+					turnPrompt = prompt;
+				} else {
+					const unknownCount = await this.#knownStore.countUnknowns(currentRunId);
+					turnPrompt = unknownCount > 0 ? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.` : "";
+				}
+
 				let result;
-				const turnPrompt = loopIteration === 1 ? prompt : "";
 				try {
 					result = await this.#turnExecutor.execute({
 						type,
@@ -204,9 +214,20 @@ export default class AgentLoop {
 				}
 
 				// Continue if model made action calls (reads promote files, env gathers info)
-				if (result.flags.hasReads || result.flags.hasAct) continue;
+				if (result.flags.hasReads || result.flags.hasAct) {
+					unknownWarnings = 0;
+					continue;
+				}
 
-				// Completed
+				// Unknowns gate: if unknowns exist and model isn't investigating, warn and retry
+				const openUnknowns = await this.#knownStore.countUnknowns(currentRunId);
+				if (openUnknowns > 0 && unknownWarnings < MAX_UNKNOWN_WARNINGS) {
+					unknownWarnings++;
+					console.warn(`[RUMMY] Unknown warning ${unknownWarnings}/${MAX_UNKNOWN_WARNINGS}: ${openUnknowns} unresolved`);
+					continue;
+				}
+
+				// Completed (or gave up after max unknown warnings)
 				await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
 				return { run: currentAlias, status: "completed", turn: result.turn };
 			}

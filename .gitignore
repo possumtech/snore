@@ -139,5 +139,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # rummy
-rummy.db*
+*.db*
 .venv/
+audits/

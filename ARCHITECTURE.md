@@ -237,6 +237,7 @@ Blocks until user responds. On resolution, value is the selected answer.
 2. **`tool_choice: "required"`** — model must call at least one tool. Free-form content is not suppressed or validated — any text the model emits alongside tools is captured and stored as `/:reasoning/{turn}` (audit, hidden from model).
 3. **Prompt instructions + examples** — system prompt describes tool purposes and constraints.
 4. **Server-side validation** — confirms `summary` is present. Rejects and retries.
+5. **Unknowns gate** — if the model has unresolved `/:unknown/*` entries and called no investigation tools (`read`, `env`, etc.), the server warns and retries up to 3 times. Investigating resets the counter. After 3 idle warnings, the run completes anyway. The internal prompt on continuation turns shows "N unresolved unknowns."
 
 ### 2.5 Server Execution Order
 

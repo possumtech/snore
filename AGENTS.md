@@ -30,19 +30,23 @@ File management system fully cannibalized into the K/V store.
 
 ### Remaining
 
-**File scanner (current focus):**
-- [ ] `FileScanner.js` — scan disk, hash files, extract symbols, write to known_entries across all active runs
-- [ ] Action tool handlers — `read` (load file from disk), `env` (run command), `drop` (demote)
-- [ ] Wire file scanner into mapping plugin's `onTurn` hook
-- [ ] Wire file scanner into `project.init.completed` hook
+**Completed since last update:**
+- [x] Sticky unknowns — `/:unknown/{seq}` entries, deduplicated, persist until dropped
+- [x] Unknowns gate — warn + retry (3x) when model idles with unresolved unknowns
+- [x] Internal continuation prompt — "N unresolved unknowns" on follow-up turns
+- [x] Content-as-reasoning — free-form content captured as `/:reasoning/{turn}`
+- [x] `getAll` eliminated — every query is purpose-built SQL
+- [x] Schema: `relevance` → `tokens` + `refs`. Tokens computed by SQL on UPSERT
+- [x] `prompt` tool → `ask_user`. User prompt stored as `/:prompt/{turn}`
+- [x] Context is one flat ordered array: active known → stored known → file paths → symbols → full files → results → unknowns → prompt
+- [x] 5 E2E tests passing (foundation + Rumsfeld Loop)
 
-**Testing:**
-- [ ] Integration tests for file scanner
-- [ ] E2E test against real model
-
-**Future cleanup:**
-- [ ] RPC notification payloads — some still reference stale field names
-- [ ] ARCHITECTURE.md §7 plugin system — some event payloads reference old field names
+**Remaining:**
+- [ ] File scanner symbol extraction (ctags/antlrmap wiring, meta storage)
+- [ ] Session prompt overrides (PromptManager doesn't check session DB yet)
+- [ ] Project restructure
+- [ ] ARCHITECTURE.md §7 plugin event payloads — some reference old field names
+- [ ] More E2E: multi-turn with edit resolution, ask_user flow, continuation after rejection
 
 ### Dead Code (already deleted)
 
