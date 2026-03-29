@@ -1,5 +1,6 @@
 import ToolExtractor from "./ToolExtractor.js";
 import ContextAssembler from "./ContextAssembler.js";
+import ToolSchema from "../../domain/schema/ToolSchema.js";
 
 export default class TurnExecutor {
 	#db;
@@ -16,44 +17,34 @@ export default class TurnExecutor {
 		this.#turnBuilder = turnBuilder;
 	}
 
-	#resolveAlias(modelId) {
-		if (!modelId) return modelId;
-		if (process.env[`RUMMY_MODEL_${modelId}`]) return modelId;
-		for (const key of Object.keys(process.env)) {
-			if (key.startsWith("RUMMY_MODEL_") && process.env[key] === modelId)
-				return key.replace("RUMMY_MODEL_", "");
-		}
-		return modelId;
-	}
-
 	async execute({
 		type,
 		project,
 		sessionId,
 		currentRunId,
 		currentAlias,
-		parentRunId,
 		requestedModel,
 		loopPrompt,
 		noContext,
 		contextSize,
 		options,
 	}) {
-		// Determine turn sequence
-		const lastSeqRow = await this.#db.get_last_turn_sequence.get({
+		// Advance turn counter
+		const turn = await this.#knownStore.nextTurn(currentRunId);
+
+		// Create turn record for usage tracking
+		const turnRow = await this.#db.create_turn.get({
 			run_id: currentRunId,
+			sequence: turn,
 		});
-		const currentTurnSequence =
-			lastSeqRow && lastSeqRow.last_seq !== null ? lastSeqRow.last_seq + 1 : 0;
 
-		// Create turn in DB
-		const turnRow = await this.#db.create_empty_turn.get({
-			run_id: String(currentRunId || ""),
-			sequence: Number(currentTurnSequence),
-		});
-		const turnId = turnRow.id;
+		// Check state lock — no new turns while proposed entries exist
+		const unresolved = await this.#knownStore.getUnresolved(currentRunId);
+		if (unresolved.length > 0) {
+			throw new Error(`Blocked: run has ${unresolved.length} unresolved proposed entries.`);
+		}
 
-		// Build turn context via TurnBuilder + plugins (for indexing, system prompt)
+		// Build turn context via TurnBuilder + plugins (for system prompt)
 		const turnObj = await this.#turnBuilder.build({
 			type,
 			project,
@@ -61,10 +52,10 @@ export default class TurnExecutor {
 			model: requestedModel,
 			db: this.#db,
 			prompt: loopPrompt,
-			sequence: Number(currentTurnSequence),
+			sequence: turn,
 			hasUnknowns: true,
 			todoComplete: false,
-			turnId,
+			turnId: turnRow.id,
 			runId: currentRunId,
 			noContext,
 			contextSize,
@@ -73,16 +64,13 @@ export default class TurnExecutor {
 		await this.#hooks.run.progress.emit({
 			sessionId,
 			run: currentAlias,
-			turn: currentTurnSequence,
+			turn,
 			status: "thinking",
 		});
 
-		// Assemble context from known store (no message history)
+		// Assemble context from known store
 		const knownEntries = await this.#knownStore.getModelEntries(currentRunId);
 		const summaryLog = await this.#knownStore.getLog(currentRunId);
-
-		// Get previous turn's unknown list from known store
-		// (stored as a /:unknown entry by the previous turn)
 		const unknownEntry = (await this.#knownStore.getAll(currentRunId))
 			.find((r) => r.key === "/:unknown");
 		const unknownList = unknownEntry ? JSON.parse(unknownEntry.value || "[]") : [];
@@ -116,132 +104,96 @@ export default class TurnExecutor {
 		await this.#hooks.run.progress.emit({
 			sessionId,
 			run: currentAlias,
-			turn: currentTurnSequence,
+			turn,
 			status: "processing",
 		});
 
-		// Extract tool calls
-		const {
-			actionCalls,
-			knownCall,
-			unknownCall,
-			summaryCall,
-			promptCall,
-			flags,
-		} = ToolExtractor.extract(responseMessage);
+		// Extract and validate tool calls
+		const extracted = ToolExtractor.extract(responseMessage);
+		const { actionCalls, knownCall, unknownCall, summaryCall, promptCall, flags } = extracted;
 
-		// Validate required tools
 		const validationError = ToolExtractor.validate({ knownCall, summaryCall });
 		if (validationError) throw new Error(validationError);
 
+		// Validate tool arguments via AJV
+		for (const tc of responseMessage.tool_calls || []) {
+			const args = JSON.parse(tc.function?.arguments || "{}");
+			const { valid, errors } = ToolSchema.validate(tc.function?.name, args);
+			if (!valid) {
+				throw new Error(`Invalid ${tc.function?.name} args: ${errors.map((e) => e.message).join(", ")}`);
+			}
+		}
+
+		// Validate tool names for mode
+		const toolNames = (responseMessage.tool_calls || []).map((tc) => tc.function?.name);
+		const { valid: modeValid, invalid } = ToolSchema.validateMode(type, toolNames);
+		if (!modeValid) {
+			throw new Error(`Tools not allowed in ${type} mode: ${invalid.join(", ")}`);
+		}
+
 		// Commit usage stats
-		const usage = result.usage || {
-			prompt_tokens: 0,
-			completion_tokens: 0,
-			total_tokens: 0,
-		};
+		const usage = result.usage || {};
 		await this.#db.update_turn_stats.run({
-			id: turnId,
+			id: turnRow.id,
 			prompt_tokens: Number(usage.prompt_tokens || 0),
 			completion_tokens: Number(usage.completion_tokens || 0),
 			total_tokens: Number(usage.total_tokens || 0),
 			cost: Number(usage.cost || 0),
 		});
 
-		// Commit tool calls to turn_elements
-		const elements = await this.#db.get_turn_elements.all({ turn_id: turnId });
-		const assistantNode = elements.find((el) => el.tag_name === "assistant");
-		if (assistantNode) {
-			let seq = 0;
-			if (responseMessage.reasoning_content) {
-				await this.#db.insert_turn_element.run({
-					turn_id: turnId,
-					parent_id: assistantNode.id,
-					tag_name: "reasoning_content",
-					content: responseMessage.reasoning_content,
-					attributes: "{}",
-					sequence: seq++,
-				});
-			}
-			for (const tc of responseMessage.tool_calls || []) {
-				await this.#db.insert_turn_element.run({
-					turn_id: turnId,
-					parent_id: assistantNode.id,
-					tag_name: "tool_call",
-					content: null,
-					attributes: JSON.stringify({
-						id: tc.id,
-						name: tc.function?.name,
-						arguments: tc.function?.arguments,
-					}),
-					sequence: seq++,
-				});
-			}
-			await this.#db.insert_turn_element.run({
-				turn_id: turnId,
-				parent_id: assistantNode.id,
-				tag_name: "meta",
-				content: JSON.stringify({
-					prompt_tokens: usage.prompt_tokens,
-					completion_tokens: usage.completion_tokens,
-					total_tokens: usage.total_tokens,
-					cost: usage.cost || 0,
-					temperature:
-						options?.temperature ??
-						Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
-					alias: requestedModel,
-					actualModel: result.model,
-					displayModel: this.#resolveAlias(requestedModel),
-				}),
-				attributes: "{}",
-				sequence: seq++,
-			});
+		// Store reasoning as a known entry (hidden from model, audit only)
+		if (responseMessage.reasoning_content) {
+			await this.#knownStore.upsert(
+				currentRunId, turn,
+				`/:reasoning/${turn}`,
+				responseMessage.reasoning_content,
+				"info",
+			);
 		}
 
+		// Store the system prompt and user message sent this turn (audit)
+		await this.#knownStore.upsert(currentRunId, turn, `/:system/${turn}`, systemPrompt, "info");
+		await this.#knownStore.upsert(currentRunId, turn, `/:user/${turn}`, userMessage, "info");
+
 		// --- SERVER EXECUTION ORDER ---
+
 		// Step 1: Execute action tools, generate result keys
 		for (const call of actionCalls) {
 			const resultKey = await this.#knownStore.nextResultKey(currentRunId, call.name);
 			call.resultKey = resultKey;
 
-			// Store result entry as proposed (edits, commands) or pass (reads, drops)
 			const isProposed = call.name === "edit" || call.name === "run" || call.name === "delete";
-			const target = call.args.key || call.args.command || call.args.file || "";
+			const meta = { ...call.args };
+
 			await this.#knownStore.upsert(
-				currentRunId,
-				turnId,
-				resultKey,
-				JSON.stringify(call.args),
+				currentRunId, turn, resultKey,
+				"",
 				isProposed ? "proposed" : "pass",
-				{ target, toolCallId: call.id },
+				meta,
 			);
 		}
 
-		// Step 1b: Handle prompt separately (also proposed)
+		// Step 1b: Prompt (also proposed)
 		if (promptCall) {
 			const resultKey = await this.#knownStore.nextResultKey(currentRunId, "prompt");
 			promptCall.resultKey = resultKey;
 			await this.#knownStore.upsert(
-				currentRunId,
-				turnId,
-				resultKey,
-				JSON.stringify(promptCall.args),
+				currentRunId, turn, resultKey,
+				"",
 				"proposed",
-				{ target: promptCall.args.question || "", toolCallId: promptCall.id },
+				{ ...promptCall.args },
 			);
 		}
 
-		// Step 2: Process unknown — store for next turn
+		// Step 2: Process unknown
 		if (unknownCall) {
 			await this.#knownStore.upsert(
-				currentRunId,
-				turnId,
+				currentRunId, turn,
 				"/:unknown",
 				JSON.stringify(unknownCall.args.items || []),
 				"full",
 			);
 		} else {
-			// Clear previous unknowns if model didn't call unknown
 			await this.#knownStore.remove(currentRunId, "/:unknown");
 		}
 
@@ -249,39 +201,31 @@ export default class TurnExecutor {
 		for (const entry of knownCall.args.entries || []) {
 			if (!entry.key) continue;
 			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
+				currentRunId, turn,
 				entry.key,
 				entry.value,
 				"full",
 			);
 		}
 
-		// Step 4: Store summary as a result entry
+		// Step 4: Store summary
 		const summaryKey = await this.#knownStore.nextResultKey(currentRunId, "summary");
 		await this.#knownStore.upsert(
-			currentRunId,
-			turnId,
-			summaryKey,
+			currentRunId, turn, summaryKey,
 			summaryCall.args.text || "",
 			"summary",
-			{ toolCallId: summaryCall.id },
 		);
 
-		await turnObj.hydrate();
-
 		return {
+			turn,
+			turnId: turnRow.id,
 			turnObj,
-			turnId,
-			turnSequence: currentTurnSequence,
 			actionCalls,
 			knownCall,
 			unknownCall,
 			summaryCall,
 			promptCall,
 			flags,
-			elements,
-			responseMessage,
 		};
 	}
 }

@@ -103,8 +103,6 @@ async function main() {
 		const retentionDays = Number.parseInt(process.env.RUMMY_RETENTION_DAYS || "31", 10);
 		await db.purge_old_runs.run({ retention_days: retentionDays });
 		await db.purge_stale_sessions();
-		await db.purge_consumed_context();
-		await db.purge_orphaned_editor_promotions();
 		const dbSizeAfter = statSync(dbPath).size;
 		const dbSizeMB = (dbSizeAfter / 1024 / 1024).toFixed(2);
 		const freed = dbSizeBefore - dbSizeAfter;

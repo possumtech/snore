@@ -1,16 +1,4 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const schemaStrings = {
-	ask: readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
-	act: readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
-};
-const schemas = {
-	ask: JSON.parse(schemaStrings.ask),
-	act: JSON.parse(schemaStrings.act),
-};
+import ToolSchema from "../../domain/schema/ToolSchema.js";
 
 export default class OllamaClient {
 	#baseUrl;
@@ -22,25 +10,13 @@ export default class OllamaClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		// Strip prefill if present — structured outputs don't use it
-		let finalMessages = messages;
-		if (messages.at(-1)?.role === "assistant") {
-			finalMessages = messages.slice(0, -1);
-		}
+		const tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
 
-		// Inject schema into system prompt
-		const schemaText = schemaStrings[options.mode] || schemaStrings.ask;
-		const systemMsg = finalMessages.find((m) => m.role === "system");
-		if (systemMsg) {
-			systemMsg.content += `\n\n## Response JSON Schema\n\`\`\`json\n${schemaText}\n\`\`\``;
-		}
-
-		const schema = schemas[options.mode] || schemas.ask;
 		const body = {
 			model,
-			messages: finalMessages,
+			messages,
+			tools,
 			think: true,
-			format: schema,
 		};
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
@@ -68,14 +44,19 @@ export default class OllamaClient {
 			);
 			msg.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
+
+			// Normalize tool_calls arguments (Ollama returns parsed objects)
+			for (const tc of msg.tool_calls || []) {
+				if (tc.function && typeof tc.function.arguments !== "string") {
+					tc.function.arguments = JSON.stringify(tc.function.arguments);
+				}
+			}
 		}
 
 		return data;
 	}
 
 	async getContextSize(model) {
-		// Ollama lazy-loads models — first request can be slow.
-		// Retry up to 3 times with increasing delays.
 		for (let attempt = 0; attempt < 3; attempt++) {
 			try {
 				const response = await fetch(`${this.#baseUrl}/api/show`, {

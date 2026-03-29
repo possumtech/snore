@@ -115,7 +115,7 @@ export default class RepoMap {
 						size: null,
 						symbol_tokens: symbolWeight,
 					});
-					await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
+					await this.#db.clear_repo_map_tags.run({ file_id: fileId });
 					for (const sym of symbols) {
 						await this.#db.insert_repo_map_tag.run({
 							file_id: fileId,
@@ -152,7 +152,7 @@ export default class RepoMap {
 					size: null,
 					symbol_tokens: symbolWeight,
 				});
-				await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
+				await this.#db.clear_repo_map_tags.run({ file_id: fileId });
 				for (const sym of symbols) {
 					await this.#db.insert_repo_map_tag.run({
 						file_id: fileId,
@@ -166,211 +166,8 @@ export default class RepoMap {
 			}
 		}
 
-		// Cross-reference scan: for each re-indexed file, find which external
-		// symbols its content references. Runs after all symbol extraction so
-		// the full tag set is available.
-		if (reindexedFiles.length > 0) {
-			await this.#populateReferences(reindexedFiles);
-		}
+		// Cross-reference scan removed — heat will be derived from
+		// known_entries.meta (symbol data) rather than a separate table.
 	}
 
-	async #populateReferences(reindexedFiles) {
-		// Build symbol → defining file_ids map from all project tags
-		const allTags = await this.#db.get_project_repo_map.all({
-			project_id: this.#projectId,
-		});
-		const symbolDefs = new Map();
-		for (const row of allTags) {
-			if (!row.name || row.name.length < 3) continue;
-			if (!symbolDefs.has(row.name)) symbolDefs.set(row.name, new Set());
-			symbolDefs.get(row.name).add(row.id);
-		}
-
-		// Deduplicate symbol names and build a single regex for whole-word matching
-		const symbolNames = [...symbolDefs.keys()];
-		if (symbolNames.length === 0) return;
-
-		// Escape regex special chars in symbol names
-		const escaped = symbolNames.map((n) =>
-			n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-		);
-		const pattern = new RegExp(`\\b(?:${escaped.join("|")})\\b`, "g");
-
-		for (const { fileId, content } of reindexedFiles) {
-			const seen = new Set();
-			for (const match of content.matchAll(pattern)) {
-				const name = match[0];
-				if (seen.has(name)) continue;
-				seen.add(name);
-
-				const definingFileIds = symbolDefs.get(name);
-				if (!definingFileIds) continue;
-
-				// Self-exclusion: skip symbols defined in this file
-				if (definingFileIds.has(fileId)) {
-					if (definingFileIds.size === 1) continue;
-				}
-
-				await this.#db.insert_repo_map_ref.run({
-					file_id: fileId,
-					symbol_name: name,
-				});
-			}
-		}
-	}
-
-	#deriveFidelity(file, currentTurn, decayThreshold) {
-		if (file.client_constraint === "excluded") return "excluded";
-		if (file.client_constraint === "full:readonly") return "full:readonly";
-		if (file.client_constraint === "full") return "full";
-
-		if (file.has_agent_promotion) {
-			const age = currentTurn - (file.last_attention_turn || 0);
-			if (age <= decayThreshold) return "full";
-			return "decayed";
-		}
-
-		if (file.has_editor_promotion) return "full:readonly";
-
-		// Unpromoted: root files get symbols, everything else is path.
-		// Heat-based promotion (path → symbols) happens in renderPerspective.
-		if (file.is_root) return "symbols";
-		return "path";
-	}
-
-	async renderPerspective(options = {}) {
-		const percent = Number.parseInt(
-			process.env.RUMMY_MAP_MAX_PERCENT || "10",
-			10,
-		);
-		let budget = options.contextSize
-			? Math.floor(options.contextSize * (percent / 100))
-			: null;
-
-		if (process.env.RUMMY_MAP_TOKEN_BUDGET) {
-			const cap = Number.parseInt(process.env.RUMMY_MAP_TOKEN_BUDGET, 10);
-			budget = budget ? Math.min(budget, cap) : cap;
-		}
-
-		if (!budget)
-			throw new Error(
-				"Context budget unavailable. Either the model's context size could not be fetched (check your model alias) or RUMMY_MAP_TOKEN_BUDGET is not set.",
-			);
-
-		const runId = options.runId || null;
-
-		const rankedFiles = await this.#db.get_ranked_repo_map.all({
-			project_id: this.#projectId,
-			run_id: runId,
-		});
-
-		const tagMap = new Map();
-		const allTags = await this.#db.get_project_repo_map.all({
-			project_id: this.#projectId,
-			run_id: runId,
-		});
-		for (const row of allTags) {
-			if (!tagMap.has(row.path)) tagMap.set(row.path, []);
-			if (row.name) {
-				tagMap.get(row.path).push({
-					name: row.name,
-					type: row.type,
-					params: row.params,
-					line: row.line,
-				});
-			}
-		}
-
-		const finalFiles = [];
-		let currentTokens = 0;
-		const currentTurn = options.sequence ?? 0;
-		const decayThreshold = Number.parseInt(
-			process.env.RUMMY_DECAY_THRESHOLD || "12",
-			10,
-		);
-
-		if (runId) {
-			await this.#db.decay_agent_promotions.run({
-				run_id: runId,
-				current_turn: currentTurn,
-				decay_threshold: decayThreshold,
-			});
-		}
-
-		for (const file of rankedFiles) {
-			const baseFidelity = this.#deriveFidelity(
-				file,
-				currentTurn,
-				decayThreshold,
-			);
-
-			if (baseFidelity === "excluded") continue;
-			if (baseFidelity === "decayed") continue;
-
-			// Full-content files: promoted by client, agent, or editor
-			if (baseFidelity === "full" || baseFidelity === "full:readonly") {
-				const fullPath = join(this.#ctx.root, file.path);
-				let content = "";
-				try {
-					content = readFileSync(fullPath, "utf8");
-				} catch (err) {
-					content = `Error reading file: ${err.message}`;
-				}
-				const tokens = estimateTokens(content);
-				const displayFile = {
-					path: file.path,
-					size: file.size,
-					tokens,
-					content,
-					fidelity: baseFidelity,
-				};
-
-				finalFiles.push(displayFile);
-				currentTokens += estimateTokens(JSON.stringify(displayFile));
-				continue;
-			}
-
-			// Symbols fidelity: root files, or path files promoted by heat
-			let fidelity = baseFidelity;
-			if (fidelity === "path" && file.heat >= 2) {
-				fidelity = "symbols";
-			}
-
-			const symbols =
-				fidelity === "symbols"
-					? (tagMap.get(file.path) || []).map((s) =>
-							s.params ? `${s.name}(${s.params})` : s.name,
-						)
-					: [];
-
-			let displayFile =
-				symbols.length > 0
-					? { path: file.path, size: file.size, symbols, fidelity }
-					: { path: file.path, size: file.size, fidelity: "path" };
-
-			let finalTokens =
-				file.symbol_tokens || estimateTokens(JSON.stringify(displayFile));
-
-			if (currentTokens + finalTokens > budget) {
-				// Degrade to path if symbols don't fit
-				if (fidelity === "symbols") {
-					displayFile = { path: file.path, size: file.size, fidelity: "path" };
-					finalTokens = estimateTokens(JSON.stringify(displayFile));
-					if (currentTokens + finalTokens > budget) continue;
-				} else {
-					continue;
-				}
-			}
-
-			displayFile.tokens = finalTokens;
-			displayFile.heat = file.heat;
-			finalFiles.push(displayFile);
-			currentTokens += finalTokens;
-		}
-
-		return {
-			files: finalFiles,
-			usage: { context_used: currentTokens, context_budget: budget },
-		};
-	}
 }

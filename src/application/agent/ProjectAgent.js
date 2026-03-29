@@ -2,21 +2,14 @@ import LlmProvider from "../../domain/llm/LlmProvider.js";
 import TurnBuilder from "../../domain/turn/TurnBuilder.js";
 import SessionManager from "../session/SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
-import FindingsManager from "./FindingsManager.js";
-import FindingsProcessor from "./FindingsProcessor.js";
-import StateEvaluator from "./StateEvaluator.js";
+import KnownStore from "./KnownStore.js";
 import TurnExecutor from "./TurnExecutor.js";
 
-/**
- * ProjectAgent: Primary entry point and coordinator for the outside world.
- * Delegates specialized tasks to focused managers.
- */
 export default class ProjectAgent {
 	#db;
 	#hooks;
 	#sessionManager;
 	#agentLoop;
-	#findingsManager;
 
 	constructor(db, hooks) {
 		this.#db = db;
@@ -26,23 +19,16 @@ export default class ProjectAgent {
 		const llm = new LlmProvider(hooks, db);
 		hooks.models = llm.capabilities;
 		const turnBuilder = new TurnBuilder(hooks);
-		this.#findingsManager = new FindingsManager(db);
+		const knownStore = new KnownStore(db);
 
-		const turnExecutor = new TurnExecutor(db, llm, hooks, turnBuilder);
-		const findingsProcessor = new FindingsProcessor(
-			db,
-			this.#findingsManager,
-			hooks,
-		);
-		const stateEvaluator = new StateEvaluator(db, hooks);
+		const turnExecutor = new TurnExecutor(db, llm, hooks, knownStore, turnBuilder);
 
 		this.#agentLoop = new AgentLoop(
 			db,
 			llm,
 			hooks,
 			turnExecutor,
-			findingsProcessor,
-			stateEvaluator,
+			knownStore,
 			this.#sessionManager,
 		);
 	}

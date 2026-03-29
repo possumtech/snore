@@ -1,12 +1,4 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const toolDefinitions = {
-	ask: JSON.parse(readFileSync(join(__dirname, "../../domain/schema/tools.ask.json"), "utf8")),
-	act: JSON.parse(readFileSync(join(__dirname, "../../domain/schema/tools.act.json"), "utf8")),
-};
+import ToolSchema from "../../domain/schema/ToolSchema.js";
 
 const EMPTY_SCHEMA = {
 	type: "json_schema",
@@ -55,7 +47,7 @@ export default class OpenRouterClient {
 			body.temperature = options.temperature;
 
 		// Native tool calling
-		body.tools = toolDefinitions[options.mode] || toolDefinitions.ask;
+		body.tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
 		body.tool_choice = "required";
 
 		// Empty-object shim: explicit signal to not populate content

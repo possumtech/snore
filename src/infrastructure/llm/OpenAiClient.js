@@ -1,29 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import schemaToGbnf from "./gbnf.js";
+import ToolSchema from "../../domain/schema/ToolSchema.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const grammars = {
-	ask: schemaToGbnf(
-		JSON.parse(
-			readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
-		),
-		{ thinking: true },
-	),
-	act: schemaToGbnf(
-		JSON.parse(
-			readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
-		),
-		{ thinking: true },
-	),
-};
-
-/**
- * OpenAiClient: For OpenAI-compatible local servers (llama.cpp, vllm, etc.)
- * Uses GBNF grammar for schema enforcement with required <think> preamble.
- * llama-server separates thinking into reasoning_content automatically.
- */
 export default class OpenAiClient {
 	#baseUrl;
 	#apiKey;
@@ -34,16 +10,16 @@ export default class OpenAiClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		let finalMessages = messages;
-		if (messages.at(-1)?.role === "assistant") {
-			finalMessages = messages.slice(0, -1);
-		}
+		const tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
 
-		const body = { model, messages: finalMessages };
+		const body = {
+			model,
+			messages,
+			tools,
+			tool_choice: "required",
+		};
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
-
-		body.grammar = grammars[options.mode] || grammars.ask;
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const headers = { "Content-Type": "application/json" };
@@ -69,18 +45,15 @@ export default class OpenAiClient {
 			const msg = choice.message;
 			if (!msg) continue;
 
-			if (msg.reasoning && !msg.reasoning_content) {
-				msg.reasoning_content = msg.reasoning;
-			}
+			// Normalize reasoning
+			const parts = [msg.reasoning_content, msg.reasoning, msg.thinking].filter(Boolean);
+			msg.reasoning_content = parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 
-			// Extract <think> blocks from content if server didn't separate them
-			const thinkMatch = msg.content?.match(/^<think>([\s\S]*?)<\/think>\s*/);
-			if (thinkMatch) {
-				const extracted = thinkMatch[1].trim();
-				msg.reasoning_content = msg.reasoning_content
-					? `${msg.reasoning_content}\n${extracted}`
-					: extracted;
-				msg.content = msg.content.replace(/^<think>[\s\S]*?<\/think>\s*/, "");
+			// Normalize tool_calls arguments
+			for (const tc of msg.tool_calls || []) {
+				if (tc.function && typeof tc.function.arguments !== "string") {
+					tc.function.arguments = JSON.stringify(tc.function.arguments);
+				}
 			}
 		}
 
