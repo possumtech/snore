@@ -1,20 +1,20 @@
 import ToolExtractor from "./ToolExtractor.js";
 import ContextAssembler from "./ContextAssembler.js";
 import ToolSchema from "../../domain/schema/ToolSchema.js";
+import PromptManager from "../../domain/prompt/PromptManager.js";
+import RummyContext from "../../domain/turn/RummyContext.js";
 
 export default class TurnExecutor {
 	#db;
 	#llmProvider;
 	#hooks;
 	#knownStore;
-	#turnBuilder;
 
-	constructor(db, llmProvider, hooks, knownStore, turnBuilder) {
+	constructor(db, llmProvider, hooks, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
-		this.#turnBuilder = turnBuilder;
 	}
 
 	async execute({
@@ -44,22 +44,21 @@ export default class TurnExecutor {
 			throw new Error(`Blocked: run has ${unresolved.length} unresolved proposed entries.`);
 		}
 
-		// Build turn context via TurnBuilder + plugins (for system prompt)
-		const turnObj = await this.#turnBuilder.build({
-			type,
-			project,
-			sessionId,
-			model: requestedModel,
-			db: this.#db,
-			prompt: loopPrompt,
-			sequence: turn,
-			hasUnknowns: true,
-			todoComplete: false,
-			turnId: turnRow.id,
-			runId: currentRunId,
-			noContext,
-			contextSize,
+		// Run onTurn hooks for side effects (reindex, modified file detection)
+		const hookRoot = {
+			tag: "turn", attrs: {}, content: null,
+			children: [
+				{ tag: "system", attrs: {}, content: null, children: [] },
+				{ tag: "context", attrs: {}, content: null, children: [] },
+				{ tag: "user", attrs: {}, content: null, children: [] },
+				{ tag: "assistant", attrs: {}, content: null, children: [] },
+			],
+		};
+		const rummy = new RummyContext(hookRoot, {
+			db: this.#db, project, type, sequence: turn,
+			runId: currentRunId, turnId: turnRow.id, noContext, contextSize,
 		});
+		await this.#hooks.processTurn(rummy);
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
@@ -69,23 +68,20 @@ export default class TurnExecutor {
 		});
 
 		// Assemble context from known store
+		const systemPrompt = await PromptManager.getSystemPrompt(type);
 		const knownEntries = await this.#knownStore.getModelEntries(currentRunId);
 		const summaryLog = await this.#knownStore.getLog(currentRunId);
 		const unknownEntry = (await this.#knownStore.getAll(currentRunId))
 			.find((r) => r.key === "/:unknown");
 		const unknownList = unknownEntry ? JSON.parse(unknownEntry.value || "[]") : [];
 
-		// Get system prompt from turnObj
-		const turnMessages = await turnObj.serialize();
-		const systemPrompt = turnMessages.find((m) => m.role === "system")?.content || "";
-		const userMessage = turnMessages.find((m) => m.role === "user")?.content || loopPrompt;
-
 		const messages = ContextAssembler.assemble({
 			systemPrompt,
+			mode: type,
 			knownEntries,
 			unknownList,
 			summaryLog,
-			userMessage,
+			userMessage: loopPrompt,
 		});
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(
@@ -219,7 +215,6 @@ export default class TurnExecutor {
 		return {
 			turn,
 			turnId: turnRow.id,
-			turnObj,
 			actionCalls,
 			knownCall,
 			unknownCall,

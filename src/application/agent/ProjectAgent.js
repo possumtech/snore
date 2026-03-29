@@ -1,5 +1,4 @@
 import LlmProvider from "../../domain/llm/LlmProvider.js";
-import TurnBuilder from "../../domain/turn/TurnBuilder.js";
 import SessionManager from "../session/SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
 import KnownStore from "./KnownStore.js";
@@ -18,10 +17,9 @@ export default class ProjectAgent {
 
 		const llm = new LlmProvider(hooks, db);
 		hooks.models = llm.capabilities;
-		const turnBuilder = new TurnBuilder(hooks);
 		const knownStore = new KnownStore(db);
 
-		const turnExecutor = new TurnExecutor(db, llm, hooks, knownStore, turnBuilder);
+		const turnExecutor = new TurnExecutor(db, llm, hooks, knownStore);
 
 		this.#agentLoop = new AgentLoop(
 			db,
