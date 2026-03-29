@@ -49,8 +49,9 @@ describe("KnownStore integration", () => {
 			assert.strictEqual(KnownStore.domain("/:summary/1"), "result");
 		});
 
-		it("/:unknown is known domain (special case)", () => {
-			assert.strictEqual(KnownStore.domain("/:unknown"), "known");
+		it("/:unknown/* is known domain", () => {
+			assert.strictEqual(KnownStore.domain("/:unknown/1"), "known");
+			assert.strictEqual(KnownStore.domain("/:unknown/42"), "known");
 		});
 	});
 
@@ -81,7 +82,7 @@ describe("KnownStore integration", () => {
 	describe("upsert and getAll", () => {
 		it("inserts a file entry", async () => {
 			await store.upsert(RUN_ID, 0, "src/app.js", "const x = 1;", "full");
-			const all = await store.getAll(RUN_ID);
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "src/app.js");
 			assert.ok(entry);
 			assert.strictEqual(entry.domain, "file");
@@ -91,7 +92,7 @@ describe("KnownStore integration", () => {
 
 		it("inserts a knowledge entry", async () => {
 			await store.upsert(RUN_ID, 0, "/:known/db_type", "SQLite", "full");
-			const all = await store.getAll(RUN_ID);
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "/:known/db_type");
 			assert.ok(entry);
 			assert.strictEqual(entry.domain, "known");
@@ -100,7 +101,7 @@ describe("KnownStore integration", () => {
 
 		it("inserts a result entry", async () => {
 			await store.upsert(RUN_ID, 1, "/:read/1", "file contents", "pass", { meta: { command: "read src/app.js" } });
-			const all = await store.getAll(RUN_ID);
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "/:read/1");
 			assert.ok(entry);
 			assert.strictEqual(entry.domain, "result");
@@ -119,7 +120,7 @@ describe("KnownStore integration", () => {
 
 		it("upsert preserves meta when new meta is null", async () => {
 			await store.upsert(RUN_ID, 0, "/:read/1", "updated", "pass");
-			const all = await store.getAll(RUN_ID);
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "/:read/1");
 			assert.ok(entry.meta, "meta should be preserved from first write");
 		});
@@ -128,11 +129,11 @@ describe("KnownStore integration", () => {
 	describe("remove", () => {
 		it("deletes an entry", async () => {
 			await store.upsert(RUN_ID, 0, "/:known/temp", "temporary", "full");
-			let all = await store.getAll(RUN_ID);
+			let all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			assert.ok(all.find((e) => e.key === "/:known/temp"));
 
 			await store.remove(RUN_ID, "/:known/temp");
-			all = await store.getAll(RUN_ID);
+			all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			assert.ok(!all.find((e) => e.key === "/:known/temp"));
 		});
 	});
@@ -148,7 +149,7 @@ describe("KnownStore integration", () => {
 			const after = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(after.length, 0);
 
-			const all = await store.getAll(RUN_ID);
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "/:edit/1");
 			assert.strictEqual(entry.state, "pass");
 			assert.strictEqual(entry.value, "edit applied");
@@ -158,7 +159,7 @@ describe("KnownStore integration", () => {
 			await store.upsert(RUN_ID, 1, "/:run/1", "", "proposed", { meta: { command: "npm test" } });
 			await store.resolve(RUN_ID, "/:run/1", "warn", "rejected by user");
 
-			const all = await store.getAll(RUN_ID);
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "/:run/1");
 			assert.strictEqual(entry.state, "warn");
 		});
@@ -236,8 +237,8 @@ describe("KnownStore integration", () => {
 			assert.strictEqual(old.value, "");
 		});
 
-		it("hides internal keys (/:system/*, /:user/*, /:reasoning/*) but shows /:unknown", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:unknown", "[\"test\"]", "full");
+		it("hides internal keys but shows sticky unknowns", async () => {
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:unknown/1", "What is the session store?", "full");
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:system/5", "prompt text", "info");
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:user/5", "user text", "info");
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:reasoning/5", "thinking...", "info");
@@ -246,9 +247,9 @@ describe("KnownStore integration", () => {
 			assert.ok(!model.find((e) => e.key === "/:system/5"));
 			assert.ok(!model.find((e) => e.key === "/:user/5"));
 			assert.ok(!model.find((e) => e.key === "/:reasoning/5"));
-			// /:unknown is now shown in context as unknown items
 			const unknowns = model.filter((e) => e.state === "unknown");
 			assert.ok(unknowns.length > 0, "unknowns should appear in context");
+			assert.strictEqual(unknowns[0].value, "What is the session store?");
 		});
 	});
 

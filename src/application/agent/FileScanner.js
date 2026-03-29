@@ -61,10 +61,10 @@ export default class FileScanner {
 	}
 
 	async #syncRun(runId, diskFiles, symbolMap, currentTurn) {
-		const existing = await this.#knownStore.getAll(runId);
+		const existing = await this.#knownStore.getFileEntries(runId);
 		const fileKeys = new Map();
 		for (const entry of existing) {
-			if (entry.domain === "file") fileKeys.set(entry.key, entry);
+			fileKeys.set(entry.key, entry);
 		}
 
 		for (const [relPath, { content, hash }] of diskFiles) {

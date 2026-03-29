@@ -212,17 +212,14 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Step 2: Process unknowns
+		// Step 2: Process unknowns — sticky, deduplicated via SQL
 		if (unknownCalls.length > 0) {
-			const items = unknownCalls.map((c) => c.args.text);
-			await this.#knownStore.upsert(
-				currentRunId, turn,
-				"/:unknown",
-				JSON.stringify(items),
-				"full",
-			);
-		} else {
-			await this.#knownStore.remove(currentRunId, "/:unknown");
+			const existingValues = await this.#knownStore.getUnknownValues(currentRunId);
+			for (const call of unknownCalls) {
+				if (existingValues.has(call.args.text)) continue;
+				const key = await this.#knownStore.nextResultKey(currentRunId, "unknown");
+				await this.#knownStore.upsert(currentRunId, turn, key, call.args.text, "full");
+			}
 		}
 
 		// Step 3: Process writes

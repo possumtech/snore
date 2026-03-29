@@ -244,19 +244,13 @@ export default class AgentLoop {
 		}
 
 		// All resolved — check for rejections
-		const allResults = (await this.#knownStore.getAll(runId))
-			.filter((r) => r.domain === "result");
-		const hasRejection = allResults.some((r) => r.state === "warn");
-
-		if (hasRejection) {
+		if (await this.#knownStore.hasRejections(runId)) {
 			await this.#db.update_run_status.run({ id: runId, status: "running" });
 			return { run: runAlias, status: "resolved" };
 		}
 
 		// Auto-resume if any action was accepted
-		const hasAccepted = allResults.some(
-			(r) => r.state === "pass" && /^\/:(?:edit|run|delete)\//.test(r.key),
-		);
+		const hasAccepted = await this.#knownStore.hasAcceptedActions(runId);
 		if (hasAccepted) {
 			return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
 		}

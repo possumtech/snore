@@ -78,7 +78,7 @@ describe("E2E: Tool Calling Foundation", () => {
 		assert.strictEqual(result.status, "completed");
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
-		const all = await knownStore.getAll(runRow.id);
+		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 
 		// Should have file entries from the scanner
 		const fileEntries = all.filter((e) => e.domain === "file");
@@ -99,7 +99,7 @@ describe("E2E: Tool Calling Foundation", () => {
 		assert.strictEqual(result.status, "completed");
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
-		const all = await knownStore.getAll(runRow.id);
+		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 
 		// Check if the model used the write tool
 		const knownEntries = all.filter((e) => e.domain === "known" && e.key !== "/:unknown");

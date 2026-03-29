@@ -26,7 +26,8 @@ CREATE TABLE known_entries (
     , state TEXT NOT NULL
     , hash TEXT
     , meta JSON
-    , relevance INTEGER NOT NULL DEFAULT 0
+    , tokens INTEGER NOT NULL DEFAULT 0
+    , refs INTEGER NOT NULL DEFAULT 0
     , write_count INTEGER NOT NULL DEFAULT 1
     , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     , updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -44,8 +45,10 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 **Columns:**
 - `turn` — integer sequence number. For files, the most recent turn that engaged with the file (heat signal). For results, the turn that produced them. Not a FK — just a number.
 - `hash` — content hash (SHA-256) for change detection. The file scanner compares this against the current disk hash to detect modifications without re-reading contents.
-- `meta` — JSON metadata. Files store symbols here. Tool results store the original command/args. Edits store file, search, replace.
-- `relevance` — integer, default 0. Reserved for future heat engine / context budgeting.
+- `meta` — JSON metadata. Files store symbols here. Tool results store the original command/args.
+- `tokens` — integer, computed by SQLite on UPSERT: `length(value) / 4`. Tracks the token cost of including this entry in context.
+- `refs` — integer, default 0. Cross-reference count. Reserved for the relevance engine.
+- `write_count` — integer, incremented on every UPSERT. Tracks volatility (oscillation detection).
 
 ### 1.2 Domains & States
 
@@ -186,9 +189,12 @@ multiple times to persist multiple facts.
 **`summary`** — creates a `/:summary/N` entry with domain `result`, state `summary`,
 and the text as value.
 
-**`unknown`** — each call adds one item to the unknown list. The server collects
-all `unknown` calls into an array and stores it as `/:unknown` (domain `known`,
-state `full`). If no `unknown` calls, `/:unknown` is deleted.
+**`unknown`** — each call creates a sticky `/:unknown/{seq}` entry (domain `known`,
+state `full`). Unknowns persist across turns until explicitly dropped by the model
+via `drop("/:unknown/N")`. The server deduplicates on insert — identical text
+is not re-registered. Unknowns appear in context position 7 (before the prompt)
+every turn. The server warns and retries (up to 3 times) if the model attempts
+to complete with unresolved unknowns and no investigation tools called.
 
 **`read`** — for file keys: reads file from disk, updates the known entry value with
 file contents, sets state to `full`. For `/:known/*` or `/:[tool]/*` keys: promotes
@@ -228,7 +234,7 @@ Blocks until user responds. On resolution, value is the selected answer.
 ### 2.4 Enforcement Layers
 
 1. **Tool definitions** — `strict: true` constrained decoding on tool argument schemas.
-2. **`tool_choice: "required"`** — model must call at least one tool. Free-form content is not suppressed — any text the model emits alongside tools is captured as reasoning.
+2. **`tool_choice: "required"`** — model must call at least one tool. Free-form content is not suppressed or validated — any text the model emits alongside tools is captured and stored as `/:reasoning/{turn}` (audit, hidden from model).
 3. **Prompt instructions + examples** — system prompt describes tool purposes and constraints.
 4. **Server-side validation** — confirms `summary` is present. Rejects and retries.
 
