@@ -165,6 +165,7 @@ describe("KnownStore integration", () => {
 	});
 
 	describe("model projection", () => {
+		// Expansion rule: turn > 0 = expanded, turn == 0 = collapsed
 		const CURRENT_TURN = 5;
 
 		it("hides file:ignore entries", async () => {

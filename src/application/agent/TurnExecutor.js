@@ -100,6 +100,11 @@ export default class TurnExecutor {
 			{ model: requestedModel, sessionId, runId: currentRunId },
 		);
 
+		// DEBUG: dump what we're sending
+		if (process.env.RUMMY_DEBUG === "true") {
+			console.log("[DEBUG] Messages:", JSON.stringify(filteredMessages, null, 2));
+		}
+
 		// Call LLM with tool calling
 		const result = await this.#llmProvider.completion(
 			filteredMessages,
@@ -107,6 +112,11 @@ export default class TurnExecutor {
 			{ temperature: options?.temperature, mode: type },
 		);
 		const responseMessage = result.choices?.[0]?.message;
+
+		if (process.env.RUMMY_DEBUG === "true") {
+			console.log("[DEBUG] Response tool_calls:", JSON.stringify(responseMessage?.tool_calls, null, 2));
+			console.log("[DEBUG] Response content:", responseMessage?.content);
+		}
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
@@ -160,7 +170,7 @@ export default class TurnExecutor {
 
 		// Store the system prompt and user message sent this turn (audit)
 		await this.#knownStore.upsert(currentRunId, turn, `/:system/${turn}`, systemPrompt, "info");
-		await this.#knownStore.upsert(currentRunId, turn, `/:user/${turn}`, userMessage, "info");
+		await this.#knownStore.upsert(currentRunId, turn, `/:user/${turn}`, loopPrompt, "info");
 
 		// --- SERVER EXECUTION ORDER ---
 

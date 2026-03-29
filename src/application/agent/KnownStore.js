@@ -117,7 +117,7 @@ export default class KnownStore {
 			// Hide proposed results
 			if (row.domain === "result" && row.state === "proposed") continue;
 
-			const expanded = row.turn === currentTurn && currentTurn > 0;
+			const expanded = row.turn > 0;
 			const modelState = KnownStore.#modelState(row.domain, row.state, expanded);
 
 			entries.push({

@@ -121,18 +121,28 @@ export default class AgentLoop {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				loopIteration++;
 
-				const result = await this.#turnExecutor.execute({
-					type,
-					project,
-					sessionId,
-					currentRunId,
-					currentAlias,
-					requestedModel,
-					loopPrompt: prompt,
-					noContext,
-					contextSize,
-					options,
-				});
+				let result;
+				const turnPrompt = loopIteration === 1 ? prompt : "Continue.";
+				try {
+					result = await this.#turnExecutor.execute({
+						type,
+						project,
+						sessionId,
+						currentRunId,
+						currentAlias,
+						requestedModel,
+						loopPrompt: turnPrompt,
+						noContext,
+						contextSize,
+						options,
+					});
+				} catch (err) {
+					if (err.message.includes("missing required") && loopIteration < MAX_LOOP_ITERATIONS) {
+						console.warn(`[RUMMY] Validation retry: ${err.message}`);
+						continue;
+					}
+					throw err;
+				}
 
 				// Emit usage
 				const runUsage = await this.#db.get_run_usage.get({ run_id: currentRunId });
