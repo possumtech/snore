@@ -12,10 +12,10 @@ Project Condi extends the agent's memory across runs by persisting `known` items
 
 Modify the `known` array from `string[]` to `{key, value}[]`.
 
-Key constraint: `^/:known/[a-z0-9_]{1,23}$`
+Key constraint: `^/:known/[a-z0-9_]+$`
 
 Add to schema description:
-> Known item keys must be lowercase, use underscores instead of spaces, and start with "/:known/". Example: `/:known/user_nickname`, `/:known/auth_flow`. Values may reference other keys by name. Blank key ("") to remove.
+> Known item keys are short lowercase slugs starting with "/:known/". Use underscores instead of spaces. Prefer descriptive names over abbreviations — `/:known/oauth2_token_rotation_policy` over `/:known/auth_tok_rot`. Values may reference other keys by name. Blank key ("") to remove.
 
 ## Phase 2: Persistence
 
