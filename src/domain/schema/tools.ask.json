@@ -1,0 +1,133 @@
+[
+	{
+		"type": "function",
+		"function": {
+			"name": "known",
+			"description": "Emit known facts, analysis, and conclusions as keyed entries. Required every turn.",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["entries"],
+				"additionalProperties": false,
+				"properties": {
+					"entries": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": ["key", "value"],
+							"additionalProperties": false,
+							"properties": {
+								"key": { "type": "string", "description": "Key name. Knowledge keys use /:known/ prefix. Empty string to delete." },
+								"value": { "type": "string", "description": "The knowledge value." }
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "summary",
+			"description": "One-liner status update or answer. Required every turn. Max 80 characters.",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["text"],
+				"additionalProperties": false,
+				"properties": {
+					"text": { "type": "string", "minLength": 1, "maxLength": 80 }
+				}
+			}
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "unknown",
+			"description": "Things you still need to find out.",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["items"],
+				"additionalProperties": false,
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": { "type": "string" },
+						"minItems": 1
+					}
+				}
+			}
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "read",
+			"description": "Load a key's value into context. Key is a relative file path (src/app.js), a /:known/ entry, or a /:[tool]/ result.",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["key", "reason"],
+				"additionalProperties": false,
+				"properties": {
+					"key": { "type": "string", "description": "Relative file path, /:known/ key, or /:[tool]/ key." },
+					"reason": { "type": "string", "description": "Why this key is needed." }
+				}
+			}
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "drop",
+			"description": "Demote a key from context. Key is a relative file path, /:known/ entry, or /:[tool]/ result.",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["key", "reason"],
+				"additionalProperties": false,
+				"properties": {
+					"key": { "type": "string", "description": "Relative file path, /:known/ key, or /:[tool]/ key." },
+					"reason": { "type": "string", "description": "Why this is no longer relevant." }
+				}
+			}
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "env",
+			"description": "Run a read-only shell command to explore the environment (ls, grep, git log, etc).",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["command", "reason"],
+				"additionalProperties": false,
+				"properties": {
+					"command": { "type": "string", "description": "Shell command to execute (read-only)." },
+					"reason": { "type": "string", "description": "What information this gathers." }
+				}
+			}
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "prompt",
+			"description": "Ask the user a multiple choice question.",
+			"strict": true,
+			"parameters": {
+				"type": "object",
+				"required": ["question", "options"],
+				"additionalProperties": false,
+				"properties": {
+					"question": { "type": "string" },
+					"options": { "type": "array", "items": { "type": "string" }, "minItems": 2 }
+				}
+			}
+		}
+	}
+]
