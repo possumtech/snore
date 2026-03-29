@@ -106,9 +106,9 @@ export default class TurnExecutor {
 
 		// Extract and validate tool calls
 		const extracted = ToolExtractor.extract(responseMessage);
-		const { actionCalls, knownCall, unknownCall, summaryCall, promptCall, flags } = extracted;
+		const { actionCalls, writeCalls, unknownCalls, summaryCall, promptCall, flags } = extracted;
 
-		const validationError = ToolExtractor.validate({ knownCall, summaryCall });
+		const validationError = ToolExtractor.validate({ summaryCall });
 		if (validationError) throw new Error(validationError);
 
 		// Validate tool arguments via AJV
@@ -181,25 +181,25 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Step 2: Process unknown
-		if (unknownCall) {
+		// Step 2: Process unknowns
+		if (unknownCalls.length > 0) {
+			const items = unknownCalls.map((c) => c.args.text);
 			await this.#knownStore.upsert(
 				currentRunId, turn,
 				"/:unknown",
-				JSON.stringify(unknownCall.args.items || []),
+				JSON.stringify(items),
 				"full",
 			);
 		} else {
 			await this.#knownStore.remove(currentRunId, "/:unknown");
 		}
 
-		// Step 3: UPSERT model's known entries
-		for (const entry of knownCall.args.entries || []) {
-			if (!entry.key) continue;
+		// Step 3: Process writes
+		for (const call of writeCalls) {
 			await this.#knownStore.upsert(
 				currentRunId, turn,
-				entry.key,
-				entry.value,
+				call.args.key,
+				call.args.value,
 				"full",
 			);
 		}
@@ -216,8 +216,8 @@ export default class TurnExecutor {
 			turn,
 			turnId: turnRow.id,
 			actionCalls,
-			knownCall,
-			unknownCall,
+			writeCalls,
+			unknownCalls,
 			summaryCall,
 			promptCall,
 			flags,

@@ -149,13 +149,16 @@ content body. No message history. Content is suppressed.
 
 | Tool | Params | Required |
 |------|--------|----------|
-| `known` | `entries: [{key, value}]` | Yes |
 | `summary` | `text: string` (1-80 chars) | Yes |
-| `unknown` | `items: string[]` | No |
+| `write` | `key: string, value: string` | No |
+| `unknown` | `text: string` | No |
 | `read` | `key: string, reason: string` | No |
 | `drop` | `key: string, reason: string` | No |
 | `env` | `command: string, reason: string` | No |
 | `prompt` | `question: string, options: string[]` | No |
+
+All high-frequency tools have flat string parameters (1-2 strings). No nested
+objects, no arrays. Only `prompt` uses an array (for multiple-choice options).
 
 **Act-only (extends shared):**
 
@@ -176,14 +179,16 @@ supporting providers; unsupported keywords are stripped at API send time.
 There are no separate "tool result" objects. Every tool call writes to the known
 store. The model sees results as entries in the known array next turn.
 
-**`known`** — each `{key, value}` entry is UPSERTed into the store with domain
-`known`, state `full`.
+**`write`** — UPSERTs the key/value pair into the store with domain `known`,
+state `full`. Called once per entry (no batching). The model calls `write`
+multiple times to persist multiple facts.
 
 **`summary`** — creates a `/:summary/N` entry with domain `result`, state `summary`,
 and the text as value.
 
-**`unknown`** — stores the items array as `/:unknown` (domain `known`, state `full`).
-If not called, `/:unknown` is deleted.
+**`unknown`** — each call adds one item to the unknown list. The server collects
+all `unknown` calls into an array and stores it as `/:unknown` (domain `known`,
+state `full`). If no `unknown` calls, `/:unknown` is deleted.
 
 **`read`** — for file keys: reads file from disk, updates the known entry value with
 file contents, sets state to `full`. For `/:known/*` or `/:[tool]/*` keys: promotes
@@ -225,15 +230,15 @@ Blocks until user responds. On resolution, value is the selected answer.
 1. **Tool definitions** — `strict: true` constrained decoding on tool argument schemas.
 2. **Content suppression** — `tool_choice: "required"` + empty-object `response_format` shim. If the model produces content, it's forced to `{}`.
 3. **Prompt instructions + examples** — system prompt describes tool purposes and constraints.
-4. **Server-side validation** — confirms `known` and `summary` are present. Rejects and retries.
+4. **Server-side validation** — confirms `summary` is present. Rejects and retries.
 
 ### 2.5 Server Execution Order
 
 The model emits all tool calls as a parallel batch. The server processes in strict order:
 
 1. **Execute action tools** — `read`, `drop`, `env`, `run`, `delete`, `edit`, `prompt`. Generate result keys (`/:read/1`, `/:edit/2`). Write entries to known store. Non-proposed tools (read, drop, env) resolve immediately. Proposed tools (edit, run, delete, prompt) block the loop.
-2. **Process unknown** — store as `/:unknown` entry for next turn. Delete `/:unknown` if model didn't call `unknown`.
-3. **UPSERT model's known entries** — process each `{key, value}` from the `known` tool call.
+2. **Process unknowns** — collect all `unknown` calls into an array, store as `/:unknown` entry. Delete `/:unknown` if model made no `unknown` calls.
+3. **Process writes** — UPSERT each `write` call's key/value pair.
 4. **Store summary** — create `/:summary/N` entry.
 5. **Done** — results are now in the known store. Next turn's context assembly reads from it.
 
@@ -745,4 +750,4 @@ Git operations shell out to `git` CLI.
 | **Domain** | The entry's namespace: `file`, `known`, or `result`. |
 | **State** | The entry's status within its domain. Server-internal; the model sees a projection. |
 | **Result Key** | A `/:[tool]/N` key generated for each tool call. Sequential per run. |
-| **Rumsfeld Loop** | The turn cycle: the model must declare `known`, `unknown`, and `summary` every turn. |
+| **Rumsfeld Loop** | The turn cycle: the model uses `write` to persist knowledge, `unknown` to declare uncertainty, and `summary` to report status. Forces discovery before modification. |

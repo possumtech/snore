@@ -5,8 +5,8 @@ export default class CoreToolsPlugin {
 	static register(hooks) {
 		const { tools } = hooks;
 
-		// Structural (required every turn)
-		tools.register("known", { modes: BOTH, category: "structural" });
+		// Structural
+		tools.register("write", { modes: BOTH, category: "structural" });
 		tools.register("summary", { modes: BOTH, category: "structural" });
 		tools.register("unknown", { modes: BOTH, category: "structural" });
 

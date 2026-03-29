@@ -1,0 +1,24 @@
+{
+	"type": "function",
+	"function": {
+		"name": "write",
+		"description": "Write a key/value pair to your memory. Use /:known/ prefix for knowledge entries.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["key", "value"],
+			"additionalProperties": false,
+			"properties": {
+				"key": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Key to write. Knowledge keys use /:known/ prefix (e.g. /:known/auth_flow)."
+				},
+				"value": {
+					"type": "string",
+					"description": "The value to store."
+				}
+			}
+		}
+	}
+}

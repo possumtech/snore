@@ -56,6 +56,23 @@ describe("ToolSchema", () => {
 				);
 			}
 		});
+
+		it("high-frequency tools have flat string parameters", () => {
+			const flat = ["write", "summary", "unknown", "read", "drop", "env", "run", "delete"];
+			for (const tool of ToolSchema.act) {
+				if (!flat.includes(tool.function.name)) continue;
+				const props = tool.function.parameters.properties;
+				for (const [propName, schema] of Object.entries(props)) {
+					const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+					for (const t of types) {
+						assert.ok(
+							t === "string" || t === "null",
+							`${tool.function.name}.${propName} has non-string type: ${t}`,
+						);
+					}
+				}
+			}
+		});
 	});
 
 	describe("API stripping", () => {
@@ -66,16 +83,10 @@ describe("ToolSchema", () => {
 			assert.ok(!json.includes("minItems"), "API schemas contain minItems");
 		});
 
-		it("master tools preserve minLength/maxLength/minItems where specified", () => {
+		it("master tools preserve minLength/maxLength where specified", () => {
 			const summarySchema = ToolSchema.master.summary.function.parameters;
 			assert.strictEqual(summarySchema.properties.text.maxLength, 80);
 			assert.strictEqual(summarySchema.properties.text.minLength, 1);
-
-			const unknownSchema = ToolSchema.master.unknown.function.parameters;
-			assert.strictEqual(unknownSchema.properties.items.minItems, 1);
-
-			const promptSchema = ToolSchema.master.prompt.function.parameters;
-			assert.strictEqual(promptSchema.properties.options.minItems, 2);
 		});
 
 		it("API tools preserve structure and descriptions", () => {
@@ -89,28 +100,21 @@ describe("ToolSchema", () => {
 	});
 
 	describe("argument validation", () => {
-		it("valid known args pass", () => {
-			const { valid } = ToolSchema.validate("known", {
-				entries: [{ key: "/:known/test", value: "hello" }],
+		it("valid write passes", () => {
+			const { valid } = ToolSchema.validate("write", {
+				key: "/:known/test", value: "hello",
 			});
 			assert.ok(valid);
 		});
 
-		it("known with empty entries array passes", () => {
-			const { valid } = ToolSchema.validate("known", { entries: [] });
+		it("write with empty key fails (minLength)", () => {
+			const { valid } = ToolSchema.validate("write", { key: "", value: "x" });
+			assert.ok(!valid);
+		});
+
+		it("write with empty value passes (blank values are legitimate)", () => {
+			const { valid } = ToolSchema.validate("write", { key: "/:known/x", value: "" });
 			assert.ok(valid);
-		});
-
-		it("known missing entries fails", () => {
-			const { valid } = ToolSchema.validate("known", {});
-			assert.ok(!valid);
-		});
-
-		it("known with non-string key fails", () => {
-			const { valid } = ToolSchema.validate("known", {
-				entries: [{ key: 42, value: "x" }],
-			});
-			assert.ok(!valid);
 		});
 
 		it("valid summary passes", () => {
@@ -134,17 +138,12 @@ describe("ToolSchema", () => {
 		});
 
 		it("valid unknown passes", () => {
-			const { valid } = ToolSchema.validate("unknown", { items: ["What is X?"] });
+			const { valid } = ToolSchema.validate("unknown", { text: "What is X?" });
 			assert.ok(valid);
 		});
 
-		it("unknown with empty items fails (minItems)", () => {
-			const { valid } = ToolSchema.validate("unknown", { items: [] });
-			assert.ok(!valid);
-		});
-
-		it("unknown with empty string item fails (minLength)", () => {
-			const { valid } = ToolSchema.validate("unknown", { items: [""] });
+		it("unknown with empty text fails (minLength)", () => {
+			const { valid } = ToolSchema.validate("unknown", { text: "" });
 			assert.ok(!valid);
 		});
 
@@ -160,43 +159,35 @@ describe("ToolSchema", () => {
 
 		it("valid edit passes", () => {
 			const { valid } = ToolSchema.validate("edit", {
-				file: "src/app.js",
-				search: "old",
-				replace: "new",
+				file: "src/app.js", search: "old", replace: "new",
 			});
 			assert.ok(valid);
 		});
 
 		it("edit with null search passes (new file)", () => {
 			const { valid } = ToolSchema.validate("edit", {
-				file: "src/new.js",
-				search: null,
-				replace: "content",
+				file: "src/new.js", search: null, replace: "content",
 			});
 			assert.ok(valid);
 		});
 
 		it("edit with empty replace fails", () => {
 			const { valid } = ToolSchema.validate("edit", {
-				file: "src/app.js",
-				search: "old",
-				replace: "",
+				file: "src/app.js", search: "old", replace: "",
 			});
 			assert.ok(!valid);
 		});
 
 		it("valid prompt passes", () => {
 			const { valid } = ToolSchema.validate("prompt", {
-				question: "Which?",
-				options: ["A", "B"],
+				question: "Which?", options: ["A", "B"],
 			});
 			assert.ok(valid);
 		});
 
 		it("prompt with one option fails (minItems: 2)", () => {
 			const { valid } = ToolSchema.validate("prompt", {
-				question: "Which?",
-				options: ["only one"],
+				question: "Which?", options: ["only one"],
 			});
 			assert.ok(!valid);
 		});
@@ -209,40 +200,33 @@ describe("ToolSchema", () => {
 	});
 
 	describe("required tool validation", () => {
-		it("passes when known and summary present", () => {
-			const { valid } = ToolSchema.validateRequired(["known", "summary", "read"]);
+		it("passes when summary present", () => {
+			const { valid } = ToolSchema.validateRequired(["summary", "write", "read"]);
 			assert.ok(valid);
 		});
 
-		it("fails when known missing", () => {
-			const { valid, missing } = ToolSchema.validateRequired(["summary", "read"]);
-			assert.ok(!valid);
-			assert.deepStrictEqual(missing, ["known"]);
-		});
-
 		it("fails when summary missing", () => {
-			const { valid, missing } = ToolSchema.validateRequired(["known", "read"]);
+			const { valid, missing } = ToolSchema.validateRequired(["write", "read"]);
 			assert.ok(!valid);
 			assert.deepStrictEqual(missing, ["summary"]);
 		});
 
-		it("fails when both missing", () => {
-			const { valid, missing } = ToolSchema.validateRequired(["read"]);
-			assert.ok(!valid);
-			assert.deepStrictEqual(missing, ["known", "summary"]);
+		it("passes with only summary", () => {
+			const { valid } = ToolSchema.validateRequired(["summary"]);
+			assert.ok(valid);
 		});
 	});
 
 	describe("mode validation", () => {
 		it("ask mode rejects act-only tools", () => {
-			const { valid, invalid } = ToolSchema.validateMode("ask", ["known", "summary", "run"]);
+			const { valid, invalid } = ToolSchema.validateMode("ask", ["write", "summary", "run"]);
 			assert.ok(!valid);
 			assert.deepStrictEqual(invalid, ["run"]);
 		});
 
 		it("act mode accepts all tools", () => {
 			const { valid } = ToolSchema.validateMode("act", [
-				"known", "summary", "read", "drop", "env", "prompt",
+				"write", "summary", "read", "drop", "env", "prompt",
 				"run", "delete", "edit",
 			]);
 			assert.ok(valid);
@@ -250,7 +234,7 @@ describe("ToolSchema", () => {
 
 		it("ask mode accepts all shared tools", () => {
 			const { valid } = ToolSchema.validateMode("ask", [
-				"known", "summary", "unknown", "read", "drop", "env", "prompt",
+				"write", "summary", "unknown", "read", "drop", "env", "prompt",
 			]);
 			assert.ok(valid);
 		});

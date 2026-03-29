@@ -4,13 +4,13 @@ export default class ToolExtractor {
 	/**
 	 * Extract structured tool calls from the LLM response message.
 	 * @param {object} responseMessage - The assistant message with tool_calls
-	 * @returns {{ actionCalls, knownCall, unknownCall, summaryCall, promptCall, flags }}
+	 * @returns {{ actionCalls, writeCalls, unknownCalls, summaryCall, promptCall, flags }}
 	 */
 	static extract(responseMessage) {
 		const toolCalls = responseMessage.tool_calls || [];
 		const actionCalls = [];
-		let knownCall = null;
-		let unknownCall = null;
+		const writeCalls = [];
+		const unknownCalls = [];
 		let summaryCall = null;
 		let promptCall = null;
 
@@ -18,11 +18,10 @@ export default class ToolExtractor {
 			const name = tc.function?.name;
 			const args = JSON.parse(tc.function?.arguments || "{}");
 			const id = tc.id;
-
 			const call = { id, name, args };
 
-			if (name === "known") knownCall = call;
-			else if (name === "unknown") unknownCall = call;
+			if (name === "write") writeCalls.push(call);
+			else if (name === "unknown") unknownCalls.push(call);
 			else if (name === "summary") summaryCall = call;
 			else if (name === "prompt") promptCall = call;
 			else actionCalls.push(call);
@@ -33,8 +32,8 @@ export default class ToolExtractor {
 
 		return {
 			actionCalls,
-			knownCall,
-			unknownCall,
+			writeCalls,
+			unknownCalls,
 			summaryCall,
 			promptCall,
 			flags: { hasAct, hasReads },
@@ -45,8 +44,7 @@ export default class ToolExtractor {
 	 * Validate that required tools are present.
 	 * @returns {string|null} Error message if validation fails, null if ok.
 	 */
-	static validate({ knownCall, summaryCall }) {
-		if (!knownCall) return "Model response missing required 'known' tool call.";
+	static validate({ summaryCall }) {
 		if (!summaryCall) return "Model response missing required 'summary' tool call.";
 		return null;
 	}
