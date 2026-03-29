@@ -87,7 +87,7 @@ describe("E2E: Diff Content Verification", () => {
 		const result = await client.call("act", {
 			model,
 			prompt:
-				'The add function in math.js has a bug: it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Use a single <edit> with SEARCH/REPLACE format.',
+				'The add function in math.js has a bug: it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Put the fix in the edits array.',
 		});
 
 		assert.strictEqual(

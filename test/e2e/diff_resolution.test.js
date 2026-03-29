@@ -89,7 +89,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const result = await actAndExpectProposed(
 				client,
-				'The add function in math.js has a bug — it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Use the edit tool with a single <edit> block containing SEARCH/REPLACE markers.',
+				'The add function in math.js has a bug — it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Put the fix in the edits array.',
 			);
 
 			for (const finding of result.proposed) {
@@ -109,7 +109,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				"The add function in math.js returns a - b but should return a + b. Fix this single bug using the edit tool with SEARCH/REPLACE format.",
+				'In math.js, change "return a - b" to "return a + b". Put the fix in the edits array.',
 			);
 
 			const resolveResult = await resolveAll(
@@ -137,7 +137,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				"The add function in math.js returns a - b but should return a + b. Fix this bug using the edit tool with SEARCH/REPLACE format.",
+				'In math.js, change "return a - b" to "return a + b". Put the fix in the edits array.',
 			);
 
 			const resolveResult = await resolveAll(
@@ -170,7 +170,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				'Fix both bugs: (1) math.js: add function returns a - b, should be a + b. (2) greet.js: "goodby" should be "goodbye". Use the edit tool with SEARCH/REPLACE format for each file — one <edit> block per file.',
+				'Fix both bugs: (1) In math.js change "return a - b" to "return a + b". (2) In greet.js change "goodby" to "goodbye". Put both fixes in the edits array.',
 			);
 
 			const diffFindings = actResult.proposed.filter(

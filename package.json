@@ -32,7 +32,8 @@
 		"test:all": "npm run lint && npm run test:unit && npm run test:intg && npm run test:e2e",
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --experimental-test-coverage --test-coverage-lines=70 --test-coverage-branches=70 --test-coverage-functions=70 --test-concurrency=1 --test $(find src -name '*.test.js')",
 		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test $(find test/integration -name '*.test.js')",
-		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-reporter=spec --test $(find test/e2e -name '*.test.js')"
+		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-reporter=spec --test $(find test/e2e -name '*.test.js')",
+		"test:e2e:targeted": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-reporter=spec --test test/e2e/foundation.test.js test/e2e/diff_resolution.test.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

@@ -137,13 +137,20 @@ export default class TurnExecutor {
 			{ model: requestedModel, sessionId, runId: currentRunId },
 		);
 
-		// Parse structured JSON response (strip markdown code fences if present)
+		// Parse structured JSON response
 		let jsonContent = (finalResponse.content || "").trim();
 		if (jsonContent.startsWith("```")) {
 			jsonContent = jsonContent
 				.replace(/^```(?:json)?\s*\n?/, "")
 				.replace(/\n?```\s*$/, "");
 		}
+		// Escape bare control characters that break JSON.parse
+		// (preserve \n \r \t which are valid JSON whitespace)
+		jsonContent = jsonContent.replace(
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional
+			/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
+			(ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+		);
 
 		const parsed = JSON.parse(jsonContent);
 

@@ -120,7 +120,40 @@ async function main() {
 		console.warn(`[RUMMY] Hygiene skipped: ${err.message}`);
 	}
 
-	// 7. Start RPC Server
+	// 7. Prefetch provider catalog and validate aliases
+	if (process.env.OPENROUTER_API_KEY) {
+		try {
+			const { default: OpenRouterClient } = await import("./src/infrastructure/llm/OpenRouterClient.js");
+			const or = new OpenRouterClient(process.env.OPENROUTER_API_KEY, {}, null, db);
+			const count = await or.refreshCatalog();
+			console.log(`[RUMMY] OpenRouter catalog: ${count} models cached`);
+
+			// Validate aliases and warn about capabilities
+			for (const key of Object.keys(process.env)) {
+				if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_MODEL_DEFAULT") continue;
+				const alias = key.replace("RUMMY_MODEL_", "");
+				const modelId = process.env[key];
+				if (modelId.startsWith("ollama/") || modelId.startsWith("openai/")) continue;
+
+				const row = await db.get_provider_model.get({ id: modelId });
+				if (!row) {
+					console.warn(`[RUMMY] ⚠ ${alias}: model '${modelId}' not found in OpenRouter catalog`);
+					continue;
+				}
+				const params = JSON.parse(row.supported_parameters || "[]");
+				const warnings = [];
+				if (!params.includes("structured_outputs")) warnings.push("no strict schema");
+				if (!params.includes("reasoning") && !params.includes("include_reasoning")) warnings.push("no reasoning param");
+				if (warnings.length > 0) {
+					console.warn(`[RUMMY] ⚠ ${alias}: ${warnings.join(", ")}`);
+				}
+			}
+		} catch (err) {
+			console.warn(`[RUMMY] Catalog prefetch failed: ${err.message}`);
+		}
+	}
+
+	// 8. Start RPC Server
 	const port = Number.parseInt(process.env.PORT);
 	const server = new SocketServer(db, { port, hooks });
 

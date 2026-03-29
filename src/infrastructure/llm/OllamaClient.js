@@ -3,13 +3,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const schemaStrings = {
+	ask: readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
+	act: readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
+};
 const schemas = {
-	ask: JSON.parse(
-		readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
-	),
-	act: JSON.parse(
-		readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
-	),
+	ask: JSON.parse(schemaStrings.ask),
+	act: JSON.parse(schemaStrings.act),
 };
 
 export default class OllamaClient {
@@ -26,6 +26,13 @@ export default class OllamaClient {
 		let finalMessages = messages;
 		if (messages.at(-1)?.role === "assistant") {
 			finalMessages = messages.slice(0, -1);
+		}
+
+		// Inject schema into system prompt
+		const schemaText = schemaStrings[options.mode] || schemaStrings.ask;
+		const systemMsg = finalMessages.find((m) => m.role === "system");
+		if (systemMsg) {
+			systemMsg.content += `\n\n## Response JSON Schema\n\`\`\`json\n${schemaText}\n\`\`\``;
 		}
 
 		const schema = schemas[options.mode] || schemas.ask;
@@ -53,11 +60,14 @@ export default class OllamaClient {
 
 		const data = await response.json();
 
-		// Ollama uses "reasoning" field; normalize to "reasoning_content" (OpenAI standard)
 		for (const choice of data.choices || []) {
-			if (choice.message?.reasoning && !choice.message.reasoning_content) {
-				choice.message.reasoning_content = choice.message.reasoning;
-			}
+			const msg = choice.message;
+			if (!msg) continue;
+			const parts = [msg.reasoning_content, msg.reasoning, msg.thinking].filter(
+				Boolean,
+			);
+			msg.reasoning_content =
+				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 		}
 
 		return data;

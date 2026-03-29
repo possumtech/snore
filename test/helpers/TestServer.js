@@ -23,6 +23,22 @@ export default class TestServer {
 		const corePluginsDir = join(__dirname, "../../src/plugins");
 		await registerPlugins([internalPluginsDir, corePluginsDir], hooks);
 
+		// Prefetch OpenRouter catalog so first init doesn't timeout
+		if (process.env.OPENROUTER_API_KEY) {
+			try {
+				const { default: OpenRouterClient } = await import(
+					"../../src/infrastructure/llm/OpenRouterClient.js"
+				);
+				const or = new OpenRouterClient(
+					process.env.OPENROUTER_API_KEY,
+					{},
+					null,
+					db,
+				);
+				await or.refreshCatalog();
+			} catch {}
+		}
+
 		const server = new SocketServer(db, { port: 0, hooks });
 		const addr = server.address();
 		const url = `ws://localhost:${addr.port}`;

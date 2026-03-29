@@ -56,7 +56,7 @@ describe("E2E: Run Lifecycle", () => {
 			const actResult = await client.call("act", {
 				model,
 				prompt:
-					"Edit app.js: add JSDoc comments above the greet function. Use an <edit> tag with SEARCH/REPLACE.",
+					"Edit app.js: add JSDoc comments above the greet function. Put the change in the edits array.",
 			});
 
 			assert.strictEqual(
@@ -84,7 +84,7 @@ describe("E2E: Run Lifecycle", () => {
 			const actResult = await client.call("act", {
 				model,
 				prompt:
-					"Edit app.js: add a default parameter value to the greet function. Set name to default to 'World'. Use an <edit> tag with SEARCH/REPLACE.",
+					"Edit app.js: add a default parameter value to the greet function. Set name to default to 'World'. Put the change in the edits array.",
 			});
 
 			assert.strictEqual(

@@ -3,13 +3,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const schemaStrings = {
+	ask: readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
+	act: readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
+};
 const schemas = {
-	ask: JSON.parse(
-		readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
-	),
-	act: JSON.parse(
-		readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
-	),
+	ask: JSON.parse(schemaStrings.ask),
+	act: JSON.parse(schemaStrings.act),
 };
 
 const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
@@ -51,12 +51,17 @@ export default class OpenRouterClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		const supportsStructured =
-			this.#capabilities?.supports(model, "structured_outputs") ||
-			this.#capabilities?.supports(model, "response_format") ||
-			false;
+		// Always inject schema into system prompt — helps all models
+		const schemaText = schemaStrings[options.mode] || schemaStrings.ask;
+		const systemMsg = messages.find((m) => m.role === "system");
+		if (systemMsg) {
+			systemMsg.content += `\n\n## Response JSON Schema\n\`\`\`json\n${schemaText}\n\`\`\``;
+		}
 
-		if (supportsStructured) {
+		// Also set response_format for models that enforce it
+		const supportsStrict =
+			this.#capabilities?.supports(model, "structured_outputs") || false;
+		if (supportsStrict) {
 			const schema = schemas[options.mode] || schemas.ask;
 			body.response_format = {
 				type: "json_schema",
@@ -94,9 +99,16 @@ export default class OpenRouterClient {
 
 		for (const choice of data.choices || []) {
 			const msg = choice.message;
-			if (msg?.reasoning && !msg.reasoning_content) {
-				msg.reasoning_content = msg.reasoning;
-			}
+			if (!msg) continue;
+			// Normalize all reasoning synonyms into reasoning_content
+			const parts = [
+				msg.reasoning_content,
+				msg.reasoning,
+				msg.thinking,
+				...(msg.reasoning_details || []).map((d) => d.text),
+			].filter(Boolean);
+			msg.reasoning_content =
+				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 		}
 
 		return data;

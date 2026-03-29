@@ -104,7 +104,7 @@ describe("E2E: Run Modes", () => {
 					model,
 					noContext: true,
 					prompt:
-						"Edit app.js: add a comment at the top of the file saying '// entry point'. Use an <edit> tag with SEARCH/REPLACE.",
+						"Edit app.js: add a comment at the top of the file saying '// entry point'. Put the change in the edits array.",
 				});
 
 				assert.ok(
