@@ -1,5 +1,6 @@
 -- PREP: get_run_log
-SELECT tool, target, status, key, '' AS value
-FROM run_log
+SELECT key, state AS status, value, target
+FROM known_entries
 WHERE run_id = :run_id
-ORDER BY sequence;
+	AND domain = 'result'
+ORDER BY id;
