@@ -1,66 +1,53 @@
-export default class ToolExtractor {
-	#actTools;
+const ACT_TOOLS = new Set(["edit", "delete", "run"]);
 
-	constructor(toolRegistry) {
-		this.#actTools =
-			toolRegistry?.actTools ??
-			new Set(["edit", "delete", "run", "prompt_user"]);
+export default class ToolExtractor {
+	/**
+	 * Extract structured tool calls from the LLM response message.
+	 * @param {object} responseMessage - The assistant message with tool_calls
+	 * @returns {{ actionCalls, knownCall, unknownCall, summaryCall, promptCall, flags }}
+	 */
+	static extract(responseMessage) {
+		const toolCalls = responseMessage.tool_calls || [];
+		const actionCalls = [];
+		let knownCall = null;
+		let unknownCall = null;
+		let summaryCall = null;
+		let promptCall = null;
+
+		for (const tc of toolCalls) {
+			const name = tc.function?.name;
+			const args = JSON.parse(tc.function?.arguments || "{}");
+			const id = tc.id;
+
+			const call = { id, name, args };
+
+			if (name === "known") knownCall = call;
+			else if (name === "unknown") unknownCall = call;
+			else if (name === "summary") summaryCall = call;
+			else if (name === "prompt") promptCall = call;
+			else actionCalls.push(call);
+		}
+
+		const hasAct = actionCalls.some((c) => ACT_TOOLS.has(c.name));
+		const hasReads = actionCalls.some((c) => c.name === "read");
+
+		return {
+			actionCalls,
+			knownCall,
+			unknownCall,
+			summaryCall,
+			promptCall,
+			flags: { hasAct, hasReads },
+		};
 	}
 
-	extract(parsed) {
-		const tools = [];
-
-		// Todo-driven tools
-		for (const item of parsed.todo) {
-			const { tool, argument } = item;
-			if (!tool) continue;
-
-			if (tool === "read" || tool === "drop") {
-				tools.push({ tool, path: argument });
-			} else if (tool === "delete") {
-				tools.push({ tool: "delete", path: argument });
-			} else if (tool === "env" || tool === "run") {
-				tools.push({ tool, command: argument });
-			}
-		}
-
-		// Edits from the structured edits array
-		for (const edit of parsed.edits ?? []) {
-			if (!edit.file) continue;
-			if (!edit.search) {
-				tools.push({
-					tool: "create",
-					path: edit.file,
-					content: edit.replace ?? "",
-				});
-			} else {
-				tools.push({
-					tool: "edit",
-					path: edit.file,
-					search: edit.search,
-					replace: edit.replace ?? "",
-				});
-			}
-		}
-
-		// Prompt from the structured prompt object
-		if (parsed.prompt?.question) {
-			tools.push({
-				tool: "prompt_user",
-				text: parsed.prompt.question,
-				config: {
-					question: parsed.prompt.question,
-					options: (parsed.prompt.options || []).map((o) => ({
-						label: o,
-						description: o,
-					})),
-				},
-			});
-		}
-
-		const hasAct = tools.some((t) => this.#actTools.has(t.tool));
-		const hasReads = tools.some((t) => t.tool === "read");
-
-		return { tools, flags: { hasAct, hasReads } };
+	/**
+	 * Validate that required tools are present.
+	 * @returns {string|null} Error message if validation fails, null if ok.
+	 */
+	static validate({ knownCall, summaryCall }) {
+		if (!knownCall) return "Model response missing required 'known' tool call.";
+		if (!summaryCall) return "Model response missing required 'summary' tool call.";
+		return null;
 	}
 }

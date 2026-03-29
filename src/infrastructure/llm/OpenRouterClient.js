@@ -3,13 +3,23 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const schemaStrings = {
-	ask: readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
-	act: readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
+const toolDefinitions = {
+	ask: JSON.parse(readFileSync(join(__dirname, "../../domain/schema/tools.ask.json"), "utf8")),
+	act: JSON.parse(readFileSync(join(__dirname, "../../domain/schema/tools.act.json"), "utf8")),
 };
-const schemas = {
-	ask: JSON.parse(schemaStrings.ask),
-	act: JSON.parse(schemaStrings.act),
+
+const EMPTY_SCHEMA = {
+	type: "json_schema",
+	json_schema: {
+		name: "empty",
+		strict: true,
+		schema: {
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		},
+	},
 };
 
 const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
@@ -36,14 +46,7 @@ export default class OpenRouterClient {
 				"OpenRouter API key is missing. Please set OPENROUTER_API_KEY in your environment.",
 			);
 		}
-
-		// Strip prefill if present — structured outputs don't use it
-		let finalMessages = messages;
-		if (messages.at(-1)?.role === "assistant") {
-			finalMessages = messages.slice(0, -1);
-		}
-
-		return this.#fetch(finalMessages, model, options);
+		return this.#fetch(messages, model, options);
 	}
 
 	async #fetch(messages, model, options) {
@@ -51,26 +54,15 @@ export default class OpenRouterClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		// Always inject schema into system prompt — helps all models
-		const schemaText = schemaStrings[options.mode] || schemaStrings.ask;
-		const systemMsg = messages.find((m) => m.role === "system");
-		if (systemMsg) {
-			systemMsg.content += `\n\n## Response JSON Schema\n\`\`\`json\n${schemaText}\n\`\`\``;
-		}
+		// Native tool calling
+		body.tools = toolDefinitions[options.mode] || toolDefinitions.ask;
+		body.tool_choice = "required";
 
-		// Also set response_format for models that enforce it
+		// Empty-object shim: explicit signal to not populate content
 		const supportsStrict =
 			this.#capabilities?.supports(model, "structured_outputs") || false;
 		if (supportsStrict) {
-			const schema = schemas[options.mode] || schemas.ask;
-			body.response_format = {
-				type: "json_schema",
-				json_schema: {
-					name: `rummy_${options.mode || "ask"}`,
-					strict: true,
-					schema,
-				},
-			};
+			body.response_format = EMPTY_SCHEMA;
 		}
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
@@ -109,6 +101,13 @@ export default class OpenRouterClient {
 			].filter(Boolean);
 			msg.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
+
+			// Normalize tool_calls arguments (Ollama returns parsed objects, not strings)
+			for (const tc of msg.tool_calls || []) {
+				if (tc.function && typeof tc.function.arguments !== "string") {
+					tc.function.arguments = JSON.stringify(tc.function.arguments);
+				}
+			}
 		}
 
 		return data;

@@ -1,17 +1,18 @@
-import msg from "../../domain/i18n/messages.js";
-import Turn from "../../domain/turn/Turn.js";
 import ToolExtractor from "./ToolExtractor.js";
+import ContextAssembler from "./ContextAssembler.js";
 
 export default class TurnExecutor {
 	#db;
 	#llmProvider;
 	#hooks;
+	#knownStore;
 	#turnBuilder;
 
-	constructor(db, llmProvider, hooks, turnBuilder) {
+	constructor(db, llmProvider, hooks, knownStore, turnBuilder) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
+		this.#knownStore = knownStore;
 		this.#turnBuilder = turnBuilder;
 	}
 
@@ -45,39 +46,14 @@ export default class TurnExecutor {
 		const currentTurnSequence =
 			lastSeqRow && lastSeqRow.last_seq !== null ? lastSeqRow.last_seq + 1 : 0;
 
-		// Fetch history (parent + current run)
-		const historyMessages = [];
-		if (parentRunId) {
-			const parentRows = await this.#db.get_turn_history.all({
-				run_id: parentRunId,
-			});
-			for (const row of parentRows) {
-				if (!row.turn_id) continue;
-				const turn = new Turn(this.#db, row.turn_id);
-				await turn.hydrate();
-				const msgs = await turn.serialize({ forHistory: true });
-				historyMessages.push(...msgs);
-			}
-		}
-		const historyRows = await this.#db.get_turn_history.all({
-			run_id: currentRunId,
-		});
-		for (const row of historyRows) {
-			if (!row.turn_id) continue;
-			const turn = new Turn(this.#db, row.turn_id);
-			await turn.hydrate();
-			const msgs = await turn.serialize({ forHistory: true });
-			historyMessages.push(...msgs);
-		}
-
-		// Create fresh turn in DB
+		// Create turn in DB
 		const turnRow = await this.#db.create_empty_turn.get({
 			run_id: String(currentRunId || ""),
 			sequence: Number(currentTurnSequence),
 		});
 		const turnId = turnRow.id;
 
-		// Build turn context via TurnBuilder + plugins
+		// Build turn context via TurnBuilder + plugins (for indexing, system prompt)
 		const turnObj = await this.#turnBuilder.build({
 			type,
 			project,
@@ -101,25 +77,41 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		const currentTurnMessages = await turnObj.serialize();
-		const newUserMsg = currentTurnMessages.find((m) => m.role === "user");
+		// Assemble context from known store (no message history)
+		const knownEntries = await this.#knownStore.getModelEntries(currentRunId);
+		const summaryLog = await this.#knownStore.getLog(currentRunId);
+
+		// Get previous turn's unknown list from known store
+		// (stored as a /:unknown entry by the previous turn)
+		const unknownEntry = (await this.#knownStore.getAll(currentRunId))
+			.find((r) => r.key === "/:unknown");
+		const unknownList = unknownEntry ? JSON.parse(unknownEntry.value || "[]") : [];
+
+		// Get system prompt from turnObj
+		const turnMessages = await turnObj.serialize();
+		const systemPrompt = turnMessages.find((m) => m.role === "system")?.content || "";
+		const userMessage = turnMessages.find((m) => m.role === "user")?.content || loopPrompt;
+
+		const messages = ContextAssembler.assemble({
+			systemPrompt,
+			knownEntries,
+			unknownList,
+			summaryLog,
+			userMessage,
+		});
+
 		const filteredMessages = await this.#hooks.llm.messages.filter(
-			[
-				...currentTurnMessages.filter((m) => m.role === "system"),
-				...historyMessages,
-				newUserMsg,
-			].filter(Boolean),
+			messages,
 			{ model: requestedModel, sessionId, runId: currentRunId },
 		);
 
+		// Call LLM with tool calling
 		const result = await this.#llmProvider.completion(
 			filteredMessages,
 			requestedModel,
 			{ temperature: options?.temperature, mode: type },
 		);
 		const responseMessage = result.choices?.[0]?.message;
-		const rawReasoning = responseMessage?.reasoning_content;
-		const rawContent = responseMessage?.content || "";
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
@@ -128,49 +120,19 @@ export default class TurnExecutor {
 			status: "processing",
 		});
 
-		const finalResponse = await this.#hooks.llm.response.filter(
-			{
-				...responseMessage,
-				content: rawContent,
-				reasoning_content: rawReasoning,
-			},
-			{ model: requestedModel, sessionId, runId: currentRunId },
-		);
+		// Extract tool calls
+		const {
+			actionCalls,
+			knownCall,
+			unknownCall,
+			summaryCall,
+			promptCall,
+			flags,
+		} = ToolExtractor.extract(responseMessage);
 
-		// Parse structured JSON response
-		let jsonContent = (finalResponse.content || "").trim();
-		if (jsonContent.startsWith("```")) {
-			jsonContent = jsonContent
-				.replace(/^```(?:json)?\s*\n?/, "")
-				.replace(/\n?```\s*$/, "");
-		}
-		// Escape bare control characters that break JSON.parse
-		// (preserve \n \r \t which are valid JSON whitespace)
-		jsonContent = jsonContent.replace(
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional
-			/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
-			(ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
-		);
-
-		const parsed = JSON.parse(jsonContent);
-
-		// Heal missing/malformed fields when provider doesn't enforce schema
-		if (!Array.isArray(parsed.todo)) {
-			console.warn(`[RUMMY] Healing todo: ${typeof parsed.todo} → []`);
-			parsed.todo = [];
-		}
-		if (!Array.isArray(parsed.known)) {
-			console.warn(`[RUMMY] Healing known: ${typeof parsed.known} → []`);
-			parsed.known = [];
-		}
-		if (!Array.isArray(parsed.unknown)) {
-			console.warn(`[RUMMY] Healing unknown: ${typeof parsed.unknown} → []`);
-			parsed.unknown = [];
-		}
-		if (typeof parsed.summary !== "string") {
-			console.warn(`[RUMMY] Healing summary: ${typeof parsed.summary} → ""`);
-			parsed.summary = "";
-		}
+		// Validate required tools
+		const validationError = ToolExtractor.validate({ knownCall, summaryCall });
+		if (validationError) throw new Error(validationError);
 
 		// Commit usage stats
 		const usage = result.usage || {
@@ -186,64 +148,129 @@ export default class TurnExecutor {
 			cost: Number(usage.cost || 0),
 		});
 
-		// Commit assistant response to DB
-		const elements = await this.#db.get_turn_elements.all({
-			turn_id: turnId,
-		});
+		// Commit tool calls to turn_elements
+		const elements = await this.#db.get_turn_elements.all({ turn_id: turnId });
 		const assistantNode = elements.find((el) => el.tag_name === "assistant");
-		if (!assistantNode) {
-			throw new Error(msg("error.assistant_node_missing", { turnId }));
-		}
-
-		const commitTag = async (tagName, content, attrs = {}, sequence = 0) => {
+		if (assistantNode) {
+			let seq = 0;
+			if (responseMessage.reasoning_content) {
+				await this.#db.insert_turn_element.run({
+					turn_id: turnId,
+					parent_id: assistantNode.id,
+					tag_name: "reasoning_content",
+					content: responseMessage.reasoning_content,
+					attributes: "{}",
+					sequence: seq++,
+				});
+			}
+			for (const tc of responseMessage.tool_calls || []) {
+				await this.#db.insert_turn_element.run({
+					turn_id: turnId,
+					parent_id: assistantNode.id,
+					tag_name: "tool_call",
+					content: null,
+					attributes: JSON.stringify({
+						id: tc.id,
+						name: tc.function?.name,
+						arguments: tc.function?.arguments,
+					}),
+					sequence: seq++,
+				});
+			}
 			await this.#db.insert_turn_element.run({
 				turn_id: turnId,
 				parent_id: assistantNode.id,
-				tag_name: String(tagName || ""),
-				content: content === null ? null : String(content),
-				attributes:
-					typeof attrs === "string" ? attrs : JSON.stringify(attrs || {}),
-				sequence: Number(sequence),
+				tag_name: "meta",
+				content: JSON.stringify({
+					prompt_tokens: usage.prompt_tokens,
+					completion_tokens: usage.completion_tokens,
+					total_tokens: usage.total_tokens,
+					cost: usage.cost || 0,
+					temperature:
+						options?.temperature ??
+						Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
+					alias: requestedModel,
+					actualModel: result.model,
+					displayModel: this.#resolveAlias(requestedModel),
+				}),
+				attributes: "{}",
+				sequence: seq++,
 			});
-		};
+		}
 
-		if (finalResponse.reasoning_content) {
-			await commitTag(
-				"reasoning_content",
-				finalResponse.reasoning_content,
-				{},
-				0,
+		// --- SERVER EXECUTION ORDER ---
+		// Step 1: Execute action tools, generate result keys
+		for (const call of actionCalls) {
+			const resultKey = await this.#knownStore.nextResultKey(currentRunId, call.name);
+			call.resultKey = resultKey;
+
+			// Store result entry as proposed (edits, commands) or pass (reads, drops)
+			const isProposed = call.name === "edit" || call.name === "run" || call.name === "delete";
+			const target = call.args.key || call.args.command || call.args.file || "";
+			await this.#knownStore.upsert(
+				currentRunId,
+				turnId,
+				resultKey,
+				JSON.stringify(call.args),
+				isProposed ? "proposed" : "pass",
+				{ target, toolCallId: call.id },
 			);
 		}
-		await commitTag("content", finalResponse.content, {}, 1);
-		await commitTag(
-			"meta",
-			JSON.stringify({
-				prompt_tokens: usage.prompt_tokens,
-				completion_tokens: usage.completion_tokens,
-				total_tokens: usage.total_tokens,
-				cost: usage.cost || 0,
-				temperature:
-					options?.temperature ??
-					Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
-				alias: requestedModel,
-				actualModel: result.model,
-				displayModel: this.#resolveAlias(requestedModel),
-			}),
-			{},
-			2,
-		);
 
-		// Commit structured fields as DB elements
-		await commitTag("known", JSON.stringify(parsed.known), {}, 3);
-		await commitTag("unknown", JSON.stringify(parsed.unknown), {}, 4);
-		if (parsed.summary) {
-			await commitTag("summary", parsed.summary, {}, 5);
+		// Step 1b: Handle prompt separately (also proposed)
+		if (promptCall) {
+			const resultKey = await this.#knownStore.nextResultKey(currentRunId, "prompt");
+			promptCall.resultKey = resultKey;
+			await this.#knownStore.upsert(
+				currentRunId,
+				turnId,
+				resultKey,
+				JSON.stringify(promptCall.args),
+				"proposed",
+				{ target: promptCall.args.question || "", toolCallId: promptCall.id },
+			);
 		}
 
-		// Extract tools from structured JSON
-		const toolExtractor = new ToolExtractor(this.#hooks.tools);
-		const { tools, flags } = toolExtractor.extract(parsed);
+		// Step 2: Process unknown — store for next turn
+		if (unknownCall) {
+			await this.#knownStore.upsert(
+				currentRunId,
+				turnId,
+				"/:unknown",
+				JSON.stringify(unknownCall.args.items || []),
+				"full",
+			);
+		} else {
+			// Clear previous unknowns if model didn't call unknown
+			await this.#knownStore.remove(currentRunId, "/:unknown");
+		}
+
+		// Step 3: UPSERT model's known entries
+		for (const entry of knownCall.args.entries || []) {
+			if (!entry.key) continue;
+			if (entry.value === "") {
+				await this.#knownStore.remove(currentRunId, entry.key);
+			} else {
+				await this.#knownStore.upsert(
+					currentRunId,
+					turnId,
+					entry.key,
+					entry.value,
+					"full",
+				);
+			}
+		}
+
+		// Step 4: Store summary as a result entry
+		const summaryKey = await this.#knownStore.nextResultKey(currentRunId, "summary");
+		await this.#knownStore.upsert(
+			currentRunId,
+			turnId,
+			summaryKey,
+			summaryCall.args.text || "",
+			"summary",
+			{ toolCallId: summaryCall.id },
+		);
 
 		await turnObj.hydrate();
 
@@ -251,20 +278,14 @@ export default class TurnExecutor {
 			turnObj,
 			turnId,
 			turnSequence: currentTurnSequence,
-			tools,
-			structural: [
-				{ name: "known", content: parsed.known },
-				{ name: "unknown", content: parsed.unknown },
-				...(parsed.summary
-					? [{ name: "summary", content: parsed.summary }]
-					: []),
-			],
+			actionCalls,
+			knownCall,
+			unknownCall,
+			summaryCall,
+			promptCall,
 			flags,
 			elements,
-			finalResponse,
-			turnJson: turnObj.toJson(),
-			commitTag,
-			parsedTodo: parsed.todo,
+			responseMessage,
 		};
 	}
 }

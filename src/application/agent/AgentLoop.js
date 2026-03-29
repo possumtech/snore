@@ -6,7 +6,7 @@ export default class AgentLoop {
 	#llmProvider;
 	#hooks;
 	#turnExecutor;
-	#findingsProcessor;
+	#knownStore;
 	#stateEvaluator;
 	#sessionManager;
 
@@ -15,7 +15,7 @@ export default class AgentLoop {
 		llmProvider,
 		hooks,
 		turnExecutor,
-		findingsProcessor,
+		knownStore,
 		stateEvaluator,
 		sessionManager,
 	) {
@@ -23,7 +23,7 @@ export default class AgentLoop {
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#turnExecutor = turnExecutor;
-		this.#findingsProcessor = findingsProcessor;
+		this.#knownStore = knownStore;
 		this.#stateEvaluator = stateEvaluator;
 		this.#sessionManager = sessionManager;
 	}
@@ -64,13 +64,8 @@ export default class AgentLoop {
 			throw new Error(msg("error.project_not_found", { projectId }));
 
 		if (Array.isArray(projectBufferFiles)) {
-			await this.#db.reset_editor_promotions.run({ project_id: projectId });
-			for (const path of projectBufferFiles) {
-				await this.#db.upsert_editor_promotion.run({
-					project_id: projectId,
-					path: String(path),
-				});
-			}
+			// Store editor-active files in known store on run creation
+			// (handled by bootstrap in TurnExecutor for now)
 		}
 
 		const noContext = options?.noContext === true;
@@ -86,6 +81,7 @@ export default class AgentLoop {
 				options = { ...options, temperature: tempRow.temperature };
 			}
 		}
+
 		let currentRunId = null;
 		let currentAlias = null;
 		let parentRunId = null;
@@ -112,15 +108,13 @@ export default class AgentLoop {
 			currentRunId = existingRun.id;
 			currentAlias = existingRun.alias;
 
-			const remaining = await this.#db.get_unresolved_findings.all({
-				run_id: currentRunId,
-			});
-			if (remaining.length > 0) {
+			const unresolved = await this.#knownStore.getUnresolved(currentRunId);
+			if (unresolved.length > 0) {
 				return {
 					run: currentAlias,
 					status: "proposed",
-					remainingCount: remaining.length,
-					proposed: remaining,
+					remainingCount: unresolved.length,
+					proposed: unresolved,
 				};
 			}
 
@@ -167,22 +161,7 @@ export default class AgentLoop {
 					options,
 				});
 
-				// Process findings
-				const findingsResult = await this.#findingsProcessor.process({
-					projectPath: project.path,
-					projectId,
-					runId: currentRunId,
-					runAlias: currentAlias,
-					turnId: turn.turnId,
-					turnSequence: turn.turnSequence,
-					tools: turn.tools,
-					structural: turn.structural,
-					elements: turn.elements,
-					turnObj: turn.turnObj,
-					sessionId,
-				});
-
-				await turn.turnObj.hydrate();
+				// Emit step completed
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,
 				});
@@ -199,21 +178,43 @@ export default class AgentLoop {
 					},
 				});
 
-				// Evaluate state
-				const state = await this.#stateEvaluator.evaluate({
-					flags: { ...turn.flags, newReads: findingsResult.newReads },
-					tools: turn.tools,
-					turnJson: turn.turnJson,
-					finalResponse: turn.finalResponse,
-					runId: currentRunId,
-					turnId: turn.turnId,
-					elements: turn.elements,
-					inconsistencyRetries,
-					maxInconsistencyRetries: MAX_INCONSISTENCY_RETRIES,
-					parsedTodo: turn.parsedTodo,
-				});
+				// Emit findings (diffs, commands, prompts)
+				for (const call of turn.actionCalls) {
+					if (call.name === "edit") {
+						await this.#hooks.editor.diff.emit({
+							sessionId,
+							run: currentAlias,
+							key: call.resultKey,
+							type: call.args.search ? "edit" : "create",
+							file: call.args.file,
+							search: call.args.search,
+							replace: call.args.replace,
+						});
+					} else if (call.name === "run" || call.name === "delete") {
+						await this.#hooks.run.command.emit({
+							sessionId,
+							run: currentAlias,
+							key: call.resultKey,
+							type: call.name,
+							command: call.args.command || call.args.key,
+						});
+					}
+				}
+				if (turn.promptCall) {
+					await this.#hooks.ui.prompt.emit({
+						sessionId,
+						run: currentAlias,
+						key: turn.promptCall.resultKey,
+						question: turn.promptCall.args.question,
+						options: turn.promptCall.args.options,
+					});
+				}
 
-				if (state.action === "proposed") {
+				// Evaluate state
+				const unresolved = await this.#knownStore.getUnresolved(currentRunId);
+				const hasProposed = unresolved.length > 0;
+
+				if (hasProposed) {
 					await this.#db.update_run_status.run({
 						id: currentRunId,
 						status: "proposed",
@@ -222,14 +223,15 @@ export default class AgentLoop {
 						run: currentAlias,
 						status: "proposed",
 						turn: turn.turnSequence,
-						proposed: state.proposed,
+						proposed: unresolved,
 					};
 				}
-				if (state.action === "retry") {
-					inconsistencyRetries++;
-					continue;
-				}
-				if (state.action === "continue") {
+
+				// Check if model wants to continue (has reads or action tools that auto-resolved)
+				const hasReads = turn.flags.hasReads;
+				const hasAct = turn.flags.hasAct;
+
+				if (hasReads || hasAct) {
 					continue;
 				}
 
@@ -263,106 +265,48 @@ export default class AgentLoop {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
-		const resolvedRunId = runRow.id;
+		const runId = runRow.id;
 
-		const { category, action } = resolution;
-		const id = Number(resolution.id);
+		const { key, action, output, answer, isError } = resolution;
 
-		const findings = await this.#db.get_findings_by_run_id.all({
-			run_id: resolvedRunId,
-		});
-		const finding = findings.find(
-			(f) => f.category === category && f.id === id,
-		);
-		if (!finding)
-			throw new Error(
-				msg("error.finding_not_found", { category, id, runId: resolvedRunId }),
-			);
-
-		if (category === "diff") {
-			await this.#db.update_finding_diff_status.run({ id, status: action });
-			const label =
-				action === "modified"
-					? msg("feedback.edits_partial")
-					: msg("feedback.edits_action", { action });
-			await this.#db.insert_pending_context.run({
-				run_id: resolvedRunId,
-				source_turn_id: finding.turn_id,
-				type: "diff",
-				request: finding.file || "unknown",
-				result: label,
-				is_error: 0,
-			});
-		} else if (category === "command") {
-			await this.#db.update_finding_command_status.run({ id, status: action });
-			await this.#db.insert_pending_context.run({
-				run_id: resolvedRunId,
-				source_turn_id: finding.turn_id,
-				type: "command",
-				request: finding.patch || "unknown",
-				result: resolution.output || action,
-				is_error: resolution.isError ? 1 : 0,
-			});
-		} else if (category === "notification") {
-			await this.#db.update_finding_notification_status.run({
-				id,
-				status: "responded",
-			});
-			await this.#db.insert_pending_context.run({
-				run_id: resolvedRunId,
-				source_turn_id: finding.turn_id,
-				type: "notification",
-				request: finding.patch || "prompt_user",
-				result: resolution.answer || action,
-				is_error: 0,
-			});
+		// Resolve the known entry
+		if (action === "accepted" || action === "pass") {
+			await this.#knownStore.resolve(runId, key, "pass", output || "");
+		} else if (action === "rejected") {
+			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
+		} else if (action === "responded") {
+			await this.#knownStore.resolve(runId, key, isError ? "error" : "pass", answer || output || "");
 		}
 
-		const remaining = await this.#db.get_unresolved_findings.all({
-			run_id: resolvedRunId,
-		});
-		if (remaining.length > 0) {
+		const unresolved = await this.#knownStore.getUnresolved(runId);
+		if (unresolved.length > 0) {
 			return {
 				run: runAlias,
 				status: "proposed",
-				remainingCount: remaining.length,
-				proposed: remaining,
+				remainingCount: unresolved.length,
+				proposed: unresolved,
 			};
 		}
 
-		// All findings resolved. Determine next action.
-		const allFindings = await this.#db.get_findings_by_run_id.all({
-			run_id: resolvedRunId,
-		});
+		// All resolved. Check for rejections.
+		const allResults = (await this.#knownStore.getAll(runId))
+			.filter((r) => r.domain === "result");
+		const hasRejection = allResults.some((r) => r.state === "warn");
 
-		// Rejection → stop, return control to client.
-		const hasRejection = allFindings.some((f) => f.status === "rejected");
 		if (hasRejection) {
-			await this.#db.update_run_status.run({
-				id: resolvedRunId,
-				status: "running",
-			});
+			await this.#db.update_run_status.run({ id: runId, status: "running" });
 			return { run: runAlias, status: "resolved" };
 		}
 
-		// Any accepted/modified finding → auto-resume.
-		const hasResolvableFinding = allFindings.some(
-			(f) =>
-				(f.category === "diff" || f.category === "command") &&
-				(f.status === "accepted" || f.status === "modified"),
+		// Auto-resume
+		const hasResolvable = allResults.some(
+			(r) => r.state === "pass" && r.key.match(/^\/:(?:edit|run|delete)\//),
 		);
-		const hasRespondedPrompt = allFindings.some(
-			(f) => f.category === "notification" && f.status === "responded",
-		);
-		if (hasResolvableFinding || hasRespondedPrompt) {
+		if (hasResolvable) {
 			return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
 		}
 
-		// No findings that need follow-up — complete.
-		await this.#db.update_run_status.run({
-			id: resolvedRunId,
-			status: "completed",
-		});
+		await this.#db.update_run_status.run({ id: runId, status: "completed" });
 		return { run: runAlias, status: "completed" };
 	}
 
@@ -373,26 +317,21 @@ export default class AgentLoop {
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
 
-		// Get the latest turn to use as source_turn_id
-		const lastSeq = await this.#db.get_last_turn_sequence.get({
-			run_id: runRow.id,
-		});
-		const sourceTurnId = lastSeq?.last_turn_id || null;
-
-		await this.#db.insert_pending_context.run({
-			run_id: runRow.id,
-			source_turn_id: sourceTurnId,
-			type: "inject",
-			request: "user",
-			result: message,
-			is_error: 0,
-		});
+		// Store the injection as an info entry in the known store
+		const resultKey = await this.#knownStore.nextResultKey(runRow.id, "inject");
+		await this.#knownStore.upsert(
+			runRow.id,
+			null,
+			resultKey,
+			message,
+			"info",
+			{ target: "user" },
+		);
 
 		if (isActive) {
 			return { run: runAlias, status: runRow.status, injected: "queued" };
 		}
 
-		// Idle run — resume with the injected message as context
 		return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
 	}
 
@@ -400,9 +339,6 @@ export default class AgentLoop {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
-		const historyRows = await this.#db.get_turn_history.all({
-			run_id: runRow.id,
-		});
-		return historyRows.map((r) => ({ role: r.role, content: r.content }));
+		return this.#knownStore.getLog(runRow.id);
 	}
 }
