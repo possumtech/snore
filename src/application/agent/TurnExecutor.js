@@ -2,7 +2,7 @@ import ToolExtractor from "./ToolExtractor.js";
 import ContextAssembler from "./ContextAssembler.js";
 import ToolSchema from "../../domain/schema/ToolSchema.js";
 import PromptManager from "../../domain/prompt/PromptManager.js";
-import RummyContext from "../../domain/turn/RummyContext.js";
+import RummyContext from "../../domain/hooks/RummyContext.js";
 
 export default class TurnExecutor {
 	#db;

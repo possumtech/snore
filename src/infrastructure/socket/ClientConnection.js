@@ -60,7 +60,7 @@ export default class ClientConnection {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("ui/prompt", {
 					run: payload.run,
-					findingId: payload.findingId,
+					key: payload.key,
 					question: payload.question,
 					options: payload.options,
 				});
@@ -69,10 +69,10 @@ export default class ClientConnection {
 
 		this.#hooks.run.command.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
-				const method = payload.type === "env" ? "run/env" : "run/run";
-				this.#sendNotification(method, {
+				this.#sendNotification("run/command", {
 					run: payload.run,
-					findingId: payload.findingId,
+					key: payload.key,
+					type: payload.type,
 					command: payload.command,
 				});
 			}
@@ -80,15 +80,9 @@ export default class ClientConnection {
 
 		this.#hooks.run.step.completed.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
-				const turn = payload.turn.toJson();
-				if (process.env.RUMMY_DEBUG === "true") {
-					console.log(
-						`[DEBUG] RPC OUT: run/step/completed. Errors: ${turn.errors.length}`,
-					);
-				}
 				this.#sendNotification("run/step/completed", {
 					run: payload.run,
-					turn,
+					turn: payload.turn,
 					files: payload.projectFiles,
 					cumulative: payload.cumulative,
 				});
@@ -99,12 +93,11 @@ export default class ClientConnection {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("editor/diff", {
 					run: payload.run,
-					findingId: payload.findingId,
+					key: payload.key,
 					type: payload.type,
 					file: payload.file,
-					patch: payload.patch,
-					warning: payload.warning,
-					error: payload.error,
+					search: payload.search,
+					replace: payload.replace,
 				});
 			}
 		});

@@ -82,8 +82,7 @@ export default class CoreRpcPlugin {
 		r.register("drop", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.drop(ctx.projectId, params.pattern),
-			description:
-				"Remove client promotion. File reverts to baseline fidelity.",
+			description: "Remove file state override. File reverts to default.",
 			params: { pattern: "string — file path or glob" },
 			requiresInit: true,
 		});
@@ -169,12 +168,12 @@ export default class CoreRpcPlugin {
 		r.register("run/resolve", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.resolve(params.run, params.resolution),
-			description: "Resolve a finding. Returns { run, status }.",
+			description: "Resolve a proposed entry. Returns { run, status }.",
 			longRunning: true,
 			params: {
 				run: "string — run name",
 				resolution:
-					"{ category: 'diff'|'command'|'notification', id: number, action: 'accepted'|'rejected'|'modified', output?: string }",
+					"{ key: string, action: 'accepted'|'rejected'|'responded', output?: string, answer?: string }",
 			},
 			requiresInit: true,
 		});
@@ -331,23 +330,19 @@ export default class CoreRpcPlugin {
 		);
 		r.registerNotification(
 			"run/progress",
-			"Turn status. Payload: { run, turn, status: 'thinking'|'processing'|'retrying' }.",
+			"Turn status. Payload: { run, turn, status: 'thinking'|'processing' }.",
 		);
 		r.registerNotification(
 			"editor/diff",
-			"Proposed edit. Payload: { run, findingId, type: 'edit', file, patch (unified diff) }.",
+			"Proposed edit. Payload: { run, key, type, file, search, replace }.",
 		);
 		r.registerNotification(
-			"run/env",
-			"Proposed read-only command. Payload: { run, findingId, command }.",
-		);
-		r.registerNotification(
-			"run/run",
-			"Proposed shell command. Payload: { run, findingId, command }.",
+			"run/command",
+			"Proposed command. Payload: { run, key, type, command }.",
 		);
 		r.registerNotification(
 			"ui/prompt",
-			"Model question. Payload: { run, findingId, question, options[] }.",
+			"Model question. Payload: { run, key, question, options[] }.",
 		);
 		r.registerNotification(
 			"ui/render",
