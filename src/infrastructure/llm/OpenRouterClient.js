@@ -1,19 +1,5 @@
 import ToolSchema from "../../domain/schema/ToolSchema.js";
 
-const EMPTY_SCHEMA = {
-	type: "json_schema",
-	json_schema: {
-		name: "empty",
-		strict: true,
-		schema: {
-			type: "object",
-			properties: {},
-			required: [],
-			additionalProperties: false,
-		},
-	},
-};
-
 const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
 const CATALOG_TIMEOUT = 120_000;
 
@@ -46,16 +32,9 @@ export default class OpenRouterClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		// Native tool calling
+		// Native tool calling — content is ignored, not suppressed
 		body.tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
 		body.tool_choice = "required";
-
-		// Empty-object shim: explicit signal to not populate content
-		const supportsStrict =
-			this.#capabilities?.supports(model, "structured_outputs") || false;
-		if (supportsStrict) {
-			body.response_format = EMPTY_SCHEMA;
-		}
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {

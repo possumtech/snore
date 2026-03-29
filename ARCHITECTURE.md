@@ -228,7 +228,7 @@ Blocks until user responds. On resolution, value is the selected answer.
 ### 2.4 Enforcement Layers
 
 1. **Tool definitions** — `strict: true` constrained decoding on tool argument schemas.
-2. **Content suppression** — `tool_choice: "required"` + empty-object `response_format` shim. If the model produces content, it's forced to `{}`.
+2. **`tool_choice: "required"`** — model must call at least one tool. Free-form content is not suppressed — any text the model emits alongside tools is captured as reasoning.
 3. **Prompt instructions + examples** — system prompt describes tool purposes and constraints.
 4. **Server-side validation** — confirms `summary` is present. Rejects and retries.
 

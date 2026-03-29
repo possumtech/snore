@@ -145,6 +145,10 @@ export default class TurnExecutor {
 			throw new Error(`Tools not allowed in ${type} mode: ${invalid.join(", ")}`);
 		}
 
+		// Capture any free-form content as reasoning (model may emit text alongside tools)
+		const freeformContent = (responseMessage.content || "").trim();
+		const reasoning = [responseMessage.reasoning_content, freeformContent].filter(Boolean).join("\n");
+
 		// Commit usage stats
 		const usage = result.usage || {};
 		await this.#db.update_turn_stats.run({
@@ -155,12 +159,12 @@ export default class TurnExecutor {
 			cost: Number(usage.cost || 0),
 		});
 
-		// Store reasoning as a known entry (hidden from model, audit only)
-		if (responseMessage.reasoning_content) {
+		// Store reasoning (explicit + free-form content) as audit entry
+		if (reasoning) {
 			await this.#knownStore.upsert(
 				currentRunId, turn,
 				`/:reasoning/${turn}`,
-				responseMessage.reasoning_content,
+				reasoning,
 				"info",
 			);
 		}
