@@ -8,7 +8,7 @@ File management system fully cannibalized into the K/V store.
 
 ### Completed
 
-- [x] Migration schema — `known_entries` with `domain`/`state`/`meta`/`relevance`/`turn`, `turns` for usage stats, no `turn_elements`/`findings_*`/`pending_context`/`file_promotions`/`client_promotions`/`repo_map_references`
+- [x] Migration schema — `known_entries` with `domain`/`state`/`hash`/`meta`/`relevance`/`turn`, `turns` for usage stats. No `turn_elements`, `findings_*`, `pending_context`, `file_promotions`, `client_promotions`, `repo_map_files`, `repo_map_tags`, `repo_map_references`.
 - [x] SQL queries — upsert, get, delete, resolve, run log, next result key, next turn, create turn, update turn stats
 - [x] Tool definitions — one JSON file per tool in `src/domain/schema/tools/`, composed by `ToolSchema.js`
 - [x] `ToolSchema.js` — loads tools, strips unsupported strict-mode keywords for API, AJV validation, mode/required validation
@@ -17,49 +17,44 @@ File management system fully cannibalized into the K/V store.
 - [x] `ContextAssembler.js` — system prompt + user message (known/unknown/log embedded in system)
 - [x] `OpenRouterClient.js` — tools + tool_choice + empty-object shim, Ollama argument normalization
 - [x] `ToolExtractor.js` — reads tool_calls array, separates action/structural calls, static validation
-- [x] `TurnExecutor.js` — new execution flow (context assembly → LLM → tool extraction → known store). Needs update for `turn`/`meta` changes.
-- [x] `AgentLoop.js` — resolve/inject operate on known store, no findings tables. Needs update for `turn`/`meta` changes.
+- [x] `TurnExecutor.js` — new execution flow. Reads prompt via PromptManager, runs hooks via RummyContext, assembles context via ContextAssembler. No TurnBuilder/Turn dependency.
+- [x] `AgentLoop.js` — resolve/inject operate on known store, no findings tables.
+- [x] `SessionManager.js` — activate/readOnly/ignore/drop write to known_entries across all active runs. No client_promotions/file_promotions.
+- [x] `ProjectAgent.js` — no FindingsProcessor/FindingsManager/StateEvaluator/TurnBuilder.
+- [x] Killed repo_map — `repo_map_files`, `repo_map_tags`, `repo_map_references` all removed. Files live in known_entries with `hash` for change detection, symbols in `meta`.
+- [x] Killed Turn.js, TurnBuilder.js — TurnExecutor uses PromptManager + RummyContext directly.
+- [x] All three LLM clients (OpenRouter, Ollama, OpenAI) use ToolSchema for native tool calling.
 - [x] AJV installed — server-side schema validation for constraints strict mode can't enforce
 - [x] Legacy tests archived to `test_old/`
 - [x] Doc alignment — ARCHITECTURE.md rewritten, consolidated to 3 docs, aligned with migration
 
 ### Remaining
 
-**Schema & Validation (current focus):**
-- [ ] Integration tests — KnownStore against real SQLite (UPSERT, resolve, model projection, log)
-- [ ] Integration tests — ToolSchema validation against real model response shapes
-- [ ] Update TurnExecutor/AgentLoop for `turn`/`meta` changes (replace `turnId`/`target`/`toolCallId`)
+**File scanner (current focus):**
+- [ ] `FileScanner.js` — scan disk, hash files, extract symbols, write to known_entries across all active runs
+- [ ] Action tool handlers — `read` (load file from disk), `env` (run command), `drop` (demote)
+- [ ] Wire file scanner into mapping plugin's `onTurn` hook
+- [ ] Wire file scanner into `project.init.completed` hook
 
-**Wiring:**
-- [ ] Wire `KnownStore` into dependency injection
-- [ ] File bootstrap — populate known_entries from repo map at run start
-- [ ] `StateEvaluator.js` — simplify (query known store for proposed entries)
-
-**Prompts & Plugins:**
-- [ ] System prompts — `system.ask.md`, `system.act.md` rewrite
-- [ ] Plugin updates — `mapping.js` (stop injecting docs), `context.js` (dead), `tools.js` (tool definitions)
-
-**RPC & Client:**
-- [ ] `run/resolve` uses `key` instead of `{category, id}`
-- [ ] Notification payloads use `key` instead of `findingId`
-- [ ] Client promotion RPCs (`activate`/`readOnly`/`ignore`) write to known store
-
-**Cleanup:**
-- [ ] Delete dead code (see list below)
+**Testing:**
+- [ ] Integration tests for file scanner
 - [ ] E2E test against real model
 
-### Dead Code (to delete after migration)
+**Future cleanup:**
+- [ ] RPC notification payloads — some still reference stale field names
+- [ ] ARCHITECTURE.md §7 plugin system — some event payloads reference old field names
 
-- `src/domain/schema/ask.json`, `act.json`
-- `src/application/agent/FindingsProcessor.js`
-- `src/application/agent/FindingsManager.js`
-- `src/application/agent/insert_finding_diff.sql`, `insert_finding_command.sql`, `insert_finding_notification.sql`
-- `src/application/agent/update_finding_*_status.sql`
-- `src/application/agent/get_findings_by_run_id.sql`, `get_unresolved_findings.sql`
-- `src/application/agent/insert_pending_context.sql`, `get_pending_context.sql`, `consume_pending_context.sql`
-- `src/application/agent/get_turn_history.sql`
-- `src/application/plugins/context/context.js` (feedback injection — dead)
-- `src/application/session/purge_consumed_context.sql`
+### Dead Code (already deleted)
+
+All of the following have been removed:
+- `FindingsProcessor.js`, `FindingsManager.js`, `StateEvaluator.js`
+- `Turn.js`, `TurnBuilder.js`
+- `RepoMap.js`, `repo_map_files`, `repo_map_tags`, `repo_map_references`
+- `ask.json`, `act.json` (old response_format schemas)
+- `gbnf.js` (GBNF grammar generator)
+- `context.js` plugin (feedback injection)
+- All findings SQL, pending_context SQL, file_promotions SQL, editor_promotions SQL, turn_elements SQL
+- `purge_consumed_context.sql`, `purge_orphaned_editor_promotions.sql`
 
 ---
 

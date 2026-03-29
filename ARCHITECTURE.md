@@ -24,6 +24,7 @@ CREATE TABLE known_entries (
     , value TEXT NOT NULL DEFAULT ''
     , domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
     , state TEXT NOT NULL
+    , hash TEXT
     , meta JSON
     , relevance INTEGER NOT NULL DEFAULT 0
     , write_count INTEGER NOT NULL DEFAULT 1
@@ -42,6 +43,7 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 
 **Columns:**
 - `turn` — integer sequence number. For files, the most recent turn that engaged with the file (heat signal). For results, the turn that produced them. Not a FK — just a number.
+- `hash` — content hash (SHA-256) for change detection. The file scanner compares this against the current disk hash to detect modifications without re-reading contents.
 - `meta` — JSON metadata. Files store symbols here. Tool results store the original command/args. Edits store file, search, replace.
 - `relevance` — integer, default 0. Reserved for future heat engine / context budgeting.
 
@@ -267,19 +269,25 @@ files enter the known store — the model never sees a separate file listing.
 | Root file or heat-promoted | `file` | `symbols` | `name(params)` per line |
 | Other indexed files | Not bootstrapped — discoverable via `read` if model knows the path |
 
-The repo map tables (`repo_map_files`, `repo_map_tags`) serve as indexing
-infrastructure for the bootstrap. They are read-only from the known store's
-perspective.
+### 3.4 File Change Detection
 
-### 3.4 Heat-Based Promotion
+Each turn, the server scans the project's files and compares against
+`known_entries.hash`:
 
-Files at `symbols` state are selected based on **heat** — cross-references
-derived from `known_entries.meta` (symbol data stored on file entries). The
-`relevance` field on `known_entries` stores the computed heat score. The
-`turn` field tracks the most recent turn that engaged with each file.
+1. Scan project for all files and their current hashes
+2. Across all active runs, add/update/delete file entries to match disk state
+3. Update the `turn` field on files that are: client-promoted (`active`),
+   model-read (`full`), or newly modified (hash changed)
 
-Heat computation and context budgeting are future work. The `relevance` field
-is inert (default 0) until the heat engine is implemented.
+Files whose `turn` matches the current turn were recently engaged — this is
+the heat signal for future context budgeting.
+
+The `relevance` field stores a computed heat score. The `hash` field enables
+change detection without re-reading file contents. Both are inert (default 0 /
+NULL) until the heat engine and context budgeting are implemented.
+
+Symbol extraction (ctags/antlrmap) runs when a file's hash changes. Symbols
+are stored in `meta` on the file's known entry.
 
 ---
 
@@ -287,24 +295,29 @@ is inert (default 0) until the heat engine is implemented.
 
 | Scope | Lifetime | Contains |
 |-------|----------|----------|
-| **Project** | Until deleted or re-indexed | File index, symbols |
+| **Project** | Until deleted | Project path, name, git state |
+| **Session** | Client connection | Config (persona, system prompt, skills, temperature) |
 | **Run** | Open-ended conversation | `known_entries`, `turns` |
 | **Turn** | Single LLM request/response | Entries written with that turn number |
 
 ### 4.1 Project Scope
 
-- `repo_map_files` — file metadata (path, hash, size, symbol_tokens)
-- `repo_map_tags` — symbol definitions extracted by ctags
+- `projects` — project path, name, git hash, last indexed timestamp
 
-These are indexing infrastructure. The model never sees them directly — they
-feed the bootstrap that populates the known store.
+No separate file index tables. File metadata (path, hash, symbols) lives in
+`known_entries` as file-domain entries. The project table is structural only.
 
 ### 4.2 Run Scope
 
-- `known_entries` — the unified state machine. All keyed state.
+- `known_entries` — the unified state machine. Files, knowledge, tool results, audit.
 - `turns` — usage stats (prompt_tokens, completion_tokens, cost). Operational, not model-facing.
 - `runs.next_result_seq` — sequential counter for result key generation
 - `runs.next_turn` — sequential counter for turn numbers
+
+Files are scanned from disk and written to `known_entries` per-run. Multiple
+concurrent runs reference the same files as separate entries (different `run_id`,
+same `key`). The file scanner updates all active runs in bulk when files change
+on disk.
 
 ---
 
