@@ -8,31 +8,45 @@ File management system fully cannibalized into the K/V store.
 
 ### Completed
 
-- [x] Migration schema — `known_entries` table with normalized `domain`/`state`, state lock trigger, unresolved view
-- [x] SQL queries — upsert, get, delete, resolve, run log, next result key
-- [x] Tool definition JSONs — `tools.ask.json` (7 tools), `tools.act.json` (10 tools)
-- [x] `KnownStore.js` — unified state manager (upsert, resolve, model projection, log, namespace routing)
-- [x] `ContextAssembler.js` — system prompt + user message (no synthetic history)
+- [x] Migration schema — `known_entries` with `domain`/`state`/`meta`/`relevance`/`turn`, `turns` for usage stats, no `turn_elements`/`findings_*`/`pending_context`/`file_promotions`/`client_promotions`/`repo_map_references`
+- [x] SQL queries — upsert, get, delete, resolve, run log, next result key, next turn, create turn, update turn stats
+- [x] Tool definitions — one JSON file per tool in `src/domain/schema/tools/`, composed by `ToolSchema.js`
+- [x] `ToolSchema.js` — loads tools, strips unsupported strict-mode keywords for API, AJV validation, mode/required validation
+- [x] `ToolSchema.test.js` — 36 tests covering definitions, API stripping, argument validation, required/mode checks
+- [x] `KnownStore.js` — unified state manager (upsert, resolve, model projection, log, namespace routing, turn/result key generation)
+- [x] `ContextAssembler.js` — system prompt + user message (known/unknown/log embedded in system)
 - [x] `OpenRouterClient.js` — tools + tool_choice + empty-object shim, Ollama argument normalization
-- [x] `ToolExtractor.js` — reads tool_calls array, separates action/structural calls
-- [x] `TurnExecutor.js` — new execution flow (context assembly → LLM → tool extraction → known store)
-- [x] `AgentLoop.js` — resolve/inject operate on known store, no findings tables
+- [x] `ToolExtractor.js` — reads tool_calls array, separates action/structural calls, static validation
+- [x] `TurnExecutor.js` — new execution flow (context assembly → LLM → tool extraction → known store). Needs update for `turn`/`meta` changes.
+- [x] `AgentLoop.js` — resolve/inject operate on known store, no findings tables. Needs update for `turn`/`meta` changes.
+- [x] AJV installed — server-side schema validation for constraints strict mode can't enforce
 - [x] Legacy tests archived to `test_old/`
-- [x] Doc alignment — ARCHITECTURE.md rewritten, consolidated to 3 docs
+- [x] Doc alignment — ARCHITECTURE.md rewritten, consolidated to 3 docs, aligned with migration
 
 ### Remaining
 
-- [ ] `StateEvaluator.js` — simplify (checks known store for proposed entries)
-- [ ] System prompts — `system.ask.md`, `system.act.md` rewrite
+**Schema & Validation (current focus):**
+- [ ] Integration tests — KnownStore against real SQLite (UPSERT, resolve, model projection, log)
+- [ ] Integration tests — ToolSchema validation against real model response shapes
+- [ ] Update TurnExecutor/AgentLoop for `turn`/`meta` changes (replace `turnId`/`target`/`toolCallId`)
+
+**Wiring:**
+- [ ] Wire `KnownStore` into dependency injection
 - [ ] File bootstrap — populate known_entries from repo map at run start
+- [ ] `StateEvaluator.js` — simplify (query known store for proposed entries)
+
+**Prompts & Plugins:**
+- [ ] System prompts — `system.ask.md`, `system.act.md` rewrite
 - [ ] Plugin updates — `mapping.js` (stop injecting docs), `context.js` (dead), `tools.js` (tool definitions)
-- [ ] Delete dead code — old schema files, FindingsProcessor, FindingsManager, old SQL queries
-- [ ] Wire up `KnownStore` in dependency injection (wherever AgentLoop/TurnExecutor are constructed)
-- [ ] New tests for KnownStore, ContextAssembler, ToolExtractor, TurnExecutor
+
+**RPC & Client:**
+- [ ] `run/resolve` uses `key` instead of `{category, id}`
+- [ ] Notification payloads use `key` instead of `findingId`
+- [ ] Client promotion RPCs (`activate`/`readOnly`/`ignore`) write to known store
+
+**Cleanup:**
+- [ ] Delete dead code (see list below)
 - [ ] E2E test against real model
-- [ ] RPC updates — `run/resolve` uses `key` instead of `{category, id}`
-- [ ] Notification payload updates — `key` instead of `findingId`
-- [ ] Client promotion migration — `activate`/`readOnly`/`ignore` write to known store
 
 ### Dead Code (to delete after migration)
 

@@ -16,6 +16,14 @@ export default class KnownStore {
 	}
 
 	/**
+	 * Advance turn counter and return the new turn number.
+	 */
+	async nextTurn(runId) {
+		const row = await this.#db.next_turn.get({ run_id: runId });
+		return row.turn;
+	}
+
+	/**
 	 * Generate the next result key for a tool call.
 	 * Returns e.g. "/:read/4", "/:edit/7".
 	 */
@@ -27,17 +35,17 @@ export default class KnownStore {
 	/**
 	 * UPSERT an entry. Domain is derived from the key.
 	 * @param {string} runId
-	 * @param {number|null} turnId
+	 * @param {number} turn
 	 * @param {string} key
 	 * @param {string} value
 	 * @param {string} state
 	 * @param {object|null} meta - JSON-serializable metadata (symbols, tool args, etc.)
 	 */
-	async upsert(runId, turnId, key, value, state, meta = null) {
+	async upsert(runId, turn, key, value, state, meta = null) {
 		const domain = KnownStore.domain(key);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
-			turn_id: turnId,
+			turn,
 			key,
 			value,
 			domain,

@@ -40,11 +40,13 @@ CREATE TABLE IF NOT EXISTS runs (
 	, config JSON
 	, alias TEXT NOT NULL UNIQUE
 	, next_result_seq INTEGER NOT NULL DEFAULT 1
+	, next_turn INTEGER NOT NULL DEFAULT 0
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias);
 
+-- Turns: usage stats and sequencing (operational, not model-facing)
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
@@ -55,16 +57,7 @@ CREATE TABLE IF NOT EXISTS turns (
 	, cost REAL DEFAULT 0
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE TABLE IF NOT EXISTS turn_elements (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
-	, parent_id INTEGER REFERENCES turn_elements (id) ON DELETE CASCADE
-	, tag_name TEXT NOT NULL
-	, content TEXT
-	, attributes JSON
-	, sequence INTEGER NOT NULL
-);
+CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
 
 -- Repo Map: File Metadata (indexing infrastructure — bootstrap reads from this)
 CREATE TABLE IF NOT EXISTS repo_map_files (
@@ -89,45 +82,9 @@ CREATE TABLE IF NOT EXISTS repo_map_tags (
 	, source TEXT DEFAULT 'hd'
 );
 
--- Heat/relevance is derived from known_entries.meta (symbol cross-references)
--- rather than a separate references table. See ARCHITECTURE.md §3.4.
-
--- TURN HISTORY VIEW (debugging/UI — not on the LLM critical path)
-CREATE VIEW IF NOT EXISTS v_turn_history AS
-SELECT
-	t.run_id,
-	t.id as turn_id,
-	t.sequence,
-	'system' as role,
-	te.content,
-	0 as msg_index
-FROM turns AS t
-JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'system'
-UNION ALL
-SELECT
-	t.run_id,
-	t.id as turn_id,
-	t.sequence,
-	'user' as role,
-	te.content,
-	1 as msg_index
-FROM turns AS t
-JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'user'
-UNION ALL
-SELECT
-	t.run_id,
-	t.id as turn_id,
-	t.sequence,
-	'assistant' as role,
-	te.content,
-	2 as msg_index
-FROM turns AS t
-JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'content';
-
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
-CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_repo_map_files_project ON repo_map_files (
 	project_id
 );
@@ -135,20 +92,14 @@ CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (
 	file_id, name
 );
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
-CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent ON turn_elements (
-	turn_id, parent_id
-);
-CREATE INDEX IF NOT EXISTS idx_turn_elements_tag_lookup ON turn_elements (
-	turn_id, tag_name
-);
 
 -- Known K/V Store: the unified state machine
--- Files, knowledge, tool results, findings — everything is a keyed entry.
+-- Files, knowledge, tool results, audit — everything is a keyed entry.
 -- domain + state are normalized columns; the model sees a projection (e.g. "file:symbols").
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, turn_id INTEGER REFERENCES turns (id) ON DELETE CASCADE
+	, turn INTEGER NOT NULL DEFAULT 0
 	, key TEXT NOT NULL
 	, value TEXT NOT NULL DEFAULT ''
 	, domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
@@ -168,22 +119,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_key
 ON known_entries (run_id, key);
 CREATE INDEX IF NOT EXISTS idx_known_entries_domain_state
 ON known_entries (run_id, domain, state);
-
--- STATE LOCK TRIGGER: block new turns while results are pending approval
-CREATE TRIGGER IF NOT EXISTS lock_turn_on_proposed
-BEFORE INSERT ON turns
-FOR EACH ROW
-BEGIN
-	SELECT CASE
-		WHEN (
-			SELECT COUNT(*) FROM known_entries
-			WHERE run_id = NEW.run_id
-				AND domain = 'result'
-				AND state = 'proposed'
-		) > 0
-			THEN RAISE(ABORT, 'Blocked: Run has unresolved proposed entries.')
-	END;
-END;
+CREATE INDEX IF NOT EXISTS idx_known_entries_turn
+ON known_entries (run_id, turn);
 
 -- UNRESOLVED VIEW: all entries awaiting user action
 CREATE VIEW IF NOT EXISTS v_unresolved AS
@@ -192,9 +129,22 @@ SELECT
 	, key
 	, value
 	, meta
-	, turn_id
+	, turn
 FROM known_entries
 WHERE domain = 'result' AND state = 'proposed';
+
+-- TURN HISTORY VIEW: reconstructed from known_entries
+CREATE VIEW IF NOT EXISTS v_turn_history AS
+SELECT
+	run_id
+	, turn
+	, key
+	, domain
+	, state
+	, value
+	, meta
+FROM known_entries
+ORDER BY run_id, turn, id;
 
 -- Provider model catalog (cached from OpenRouter /models, etc.)
 CREATE TABLE IF NOT EXISTS provider_models (
