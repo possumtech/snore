@@ -1,5 +1,5 @@
-import LlmProvider from "../../domain/llm/LlmProvider.js";
-import SessionManager from "../session/SessionManager.js";
+import LlmProvider from "../llm/LlmProvider.js";
+import SessionManager from "./SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
 import KnownStore from "./KnownStore.js";
 import TurnExecutor from "./TurnExecutor.js";

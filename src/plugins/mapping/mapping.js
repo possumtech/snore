@@ -1,4 +1,4 @@
-import ProjectContext from "../../../domain/project/ProjectContext.js";
+import ProjectContext from "../../fs/ProjectContext.js";
 
 export default class FileScanPlugin {
 	static register(hooks) {

@@ -6,7 +6,7 @@ import { after, before, describe, it } from "node:test";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
-import KnownStore from "../../src/application/agent/KnownStore.js";
+import KnownStore from "../../src/agent/KnownStore.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;

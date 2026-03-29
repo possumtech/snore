@@ -1,7 +1,7 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert";
 import TestDb from "../helpers/TestDb.js";
-import KnownStore from "../../src/application/agent/KnownStore.js";
+import KnownStore from "../../src/agent/KnownStore.js";
 
 describe("KnownStore integration", () => {
 	let tdb;

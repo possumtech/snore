@@ -1,4 +1,4 @@
-import ToolRegistry from "../tools/ToolRegistry.js";
+import ToolRegistry from "./ToolRegistry.js";
 import HookRegistry from "./HookRegistry.js";
 
 /**

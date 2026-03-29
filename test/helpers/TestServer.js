@@ -1,8 +1,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import createHooks from "../../src/domain/hooks/Hooks.js";
-import RpcRegistry from "../../src/infrastructure/rpc/RpcRegistry.js";
-import SocketServer from "../../src/infrastructure/socket/SocketServer.js";
+import createHooks from "../../src/hooks/Hooks.js";
+import RpcRegistry from "../../src/server/RpcRegistry.js";
+import SocketServer from "../../src/server/SocketServer.js";
 import { registerPlugins } from "../../src/plugins/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,16 +18,13 @@ export default class TestServer {
 		const hooks = createHooks(false);
 		hooks.rpc.registry = new RpcRegistry();
 
-		// Register internal and core plugins so hooks like RepoMap work in tests
-		const internalPluginsDir = join(__dirname, "../../src/application/plugins");
-		const corePluginsDir = join(__dirname, "../../src/plugins");
-		await registerPlugins([internalPluginsDir, corePluginsDir], hooks);
+		const pluginsDir = join(__dirname, "../../src/plugins");
+		await registerPlugins([pluginsDir], hooks);
 
-		// Prefetch OpenRouter catalog so first init doesn't timeout
 		if (process.env.OPENROUTER_API_KEY) {
 			try {
 				const { default: OpenRouterClient } = await import(
-					"../../src/infrastructure/llm/OpenRouterClient.js"
+					"../../src/llm/OpenRouterClient.js"
 				);
 				const or = new OpenRouterClient(
 					process.env.OPENROUTER_API_KEY,

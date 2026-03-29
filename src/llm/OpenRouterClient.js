@@ -1,4 +1,4 @@
-import ToolSchema from "../../domain/schema/ToolSchema.js";
+import ToolSchema from "../schema/ToolSchema.js";
 
 const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
 const CATALOG_TIMEOUT = 120_000;

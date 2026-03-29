@@ -1,4 +1,4 @@
-import ToolSchema from "../../domain/schema/ToolSchema.js";
+import ToolSchema from "../schema/ToolSchema.js";
 
 export default class OpenAiClient {
 	#baseUrl;

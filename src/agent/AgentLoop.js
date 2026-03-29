@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import msg from "../../domain/i18n/messages.js";
+import msg from "./messages.js";
 import KnownStore from "./KnownStore.js";
 
 export default class AgentLoop {

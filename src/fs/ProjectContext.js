@@ -1,5 +1,5 @@
 import { isAbsolute, join, relative } from "node:path";
-import GitProvider from "../../infrastructure/filesystem/GitProvider.js";
+import GitProvider from "./GitProvider.js";
 
 export default class ProjectContext {
 	#root;

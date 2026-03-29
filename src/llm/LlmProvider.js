@@ -1,7 +1,7 @@
-import ModelCapabilities from "../../infrastructure/llm/ModelCapabilities.js";
-import OllamaClient from "../../infrastructure/llm/OllamaClient.js";
-import OpenAiClient from "../../infrastructure/llm/OpenAiClient.js";
-import OpenRouterClient from "../../infrastructure/llm/OpenRouterClient.js";
+import ModelCapabilities from "./ModelCapabilities.js";
+import OllamaClient from "./OllamaClient.js";
+import OpenAiClient from "./OpenAiClient.js";
+import OpenRouterClient from "./OpenRouterClient.js";
 
 export default class LlmProvider {
 	#openRouter;

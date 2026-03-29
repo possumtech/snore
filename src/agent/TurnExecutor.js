@@ -1,11 +1,11 @@
 import ToolExtractor from "./ToolExtractor.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
-import ToolSchema from "../../domain/schema/ToolSchema.js";
-import PromptManager from "../../domain/prompt/PromptManager.js";
-import ProjectContext from "../../domain/project/ProjectContext.js";
-import RummyContext from "../../domain/hooks/RummyContext.js";
-import HeuristicMatcher, { generateUnifiedDiff } from "../../extraction/HeuristicMatcher.js";
+import ToolSchema from "../schema/ToolSchema.js";
+import PromptManager from "./PromptManager.js";
+import ProjectContext from "../fs/ProjectContext.js";
+import RummyContext from "../hooks/RummyContext.js";
+import HeuristicMatcher, { generateUnifiedDiff } from "./HeuristicMatcher.js";
 
 export default class TurnExecutor {
 	#db;

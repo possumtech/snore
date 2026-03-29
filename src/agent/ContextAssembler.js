@@ -1,4 +1,4 @@
-import ToolSchema from "../../domain/schema/ToolSchema.js";
+import ToolSchema from "../schema/ToolSchema.js";
 
 /**
  * Assembles the LLM messages from the known store context.

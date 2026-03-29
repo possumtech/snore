@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { isAbsolute, relative } from "node:path";
-import ProjectContext from "../../domain/project/ProjectContext.js";
-import KnownStore from "../agent/KnownStore.js";
+import ProjectContext from "../fs/ProjectContext.js";
+import KnownStore from "./KnownStore.js";
 
 export default class SessionManager {
 	#db;
@@ -42,7 +42,7 @@ export default class SessionManager {
 		});
 
 		const { default: GitProvider } = await import(
-			"../../infrastructure/filesystem/GitProvider.js"
+			"../fs/GitProvider.js"
 		);
 		const gitRoot = await GitProvider.detectRoot(projectPath);
 		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;

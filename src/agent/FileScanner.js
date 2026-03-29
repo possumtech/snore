@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
-import CtagsExtractor from "../../extraction/CtagsExtractor.js";
+import CtagsExtractor from "./CtagsExtractor.js";
 
 let Antlrmap = null;
 let antlrmapSupported = null;

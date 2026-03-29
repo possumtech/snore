@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const catalog = JSON.parse(
-	readFileSync(join(__dirname, "../../../lang/en.json"), "utf8"),
+	readFileSync(join(__dirname, "../../lang/en.json"), "utf8"),
 );
 
 export default function msg(key, params = {}) {
