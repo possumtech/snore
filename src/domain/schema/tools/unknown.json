@@ -1,0 +1,24 @@
+{
+	"type": "function",
+	"function": {
+		"name": "unknown",
+		"description": "Things you still need to find out. Only call when there are open questions.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["items"],
+			"additionalProperties": false,
+			"properties": {
+				"items": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"description": "Open questions that need investigation."
+				}
+			}
+		}
+	}
+}

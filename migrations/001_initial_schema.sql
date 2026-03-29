@@ -89,13 +89,8 @@ CREATE TABLE IF NOT EXISTS repo_map_tags (
 	, source TEXT DEFAULT 'hd'
 );
 
-CREATE TABLE IF NOT EXISTS repo_map_references (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
-	, symbol_name TEXT NOT NULL
-);
-
--- Canonical ranking query: src/domain/repomap/get_ranked_repo_map.sql
+-- Heat/relevance is derived from known_entries.meta (symbol cross-references)
+-- rather than a separate references table. See ARCHITECTURE.md §3.4.
 
 -- TURN HISTORY VIEW (debugging/UI — not on the LLM critical path)
 CREATE VIEW IF NOT EXISTS v_turn_history AS
@@ -140,10 +135,6 @@ CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (
 	file_id, name
 );
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
-CREATE INDEX IF NOT EXISTS idx_rmr_file_name
-ON repo_map_references (file_id, symbol_name);
-CREATE INDEX IF NOT EXISTS idx_rmr_symbol
-ON repo_map_references (symbol_name);
 CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent ON turn_elements (
 	turn_id, parent_id
 );
@@ -162,8 +153,8 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, value TEXT NOT NULL DEFAULT ''
 	, domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
 	, state TEXT NOT NULL
-	, target TEXT NOT NULL DEFAULT ''
-	, tool_call_id TEXT
+	, meta JSON
+	, relevance INTEGER NOT NULL DEFAULT 0
 	, write_count INTEGER NOT NULL DEFAULT 1
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -200,8 +191,7 @@ SELECT
 	run_id
 	, key
 	, value
-	, target
-	, tool_call_id
+	, meta
 	, turn_id
 FROM known_entries
 WHERE domain = 'result' AND state = 'proposed';

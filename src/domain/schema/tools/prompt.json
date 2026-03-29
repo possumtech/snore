@@ -1,0 +1,29 @@
+{
+	"type": "function",
+	"function": {
+		"name": "prompt",
+		"description": "Ask the user a multiple choice question when you genuinely need their input to proceed.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["question", "options"],
+			"additionalProperties": false,
+			"properties": {
+				"question": {
+					"type": "string",
+					"minLength": 1,
+					"description": "The question to ask."
+				},
+				"options": {
+					"type": "array",
+					"minItems": 2,
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"description": "Available choices. At least 2."
+				}
+			}
+		}
+	}
+}

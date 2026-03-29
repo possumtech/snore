@@ -1,0 +1,25 @@
+{
+	"type": "function",
+	"function": {
+		"name": "read",
+		"description": "Load a key's value into context. Key is a relative file path (src/app.js), a /:known/ entry, or a /:[tool]/ result.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["key", "reason"],
+			"additionalProperties": false,
+			"properties": {
+				"key": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Relative file path, /:known/ key, or /:[tool]/ key."
+				},
+				"reason": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Why this key is needed."
+				}
+			}
+		}
+	}
+}

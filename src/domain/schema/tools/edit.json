@@ -1,0 +1,29 @@
+{
+	"type": "function",
+	"function": {
+		"name": "edit",
+		"description": "Create or modify a file. Do not describe changes in known/summary — put them here.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["file", "search", "replace"],
+			"additionalProperties": false,
+			"properties": {
+				"file": {
+					"type": "string",
+					"minLength": 1,
+					"description": "File path to modify or create."
+				},
+				"search": {
+					"type": ["string", "null"],
+					"description": "Exact text to find and replace. Null when creating a new file or overwriting entirely."
+				},
+				"replace": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Replacement text, or full content for new files."
+				}
+			}
+		}
+	}
+}

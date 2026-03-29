@@ -26,8 +26,14 @@ export default class KnownStore {
 
 	/**
 	 * UPSERT an entry. Domain is derived from the key.
+	 * @param {string} runId
+	 * @param {number|null} turnId
+	 * @param {string} key
+	 * @param {string} value
+	 * @param {string} state
+	 * @param {object|null} meta - JSON-serializable metadata (symbols, tool args, etc.)
 	 */
-	async upsert(runId, turnId, key, value, state, { target = "", toolCallId = null } = {}) {
+	async upsert(runId, turnId, key, value, state, meta = null) {
 		const domain = KnownStore.domain(key);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
@@ -36,8 +42,7 @@ export default class KnownStore {
 			value,
 			domain,
 			state,
-			target,
-			tool_call_id: toolCallId,
+			meta: meta ? JSON.stringify(meta) : null,
 		});
 	}
 
@@ -62,7 +67,7 @@ export default class KnownStore {
 
 	/**
 	 * Get all entries for a run.
-	 * Returns raw rows: [{key, domain, state, value, target}]
+	 * Returns raw rows: [{key, domain, state, value, meta}]
 	 */
 	async getAll(runId) {
 		return this.#db.get_known_entries.all({ run_id: runId });
@@ -71,7 +76,7 @@ export default class KnownStore {
 	/**
 	 * Get the model-facing known result.
 	 * Projects domain:state into the model's simplified state string.
-	 * Hides file:ignore entries entirely.
+	 * Hides file:ignore and proposed entries.
 	 */
 	async getModelEntries(runId) {
 		const rows = await this.getAll(runId);
@@ -92,9 +97,10 @@ export default class KnownStore {
 		const rows = await this.#db.get_run_log.all({ run_id: runId });
 		return rows.map((row) => {
 			const tool = KnownStore.toolFromKey(row.key);
+			const meta = row.meta ? JSON.parse(row.meta) : {};
 			return {
 				tool: tool || row.status,
-				target: row.target,
+				target: meta.command || meta.file || meta.key || meta.question || "",
 				status: row.status,
 				key: row.key,
 				value: row.status === "summary" ? row.value : "",

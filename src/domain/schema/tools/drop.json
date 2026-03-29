@@ -1,0 +1,25 @@
+{
+	"type": "function",
+	"function": {
+		"name": "drop",
+		"description": "Demote a key from context. Key is a relative file path, /:known/ entry, or /:[tool]/ result.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["key", "reason"],
+			"additionalProperties": false,
+			"properties": {
+				"key": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Relative file path, /:known/ key, or /:[tool]/ key."
+				},
+				"reason": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Why this is no longer relevant."
+				}
+			}
+		}
+	}
+}

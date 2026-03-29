@@ -1,0 +1,25 @@
+{
+	"type": "function",
+	"function": {
+		"name": "run",
+		"description": "Run a shell command that changes the environment (npm install, mkdir, etc).",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["command", "reason"],
+			"additionalProperties": false,
+			"properties": {
+				"command": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Shell command to execute."
+				},
+				"reason": {
+					"type": "string",
+					"minLength": 1,
+					"description": "What this command accomplishes."
+				}
+			}
+		}
+	}
+}

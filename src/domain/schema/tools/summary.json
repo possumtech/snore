@@ -1,0 +1,21 @@
+{
+	"type": "function",
+	"function": {
+		"name": "summary",
+		"description": "One-liner status update or answer. Required every turn. Keep under 80 characters.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["text"],
+			"additionalProperties": false,
+			"properties": {
+				"text": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 80,
+					"description": "Status update or answer. Under 80 characters."
+				}
+			}
+		}
+	}
+}

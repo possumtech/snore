@@ -1,0 +1,25 @@
+{
+	"type": "function",
+	"function": {
+		"name": "delete",
+		"description": "Delete a key. Removes file from disk if key is a file path, removes entry if /:known/ or /:[tool]/ key.",
+		"strict": true,
+		"parameters": {
+			"type": "object",
+			"required": ["key", "reason"],
+			"additionalProperties": false,
+			"properties": {
+				"key": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Relative file path, /:known/ key, or /:[tool]/ key."
+				},
+				"reason": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Why this should be deleted."
+				}
+			}
+		}
+	}
+}
