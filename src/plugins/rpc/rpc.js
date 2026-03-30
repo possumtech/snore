@@ -1,3 +1,5 @@
+import msg from "../../agent/messages.js";
+
 export default class CoreRpcPlugin {
 	static register(hooks) {
 		const r = hooks.rpc.registry;
@@ -212,7 +214,7 @@ export default class CoreRpcPlugin {
 		r.register("run/abort", {
 			handler: async (params, ctx) => {
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				if (!runRow) throw new Error(`Run '${params.run}' not found.`);
+				if (!runRow) throw new Error(msg("error.run_not_found", { runId: params.run }));
 				// Signal the in-flight loop to stop
 				ctx.projectAgent.abortRun(runRow.id);
 				await ctx.db.update_run_status.run({
@@ -229,11 +231,11 @@ export default class CoreRpcPlugin {
 		r.register("run/rename", {
 			handler: async (params, ctx) => {
 				const { run, name } = params;
-				if (!name || !/^[a-z_]{1,20}$/.test(name)) {
-					throw new Error("Name must match [a-z_]{1,20}.");
+				if (!name || !/^[a-z_]+$/.test(name)) {
+					throw new Error(msg("error.run_name_invalid"));
 				}
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: run });
-				if (!runRow) throw new Error(`Run '${run}' not found.`);
+				if (!runRow) throw new Error(msg("error.run_not_found", { runId: run }));
 				try {
 					await ctx.db.rename_run.run({
 						id: runRow.id,
@@ -242,16 +244,16 @@ export default class CoreRpcPlugin {
 					});
 				} catch (err) {
 					if (err.message.includes("UNIQUE")) {
-						throw new Error(`Name '${name}' is already taken.`);
+						throw new Error(msg("error.run_name_taken", { name }));
 					}
 					throw err;
 				}
 				return { run: name };
 			},
-			description: "Rename a run. Must be unique, [a-z_]{1,20}.",
+			description: "Rename a run. Must be unique, [a-z_]+.",
 			params: {
 				run: "string — current run name",
-				name: "string — new name, [a-z_]{1,20}",
+				name: "string — new name, [a-z_]+",
 			},
 			requiresInit: true,
 		});

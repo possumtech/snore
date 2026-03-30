@@ -1,3 +1,5 @@
+import msg from "../agent/messages.js";
+
 export default class OpenAiClient {
 	#baseUrl;
 	#apiKey;
@@ -25,9 +27,7 @@ export default class OpenAiClient {
 
 		if (!response.ok) {
 			const error = await response.text();
-			throw new Error(
-				`OpenAI-compatible API error: ${response.status} - ${error}`,
-			);
+			throw new Error(msg("error.openai_api", { status: `${response.status} - ${error}` }));
 		}
 
 		const data = await response.json();
@@ -57,18 +57,12 @@ export default class OpenAiClient {
 			signal: AbortSignal.timeout(timeout),
 		});
 		if (!response.ok) {
-			throw new Error(
-				`OpenAI-compatible /v1/models failed: ${response.status}. Is the server running at ${this.#baseUrl}?`,
-			);
+			throw new Error(msg("error.openai_models_failed", { status: response.status, baseUrl: this.#baseUrl }));
 		}
 		const data = await response.json();
 		const model = data.data?.[0];
 		const ctx = model?.meta?.n_ctx_train || model?.context_length;
-		if (!ctx) {
-			throw new Error(
-				`OpenAI-compatible /v1/models returned no context size. Response: ${JSON.stringify(model)}`,
-			);
-		}
+		if (!ctx) throw new Error(msg("error.openai_no_context_length"));
 		return ctx;
 	}
 }

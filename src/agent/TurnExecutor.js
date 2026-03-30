@@ -1,3 +1,4 @@
+import msg from "./messages.js";
 import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
@@ -42,9 +43,7 @@ export default class TurnExecutor {
 
 		const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 		if (unresolved.length > 0) {
-			throw new Error(
-				`Blocked: run has ${unresolved.length} unresolved proposed entries.`,
-			);
+			throw new Error(msg("error.unresolved_proposed", { count: unresolved.length }));
 		}
 
 		// File scan

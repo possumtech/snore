@@ -1,3 +1,4 @@
+import msg from "../agent/messages.js";
 import ModelCapabilities from "./ModelCapabilities.js";
 import OllamaClient from "./OllamaClient.js";
 import OpenAiClient from "./OpenAiClient.js";
@@ -35,7 +36,7 @@ export default class LlmProvider {
 	#getOpenAi() {
 		if (!this.#openAi) {
 			const baseUrl = process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE;
-			if (!baseUrl) throw new Error("openai/ model requested but neither OPENAI_BASE_URL nor OPENAI_API_BASE is set.");
+			if (!baseUrl) throw new Error(msg("error.openai_base_url_missing"));
 			this.#openAi = new OpenAiClient(baseUrl, process.env.OPENAI_API_KEY);
 		}
 		return this.#openAi;
@@ -48,9 +49,7 @@ export default class LlmProvider {
 	static resolve(alias) {
 		const actual = process.env[`RUMMY_MODEL_${alias}`];
 		if (!actual)
-			throw new Error(
-				`Unknown model alias '${alias}'. Define RUMMY_MODEL_${alias} in your environment.`,
-			);
+			throw new Error(msg("error.model_alias_unknown", { alias }));
 		return actual;
 	}
 

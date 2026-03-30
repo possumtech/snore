@@ -406,7 +406,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 | `act` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Mutating directive |
 | `run/resolve` | `run`, `resolution: {key, action: 'accept'\|'reject', output?}` | Resolve a proposed entry by its key |
 | `run/abort` | `run` | Abandon run |
-| `run/rename` | `run`, `name` | Rename a run. `[a-z_]{1,20}`, must be unique. |
+| `run/rename` | `run`, `name` | Rename a run. `[a-z_]+`, must be unique. |
 | `run/inject` | `run`, `message` | Inject context (creates `/:inject/N` info entry) |
 | `getRuns` | — | List runs for session |
 

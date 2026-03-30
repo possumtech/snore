@@ -365,7 +365,7 @@ export default class AgentLoop {
 			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
 		} else {
 			throw new Error(
-				`Invalid resolution action: ${action}. Use 'accept' or 'reject'.`,
+				msg("error.resolution_invalid", { action }),
 			);
 		}
 

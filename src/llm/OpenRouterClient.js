@@ -1,3 +1,5 @@
+import msg from "../agent/messages.js";
+
 const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
 const CATALOG_TIMEOUT = 120_000;
 
@@ -17,11 +19,7 @@ export default class OpenRouterClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		if (!this.#apiKey) {
-			throw new Error(
-				"OpenRouter API key is missing. Please set OPENROUTER_API_KEY in your environment.",
-			);
-		}
+		if (!this.#apiKey) throw new Error(msg("error.openrouter_api_key_missing"));
 		return this.#fetch(messages, model, options);
 	}
 
@@ -46,25 +44,23 @@ export default class OpenRouterClient {
 		if (!response.ok) {
 			const error = await response.text();
 			if (response.status === 401 || response.status === 403) {
-				throw new Error(
-					`OpenRouter Authentication Error: ${response.status} - ${error}. Please check your OPENROUTER_API_KEY.`,
-				);
+				throw new Error(msg("error.openrouter_auth", { status: `${response.status} - ${error}` }));
 			}
-			throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+			throw new Error(msg("error.openrouter_api", { status: `${response.status} - ${error}` }));
 		}
 		const data = await response.json();
 
 		for (const choice of data.choices || []) {
-			const msg = choice.message;
-			if (!msg) continue;
+			const cm = choice.message;
+			if (!cm) continue;
 			// Normalize all reasoning synonyms into reasoning_content
 			const parts = [
-				msg.reasoning_content,
-				msg.reasoning,
-				msg.thinking,
-				...(msg.reasoning_details || []).map((d) => d.text),
+				cm.reasoning_content,
+				cm.reasoning,
+				cm.thinking,
+				...(cm.reasoning_details || []).map((d) => d.text),
 			].filter(Boolean);
-			msg.reasoning_content =
+			cm.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 		}
 
@@ -77,9 +73,7 @@ export default class OpenRouterClient {
 			signal: AbortSignal.timeout(CATALOG_TIMEOUT),
 		});
 		if (!response.ok) {
-			throw new Error(
-				`OpenRouter /models failed: ${response.status}. Check your OPENROUTER_API_KEY.`,
-			);
+			throw new Error(msg("error.openrouter_catalog", { status: response.status }));
 		}
 		const data = await response.json();
 		for (const m of data.data || []) {
@@ -129,20 +123,14 @@ export default class OpenRouterClient {
 			await this.#ensureCatalog();
 			found = await this.#db.get_provider_model.get({ id: model });
 		}
-		if (!found) {
-			throw new Error(`Model '${model}' not found in OpenRouter catalog.`);
-		}
+		if (!found) throw new Error(msg("error.openrouter_model_not_found", { model }));
 		if (this.#capabilities) {
 			this.#capabilities.set(model, {
 				...found,
 				supported_parameters: JSON.parse(found.supported_parameters || "[]"),
 			});
 		}
-		if (!found.context_length) {
-			throw new Error(
-				`OpenRouter reports no context_length for model '${model}'.`,
-			);
-		}
+		if (!found.context_length) throw new Error(msg("error.openrouter_no_context_length", { model }));
 		return found.context_length;
 	}
 }

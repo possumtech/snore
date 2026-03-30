@@ -1,3 +1,4 @@
+import msg from "../agent/messages.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
 import ModelAgent from "../llm/ModelAgent.js";
 
@@ -116,10 +117,10 @@ export default class ClientConnection {
 			// rpc/discover is an alias for discover
 			const resolvedMethod = method === "rpc/discover" ? "discover" : method;
 			const registration = this.#rpcRegistry.get(resolvedMethod);
-			if (!registration) throw new Error(`Method '${method}' not found.`);
+			if (!registration) throw new Error(msg("error.method_not_found", { method }));
 
 			if (registration.requiresInit && !this.#context.sessionId) {
-				throw new Error("Project not initialized.");
+				throw new Error(msg("error.not_initialized"));
 			}
 
 			let result;
@@ -137,7 +138,7 @@ export default class ClientConnection {
 							() =>
 								reject(
 									new Error(
-										`RPC '${resolvedMethod}' timed out after ${timeout}ms`,
+										msg("error.rpc_timeout", { method: resolvedMethod, timeout }),
 									),
 								),
 							timeout,
