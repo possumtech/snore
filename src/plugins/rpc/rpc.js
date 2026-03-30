@@ -39,6 +39,37 @@ export default class CoreRpcPlugin {
 				"List available model aliases. Returns [{ alias, actual, display, default }].",
 		});
 
+		r.register("getModelInfo", {
+			handler: async (params, ctx) => {
+				const alias = params.model || process.env.RUMMY_MODEL_DEFAULT;
+				const { default: LlmProvider } = await import("../../llm/LlmProvider.js");
+				const resolved = LlmProvider.resolve(alias);
+				let contextSize = null;
+				try {
+					contextSize = await ctx.projectAgent.getModelContextSize(alias);
+				} catch {}
+				const limit = ctx.sessionId
+					? await ctx.projectAgent.getContextLimit(ctx.sessionId)
+					: null;
+				const effective = limit ? Math.min(limit, contextSize || limit) : contextSize;
+				// Capabilities cached from provider catalog
+				const row = await ctx.db.get_provider_model.get({ id: resolved }).catch(() => null);
+				return {
+					alias,
+					model: resolved,
+					context_length: contextSize,
+					limit,
+					effective,
+					name: row?.name || null,
+					max_completion_tokens: row?.max_completion_tokens || null,
+				};
+			},
+			description:
+				"Get model metadata and context sizing. Returns { alias, model, context_length, limit, effective, name, max_completion_tokens }.",
+			params: { model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT" },
+			requiresInit: true,
+		});
+
 		r.register("getFiles", {
 			handler: async (_params, ctx) =>
 				ctx.projectAgent.getFiles(ctx.projectPath),
@@ -182,13 +213,15 @@ export default class CoreRpcPlugin {
 			handler: async (params, ctx) => {
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow) throw new Error(`Run '${params.run}' not found.`);
+				// Signal the in-flight loop to stop
+				ctx.projectAgent.abortRun(runRow.id);
 				await ctx.db.update_run_status.run({
 					id: runRow.id,
 					status: "aborted",
 				});
 				return { status: "ok" };
 			},
-			description: "Abandon run. Unresolved entries discarded.",
+			description: "Abort run. Stops in-flight turns immediately.",
 			params: { run: "string — run name" },
 			requiresInit: true,
 		});

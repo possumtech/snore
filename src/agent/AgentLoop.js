@@ -9,6 +9,7 @@ export default class AgentLoop {
 	#turnExecutor;
 	#knownStore;
 	#sessionManager;
+	#activeRuns = new Map();
 
 	constructor(
 		db,
@@ -24,6 +25,11 @@ export default class AgentLoop {
 		this.#turnExecutor = turnExecutor;
 		this.#knownStore = knownStore;
 		this.#sessionManager = sessionManager;
+	}
+
+	abort(runId) {
+		const controller = this.#activeRuns.get(runId);
+		if (controller) controller.abort();
 	}
 
 	async #generateAlias(modelAlias) {
@@ -145,8 +151,17 @@ export default class AgentLoop {
 		const MAX_UNKNOWN_WARNINGS = Number(process.env.RUMMY_MAX_UNKNOWN_WARNINGS) || 3;
 		const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
 
+		const controller = new AbortController();
+		this.#activeRuns.set(currentRunId, controller);
+
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
+				if (controller.signal.aborted) {
+					await this.#db.update_run_status.run({ id: currentRunId, status: "aborted" });
+					const out = { run: currentAlias, status: "aborted", turn: loopIteration };
+					await hook.completed.emit({ sessionId, ...out });
+					return out;
+				}
 				loopIteration++;
 
 				// Build turn prompt
@@ -313,12 +328,18 @@ export default class AgentLoop {
 			await hook.completed.emit({ sessionId, ...out });
 			return out;
 		} catch (err) {
+			if (controller.signal.aborted) {
+				await this.#db.update_run_status.run({ id: currentRunId, status: "aborted" });
+				return { run: currentAlias, status: "aborted", turn: loopIteration };
+			}
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: "failed",
 			});
 			await hook.completed.emit({ sessionId, run: currentAlias, status: "failed", error: err.message });
 			throw err;
+		} finally {
+			this.#activeRuns.delete(currentRunId);
 		}
 	}
 

@@ -149,4 +149,8 @@ export default class ProjectAgent {
 	async getRunHistory(run) {
 		return this.#agentLoop.getRunHistory(run);
 	}
+
+	abortRun(runId) {
+		this.#agentLoop.abort(runId);
+	}
 }
