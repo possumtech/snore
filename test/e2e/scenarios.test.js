@@ -9,6 +9,11 @@ import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 180_000;
+const WIZARD_DEFAULT = "My robe is purple\n";
+
+async function resetWizard(projectPath) {
+	await fs.writeFile(join(projectPath, "wizard.txt"), WIZARD_DEFAULT);
+}
 
 describe("E2E: Client Scenarios", () => {
 	let tdb, tserver, client;
@@ -77,13 +82,13 @@ describe("E2E: Client Scenarios", () => {
 	it("S2: act with edit, accept resolution", {
 		timeout: TIMEOUT,
 	}, async () => {
+		await resetWizard(projectPath);
 		const states = [];
 		client.on("run/state", (p) => states.push(p));
 
 		const result = await client.call("act", {
 			model,
-			prompt:
-				"Add exactly one line to the end of AGENTS.md: # scenario-2-marker",
+			prompt: 'Change "purple" to "blue" in wizard.txt',
 		});
 
 		if (result.status === "proposed") {
@@ -93,9 +98,25 @@ describe("E2E: Client Scenarios", () => {
 			if (editProposed) {
 				assert.ok(editProposed.meta, "Edit has meta");
 
+				// Apply edit to disk
+				if (editProposed.meta?.blocks) {
+					const filePath = join(projectPath, editProposed.meta.file);
+					try {
+						let content = await fs.readFile(filePath, "utf8");
+						for (const block of editProposed.meta.blocks) {
+							if (block.search && content.includes(block.search)) {
+								content = content.replace(block.search, block.replace);
+							} else if (block.search === null) {
+								content = block.replace;
+							}
+						}
+						await fs.writeFile(filePath, content);
+					} catch {}
+				}
+
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
-					resolution: { key: editProposed.key, action: "accept", output: "" },
+					resolution: { key: editProposed.key, action: "accept", output: "applied" },
 				});
 
 				await client.assertRun(
@@ -107,15 +128,17 @@ describe("E2E: Client Scenarios", () => {
 		} else {
 			await client.assertRun(result, "completed", "S2");
 		}
+		await resetWizard(projectPath);
 	});
 
 	// Scenario 3: Act with Single Edit (Reject)
 	it("S3: act with edit, reject resolution", {
 		timeout: TIMEOUT,
 	}, async () => {
+		await resetWizard(projectPath);
 		const result = await client.call("act", {
 			model,
-			prompt: "Add a line to the end of AGENTS.md: # scenario-3-marker",
+			prompt: 'Change "purple" to "green" in wizard.txt',
 		});
 
 		if (result.status === "proposed") {
@@ -137,6 +160,7 @@ describe("E2E: Client Scenarios", () => {
 		} else {
 			await client.assertRun(result, "completed", "S3");
 		}
+		await resetWizard(projectPath);
 	});
 
 	// Scenario 5: Null Patch (Server Edit Error)
@@ -146,10 +170,11 @@ describe("E2E: Client Scenarios", () => {
 		const states = [];
 		client.on("run/state", (p) => states.push(p));
 
+		await resetWizard(projectPath);
 		const result = await client.call("act", {
 			model,
 			prompt:
-				'Edit AGENTS.md and replace the line "THIS LINE DOES NOT EXIST" with "replaced"',
+				'Edit wizard.txt and replace the line "THIS LINE DOES NOT EXIST" with "replaced"',
 		});
 
 		// The edit should either error (search not found) or the model adapts
@@ -387,5 +412,6 @@ describe("E2E: Client Scenarios", () => {
 			["completed", "resolved", "running"],
 			"S12 yolo",
 		);
+		await resetWizard(projectPath);
 	});
 });

@@ -9,6 +9,11 @@ import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 180_000;
+const WIZARD_DEFAULT = "My robe is purple\n";
+
+async function resetWizard(projectPath) {
+	await fs.writeFile(join(projectPath, "wizard.txt"), WIZARD_DEFAULT);
+}
 
 describe("E2E: Act Mode Lifecycle", () => {
 	let tdb, tserver, client;
@@ -16,10 +21,7 @@ describe("E2E: Act Mode Lifecycle", () => {
 
 	before(async () => {
 		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(
-			join(projectPath, "config.js"),
-			"export const port = 3000;\nexport const host = 'localhost';\n",
-		);
+		await fs.writeFile(join(projectPath, "wizard.txt"), WIZARD_DEFAULT);
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
@@ -45,12 +47,13 @@ describe("E2E: Act Mode Lifecycle", () => {
 	});
 
 	it("act produces proposed entries", { timeout: TIMEOUT }, async () => {
+		await resetWizard(projectPath);
 		const states = [];
 		client.on("run/state", (p) => states.push(p));
 
 		const result = await client.call("act", {
 			model,
-			prompt: "Change the port in config.js from 3000 to 8080.",
+			prompt: 'Change "purple" to "blue" in wizard.txt',
 		});
 
 		// Model should have proposed an edit or completed
@@ -79,6 +82,7 @@ describe("E2E: Act Mode Lifecycle", () => {
 			assert.ok(entry.type, "proposed entry has type");
 			assert.ok(entry.meta, "proposed entry has meta");
 		}
+		await resetWizard(projectPath);
 	});
 
 	it("resolve accept transitions proposed → pass and auto-resumes", {
@@ -90,12 +94,10 @@ describe("E2E: Act Mode Lifecycle", () => {
 		});
 
 		if (result.status !== "proposed") {
-			// Model didn't propose — can't test resolution
 			assert.ok(true, "Model completed without proposing");
 			return;
 		}
 
-		// Find a proposed entry to resolve
 		const proposed = result.proposed[0];
 		assert.ok(proposed.key, "has proposed key");
 
@@ -108,7 +110,6 @@ describe("E2E: Act Mode Lifecycle", () => {
 			},
 		});
 
-		// After resolution, the run should auto-resume or complete
 		assert.ok(
 			["completed", "running", "proposed"].includes(resolveResult.status),
 			`Expected valid status after accept, got ${resolveResult.status}`,
@@ -138,7 +139,6 @@ describe("E2E: Act Mode Lifecycle", () => {
 			},
 		});
 
-		// After rejection, should resolve (not auto-resume)
 		assert.ok(
 			["resolved", "completed", "proposed"].includes(resolveResult.status),
 			`Expected resolved/completed after reject, got ${resolveResult.status}`,
