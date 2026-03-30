@@ -528,7 +528,9 @@ RUMMY_MODEL_DEFAULT=ccp
 
 Plugins extend the server through a registration pattern. Core functionality
 uses the same pattern — there is no distinction between "built-in" and
-"third-party" at the registration level.
+"third-party" at the registration level. The bundled plugins (tools, rpc,
+symbols, telemetry, git, mapping, nvim) are loaded from `src/plugins/`.
+User plugins are loaded from `~/.rummy/plugins/`.
 
 ### 7.1 Plugin Contract
 
@@ -542,25 +544,33 @@ export default class MyPlugin {
 }
 ```
 
-Plugin directories (loaded in order):
-1. `src/plugins/` — bundled core and community plugins
-2. `~/.rummy/plugins/` — user-installed
+**Loading:** The loader scans each plugin directory for subdirectories containing
+`index.js` or a file matching the directory name (e.g., `symbols/symbols.js`).
+Test files are skipped. Plugins are loaded in directory order, then alphabetical.
 
-Within each directory, the loader scans subdirectories for files named `index.js`
-or matching the directory name (e.g., `tools/tools.js`). Test files are skipped.
+**Deployment:** Drop a directory into `~/.rummy/plugins/`:
+```
+~/.rummy/plugins/
+  my-plugin/
+    my-plugin.js    ← exports default class with static register(hooks)
+```
 
 ### 7.2 Registries
 
 #### Tool Registry (`hooks.tools`)
 
-Register tools the model can invoke:
+Register XML tool commands the model can invoke:
 
 ```js
-hooks.tools.register("mytool", {
+hooks.tools.register("weather", {
     modes: new Set(["ask", "act"]),
     category: "act",
 });
 ```
+
+The model writes `<weather city="London"/>` in its response. The server parses
+the tag, creates a `/:weather:N` known entry as `proposed`, and the client
+resolves it.
 
 - `modes` — which run types this tool is available in.
 - `category` — `"ask"` (direct execution), `"act"` (proposed for client), `"structural"` (metadata).
@@ -576,8 +586,6 @@ hooks.rpc.registry.register("myMethod", {
     handler: async (params, ctx) => {
         // ctx.projectAgent, ctx.modelAgent, ctx.db
         // ctx.projectId, ctx.sessionId, ctx.projectPath
-        // ctx.setContext(projectId, sessionId, projectPath)
-        // ctx.rpcRegistry (for discover)
         return { result: "value" };
     },
     description: "What this method does",
@@ -594,18 +602,19 @@ hooks.rpc.registry.registerNotification("my/notification", "Description.");
 
 `discover` auto-generates from the registry. No manual catalog.
 
-**Methods**: `get(name)`, `has(name)`, `discover()`.
-
 ### 7.3 Turn Processors (`hooks.onTurn`)
 
-Inject content into the turn context before the LLM sees it:
+Run logic before each LLM call. Priority controls execution order (lower = first).
 
 ```js
 hooks.onTurn(async (rummy) => {
     if (rummy.noContext) return;
-    const node = rummy.tag("mycontent", { source: "myplugin" }, ["data"]);
+    // Access the K/V store
+    const files = await rummy.store.getFileEntries(rummy.runId);
+    // Inject content into context
+    const node = rummy.tag("mycontent", {}, ["data"]);
     rummy.contextEl.children.push(node);
-}, 10);  // priority: lower = runs first
+}, 10);
 ```
 
 #### RummyContext API (`rummy`)
@@ -613,6 +622,7 @@ hooks.onTurn(async (rummy) => {
 | Property | Type | Description |
 |---|---|---|
 | `db` | SqlRite | Database with all prepared queries |
+| `store` | KnownStore | K/V store API (promote, demote, upsert, getValue, etc.) |
 | `project` | Object | `{ id, path, name }` |
 | `type` | String | `"ask"` or `"act"` |
 | `sessionId` | String | Current session ID |
@@ -621,19 +631,25 @@ hooks.onTurn(async (rummy) => {
 | `sequence` | Number | Turn sequence number |
 | `noContext` | Boolean | True in Lite mode |
 | `contextSize` | Number | Token budget |
-| `system` | Object | System node `{ tag, attrs, content, children }` |
+| `system` | Object | System node |
 | `contextEl` | Object | Context node |
 | `user` | Object | User node |
 | `assistant` | Object | Assistant node |
 | `tag(name, attrs?, children?)` | Function | Create a node |
+
+The `store` property provides the full KnownStore API: `upsert`, `promote`,
+`demote`, `remove`, `resolve`, `getValue`, `getMeta`, `getFileEntries`,
+`getModelContext`, `getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`,
+`recountTokens`. This is how the Relevance Engine (and any plugin that manages
+context) interacts with the K/V store.
 
 ### 7.4 Events
 
 Fire-and-forget notifications. All handlers run; return values ignored.
 
 ```js
-hooks.project.init.completed.on(async (payload) => {
-    console.log(`Project initialized: ${payload.projectPath}`);
+hooks.run.step.completed.on(async (payload) => {
+    console.log(`Turn ${payload.turn} completed for run ${payload.run}`);
 }, 5);
 ```
 
@@ -644,26 +660,29 @@ hooks.project.init.completed.on(async (payload) => {
 | `project.files.update.started` | `{ projectId, pattern, constraint }` | Before file state change |
 | `project.files.update.completed` | `{ projectId, projectPath, pattern, constraint, db }` | After file state change |
 | `run.started` | `{ run, sessionId, type }` | Run created |
-| `run.progress` | `{ sessionId, run, turn, status }` | Turn progress (thinking/processing/retrying) |
-| `run.state` | `{ sessionId, run, turn, status, summary, history, unknowns, proposed, telemetry }` | Turn state update |
-| `ask.started` / `ask.completed` | `{ sessionId, model, prompt, ... }` | Ask lifecycle |
-| `act.started` / `act.completed` | `{ sessionId, model, prompt, ... }` | Act lifecycle |
+| `run.progress` | `{ sessionId, run, turn, status }` | Turn progress: thinking, processing, retrying |
+| `run.state` | `{ sessionId, run, turn, status, summary, history, unknowns, proposed, telemetry }` | Turn state update (one per turn) |
+| `run.step.completed` | `{ sessionId, run, turn, flags }` | After each turn completes |
+| `ask.started` | `{ sessionId, model, prompt, run }` | Ask run begins |
+| `ask.completed` | `{ sessionId, run, status, turn }` | Ask run ends |
+| `act.started` | `{ sessionId, model, prompt, run }` | Act run begins |
+| `act.completed` | `{ sessionId, run, status, turn }` | Act run ends |
+| `llm.request.started` | `{ model, turn }` | Before LLM API call |
+| `llm.request.completed` | `{ model, turn, usage }` | After LLM API call |
 | `ui.render` | `{ sessionId, text, append }` | Streaming output |
-| `ui.notify` | `{ sessionId, text, level }` | Notification |
-| `run.turn.audit` | `{ ... }` | Debug audit data |
-| `llm.request.started` | `{ ... }` | LLM call started |
-| `llm.request.completed` | `{ ... }` | LLM call finished |
+| `ui.notify` | `{ sessionId, text, level }` | Toast notification |
 | `rpc.started` | `{ method, params, id, sessionId }` | RPC call received |
 | `rpc.completed` | `{ method, id, result }` | RPC call succeeded |
 | `rpc.error` | `{ id, error }` | RPC call failed |
 
 ### 7.5 Filters
 
-Transform data through a chain. Each handler returns the (possibly modified) value.
+Transform data through a chain. Each handler receives the value and context,
+returns the (possibly modified) value. Priority controls order (lower = first).
 
 ```js
 hooks.llm.messages.addFilter(async (messages, context) => {
-    return [{ role: "system", content: "Extra" }, ...messages];
+    return [{ role: "system", content: "Extra instruction" }, ...messages];
 }, 5);
 ```
 
@@ -672,78 +691,100 @@ hooks.llm.messages.addFilter(async (messages, context) => {
 | `run.config` | Config object | `{ sessionId }` | Modify run configuration |
 | `llm.messages` | Message array | `{ model, sessionId, runId }` | Transform LLM input |
 | `llm.response` | Response object | `{ model, sessionId, runId }` | Transform LLM output |
+| `file.symbols` | `Map<path, symbol[]>` | `{ paths, projectPath }` | Symbol extraction pipeline |
 | `socket.message.raw` | Raw buffer | — | Transform incoming WebSocket data |
 | `rpc.request` | Parsed request | — | Transform RPC request |
 | `rpc.response.result` | Result object | `{ method, id }` | Transform RPC response |
 | `agent.warn` | Warning rules array | `{ flags, tools, ... }` | Modify warning rules |
 | `agent.action` | Action table array | `{ flags, tools, warnings, ... }` | Modify state table |
 
-#### Agent State Table Hooks
+### 7.6 Bundled Plugins
 
-Plugins can modify the warning rules and action table that control the Rumsfeld Loop:
+| Plugin | Directory | What it does |
+|--------|-----------|-------------|
+| **tools** | `src/plugins/tools/` | Registers the 10 core XML tool commands |
+| **rpc** | `src/plugins/rpc/` | Registers 23 RPC methods + 4 notifications |
+| **symbols** | `src/plugins/symbols/` | Symbol extraction via antlrmap (ANTLR4) + ctags fallback |
+| **telemetry** | `src/plugins/telemetry/` | Debug logging on `run.step.completed` |
+| **git** | `src/plugins/git/` | Git detection and status |
+| **mapping** | `src/plugins/mapping/` | File scanning hooks |
+| **nvim** | `src/plugins/nvim/` | Neovim integration |
 
-```js
-hooks.agent.warn.addFilter(async (rules, context) => {
-    rules.push({
-        when: context.tools.length > 10,
-        msg: "Too many tools in one turn.",
-    });
-    return rules;
-});
+### 7.7 Examples
 
-hooks.agent.action.addFilter(async (table, context) => {
-    table.splice(-1, 0, {
-        when: context.someCondition,
-        action: "continue",
-    });
-    return table;
-});
-```
-
-### 7.6 Examples
-
-#### Custom Tool Plugin
+#### Replace Symbol Extraction (tree-sitter)
 
 ```js
-export default class WeatherPlugin {
+import Parser from "web-tree-sitter";
+
+export default class TreeSitterPlugin {
     static register(hooks) {
-        hooks.tools.register("weather", {
-            modes: new Set(["ask", "act"]),
-            category: "act",
-        });
+        hooks.file.symbols.addFilter(async (symbolMap, { paths, projectPath }) => {
+            for (const relPath of paths) {
+                if (symbolMap.has(relPath)) continue;
+                const symbols = await extractWithTreeSitter(projectPath, relPath);
+                if (symbols.length > 0) symbolMap.set(relPath, symbols);
+            }
+            return symbolMap;
+        }, 40);  // priority 40 runs before default (50)
     }
 }
 ```
 
-The model can now call the `weather` tool. The server creates a `/:weather/N`
-known entry as `proposed`, and the client resolves it.
+The symbol array format: `[{ name, kind?, params?, line?, endLine? }]`.
+`kind` is used for tree indentation (class/function/method). `line`/`endLine`
+enable containment detection — methods between a class's line and endLine
+are rendered as children.
 
-#### Custom RPC Method Plugin
+#### Custom RPC Method
 
 ```js
 export default class StatsPlugin {
     static register(hooks) {
         hooks.rpc.registry.register("getStats", {
             handler: async (params, ctx) => {
-                const runs = await ctx.db.get_run_by_id.all({});
+                const runs = await ctx.db.get_runs_by_session.all({
+                    session_id: ctx.sessionId,
+                });
                 return { totalRuns: runs.length };
             },
-            description: "Get project statistics",
+            description: "Get run statistics for the current session",
             requiresInit: true,
         });
     }
 }
 ```
 
-#### Context Injection Plugin
+#### Relevance Engine (turn processor)
 
 ```js
-export default class TimestampPlugin {
+export default class RelevancePlugin {
     static register(hooks) {
         hooks.onTurn(async (rummy) => {
-            const node = rummy.tag("timestamp", {}, [new Date().toISOString()]);
-            rummy.contextEl.children.push(node);
-        }, 99);
+            if (rummy.noContext) return;
+            const files = await rummy.store.getFileEntries(rummy.runId);
+            for (const file of files) {
+                // Promote high-ref files, demote stale ones
+                if (file.refs > 3 && file.turn === 0) {
+                    await rummy.store.promote(rummy.runId, file.key, rummy.sequence);
+                }
+            }
+        }, 5);  // priority 5: runs early, before context assembly
+    }
+}
+```
+
+#### LLM Observability
+
+```js
+export default class MetricsPlugin {
+    static register(hooks) {
+        hooks.llm.request.started.on(async ({ model, turn }) => {
+            console.log(`[metrics] LLM call: model=${model} turn=${turn}`);
+        });
+        hooks.llm.request.completed.on(async ({ model, turn, usage }) => {
+            console.log(`[metrics] LLM done: ${usage?.total_tokens} tokens`);
+        });
     }
 }
 ```
