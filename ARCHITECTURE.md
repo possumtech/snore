@@ -1,7 +1,7 @@
 # RUMMY: Architecture Specification
 
 This document is the authoritative reference for Rummy's design. The system prompt
-files (`system.ask.md`, `system.act.md`) define model-facing behavior. This document
+files (`prompt.ask.md`, `prompt.act.md`) define model-facing behavior. This document
 defines everything else: data model, protocol, context management, plugins, and testing.
 
 ---
@@ -62,18 +62,18 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 | `ignore` | Excluded from context | *(hidden)* |
 | `symbols` | Signature summaries only | `file:symbols` |
 
-**Known domain** — model-emitted knowledge (`/:known/*` keys) and internal state:
+**Known domain** — model-emitted knowledge (`/:known:*` keys) and internal state:
 
 | State | Meaning | Model sees |
 |-------|---------|------------|
 | `full` | Value loaded | `full` |
 | `stored` | Key exists, value not in context | `stored` |
 
-Unknowns are individual `/:unknown/{seq}` entries (domain `known`, state `full`).
+Unknowns are individual `/:unknown:N` entries (domain `known`, state `full`).
 Each `unknown("text")` call creates a sticky entry that persists until the model
-drops it via `drop("/:unknown/N")`. The server deduplicates on insert.
+drops it via `drop("/:unknown:N")`. The server deduplicates on insert.
 
-**Result domain** — tool call results, summaries, and notifications (`/:[tool]/*` keys):
+**Result domain** — tool command results, summaries, and notifications (`/:[tool]:*` keys):
 
 | State | Meaning | Model sees |
 |-------|---------|------------|
@@ -97,16 +97,16 @@ relative file path starts with `/:`, so the prefix is unambiguous. Regex: `/^\/:
 | Prefix | Namespace | Examples |
 |--------|-----------|---------|
 | *(none)* | File paths | `src/app.js`, `package.json` |
-| `/:known/` | Knowledge entries | `/:known/auth_flow`, `/:known/db_adapter` |
-| `/:[tool]/` | Tool result keys | `/:read/4`, `/:edit/7`, `/:run/12`, `/:summary/3` |
+| `/:known:` | Knowledge entries | `/:known:auth_flow`, `/:known:db_adapter` |
+| `/:[tool]:` | Tool result keys | `/:read:4`, `/:edit:7`, `/:run:12`, `/:summary:3` |
 
 Result keys use the tool name as prefix and a sequential integer per run.
-Tracked by `runs.next_result_seq`. Self-documenting: `/:read/4` tells you
+Tracked by `runs.next_result_seq`. Self-documenting: `/:read:4` tells you
 it was the 4th result key generated, produced by the `read` tool.
 
-Knowledge key constraint: `^/:known/[a-z0-9_]+$`. Short lowercase slugs.
-Prefer descriptive names over abbreviations — `/:known/oauth2_token_rotation`
-over `/:known/auth_rot`.
+Knowledge key constraint: `^/:known:[a-z0-9_]+$`. Short lowercase slugs.
+Prefer descriptive names over abbreviations — `/:known:oauth2_token_rotation`
+over `/:known:auth_rot`.
 
 ### 1.4 UPSERT Semantics
 
@@ -140,146 +140,151 @@ After all proposed entries are resolved:
 
 ---
 
-## 2. Native Tool Calling
+## 2. XML Tool Commands
 
-The model communicates exclusively through tool calls. No message history.
-Free-form content is not suppressed — any text the model emits alongside tools
-is captured as `/:reasoning/{turn}` (hidden from model, audit only).
+The model communicates via XML tags written directly in the response content.
+No native tool calling API. No message history. The server parses the response
+with htmlparser2 (forgiving HTML/XML parser). Any text between tool tags is
+captured as `/:reasoning:N` (hidden from model, available for audit).
 
-### 2.1 Tools
+### 2.1 Tool Commands
 
 **Shared (ask + act):**
 
-| Tool | Params | Required |
-|------|--------|----------|
-| `summary` | `text: string` (1-80 chars) | Yes |
-| `write` | `key: string, value: string` | No |
-| `unknown` | `text: string` | No |
-| `read` | `key: string, reason: string` | No |
-| `drop` | `key: string, reason: string` | No |
-| `env` | `command: string, reason: string` | No |
-| `ask_user` | `question: string, options: string[]` | No |
-
-All high-frequency tools have flat string parameters (1-2 strings). No nested
-objects, no arrays. Only `ask_user` uses an array (for multiple-choice options).
+| Tag | Format | Required |
+|-----|--------|----------|
+| `<summary>` | `<summary>text</summary>` | Yes |
+| `<known>` | `<known key="/:known:slug">value</known>` | No |
+| `<unknown>` | `<unknown>text</unknown>` | No |
+| `<read>` | `<read key="path"/>` | No |
+| `<drop>` | `<drop key="path"/>` | No |
+| `<env>` | `<env command="cmd"/>` | No |
+| `<ask_user>` | `<ask_user question="q" options="a, b, c"/>` | No |
 
 **Act-only (extends shared):**
 
-| Tool | Params |
-|------|--------|
-| `run` | `command: string, reason: string` |
-| `delete` | `key: string, reason: string` |
-| `edit` | `file: string, search: string\|null, replace: string` |
+| Tag | Format |
+|-----|--------|
+| `<run>` | `<run command="cmd"/>` |
+| `<delete>` | `<delete key="path"/>` |
+| `<edit>` | `<edit file="path">SEARCH/REPLACE blocks</edit>` |
 
-Tool definitions live in `src/schema/tools/*.json` (one file per tool),
-composed by `src/schema/ToolSchema.js`. Server-side validation via AJV
-enforces constraints (`minLength`, `maxLength`, `minItems`) that OpenAI strict
-mode cannot express. All tools use `strict: true` for constrained decoding on
-supporting providers; unsupported keywords are stripped at API send time.
+Edit uses git merge conflict format inside the tag body:
 
-### 2.2 How Tools Become Known Entries
+```
+<edit file="src/config.js">
+<<<<<<< SEARCH
+const port = 3000;
+=======
+const port = 8080;
+>>>>>>> REPLACE
+</edit>
+```
 
-There are no separate "tool result" objects. Every tool call writes to the known
-store. The model sees results as entries in the known array next turn.
+Tool commands are defined in the system prompt (`prompt.act.md`, `prompt.ask.md`)
+with examples. The server parses them from the response content via htmlparser2.
+No JSON schema, no AJV, no `strict: true`, no `tool_choice`.
 
-**`write`** — UPSERTs the key/value pair into the store with domain `known`,
-state `full`. Called once per entry (no batching). The model calls `write`
-multiple times to persist multiple facts.
+### 2.2 How Commands Become Known Entries
 
-**`summary`** — creates a `/:summary/N` entry with domain `result`, state `summary`,
-and the text as value.
+Every parsed command writes to the known store. The model sees results as
+entries in the context next turn.
 
-**`unknown`** — each call creates a sticky `/:unknown/{seq}` entry (domain `known`,
+**`<known>`** — UPSERTs the key/value pair into the store with domain `known`,
+state `full`. The model emits one tag per entry.
+
+**`<summary>`** — creates a `/:summary:N` entry with domain `result`, state `summary`.
+
+**`<unknown>`** — each tag creates a sticky `/:unknown:N` entry (domain `known`,
 state `full`). Unknowns persist across turns until explicitly dropped by the model
-via `drop("/:unknown/N")`. The server deduplicates on insert — identical text
+via `<drop key="/:unknown:N"/>`. The server deduplicates on insert — identical text
 is not re-registered. Unknowns appear in context position 7 (before the prompt)
 every turn. The server warns and retries (up to 3 times) if the model attempts
 to complete with unresolved unknowns and no investigation tools called.
 
-**`read`** — promotes the key by setting `turn` to the current turn number.
+**`<read>`** — promotes the key by setting `turn` to the current turn number.
 The value is already in the store (from the file scanner or a previous write).
 Promotion makes it visible in the model's context next turn. One integer update.
 
-**`drop`** — demotes the key by setting `turn` to 0 (purgatory). The value stays
+**`<drop>`** — demotes the key by setting `turn` to 0 (purgatory). The value stays
 in the store but disappears from the model's context. One integer update.
 
-**`env`** — creates a `/:env/N` entry with domain `result`, state `proposed`.
+**`<env>`** — creates a `/:env:N` entry with domain `result`, state `proposed`.
 The client executes the command and resolves with output.
 
-**`edit`** — the server computes a unified diff from the file's current content
-(in known_entries) and the model's search/replace. Creates a `/:edit/N` entry
-with state `proposed`. The `meta` field stores `{file, search, replace, patch, warning, error}`.
-The patch is sent to the client for review.
+**`<edit>`** — the server computes a unified diff from the file's current content
+(in known_entries) and the model's SEARCH/REPLACE blocks via HeuristicMatcher.
+Creates a `/:edit:N` entry with state `proposed`. The `meta` field stores
+`{file, blocks, patch, warning, error}`. The patch is sent to the client for review.
 
-**`run`** — creates a `/:run/N` entry with domain `result`, state `proposed`.
+**`<run>`** — creates a `/:run:N` entry with domain `result`, state `proposed`.
 The client executes and resolves with output.
 
-**`delete`** — creates a `/:delete/N` entry with domain `result`, state `proposed`.
+**`<delete>`** — creates a `/:delete:N` entry with domain `result`, state `proposed`.
 The client confirms and resolves.
 
-**`ask_user`** — creates a `/:ask_user/N` entry with domain `result`, state `proposed`.
+**`<ask_user>`** — creates a `/:ask_user:N` entry with domain `result`, state `proposed`.
 The client shows the question and resolves with the selected answer.
 
 ### 2.3 Promotion Model
 
 `read` and `drop` operate on the `turn` field, not on state:
 
-| Tool | Effect |
-|------|--------|
-| `read(key)` | Set `turn` to current turn → value appears in context |
-| `drop(key)` | Set `turn` to 0 → value hidden from context (purgatory) |
+| Command | Effect |
+|---------|--------|
+| `<read key="x"/>` | Set `turn` to current turn → value appears in context |
+| `<drop key="x"/>` | Set `turn` to 0 → value hidden from context (purgatory) |
 
-All other action tools (`env`, `edit`, `run`, `delete`, `ask_user`) create new
-result entries as `proposed`. The `delete` tool for `/:known/*` or `/:[tool]/*`
+All other action commands (`env`, `edit`, `run`, `delete`, `ask_user`) create new
+result entries as `proposed`. The `delete` command for `/:known:*` or `/:[tool]:*`
 keys removes the entry from the store entirely.
 
 ### 2.4 Enforcement Layers
 
-1. **Tool definitions** — `strict: true` constrained decoding on tool argument schemas.
-2. **`tool_choice: "required"`** — model must call at least one tool. Free-form content is not suppressed or validated — any text the model emits alongside tools is captured and stored as `/:reasoning/{turn}` (audit, hidden from model).
-3. **Prompt instructions + examples** — system prompt describes tool purposes and constraints.
-4. **Server-side validation** — confirms `summary` is present. Rejects and retries.
-5. **Unknowns gate** — if the model has unresolved `/:unknown/*` entries and called no investigation tools (`read`, `env`, etc.), the server warns and retries up to 3 times. Investigating resets the counter. After 3 idle warnings, the run completes anyway. The internal prompt on continuation turns shows "N unresolved unknowns."
+1. **Prompt instructions + examples** — system prompt describes tool commands with format and examples. The model is told "You must respond with tool commands and may ONLY respond with tool commands."
+2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML. Warns but does not reject.
+3. **Server-side validation** — confirms `<summary>` is present. Injects `"..."` placeholder if missing. Rejects and retries only on completely empty responses (no commands at all).
+4. **Unknowns gate** — if the model has unresolved `/:unknown:*` entries and called no investigation commands (`read`, `env`, etc.), the server warns and retries up to 3 times. Investigating resets the counter. After 3 idle warnings, the run completes anyway. The internal prompt on continuation turns shows "N unresolved unknowns."
+5. **Reasoning capture** — any free-form text between tags is captured as `/:reasoning:N` (audit only, hidden from model).
 
 ### 2.5 Server Execution Order
 
-The model emits all tool calls as a parallel batch. The server processes in strict order:
+The server parses all XML commands from the response, then processes in strict order:
 
-1. **Store user prompt** — create `/:prompt/{turn}` entry.
-2. **Execute action tools** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`. `edit` also computes a unified diff patch from the file's known content.
-3. **Process unknowns** — create `/:unknown/{seq}` entries, deduplicated against existing unknowns.
-4. **Process writes** — UPSERT each `write` call's key/value pair.
-5. **Store summary** — create `/:summary/N` entry.
+1. **Store audit entries** — create `/:system:N`, `/:user:N`, `/:prompt:N` entries before the LLM call.
+2. **Execute action commands** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`. `edit` also computes a unified diff patch via HeuristicMatcher.
+3. **Process unknowns** — create `/:unknown:N` entries, deduplicated against existing unknowns.
+4. **Process known entries** — UPSERT each `<known>` tag's key/value pair.
+5. **Store summary** — create `/:summary:N` entry.
 6. **Emit `run/state`** — build and send the client notification with history, proposed, unknowns, and telemetry.
 
 ---
 
 ## 3. Model Context
 
-No message history. The model's entire context is one ordered array embedded in
-the system prompt. On the first turn, the user message carries the prompt. On
+No message history. The model's entire context is rendered as markdown in the
+system prompt. On the first turn, the user message carries the prompt. On
 continuation turns, the user message is empty — the prompt is in the context
-array as a `/:prompt/{turn}` entry.
+as a `/:prompt:N` entry.
 
 ### 3.1 System Message Contents
 
-1. **Role description** — from `system.ask.md` or `system.act.md`
-2. **Tool schemas** — JSON schema for each tool's parameters
-3. **Context array** — one flat ordered list of `[{key, state, value}]` entries
+1. **Role description + tool commands** — from `prompt.ask.md` or `prompt.act.md`
+2. **Context** — markdown rendered from the K/V store by ContextAssembler
 
 ### 3.2 Context Ordering
 
 The context array is ordered to optimize the model's attention gradient.
 Stable background at the top, actionable items at the bottom:
 
-1. **Active non-file keys** — `/:known/*` at turn > 0 (working memory)
-2. **Stored non-file keys** — `/:known/*` at turn 0 (discoverable, key only)
+1. **Active non-file keys** — `/:known:*` at turn > 0 (working memory)
+2. **Stored non-file keys** — `/:known:*` at turn 0 (discoverable, key only)
 3. **Stored file paths** — files at turn 0 (project index, path only)
 4. **Symbol files** — files with `file:symbols` state
 5. **Full files** — files at turn > 0 (actual code being worked on)
-6. **Chronological results** — tool calls and summaries in id order
+6. **Chronological results** — tool command results and summaries in id order
 7. **Unknowns** — previous turn's `unknown` entries (uncertainty boundary)
-8. **User prompt** — `/:prompt/{turn}` (the actual task, always last)
+8. **User prompt** — `/:prompt:N` (the actual task, always last)
 
 ### 3.3 Expansion Rule
 
@@ -463,14 +468,14 @@ Resolution via `run/resolve` with `{ key, action: "accept"|"reject", output? }`.
 ### 5.3 Run Lifecycle
 
 ```
-ask / act  →  turns  →  tool calls  →  known entries
+ask / act  →  turns  →  XML commands  →  known entries
                                             │
                               run/resolve ──┘ (per entry key: accept/reject)
                                             │
          ◄─────────────────────────────────┘ (auto-resume if all accepted)
 ```
 
-Findings gate: the application checks for proposed entries (§1.5) before each
+Proposal gate: the application checks for proposed entries (§1.5) before each
 turn. The client resolves each entry by its key (§1.6).
 
 **Who applies edits to disk?** The client. The server proposes edits as known
@@ -490,14 +495,12 @@ to its own filesystem. The server never touches the working tree.
 
 ## 6. Provider Compatibility
 
-| Concern | OpenAI | OpenRouter | Ollama |
-|---------|--------|------------|--------|
-| `strict: true` | Yes | Provider-dependent | No |
-| `tool_choice: "required"` | Yes | Provider-dependent | Not enforced |
-| Parallel tool calls | Yes | Provider-dependent | Model-dependent |
+Since tool commands are XML in the response content (not native tool calling),
+provider compatibility is straightforward. Any provider that returns text
+content works. No `strict: true`, `tool_choice`, or tool schema negotiation.
 
-Ollama: all constraints are server-side. Arguments returned as parsed objects
-(not JSON strings) — the server normalizes both formats.
+The server sends `{model, messages}` and parses the response content. Reasoning
+content (`reasoning_content` field) is captured when providers return it.
 
 ### 6.1 Provider Configuration
 
@@ -788,10 +791,11 @@ RUMMY_RPC_TIMEOUT=10000         # Non-long-running RPC timeout (ms)
 |---|---|
 | `@possumtech/sqlrite` | SQLite (author's own anti-ORM) |
 | `ws` | WebSocket server |
-| `ajv` | JSON Schema validation (server-side enforcement layer) |
+| `htmlparser2` | XML parsing for model response tool commands |
+| `tiktoken` | Token counting (o200k_base encoding, with `length/4` fallback) |
 
-Symbol extraction uses `ctags` (universal-ctags CLI). Token counting: `content.length / 4`.
-Git operations shell out to `git` CLI.
+**Optional:** `@possumtech/antlrmap` — ANTLR4-based symbol extraction (formal grammars).
+**CLI deps:** `ctags` (universal-ctags, fallback symbol extraction), `git` (file tracking, cached per HEAD hash).
 
 ---
 
@@ -806,5 +810,5 @@ Git operations shell out to `git` CLI.
 | **Known Entry** | A keyed entry in the unified state machine. |
 | **Domain** | The entry's namespace: `file`, `known`, or `result`. |
 | **State** | The entry's status within its domain. Server-internal; the model sees a projection. |
-| **Result Key** | A `/:[tool]/N` key generated for each tool call. Sequential per run. |
-| **Rumsfeld Loop** | The turn cycle: the model uses `write` to persist knowledge, `unknown` to declare uncertainty, and `summary` to report status. Forces discovery before modification. |
+| **Result Key** | A `/:[tool]:N` key generated for each tool command. Sequential per run. |
+| **Rumsfeld Loop** | The turn cycle: the model uses `<known>` to persist knowledge, `<unknown>` to declare uncertainty, and `<summary>` to report status. Forces discovery before modification. |

@@ -1,63 +1,42 @@
 # AGENTS: Planning & Progress
 
-## Active: Tool Calling Migration — Final Phase
+## Current State
+
+XML tool commands in response content, parsed by htmlparser2. Single `known_entries`
+K/V store as the unified state machine. Markdown context rendering. tiktoken token
+counting with `/4` fallback. 4 production dependencies.
 
 ### Completed
 - [x] Migration schema — `known_entries` with domain/state/hash/meta/tokens/refs/turn
 - [x] SQL consolidated — 6 files (known_store, known_queries, known_checks, runs, turns, sessions)
-- [x] Tool definitions — 10 tools in `src/schema/tools/`, composed by ToolSchema.js with AJV
 - [x] KnownStore — all queries are SQL, zero `getAll`, ordered context via 8 bucket queries
-- [x] ContextAssembler — one flat ordered context array in system prompt
-- [x] TurnExecutor — file scan → context assembly → LLM → tool extraction → K/V store
+- [x] ContextAssembler — markdown rendering (code fences, bullet lists, file index)
+- [x] TurnExecutor — file scan → context assembly → LLM → XML parsing → K/V store
 - [x] AgentLoop — resolve/inject via known store, unknowns gate, validation retry
-- [x] All 3 LLM clients — native tool calling via ToolSchema
-- [x] Sticky unknowns — `/:unknown/{seq}`, deduplicated, persist until dropped
+- [x] XML tool commands — htmlparser2 parsing, forgiving recovery, reasoning capture
+- [x] All 3 LLM clients — stripped to `{model, messages}` in, content out
+- [x] Sticky unknowns — `/:unknown:N`, deduplicated, persist until dropped
 - [x] Unknowns gate — warn + retry when model idles with open unknowns
 - [x] Patch generation — HeuristicMatcher computes unified diff for edits
 - [x] `run/state` notification — one payload per turn (history, proposed with type, unknowns, telemetry)
 - [x] Resolution — `accept`/`reject` only, auto-resume/stop
-- [x] `write`/`unknown` flat tools — no nested objects
-- [x] `ask_user` renamed from `prompt`
-- [x] Content captured as reasoning, not suppressed
-- [x] AJV warn-and-heal (summary truncation)
+- [x] Persona — PromptManager reads session persona, injects as `## Persona`
+- [x] Fork mode — `fork_known_entries` SQL copies parent store
+- [x] FileScanner — async stat, mtime-first, symbols in meta
+- [x] ProjectContext — git results cached per HEAD hash
+- [x] PromptManager — prompt files cached after first read
+- [x] tiktoken — o200k_base encoding, `/4` on hot path, async recount after turn
+- [x] Content captured as `/:reasoning:N`, not suppressed
 - [x] Project restructure — 7 directories, SQL consolidated
 - [x] Lint fully clean — biome + sqlfluff, zero `SELECT *`
-- [x] 88 tests (69 unit/integration + 19 E2E)
-- [x] TESTMAP.md maps ~60 of ~70 architectural promises to tests
-- [x] ARCHITECTURE.md fully aligned with implementation
-- [x] Client integration in progress
+- [x] Doc alignment — ARCHITECTURE.md, README.md, AGENTS.md current with XML migration
 
-### Remaining — checklist
+### Remaining
 
-**Data integrity:** ✅
-- [x] FileScanner: full content in `value`, symbols only in `meta`
-- [x] FileScanner: root files promoted to current turn on first scan
-- [x] Delete resolution: erase file key on accept
-
-**ResponseHealer:** ✅
-- [x] `src/agent/ResponseHealer.js` — centralized, 9 unit tests
-- [x] Summary truncation + empty placeholder
-- [x] Empty key/text rejection (write, read, unknown)
-- [x] Mode validation (act-only in ask)
-- [x] AJV warnings (heal first, validate after)
-- [x] ToolExtractor eliminated — ResponseHealer replaces it
-
-**Persona:** ✅
-- [x] PromptManager reads session persona from DB
-- [x] Injected as `## Persona` after system prompt
-
-**Fork mode:** ✅
-- [x] `fork_known_entries` SQL copies parent store
-- [x] AgentLoop wired
-
-**E2E coverage:** ✅ (23 tests)
-- [x] Persona: stored and applied to model context
-- [x] Fork: preserves parent known store
-- [x] Continue: preserves store across calls
-- [x] Lite mode: skips file bootstrap
-- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods
-- [ ] `ask_user` proposed flow
-- [ ] `delete` tool with file erasure on accept
+- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods E2E
+- [ ] `ask_user` proposed flow E2E
+- [ ] `delete` tool with file erasure on accept E2E
+- [ ] Delete `test_old/` after next E2E round (428K legacy test archive from pre-K/V architecture)
 
 ### Dead Code (already deleted)
 - FindingsProcessor, FindingsManager, StateEvaluator, ResponseHealer, ToolExtractor
@@ -79,14 +58,6 @@ Every malformed model response is a diagnostic opportunity, not a "model drift" 
 3. **Did our structure cause this?** Check if context formatting, prompt wording, or tool definitions nudged the model toward the failure.
 4. **Did we miss something in prompts?** Check examples, instructions, continuation prompts.
 5. **Model drift is the LAST answer**, after all of the above have been ruled out.
-
----
-
-## Remaining
-
-- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods
-- [ ] `ask_user` proposed flow E2E
-- [ ] `delete` tool with file erasure on accept E2E
 
 ---
 
@@ -118,6 +89,12 @@ The `tokens`, `refs`, `turn`, and `write_count` fields are ready. When we get th
 ---
 
 ## Historical
+
+### XML Tool Commands Migration (2026-03-30)
+- Replaced native tool calling with XML commands in response content
+- htmlparser2 for forgiving parsing, tiktoken for token counting
+- Deleted ToolSchema, AJV, all JSON schema infrastructure
+- Performance: async FileScanner, ProjectContext cache, PromptManager cache
 
 ### Tool Calling Migration (2026-03-29)
 - Replaced response_format with native tool calling

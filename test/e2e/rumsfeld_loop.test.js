@@ -79,7 +79,7 @@ app.use("/api", (req, res, next) => {
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const summaries = all.filter((e) => e.key.match(/^\/:summary\//));
+		const summaries = all.filter((e) => e.key.match(/^\/:summary:/));
 		assert.ok(summaries.length > 0, "Should have summary entries");
 	});
 

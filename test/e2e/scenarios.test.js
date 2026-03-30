@@ -336,7 +336,7 @@ describe("E2E: Client Scenarios", () => {
 		while (current.status === "proposed" && iterations < 10) {
 			for (const p of current.proposed) {
 				// Simulate realistic output for different tool types
-				const type = p.key.split("/")[1]?.replace(":", "");
+				const type = p.key.match(/^\/:(\w+):/)?.[1];
 				let output = "ok";
 				if (type === "env" || type === "run") {
 					const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;

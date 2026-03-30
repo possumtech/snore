@@ -8,7 +8,7 @@ Rummy is the first and only client/server architecture LLM agent service dedicat
 
 - **One K/V Store:** Files, knowledge, tool results, unknowns, user prompts — everything is a keyed entry in one SQLite table. No message history. No separate file listings. No findings tables. The model's entire context is one ordered array assembled from the store each turn.
 
-- **Native Tool Calling:** Ten flat tools with 1-2 string parameters each. No nested JSON. No structured output schemas. Potato models that can produce `{"key": "x", "value": "y"}` can use every tool we have.
+- **XML Tool Commands:** Ten XML tags written directly in the response content, parsed by htmlparser2. No native tool calling APIs. No JSON schemas. No structured output constraints. Potato models that can produce `<known key="/:known:x">y</known>` can use every tool we have.
 
 - **Antlrmap:** Ctags, LSPs, and Treesitter are all inferior to antlrmap for extracting symbols. Antlrmap relies on Antlr4's "Grammar Zoo," mapping the symbol extraction process from formal EBNF grammars of languages. Not only is this more academically rigorous, it's more amenable to obscure and domain-specific language needs. It's the right way to do it, and we're the only ones doing it.
 
