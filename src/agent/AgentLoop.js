@@ -314,12 +314,14 @@ export default class AgentLoop {
 				await this.#db.update_run_status.run({ id: currentRunId, status: "aborted" });
 				return { run: currentAlias, status: "aborted", turn: loopIteration };
 			}
+			console.warn(`[RUMMY] Run failed: ${err.message}`);
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: "failed",
 			});
-			await hook.completed.emit({ sessionId, run: currentAlias, status: "failed", error: err.message });
-			throw err;
+			const out = { run: currentAlias, status: "failed", turn: loopIteration, error: err.message };
+			await hook.completed.emit({ sessionId, ...out });
+			return out;
 		} finally {
 			this.#activeRuns.delete(currentRunId);
 		}

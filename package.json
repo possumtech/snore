@@ -45,6 +45,6 @@
 		"ws": "^8.19.0"
 	},
 	"optionalDependencies": {
-		"@possumtech/antlrmap": "^0.0.3"
+		"@possumtech/antlrmap": "^0.0.8"
 	}
 }
