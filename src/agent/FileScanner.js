@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import CtagsExtractor from "./CtagsExtractor.js";
 
@@ -41,18 +42,22 @@ export default class FileScanner {
 		});
 		if (activeRuns.length === 0) return;
 
-		// Stat all files (cheap — no content reads)
+		// Stat all files concurrently (no content reads)
 		const diskStats = new Map();
-		for (const relPath of mappableFiles) {
-			const fullPath = join(projectPath, relPath);
-			if (!existsSync(fullPath)) continue;
-			try {
-				const stat = statSync(fullPath);
-				if (!stat.isFile()) continue;
-				diskStats.set(relPath, { mtime: stat.mtimeMs, fullPath });
-			} catch {
-				// Unreadable
-			}
+		const statResults = await Promise.all(
+			mappableFiles.map(async (relPath) => {
+				const fullPath = join(projectPath, relPath);
+				try {
+					const stat = await fs.stat(fullPath);
+					if (!stat.isFile()) return null;
+					return { relPath, mtime: stat.mtimeMs, fullPath };
+				} catch {
+					return null;
+				}
+			}),
+		);
+		for (const entry of statResults) {
+			if (entry) diskStats.set(entry.relPath, { mtime: entry.mtime, fullPath: entry.fullPath });
 		}
 
 		for (const run of activeRuns) {

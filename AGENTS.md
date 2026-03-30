@@ -84,10 +84,17 @@ Every malformed model response is a diagnostic opportunity, not a "model drift" 
 
 ## Remaining
 
-- [ ] libtiktoken integration for industry-standard token counting (optional, with `length / 4` fallback)
 - [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods
 - [ ] `ask_user` proposed flow E2E
 - [ ] `delete` tool with file erasure on accept E2E
+
+---
+
+## Future: Dependency Alternatives
+
+**isomorphic-git** — Pure JS git implementation. Would eliminate all `execSync("git ...")` subprocess spawns in `GitProvider.js`. Currently `ProjectContext.open()` caches results keyed on HEAD hash, so the subprocess cost is amortized. Consider adopting if: (a) git operations expand beyond `ls-files`/`rev-parse`, or (b) we need to run in environments without git installed.
+
+**JS ctags alternatives** — `CtagsExtractor.js` shells out to Universal Ctags. `@possumtech/antlrmap` already handles supported languages in-process. For unsupported languages, tree-sitter via `web-tree-sitter` or `node-tree-sitter` would provide in-process parsing without the ctags dependency. Consider adopting if: (a) ctags availability becomes a deployment issue, or (b) we need richer AST-level extraction beyond symbols.
 
 ---
 

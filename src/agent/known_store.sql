@@ -5,7 +5,7 @@ INSERT INTO known_entries (
 )
 VALUES (
 	:run_id, :turn, :key, :value, :domain, :state, :hash, :meta
-	, :tokens
+	, length(:value) / 4
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
 ON CONFLICT (run_id, key) DO UPDATE SET
@@ -14,9 +14,21 @@ ON CONFLICT (run_id, key) DO UPDATE SET
 	, hash = COALESCE(excluded.hash, known_entries.hash)
 	, meta = COALESCE(excluded.meta, known_entries.meta)
 	, turn = excluded.turn
-	, tokens = excluded.tokens
+	, tokens = length(excluded.value) / 4
 	, write_count = known_entries.write_count + 1
 	, updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+
+-- PREP: recount_tokens
+UPDATE known_entries
+SET tokens = :tokens
+WHERE run_id = :run_id AND key = :key;
+
+-- PREP: get_stale_tokens
+SELECT key, value
+FROM known_entries
+WHERE
+	run_id = :run_id
+	AND turn = :turn;
 
 -- PREP: delete_known_entry
 DELETE FROM known_entries

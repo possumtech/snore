@@ -42,7 +42,6 @@ export default class KnownStore {
 			state,
 			hash,
 			meta: meta ? JSON.stringify(meta) : null,
-			tokens: countTokens(value),
 			updated_at: updatedAt,
 		});
 	}
@@ -236,6 +235,27 @@ export default class KnownStore {
 	 */
 	async getTurnAudit(runId, turn) {
 		return this.#db.get_turn_audit.all({ run_id: runId, turn });
+	}
+
+	/**
+	 * Recount tokens for all entries written on a specific turn.
+	 * Bulk read → batch encode → bulk write. Encoder stays warm.
+	 * Call async after the turn completes — not on the hot path.
+	 */
+	async recountTokens(runId, turn) {
+		const rows = await this.#db.get_stale_tokens.all({ run_id: runId, turn });
+		if (rows.length === 0) return;
+
+		// Batch encode — one pass through the encoder
+		const updates = rows.map((row) => ({
+			key: row.key,
+			tokens: countTokens(row.value),
+		}));
+
+		// Bulk write
+		for (const { key, tokens } of updates) {
+			await this.#db.recount_tokens.run({ run_id: runId, key, tokens });
+		}
 	}
 
 	static toolFromKey(key) {

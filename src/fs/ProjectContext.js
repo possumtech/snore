@@ -1,6 +1,9 @@
 import { isAbsolute, join, relative } from "node:path";
 import GitProvider from "./GitProvider.js";
 
+// Cache: path → { headHash, context }
+const cache = new Map();
+
 export default class ProjectContext {
 	#root;
 	#isGit = false;
@@ -16,24 +19,31 @@ export default class ProjectContext {
 
 	static async open(path, dbFiles = new Set()) {
 		const detectedRoot = await GitProvider.detectRoot(path);
-		const root = path;
 		const isGit = detectedRoot !== null;
 
-		const trackedFiles = new Set();
+		// Reuse cached context if HEAD hasn't changed
 		if (isGit) {
-			const allTracked = await GitProvider.getTrackedFiles(detectedRoot);
+			const headHash = await GitProvider.getHeadHash(detectedRoot);
+			const cached = cache.get(path);
+			if (cached && cached.headHash === headHash) {
+				return new ProjectContext(path, true, cached.trackedFiles, dbFiles);
+			}
 
+			const allTracked = await GitProvider.getTrackedFiles(detectedRoot);
+			const trackedFiles = new Set();
 			for (const f of allTracked) {
 				const fullF = join(detectedRoot, f);
-				const relToProject = relative(root, fullF);
-
+				const relToProject = relative(path, fullF);
 				if (!relToProject.startsWith("..") && !isAbsolute(relToProject)) {
 					trackedFiles.add(relToProject);
 				}
 			}
+
+			cache.set(path, { headHash, trackedFiles });
+			return new ProjectContext(path, true, trackedFiles, dbFiles);
 		}
 
-		return new ProjectContext(root, isGit, trackedFiles, dbFiles);
+		return new ProjectContext(path, false, new Set(), dbFiles);
 	}
 
 	async isInProject(relPath) {
