@@ -88,15 +88,6 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Store user prompt as a known entry (visible to model at bottom of context)
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			`/:prompt/${turn}`,
-			loopPrompt,
-			"info",
-		);
-
 		// Assemble context from known store — one ordered array
 		const systemPrompt = await PromptManager.getSystemPrompt(type, {
 			db: this.#db,
@@ -117,7 +108,13 @@ export default class TurnExecutor {
 			runId: currentRunId,
 		});
 
-		// DEBUG: dump what we're sending
+		// Store what we're sending BEFORE the LLM call (audit survives failures)
+		await this.#knownStore.upsert(currentRunId, turn, `/:system/${turn}`, systemPrompt, "info");
+		if (loopPrompt && !options?.isContinuation) {
+			await this.#knownStore.upsert(currentRunId, turn, `/:prompt/${turn}`, loopPrompt, "info");
+		}
+		await this.#knownStore.upsert(currentRunId, turn, `/:user/${turn}`, loopPrompt || "", "info");
+
 		if (process.env.RUMMY_DEBUG === "true") {
 			console.log(
 				"[DEBUG] Messages:",
@@ -176,8 +173,24 @@ export default class TurnExecutor {
 		const hasReads = actionCalls.some((c) => c.name === "read");
 		const flags = { hasAct, hasReads };
 
-		if (!summaryCall)
-			throw new Error("Model response missing required 'summary' tool call.");
+		if (!summaryCall) {
+			const calledTools = healedCalls.map((c) => c.name).join(", ") || "none";
+			console.warn(`[RUMMY] Missing summary. Tools called: ${calledTools}`);
+
+			// If the model called nothing at all, retry
+			const hasWork = healedCalls.length > 0;
+			if (!hasWork) {
+				await this.#knownStore.upsert(
+					currentRunId, turn, `/:retry/${turn}`,
+					JSON.stringify({ error: "empty response", warnings }),
+					"error",
+				);
+				throw new Error("Model response missing required 'summary' tool call.");
+			}
+
+			// Inject a placeholder summary so the pipeline continues
+			summaryCall = { id: "healed", name: "summary", args: { text: "..." } };
+		}
 
 		// Capture any free-form content as reasoning (model may emit text alongside tools)
 		const freeformContent = (responseMessage.content || "").trim();
@@ -206,21 +219,7 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Store the system prompt and user message sent this turn (audit)
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			`/:system/${turn}`,
-			systemPrompt,
-			"info",
-		);
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			`/:user/${turn}`,
-			loopPrompt,
-			"info",
-		);
+		// Note: /:system, /:user, /:prompt already stored before LLM call
 
 		// --- SERVER EXECUTION ORDER ---
 

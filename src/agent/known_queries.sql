@@ -45,7 +45,7 @@ WHERE
 ORDER BY key;
 
 -- PREP: get_full_files
-SELECT key, state, value
+SELECT key, state, value, tokens
 FROM known_entries
 WHERE
 	run_id = :run_id

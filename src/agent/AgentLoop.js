@@ -142,17 +142,16 @@ export default class AgentLoop {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				loopIteration++;
 
-				// Build turn prompt: first turn = user prompt, continuation = unknown count or empty
+				// Build turn prompt
 				let turnPrompt;
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
 				} else {
 					const unknownCount =
 						await this.#knownStore.countUnknowns(currentRunId);
-					turnPrompt =
-						unknownCount > 0
-							? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.`
-							: "";
+					turnPrompt = unknownCount > 0
+						? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.\nRequired: summary`
+						: "Required: summary";
 				}
 
 				let result;
@@ -167,7 +166,7 @@ export default class AgentLoop {
 						loopPrompt: turnPrompt,
 						noContext,
 						contextSize,
-						options,
+						options: { ...options, isContinuation: loopIteration > 1 },
 					});
 				} catch (err) {
 					if (

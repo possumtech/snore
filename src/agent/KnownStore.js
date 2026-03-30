@@ -115,7 +115,7 @@ export default class KnownStore {
 					: r.state === "active"
 						? "file:active"
 						: "file";
-			context.push({ key: r.key, state: fileState, value: r.value });
+			context.push({ key: r.key, state: fileState, value: r.value, tokens: r.tokens });
 		}
 
 		// 6. Chronological results — filtered by tool type

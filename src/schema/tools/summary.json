@@ -2,7 +2,7 @@
 	"type": "function",
 	"function": {
 		"name": "summary",
-		"description": "One-liner status update or answer. Required every turn. Keep under 80 characters.",
+		"description": "Your status update. Include with every response alongside any other tools. Under 80 characters.",
 		"strict": true,
 		"parameters": {
 			"type": "object",
