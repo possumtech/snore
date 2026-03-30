@@ -61,6 +61,17 @@ SET next_turn = next_turn + 1
 WHERE id = :run_id
 RETURNING next_turn - 1 AS turn;
 
+-- PREP: fork_known_entries
+INSERT INTO known_entries (
+	run_id, turn, key, value, domain, state
+	, hash, meta, tokens, refs, write_count
+)
+SELECT
+	:new_run_id, turn, key, value, domain, state
+	, hash, meta, tokens, refs, write_count
+FROM known_entries
+WHERE run_id = :parent_run_id;
+
 -- PREP: get_active_runs
 SELECT r.id
 FROM runs AS r

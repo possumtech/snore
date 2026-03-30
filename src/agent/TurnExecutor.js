@@ -98,7 +98,10 @@ export default class TurnExecutor {
 		);
 
 		// Assemble context from known store — one ordered array
-		const systemPrompt = await PromptManager.getSystemPrompt(type);
+		const systemPrompt = await PromptManager.getSystemPrompt(type, {
+			db: this.#db,
+			sessionId,
+		});
 		const context = await this.#knownStore.getModelContext(currentRunId);
 
 		const messages = ContextAssembler.assemble({
@@ -167,11 +170,14 @@ export default class TurnExecutor {
 			else actionCalls.push(call);
 		}
 
-		const hasAct = actionCalls.some((c) => ["edit", "delete", "run"].includes(c.name));
+		const hasAct = actionCalls.some((c) =>
+			["edit", "delete", "run"].includes(c.name),
+		);
 		const hasReads = actionCalls.some((c) => c.name === "read");
 		const flags = { hasAct, hasReads };
 
-		if (!summaryCall) throw new Error("Model response missing required 'summary' tool call.");
+		if (!summaryCall)
+			throw new Error("Model response missing required 'summary' tool call.");
 
 		// Capture any free-form content as reasoning (model may emit text alongside tools)
 		const freeformContent = (responseMessage.content || "").trim();

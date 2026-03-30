@@ -92,6 +92,11 @@ export default class AgentLoop {
 				config: JSON.stringify({ model: requestedModel, noContext }),
 				alias: currentAlias,
 			});
+			// Copy parent's known store into the fork
+			await this.#db.fork_known_entries.run({
+				new_run_id: currentRunId,
+				parent_run_id: existingRun.id,
+			});
 		} else if (run) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
 			if (!existingRun)

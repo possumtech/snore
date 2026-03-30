@@ -6,22 +6,28 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "../..");
 
 export default class PromptManager {
-	static async getSystemPrompt(type, customPrompt = null) {
-		if (customPrompt) return customPrompt;
-
+	static async getSystemPrompt(type, { db = null, sessionId = null } = {}) {
+		// Base system prompt from file
 		const modePath = join(ROOT_DIR, `system.${type}.md`);
+		let base;
 		try {
-			return await fs.readFile(modePath, "utf8");
-		} catch (_err) {
+			base = await fs.readFile(modePath, "utf8");
+		} catch {
 			try {
-				return await fs.readFile(join(ROOT_DIR, "system.md"), "utf8");
-			} catch (__err) {
-				return "You are a helpful software engineering assistant.";
+				base = await fs.readFile(join(ROOT_DIR, "system.md"), "utf8");
+			} catch {
+				base = "You are a helpful software engineering assistant.";
 			}
 		}
-	}
 
-	static formatIdentity(_model) {
-		return "";
+		// Persona injection from session
+		if (db && sessionId) {
+			const session = await db.get_session_by_id.get({ id: sessionId });
+			if (session?.persona) {
+				base += `\n\n## Persona\n\n${session.persona}`;
+			}
+		}
+
+		return base;
 	}
 }

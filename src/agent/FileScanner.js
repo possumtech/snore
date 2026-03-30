@@ -62,12 +62,7 @@ export default class FileScanner {
 		]);
 
 		for (const run of activeRuns) {
-			await this.#syncRun(
-				run.id,
-				diskFiles,
-				symbolMap,
-				currentTurn,
-			);
+			await this.#syncRun(run.id, diskFiles, symbolMap, currentTurn);
 		}
 	}
 
@@ -87,7 +82,7 @@ export default class FileScanner {
 
 			// Determine turn: root files get promoted, others start at 0
 			const isRoot = !relPath.includes("/");
-			const turn = isRoot ? currentTurn : (entry?.turn || 0);
+			const turn = isRoot ? currentTurn : entry?.turn || 0;
 
 			// Symbols go in meta, full content always goes in value
 			const symbols = symbolMap.get(relPath);

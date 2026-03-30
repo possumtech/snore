@@ -29,33 +29,33 @@
 
 ### Remaining — checklist
 
-**Data integrity (do first):**
-- [ ] FileScanner: always store full content in `value`, symbols only in `meta`
-- [ ] FileScanner: promote root files (no `/` in path) to turn 1 on first scan
-- [ ] Delete resolution: erase the file key entirely on accept (not demote)
+**Data integrity:** ✅
+- [x] FileScanner: full content in `value`, symbols only in `meta`
+- [x] FileScanner: root files promoted to current turn on first scan
+- [x] Delete resolution: erase file key on accept
 
-**ResponseHealer (do second):**
-- [ ] Create `src/agent/ResponseHealer.js` — centralized module
-- [ ] Move summary truncation from TurnExecutor into healer
-- [ ] Move AJV warn logic from TurnExecutor into healer
-- [ ] Pluggable rules via hooks (future extensibility)
-- [ ] Healer returns `{ toolCalls, warnings }` — TurnExecutor calls it once
-- [ ] Warnings stored as `/:info/N` entries (model doesn't see, client does via history)
+**ResponseHealer:** ✅
+- [x] `src/agent/ResponseHealer.js` — centralized, 9 unit tests
+- [x] Summary truncation + empty placeholder
+- [x] Empty key/text rejection (write, read, unknown)
+- [x] Mode validation (act-only in ask)
+- [x] AJV warnings (heal first, validate after)
+- [x] ToolExtractor eliminated — ResponseHealer replaces it
 
-**Persona (do third):**
-- [ ] PromptManager reads session persona from DB
-- [ ] Persona injected after system prompt, before tool schemas
-- [ ] E2E test: set persona, verify it appears in model context
+**Persona:** ✅
+- [x] PromptManager reads session persona from DB
+- [x] Injected as `## Persona` after system prompt
 
-**Fork mode (do fourth):**
-- [ ] `fork_run.sql` — `INSERT INTO known_entries SELECT ... FROM known_entries WHERE run_id = :parent`
-- [ ] AgentLoop creates fork run and copies entries
-- [ ] E2E test: fork preserves known store from parent
+**Fork mode:** ✅
+- [x] `fork_known_entries` SQL copies parent store
+- [x] AgentLoop wired
 
 **Remaining E2E coverage:**
+- [ ] Persona E2E: set persona, verify model receives it
+- [ ] Fork E2E: fork preserves known store from parent
 - [ ] Continue run preserves known store across calls
 - [ ] Lite mode (`noContext: true`) skips file bootstrap
-- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods set file state
+- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods
 - [ ] `ask_user` proposed flow
 - [ ] `delete` tool with file erasure on accept
 
