@@ -149,12 +149,15 @@ export default class AgentLoop {
 				} else {
 					const unknownCount =
 						await this.#knownStore.countUnknowns(currentRunId);
-					const allowed = type === "act"
-						? "unknown, known, read, drop, edit, delete, run, env, ask_user, summary"
-						: "unknown, known, read, drop, env, ask_user, summary";
+					const allowed =
+						type === "act"
+							? "unknown, known, read, drop, edit, delete, run, env, ask_user, summary"
+							: "unknown, known, read, drop, env, ask_user, summary";
 					const parts = [];
 					if (unknownCount > 0) {
-						parts.push(`${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.`);
+						parts.push(
+							`${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.`,
+						);
 					}
 					parts.push(`Allowed: ${allowed}`);
 					parts.push("Required: summary");

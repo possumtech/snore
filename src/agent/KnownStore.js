@@ -1,3 +1,5 @@
+import { countTokens } from "./tokens.js";
+
 export default class KnownStore {
 	#db;
 
@@ -40,6 +42,7 @@ export default class KnownStore {
 			state,
 			hash,
 			meta: meta ? JSON.stringify(meta) : null,
+			tokens: countTokens(value),
 			updated_at: updatedAt,
 		});
 	}
