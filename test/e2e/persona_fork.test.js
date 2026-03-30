@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import RpcClient from "../helpers/RpcClient.js";
+import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
@@ -25,7 +25,7 @@ describe("E2E: Persona & Fork", () => {
 
 		tdb = await TestDb.create();
 		tserver = await TestServer.start(tdb.db);
-		client = new RpcClient(tserver.url);
+		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
 			projectPath,

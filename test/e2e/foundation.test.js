@@ -3,8 +3,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
-import RpcClient from "../helpers/RpcClient.js";
+import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
@@ -12,7 +11,7 @@ const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
 describe("E2E: Tool Calling Foundation", () => {
-	let tdb, tserver, client, knownStore;
+	let tdb, tserver, client;
 	const projectPath = join(tmpdir(), `rummy-e2e-${Date.now()}`);
 
 	before(async () => {
@@ -28,9 +27,8 @@ describe("E2E: Tool Calling Foundation", () => {
 		);
 
 		tdb = await TestDb.create();
-		knownStore = new KnownStore(tdb.db);
 		tserver = await TestServer.start(tdb.db);
-		client = new RpcClient(tserver.url);
+		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
 			projectPath,

@@ -286,7 +286,7 @@ export default class TurnExecutor {
 				call.error = error;
 			} else {
 				// env, run, delete
-				const isProposed = call.name === "run" || call.name === "delete";
+				const isProposed = call.name === "env" || call.name === "run" || call.name === "delete";
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,

@@ -3,8 +3,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
-import RpcClient from "../helpers/RpcClient.js";
+import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
@@ -12,7 +11,7 @@ const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 180_000;
 
 describe("E2E: Rumsfeld Loop — Sticky Unknowns", () => {
-	let tdb, tserver, client, _knownStore;
+	let tdb, tserver, client;
 	const projectPath = join(tmpdir(), `rummy-rumsfeld-${Date.now()}`);
 
 	before(async () => {
@@ -46,9 +45,8 @@ app.use("/api", (req, res, next) => {
 		);
 
 		tdb = await TestDb.create();
-		_knownStore = new KnownStore(tdb.db);
 		tserver = await TestServer.start(tdb.db);
-		client = new RpcClient(tserver.url);
+		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
 			projectPath,
@@ -69,21 +67,13 @@ app.use("/api", (req, res, next) => {
 	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt:
-				"How does authentication work in this project? What session store does it use?",
+			prompt: "How does authentication work in this project? What session store does it use?",
 		});
 
-		// completed = model answered. proposed = model is investigating (called env/run).
-		// Both are valid — the Rumsfeld Loop is working either way.
-		assert.ok(
-			result.status === "completed" || result.status === "proposed",
-			`Expected completed or proposed, got ${result.status}`,
-		);
+		await client.assertRun(result, ["completed", "proposed"], "investigate unknowns");
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-
-		// Model should have engaged — summaries, reads, writes, or proposed commands
 		const summaries = all.filter((e) => e.key.match(/^\/:summary\//));
 		assert.ok(summaries.length > 0, "Should have summary entries");
 	});
@@ -93,18 +83,13 @@ app.use("/api", (req, res, next) => {
 	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt:
-				"What testing framework does this project use? What CI pipeline is configured?",
+			prompt: "What testing framework does this project use? What CI pipeline is configured?",
 		});
 
-		assert.strictEqual(result.status, "completed");
+		await client.assertRun(result, "completed", "sticky unknowns");
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-
-		// The model should have registered unknowns (can't find tests or CI in this project)
-		// OR resolved them by investigating and finding nothing
-		// Either way, the run completed — the unknowns gate worked
 		const summaries = all.filter((e) => e.key.startsWith("/:summary/"));
 		assert.ok(summaries.length > 0, "Should have completed with summaries");
 	});
