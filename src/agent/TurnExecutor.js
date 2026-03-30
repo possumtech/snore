@@ -1,11 +1,10 @@
 import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
-import ToolSchema from "../schema/ToolSchema.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
 import HeuristicMatcher, { generateUnifiedDiff } from "./HeuristicMatcher.js";
 import PromptManager from "./PromptManager.js";
-import ToolExtractor from "./ToolExtractor.js";
+import ResponseHealer from "./ResponseHealer.js";
 
 export default class TurnExecutor {
 	#db;
@@ -146,53 +145,33 @@ export default class TurnExecutor {
 			status: "processing",
 		});
 
-		// Extract and validate tool calls
-		const extracted = ToolExtractor.extract(responseMessage);
-		const {
-			actionCalls,
-			writeCalls,
-			unknownCalls,
-			summaryCall,
-			askUserCall,
-			flags,
-		} = extracted;
-
-		const validationError = ToolExtractor.validate({ summaryCall });
-		if (validationError) throw new Error(validationError);
-
-		// Validate tool arguments via AJV — warn and heal, don't reject
-		for (const tc of responseMessage.tool_calls || []) {
-			const name = tc.function?.name;
-			const args = JSON.parse(tc.function?.arguments || "{}");
-			const { valid, errors } = ToolSchema.validate(name, args);
-			if (!valid) {
-				console.warn(
-					`[RUMMY] Healing ${name}: ${errors.map((e) => e.message).join(", ")}`,
-				);
-			}
-		}
-
-		// Heal summary length — truncate, don't retry
-		if (summaryCall?.args?.text?.length > 80) {
-			console.warn(
-				`[RUMMY] Summary truncated from ${summaryCall.args.text.length} to 80 chars`,
-			);
-			summaryCall.args.text = summaryCall.args.text.slice(0, 80);
-		}
-
-		// Validate tool names for mode
-		const toolNames = (responseMessage.tool_calls || []).map(
-			(tc) => tc.function?.name,
-		);
-		const { valid: modeValid, invalid } = ToolSchema.validateMode(
+		// Heal and validate tool calls
+		const { calls: healedCalls, warnings } = ResponseHealer.heal(
+			responseMessage.tool_calls || [],
 			type,
-			toolNames,
 		);
-		if (!modeValid) {
-			throw new Error(
-				`Tools not allowed in ${type} mode: ${invalid.join(", ")}`,
-			);
+		for (const w of warnings) console.warn(`[RUMMY] Healer: ${w}`);
+
+		// Categorize healed calls
+		const actionCalls = [];
+		const writeCalls = [];
+		const unknownCalls = [];
+		let summaryCall = null;
+		let askUserCall = null;
+
+		for (const call of healedCalls) {
+			if (call.name === "write") writeCalls.push(call);
+			else if (call.name === "unknown") unknownCalls.push(call);
+			else if (call.name === "summary") summaryCall = call;
+			else if (call.name === "ask_user") askUserCall = call;
+			else actionCalls.push(call);
 		}
+
+		const hasAct = actionCalls.some((c) => ["edit", "delete", "run"].includes(c.name));
+		const hasReads = actionCalls.some((c) => c.name === "read");
+		const flags = { hasAct, hasReads };
+
+		if (!summaryCall) throw new Error("Model response missing required 'summary' tool call.");
 
 		// Capture any free-form content as reasoning (model may emit text alongside tools)
 		const freeformContent = (responseMessage.content || "").trim();
