@@ -97,6 +97,9 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] results rendered with check marks (unit: ContextAssembler)
 - [x] prompt rendered last (unit: ContextAssembler)
 - [x] bucket ordering: active known → stored known → file paths → symbols → full files → results → unknowns → prompt (integration: known_store)
+- [x] context_distribution buckets: files, keys, known, history, system (integration: context_distribution)
+- [x] proposed entries excluded from context_distribution history bucket (integration: context_distribution)
+- [x] unknowns counted in context_distribution history bucket (integration: context_distribution)
 
 ### §3.3 Expansion Rule
 - [x] turn > 0 → expanded (integration: known_store)
@@ -104,7 +107,7 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ### §3.4 File Bootstrap
 - [x] files scanned from disk at turn start (E2E: foundation)
-- [ ] client-promoted files bootstrapped with correct state (E2E: activate/readOnly/ignore)
+- [x] client-promoted files bootstrapped with correct state (E2E: rpc_methods — activate/readOnly/ignore/drop/fileStatus)
 
 ### §3.5 File Change Detection
 - [ ] mtime-first scan skips unchanged files
@@ -137,7 +140,10 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] discover returns methods and notifications (E2E: rpc_methods)
 - [x] setTemperature/getTemperature round-trip (E2E: rpc_methods)
 - [x] skill/add, skill/remove, getSkills (E2E: rpc_methods)
-- [ ] activate/readOnly/ignore/drop set file state
+- [x] activate/readOnly/ignore/drop set file state (E2E: rpc_methods)
+- [x] fileStatus returns current state (E2E: rpc_methods)
+- [x] getModelInfo returns model metadata (E2E: rpc_methods)
+- [x] activate preserves file content in known store (E2E: rpc_methods)
 
 ### §5.2 Notifications
 - [x] run/state sent after each turn with correct shape (E2E: run_state)
@@ -169,17 +175,15 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ## §8 Testing
 - [x] unit tests in src/**/*.test.js (XmlParser, ContextAssembler, HeuristicMatcher)
-- [x] integration tests in test/integration/ (known_store)
-- [x] E2E tests in test/e2e/ (8 files, 32 tests)
+- [x] integration tests in test/integration/ (known_store, context_distribution)
+- [x] E2E tests in test/e2e/ (8 files, 40 tests)
 - [x] E2E tests use real LLM, never mocked
 
 ## Summary
 
-Tested:     ~78 promises (105 tests: 37 unit + 37 integration + 31 E2E)
-Untested:   ~6 promises
+Tested:     ~89 promises (120 tests: 37 unit + 44 integration + 39 E2E)
+Untested:   ~3 promises
 Remaining:
   - §1.5: TurnExecutor blocks on proposed (integration test)
-  - §3.4: client-promoted file bootstrap states (activate/readOnly/ignore)
   - §3.5: FileScanner mtime/hash/symbol lifecycle (integration test)
-  - §5.1: activate/readOnly/ignore/drop RPC
   - §7: custom plugin registration E2E

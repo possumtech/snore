@@ -86,8 +86,15 @@ export default class SessionManager {
 		const relPath = await this.#normalizePath(projectId, path);
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		if (runs.length === 0) return { path: relPath, state: null };
-		const row = await this.#db.get_entry_state.get({ run_id: runs[0].id, key: relPath });
-		return { path: relPath, state: row?.state || null, turn: row?.turn ?? null };
+		const row = await this.#db.get_entry_state.get({
+			run_id: runs[0].id,
+			key: relPath,
+		});
+		return {
+			path: relPath,
+			state: row?.state || null,
+			turn: row?.turn ?? null,
+		};
 	}
 
 	async #normalizePath(projectId, path) {

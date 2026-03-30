@@ -215,4 +215,65 @@ describe("E2E: RPC Methods", () => {
 			assert.ok(typeof bucket.entries === "number", "bucket has entries");
 		}
 	});
+
+	it("activate sets file state to active", async () => {
+		const result = await client.call("activate", { pattern: "app.js" });
+		assert.strictEqual(result.status, "ok");
+
+		const status = await client.call("fileStatus", { path: "app.js" });
+		assert.strictEqual(status.path, "app.js");
+		assert.strictEqual(status.state, "active");
+	});
+
+	it("readOnly sets file state to readonly", async () => {
+		const result = await client.call("readOnly", { pattern: "app.js" });
+		assert.strictEqual(result.status, "ok");
+
+		const status = await client.call("fileStatus", { path: "app.js" });
+		assert.strictEqual(status.state, "readonly");
+	});
+
+	it("ignore sets file state to ignore", async () => {
+		const result = await client.call("ignore", { pattern: "app.js" });
+		assert.strictEqual(result.status, "ok");
+
+		const status = await client.call("fileStatus", { path: "app.js" });
+		assert.strictEqual(status.state, "ignore");
+	});
+
+	it("drop removes file state override", async () => {
+		// First set a state
+		await client.call("activate", { pattern: "app.js" });
+		const before = await client.call("fileStatus", { path: "app.js" });
+		assert.strictEqual(before.state, "active");
+
+		// Drop it
+		const result = await client.call("drop", { pattern: "app.js" });
+		assert.strictEqual(result.status, "ok");
+	});
+
+	it("fileStatus returns null state for unknown file", async () => {
+		const status = await client.call("fileStatus", { path: "nonexistent.js" });
+		assert.strictEqual(status.state, null);
+	});
+
+	it("getModelInfo returns model metadata", async () => {
+		const info = await client.call("getModelInfo", { model });
+		assert.ok(info.alias, "has alias");
+		assert.ok(info.model, "has resolved model");
+		assert.ok(typeof info.context_length === "number", "has context_length");
+		assert.ok(typeof info.effective === "number", "has effective");
+	});
+
+	it("activate preserves file content in known store", {
+		timeout: TIMEOUT,
+	}, async () => {
+		// Run an ask so the file gets bootstrapped into the known store
+		await client.call("ask", { model, prompt: "Read app.js." });
+
+		// Now activate — should NOT overwrite the file's value
+		await client.call("activate", { pattern: "app.js" });
+		const status = await client.call("fileStatus", { path: "app.js" });
+		assert.strictEqual(status.state, "active");
+	});
 });

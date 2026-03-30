@@ -386,6 +386,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 | Method | Params | Description |
 |--------|--------|-------------|
 | `getModels` | — | List available model aliases |
+| `getModelInfo` | `model?` | Returns `{ alias, model, context_length, limit, effective, name, max_completion_tokens }` |
 
 #### File Visibility (Project-Scoped)
 
@@ -405,7 +406,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 | `ask` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Non-mutating query |
 | `act` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Mutating directive |
 | `run/resolve` | `run`, `resolution: {key, action: 'accept'\|'reject', output?}` | Resolve a proposed entry by its key |
-| `run/abort` | `run` | Abandon run |
+| `run/abort` | `run` | Signal in-flight loop to stop via AbortController. Sets status to `aborted`. |
 | `run/rename` | `run`, `name` | Rename a run. `[a-z_]+`, must be unique. |
 | `run/inject` | `run`, `message` | Inject context (creates `/:inject/N` info entry) |
 | `getRuns` | — | List runs for session |

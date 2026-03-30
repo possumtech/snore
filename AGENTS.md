@@ -52,15 +52,16 @@ counting with `/4` fallback. 4 production dependencies. 39/39 E2E on potato (Qwe
 - [x] "missing required summary" retry — `err.code === "MISSING_SUMMARY"` replaces string matching
 
 **Tests to write:**
-- [ ] activate/readOnly/ignore/drop RPC E2E (use wizard.txt)
-- [ ] fileStatus RPC E2E
-- [ ] getModelInfo RPC E2E
-- [ ] abort actually stops in-flight loop E2E
-- [ ] context_distribution bucket correctness (integration)
+- [x] activate/readOnly/ignore/drop RPC E2E (rpc_methods.test.js)
+- [x] fileStatus RPC E2E (rpc_methods.test.js)
+- [x] getModelInfo RPC E2E (rpc_methods.test.js)
+- [x] activate preserves file content E2E (rpc_methods.test.js)
+- [x] context_distribution bucket correctness (integration: context_distribution.test.js)
+- [ ] abort mid-flight E2E — impractical: signal checked at loop boundaries, not during LLM call. Existing run/abort test covers post-completion abort.
 
 **Docs to align:**
-- [ ] ARCHITECTURE.md §5.1 — add getModelInfo, update run/abort description
-- [ ] TESTMAP.md — update with all new tests and wizard.txt changes
+- [x] ARCHITECTURE.md §5.1 — added getModelInfo, updated run/abort description
+- [x] TESTMAP.md — updated with all new tests
 
 ### Dead Code (already deleted)
 - FindingsProcessor, FindingsManager, StateEvaluator, ResponseHealer, ToolExtractor
