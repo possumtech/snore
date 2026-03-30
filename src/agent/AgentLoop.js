@@ -139,8 +139,11 @@ export default class AgentLoop {
 
 		let loopIteration = 0;
 		let unknownWarnings = 0;
-		const MAX_LOOP_ITERATIONS = 15;
-		const MAX_UNKNOWN_WARNINGS = 3;
+		let lastSummaryText = null;
+		let repetitionCount = 0;
+		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
+		const MAX_UNKNOWN_WARNINGS = Number(process.env.RUMMY_MAX_UNKNOWN_WARNINGS) || 3;
+		const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
 
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
@@ -160,7 +163,7 @@ export default class AgentLoop {
 					const parts = [];
 					if (unknownCount > 0) {
 						parts.push(
-							`${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.`,
+							`${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}. Use <read/> or <env/> to investigate, or <drop/> to dismiss.`,
 						);
 					}
 					parts.push(`Allowed: ${allowed}`);
@@ -254,6 +257,25 @@ export default class AgentLoop {
 					turn: result.turn,
 					flags: result.flags,
 				});
+
+				// Repetition detection: same summary + no new actions = stuck
+				if (result.summaryText === lastSummaryText && !result.flags.hasAct && !result.flags.hasReads) {
+					repetitionCount++;
+					if (repetitionCount >= MAX_REPETITIONS) {
+						console.warn(`[RUMMY] Repetition detected: "${result.summaryText?.slice(0, 60)}" repeated ${repetitionCount} times. Force-completing.`);
+						const staleUnknowns = await this.#db.get_unknowns.all({ run_id: currentRunId });
+						for (const u of staleUnknowns) {
+							await this.#knownStore.demote(currentRunId, u.key);
+						}
+						await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
+						const out = { run: currentAlias, status: "completed", turn: result.turn };
+						await hook.completed.emit({ sessionId, ...out });
+						return out;
+					}
+				} else {
+					repetitionCount = 0;
+				}
+				lastSummaryText = result.summaryText;
 
 				// Continue if model made action calls (reads promote files, env gathers info)
 				if (result.flags.hasReads || result.flags.hasAct) {

@@ -843,6 +843,9 @@ Token distribution per bucket is included in every `run/state` notification unde
 ### 9.2 Configuration
 
 ```env
+RUMMY_MAX_TURNS=15              # Max continuation turns per run
+RUMMY_MAX_UNKNOWN_WARNINGS=3    # Warnings before giving up on unknowns
+RUMMY_MAX_REPETITIONS=3         # Identical summaries before force-completing
 RUMMY_RETENTION_DAYS=31         # Days to keep completed runs
 RUMMY_FETCH_TIMEOUT=120000      # LLM fetch timeout (ms)
 RUMMY_RPC_TIMEOUT=30000         # Non-long-running RPC timeout (ms)

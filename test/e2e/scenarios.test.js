@@ -24,6 +24,10 @@ describe("E2E: Client Scenarios", () => {
 			join(projectPath, "hello.js"),
 			'function greet() { return "hello"; }\nmodule.exports = greet;\n',
 		);
+		await fs.writeFile(
+			join(projectPath, "wizard.txt"),
+			"My robe is purple\n",
+		);
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
@@ -324,9 +328,12 @@ describe("E2E: Client Scenarios", () => {
 	it("S12: yolo mode auto-accepts all proposed entries", {
 		timeout: TIMEOUT,
 	}, async () => {
+		// Reset wizard.txt for this test
+		await fs.writeFile(join(projectPath, "wizard.txt"), "My robe is purple\n");
+
 		const result = await client.call("act", {
 			model,
-			prompt: 'Add a comment "# yolo marker" to the end of AGENTS.md',
+			prompt: 'Change "purple" to "blue" in wizard.txt',
 		});
 
 		// Simulate yolo: auto-accept every proposed entry
@@ -335,12 +342,31 @@ describe("E2E: Client Scenarios", () => {
 		const runAlias = result.run;
 		while (current.status === "proposed" && iterations < 10) {
 			for (const p of current.proposed) {
-				// Simulate realistic output for different tool types
 				const type = p.key.match(/^\/:(\w+):/)?.[1];
+				const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;
 				let output = "ok";
-				if (type === "env" || type === "run") {
-					const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;
-					output = `$ ${meta?.command || "unknown"}\nAGENTS.md\nhello.js\n`;
+
+				if (type === "edit" && meta?.patch) {
+					// Apply the edit to disk so the model sees the change
+					const filePath = join(projectPath, meta.file);
+					try {
+						const content = await fs.readFile(filePath, "utf8");
+						// Apply search/replace from blocks
+						let updated = content;
+						for (const block of meta.blocks || []) {
+							if (block.search && updated.includes(block.search)) {
+								updated = updated.replace(block.search, block.replace);
+							} else if (block.search === null) {
+								updated = block.replace;
+							}
+						}
+						await fs.writeFile(filePath, updated);
+						output = "applied";
+					} catch {
+						output = "file not found";
+					}
+				} else if (type === "env" || type === "run") {
+					output = `$ ${meta?.command || "unknown"}\nwizard.txt\nhello.js\n`;
 				}
 
 				try {
@@ -349,7 +375,7 @@ describe("E2E: Client Scenarios", () => {
 						resolution: { key: p.key, action: "accept", output },
 					});
 				} catch (err) {
-					await client.dumpAudit("S12 yolo error");
+					await client.dumpRun(runAlias);
 					throw err;
 				}
 			}
