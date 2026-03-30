@@ -50,6 +50,10 @@ export default class KnownStore {
 		await this.#db.promote_key.run({ run_id: runId, key, turn });
 	}
 
+	async setFileState(runId, key, state) {
+		await this.#db.set_file_state.run({ run_id: runId, key, state });
+	}
+
 	async demote(runId, key) {
 		await this.#db.demote_key.run({ run_id: runId, key });
 	}

@@ -114,6 +114,32 @@ export default class ProjectAgent {
 		return this.#llm.getContextSize(model);
 	}
 
+	async getModelInfo(sessionId, alias) {
+		const resolved = LlmProvider.resolve(alias);
+		let contextSize = null;
+		try {
+			contextSize = await this.#llm.getContextSize(alias);
+		} catch {}
+		const limit = sessionId
+			? await this.#sessionManager.getContextLimit(sessionId)
+			: null;
+		const effective = limit
+			? Math.min(limit, contextSize || limit)
+			: contextSize;
+		const row = await this.#db.get_provider_model
+			.get({ id: resolved })
+			.catch(() => null);
+		return {
+			alias,
+			model: resolved,
+			context_length: contextSize,
+			limit,
+			effective,
+			name: row?.name || null,
+			max_completion_tokens: row?.max_completion_tokens || null,
+		};
+	}
+
 	async ask(sessionId, model, prompt, run = null, options = {}) {
 		return this.#agentLoop.run(
 			"ask",

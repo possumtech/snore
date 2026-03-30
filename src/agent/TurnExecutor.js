@@ -215,8 +215,9 @@ export default class TurnExecutor {
 					}),
 					"error",
 				);
-				// Signal retry — don't throw, let AgentLoop handle it
-				throw new Error("missing required summary");
+				const retryErr = new Error("missing required summary");
+				retryErr.code = "MISSING_SUMMARY";
+				throw retryErr;
 			}
 			summaryText = "...";
 		}

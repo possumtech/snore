@@ -43,28 +43,10 @@ export default class CoreRpcPlugin {
 
 		r.register("getModelInfo", {
 			handler: async (params, ctx) => {
-				const alias = params.model || process.env.RUMMY_MODEL_DEFAULT;
-				const { default: LlmProvider } = await import("../../llm/LlmProvider.js");
-				const resolved = LlmProvider.resolve(alias);
-				let contextSize = null;
-				try {
-					contextSize = await ctx.projectAgent.getModelContextSize(alias);
-				} catch {}
-				const limit = ctx.sessionId
-					? await ctx.projectAgent.getContextLimit(ctx.sessionId)
-					: null;
-				const effective = limit ? Math.min(limit, contextSize || limit) : contextSize;
-				// Capabilities cached from provider catalog
-				const row = await ctx.db.get_provider_model.get({ id: resolved }).catch(() => null);
-				return {
-					alias,
-					model: resolved,
-					context_length: contextSize,
-					limit,
-					effective,
-					name: row?.name || null,
-					max_completion_tokens: row?.max_completion_tokens || null,
-				};
+				return ctx.projectAgent.getModelInfo(
+					ctx.sessionId,
+					params.model || process.env.RUMMY_MODEL_DEFAULT,
+				);
 			},
 			description:
 				"Get model metadata and context sizing. Returns { alias, model, context_length, limit, effective, name, max_completion_tokens }.",

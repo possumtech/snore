@@ -82,8 +82,12 @@ export default class SessionManager {
 		return mappable.map((path) => ({ path, fidelity: "path" }));
 	}
 
-	async fileStatus(_projectId, path) {
-		return { path, fidelity: "path" };
+	async fileStatus(projectId, path) {
+		const relPath = await this.#normalizePath(projectId, path);
+		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
+		if (runs.length === 0) return { path: relPath, state: null };
+		const row = await this.#db.get_entry_state.get({ run_id: runs[0].id, key: relPath });
+		return { path: relPath, state: row?.state || null, turn: row?.turn ?? null };
 	}
 
 	async #normalizePath(projectId, path) {
@@ -103,10 +107,10 @@ export default class SessionManager {
 			constraint: state,
 		});
 
-		// Update across all active runs
+		// Update state across all active runs (preserves file content)
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		for (const run of runs) {
-			await this.#knownStore.upsert(run.id, 0, path, "", state);
+			await this.#knownStore.setFileState(run.id, path, state);
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });

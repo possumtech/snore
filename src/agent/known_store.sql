@@ -42,6 +42,14 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND key = :key;
 
+-- PREP: set_file_state
+UPDATE known_entries
+SET
+	state = :state
+	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
+	, updated_at = CURRENT_TIMESTAMP
+WHERE run_id = :run_id AND key = :key AND domain = 'file';
+
 -- PREP: promote_key
 UPDATE known_entries
 SET
@@ -58,6 +66,11 @@ WHERE run_id = :run_id AND key = :key;
 
 -- PREP: get_entry_value
 SELECT value
+FROM known_entries
+WHERE run_id = :run_id AND key = :key;
+
+-- PREP: get_entry_state
+SELECT state, domain, turn
 FROM known_entries
 WHERE run_id = :run_id AND key = :key;
 

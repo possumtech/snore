@@ -202,7 +202,7 @@ export default class AgentLoop {
 					});
 				} catch (err) {
 					if (
-						err.message.includes("missing required") &&
+						err.code === "MISSING_SUMMARY" &&
 						loopIteration < MAX_LOOP_ITERATIONS
 					) {
 						console.warn(`[RUMMY] Validation retry: ${err.message}`);
