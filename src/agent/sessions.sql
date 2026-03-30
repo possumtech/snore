@@ -5,17 +5,25 @@ ON CONFLICT (path) DO UPDATE SET
 	name = COALESCE(excluded.name, projects.name);
 
 -- PREP: get_project_by_id
-SELECT * FROM projects WHERE id = :id;
+SELECT id, path, name, last_git_hash, last_indexed_at, created_at
+FROM projects
+WHERE id = :id;
 
 -- PREP: get_project_by_path
-SELECT * FROM projects WHERE path = :path;
+SELECT id, path, name, last_git_hash, last_indexed_at, created_at
+FROM projects
+WHERE path = :path;
 
 -- PREP: create_session
 INSERT INTO sessions (id, project_id, client_id)
 VALUES (:id, :project_id, :client_id);
 
 -- PREP: get_session_by_id
-SELECT * FROM sessions WHERE id = :id;
+SELECT
+	id, project_id, client_id, persona
+	, system_prompt, temperature, created_at
+FROM sessions
+WHERE id = :id;
 
 -- PREP: get_session_temperature
 SELECT temperature FROM sessions WHERE id = :id;

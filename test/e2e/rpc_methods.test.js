@@ -1,0 +1,125 @@
+import assert from "node:assert";
+import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, describe, it } from "node:test";
+import RpcClient from "../helpers/RpcClient.js";
+import TestDb from "../helpers/TestDb.js";
+import TestServer from "../helpers/TestServer.js";
+
+const model = process.env.RUMMY_MODEL_DEFAULT;
+const TIMEOUT = 120_000;
+
+describe("E2E: RPC Methods", () => {
+	let tdb, tserver, client;
+	const projectPath = join(tmpdir(), `rummy-rpc-${Date.now()}`);
+
+	before(async () => {
+		await fs.mkdir(projectPath, { recursive: true });
+		await fs.writeFile(join(projectPath, "app.js"), "const app = 1;\n");
+		const { execSync } = await import("node:child_process");
+		execSync(
+			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
+			{ cwd: projectPath },
+		);
+
+		tdb = await TestDb.create();
+		tserver = await TestServer.start(tdb.db);
+		client = new RpcClient(tserver.url);
+		await client.connect();
+		await client.call("init", {
+			projectPath,
+			projectName: "RpcTest",
+			clientId: "c-rpc",
+		});
+	});
+
+	after(async () => {
+		client.close();
+		await tserver.stop();
+		await tdb.cleanup();
+		await fs.rm(projectPath, { recursive: true, force: true });
+	});
+
+	it("discover returns methods and notifications", async () => {
+		const result = await client.call("discover");
+		assert.ok(result.methods, "has methods");
+		assert.ok(result.notifications, "has notifications");
+		assert.ok(result.methods.ask, "has ask method");
+		assert.ok(result.methods.act, "has act method");
+		assert.ok(result.methods["run/resolve"], "has run/resolve method");
+		assert.ok(result.notifications["run/state"], "has run/state notification");
+		assert.ok(
+			result.notifications["run/progress"],
+			"has run/progress notification",
+		);
+	});
+
+	it("getModels returns aliases", async () => {
+		const result = await client.call("getModels");
+		assert.ok(Array.isArray(result), "returns array");
+		assert.ok(result.length > 0, "has at least one model");
+		const first = result[0];
+		assert.ok(first.alias, "model has alias");
+		assert.ok(first.actual, "model has actual");
+	});
+
+	it("getRuns returns runs for session", { timeout: TIMEOUT }, async () => {
+		// Create a run first
+		await client.call("ask", { model, prompt: "Hi." });
+
+		const runs = await client.call("getRuns");
+		assert.ok(Array.isArray(runs), "returns array");
+		assert.ok(runs.length > 0, "has at least one run");
+		const run = runs[0];
+		assert.ok(run.run, "run has alias");
+		assert.ok(run.type, "run has type");
+		assert.ok(run.status, "run has status");
+	});
+
+	it("run/abort sets status to aborted", { timeout: TIMEOUT }, async () => {
+		const askResult = await client.call("ask", { model, prompt: "Hi." });
+		const result = await client.call("run/abort", { run: askResult.run });
+		assert.strictEqual(result.status, "ok");
+
+		const runs = await client.call("getRuns");
+		const aborted = runs.find((r) => r.run === askResult.run);
+		assert.strictEqual(aborted.status, "aborted");
+	});
+
+	it("run/inject creates info entry and resumes idle run", {
+		timeout: TIMEOUT,
+	}, async () => {
+		const askResult = await client.call("ask", { model, prompt: "Hi." });
+
+		// Inject a message into the completed run
+		const injectResult = await client.call("run/inject", {
+			run: askResult.run,
+			message: "Additional context for you.",
+		});
+
+		// The run should have resumed or queued
+		assert.ok(
+			["completed", "running", "proposed"].includes(injectResult.status),
+			`Expected valid status, got ${injectResult.status}`,
+		);
+	});
+
+	it("setTemperature and getTemperature round-trip", async () => {
+		const setResult = await client.call("setTemperature", { temperature: 0.3 });
+		assert.strictEqual(setResult.temperature, 0.3);
+
+		const getResult = await client.call("getTemperature");
+		assert.strictEqual(getResult.temperature, 0.3);
+	});
+
+	it("skill/add and getSkills round-trip", async () => {
+		await client.call("skill/add", { name: "test_skill" });
+		const skills = await client.call("getSkills");
+		assert.ok(skills.includes("test_skill"));
+
+		await client.call("skill/remove", { name: "test_skill" });
+		const after = await client.call("getSkills");
+		assert.ok(!after.includes("test_skill"));
+	});
+});

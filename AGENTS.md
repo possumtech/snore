@@ -41,12 +41,18 @@ File management system fully cannibalized into the K/V store.
 - [x] Context is one flat ordered array: active known → stored known → file paths → symbols → full files → results → unknowns → prompt
 - [x] 5 E2E tests passing (foundation + Rumsfeld Loop)
 
+**Testing (88 tests, 19 E2E):**
+- [x] run/state notification shape (4 E2E tests)
+- [x] Act mode lifecycle: propose → accept/reject → resume/stop (3 E2E tests)
+- [x] RPC methods: discover, getModels, getRuns, abort, inject, temperature, skills (7 E2E tests)
+- [x] TESTMAP.md maps ARCHITECTURE.md promises to tests
+
 **Remaining:**
-- [ ] File scanner symbol extraction (ctags/antlrmap wiring, meta storage)
-- [ ] Session prompt overrides (PromptManager doesn't check session DB yet)
-- [ ] Project restructure
-- [ ] ARCHITECTURE.md §7 plugin event payloads — some reference old field names
-- [ ] More E2E: multi-turn with edit resolution, ask_user flow, continuation after rejection
+- [ ] File scanner symbol extraction hardening (ctags/antlrmap meta storage)
+- [ ] Session prompt overrides (PromptManager doesn't check session DB)
+- [ ] File bootstrap: client-promoted states, change detection, cross-run bulk updates
+- [ ] Run modes: continue, lite, fork
+- [ ] Custom plugin registration E2E
 
 ### Dead Code (already deleted)
 

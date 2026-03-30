@@ -17,10 +17,14 @@ VALUES (
 );
 
 -- PREP: get_run_by_alias
-SELECT * FROM runs WHERE alias = :alias;
+SELECT id, session_id, parent_run_id, type, status, config, alias, created_at
+FROM runs
+WHERE alias = :alias;
 
 -- PREP: get_run_by_id
-SELECT * FROM runs WHERE id = :id;
+SELECT id, session_id, parent_run_id, type, status, config, alias, created_at
+FROM runs
+WHERE id = :id;
 
 -- PREP: get_runs_by_session
 SELECT alias, type, status, created_at
