@@ -138,11 +138,16 @@ export default class TurnExecutor {
 
 		// Call LLM
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
-		const result = await this.#llmProvider.completion(
+		const rawResult = await this.#llmProvider.completion(
 			filteredMessages,
 			requestedModel,
 			{ temperature: options?.temperature },
 		);
+		const result = await this.#hooks.llm.response.filter(rawResult, {
+			model: requestedModel,
+			sessionId,
+			runId: currentRunId,
+		});
 		await this.#hooks.llm.request.completed.emit({ model: requestedModel, turn, usage: result.usage });
 		const responseMessage = result.choices?.[0]?.message;
 		const content = responseMessage?.content || "";

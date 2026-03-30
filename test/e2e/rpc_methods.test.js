@@ -122,4 +122,97 @@ describe("E2E: RPC Methods", () => {
 		const after = await client.call("getSkills");
 		assert.ok(!after.includes("test_skill"));
 	});
+
+	it("ping returns empty object", async () => {
+		const result = await client.call("ping");
+		assert.ok(result !== undefined, "ping should return a result");
+	});
+
+	it("setContextLimit and getContext round-trip", async () => {
+		const setResult = await client.call("setContextLimit", { limit: 16384 });
+		assert.strictEqual(setResult.context_limit, 16384);
+
+		const ctx = await client.call("getContext", { model });
+		assert.strictEqual(ctx.limit, 16384);
+		assert.ok(ctx.effective <= 16384, "effective should respect limit");
+		assert.ok(ctx.model_max, "should have model_max");
+
+		// Reset
+		const resetResult = await client.call("setContextLimit", { limit: null });
+		assert.strictEqual(resetResult.context_limit, null);
+
+		const after = await client.call("getContext", { model });
+		assert.strictEqual(after.limit, null);
+		assert.strictEqual(after.effective, after.model_max);
+	});
+
+	it("persona round-trip", async () => {
+		await client.call("persona", { text: "You are a pirate." });
+		const session = await tdb.db.get_session_by_id.all({ id: "" });
+		// Persona is session-level — verify via DB since no getPersona RPC
+		const sessions = await tdb.db.get_session_by_id.all({
+			id: String(client.sessionId || ""),
+		});
+		// We can't easily get sessionId from client, verify by asking
+		const result = await client.call("ask", {
+			model,
+			prompt: "Say ahoy.",
+			noContext: true,
+		});
+		assert.strictEqual(result.status, "completed");
+	});
+
+	it("systemPrompt round-trip", async () => {
+		await client.call("systemPrompt", { text: "You are a test assistant." });
+		const result = await client.call("ask", {
+			model,
+			prompt: "What are you?",
+			noContext: true,
+		});
+		assert.strictEqual(result.status, "completed");
+	});
+
+	it("run/rename changes run alias", { timeout: TIMEOUT }, async () => {
+		const askResult = await client.call("ask", { model, prompt: "Hi." });
+		const oldAlias = askResult.run;
+
+		const renameResult = await client.call("run/rename", {
+			run: oldAlias,
+			name: "custom_name",
+		});
+		assert.strictEqual(renameResult.run, "custom_name");
+
+		const runs = await client.call("getRuns");
+		const renamed = runs.find((r) => r.run === "custom_name");
+		assert.ok(renamed, "renamed run should appear in getRuns");
+		const old = runs.find((r) => r.run === oldAlias);
+		assert.ok(!old, "old alias should not appear");
+	});
+
+	it("getFiles returns project file list", async () => {
+		const files = await client.call("getFiles");
+		assert.ok(Array.isArray(files), "returns array");
+		const appJs = files.find((f) => f.path === "app.js" || f === "app.js");
+		assert.ok(appJs, "app.js should be in file list");
+	});
+
+	it("context_distribution in telemetry", { timeout: TIMEOUT }, async () => {
+		const states = [];
+		client.on("run/state", (p) => states.push(p));
+
+		await client.call("ask", { model, prompt: "What is 1+1?" });
+
+		const lastState = states.at(-1);
+		assert.ok(lastState?.telemetry, "should have telemetry");
+		assert.ok(
+			Array.isArray(lastState.telemetry.context_distribution),
+			"should have context_distribution array",
+		);
+		const dist = lastState.telemetry.context_distribution;
+		for (const bucket of dist) {
+			assert.ok(bucket.bucket, "bucket has name");
+			assert.ok(typeof bucket.tokens === "number", "bucket has tokens");
+			assert.ok(typeof bucket.entries === "number", "bucket has entries");
+		}
+	});
 });

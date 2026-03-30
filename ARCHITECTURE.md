@@ -453,7 +453,7 @@ defined via `RUMMY_MODEL_{alias}` env vars.
     {"key": "/:unknown/1", "value": "Which session store is configured"}
   ],
   "proposed": [
-    {"key": "/:edit/3", "type": "edit", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
+    {"key": "/:edit:3", "type": "edit", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
   ],
   "telemetry": {
     "modelAlias": "kimi",
@@ -704,8 +704,6 @@ hooks.llm.messages.addFilter(async (messages, context) => {
 | `socket.message.raw` | Raw buffer | — | Transform incoming WebSocket data |
 | `rpc.request` | Parsed request | — | Transform RPC request |
 | `rpc.response.result` | Result object | `{ method, id }` | Transform RPC response |
-| `agent.warn` | Warning rules array | `{ flags, tools, ... }` | Modify warning rules |
-| `agent.action` | Action table array | `{ flags, tools, warnings, ... }` | Modify state table |
 
 ### 7.6 Bundled Plugins
 

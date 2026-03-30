@@ -85,10 +85,7 @@ export default function createHooks(debug = false) {
 			},
 			registry: null, // attached by service.js after RpcRegistry creation
 		},
-		agent: {
-			warn: createFilter("agent.warn"),
-			action: createFilter("agent.action"),
-		},
+		agent: {},
 		tools,
 		models: null, // ModelCapabilities, attached by ProjectAgent
 
