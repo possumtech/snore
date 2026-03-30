@@ -135,13 +135,21 @@ export default class KnownStore {
 			// What the model sees depends on the tool type:
 			// summary: full text
 			// env/run/ask_user: command/question + output/answer (value)
-			// edit: file path + status only (no patch)
+			// edit: search/replace blocks from meta
 			// write: key only (value already in known section)
 			// read/drop: key only
 			let value = "";
 			if (r.state === "summary") value = r.value;
 			else if (tool === "env" || tool === "run" || tool === "ask_user")
 				value = r.value;
+			else if (tool === "edit" && meta.blocks?.length > 0)
+				value = meta.blocks
+					.map((b) =>
+						b.search === null
+							? `+++ ${b.replace?.slice(0, 200)}`
+							: `--- ${b.search?.slice(0, 100)}\n+++ ${b.replace?.slice(0, 200)}`,
+					)
+					.join("\n");
 
 			context.push({
 				key: r.key,

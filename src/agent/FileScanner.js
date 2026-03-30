@@ -18,13 +18,24 @@ function hashContent(content) {
 }
 
 function formatSymbols(symbols) {
-	return symbols
-		.map((s) => {
-			if (!s.params) return s.name;
-			const p = Array.isArray(s.params) ? s.params.join(", ") : s.params;
-			return `${s.name}(${p})`;
-		})
-		.join("\n");
+	const sorted = symbols.toSorted((a, b) => (a.line || 0) - (b.line || 0));
+	const stack = [];
+	const lines = [];
+
+	for (const s of sorted) {
+		while (stack.length > 0 && s.line > stack.at(-1).endLine) stack.pop();
+		const depth = stack.length;
+		const indent = "  ".repeat(depth);
+		const kind = s.kind ? `${s.kind} ` : "";
+		const line = s.line ? ` L${s.line}` : "";
+		const p = s.params
+			? `(${Array.isArray(s.params) ? s.params.join(", ") : s.params})`
+			: "";
+		lines.push(`${indent}${kind}${s.name}${p}${line}`);
+		if (s.endLine && s.endLine > s.line) stack.push(s);
+	}
+
+	return lines.join("\n");
 }
 
 export default class FileScanner {

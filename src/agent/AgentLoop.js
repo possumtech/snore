@@ -151,8 +151,8 @@ export default class AgentLoop {
 						await this.#knownStore.countUnknowns(currentRunId);
 					const allowed =
 						type === "act"
-							? "unknown, known, read, drop, edit, delete, run, env, ask_user, summary"
-							: "unknown, known, read, drop, env, ask_user, summary";
+							? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <run/> <env/> <ask_user/> <summary/>"
+							: "<unknown/> <known/> <read/> <drop/> <env/> <ask_user/> <summary/>";
 					const parts = [];
 					if (unknownCount > 0) {
 						parts.push(
@@ -160,7 +160,7 @@ export default class AgentLoop {
 						);
 					}
 					parts.push(`Allowed: ${allowed}`);
-					parts.push("Required: summary");
+					parts.push("Required: <summary/>");
 					turnPrompt = parts.join("\n");
 				}
 
