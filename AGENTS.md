@@ -60,12 +60,34 @@
 - [ ] `delete` tool with file erasure on accept
 
 ### Dead Code (already deleted)
-- FindingsProcessor, FindingsManager, StateEvaluator
+- FindingsProcessor, FindingsManager, StateEvaluator, ResponseHealer, ToolExtractor
+- ToolSchema.js, ToolSchema.test.js, src/schema/ directory, ajv dependency
 - Turn.js, TurnBuilder.js
 - RepoMap.js, repo_map_files, repo_map_tags, repo_map_references
-- ask.json, act.json, gbnf.js
+- ask.json, act.json, gbnf.js, system.ask.md, system.act.md
 - context.js plugin
 - All findings SQL, pending_context SQL, file_promotions SQL, turn_elements SQL
+
+---
+
+## Response Healing Philosophy
+
+Every malformed model response is a diagnostic opportunity, not a "model drift" excuse. When healing a response, ask in order:
+
+1. **Can we recover?** Extract the data and continue. htmlparser2 handles unclosed tags, missing slashes, etc.
+2. **Can we warn usefully?** Log structured warnings that help future healing rules.
+3. **Did our structure cause this?** Check if context formatting, prompt wording, or tool definitions nudged the model toward the failure.
+4. **Did we miss something in prompts?** Check examples, instructions, continuation prompts.
+5. **Model drift is the LAST answer**, after all of the above have been ruled out.
+
+---
+
+## Remaining
+
+- [ ] libtiktoken integration for industry-standard token counting (optional, with `length / 4` fallback)
+- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods
+- [ ] `ask_user` proposed flow E2E
+- [ ] `delete` tool with file erasure on accept E2E
 
 ---
 
@@ -75,7 +97,7 @@ The `tokens`, `refs`, `turn`, and `write_count` fields are ready. When we get th
 
 - **Relevance engine** — compute `refs` from `meta.symbols` cross-references. Files referenced by promoted files get higher refs. The preheat cascade: root files → their referenced files → symbols.
 - **Budget enforcement** — before context assembly, check total tokens. Demote entries from turn > 0 to turn 0 based on: low refs, old turn, high tokens.
-- **Knowledge graph** — scan `/:known/*` values for `/:` references. Build citation edges. High-connectivity nodes resist demotion.
+- **Knowledge graph** — scan `/:known:*` values for `/:` references. Build citation edges. High-connectivity nodes resist demotion.
 - **Janitorial turns** — dedicated turns where the model consolidates its own key space.
 
 ---
