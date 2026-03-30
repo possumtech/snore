@@ -114,13 +114,8 @@ export default class ContextAssembler {
 	static assemble({ systemPrompt, mode, context, userMessage }) {
 		const sections = [systemPrompt];
 
-		// Tool schemas
-		const tools = mode === "act" ? ToolSchema.act : ToolSchema.ask;
-		const schemaLines = tools.map((t) => {
-			const fn = t.function;
-			return `### ${fn.name}\n\`\`\`json\n${JSON.stringify(fn.parameters, null, 2)}\n\`\`\``;
-		});
-		sections.push(`## Tool Schemas\n\n${schemaLines.join("\n\n")}`);
+		// Tool schemas are injected by the provider via the tools API parameter.
+		// We don't duplicate them in the system prompt.
 
 		// Context as markdown
 		const rendered = renderContext(context);
