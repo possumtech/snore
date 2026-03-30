@@ -1,100 +1,106 @@
 # AGENTS: Planning & Progress
 
-## Active: Tool Calling Migration
-
-Replacing `response_format` JSON schema with native tool calling. The known K/V
-store, summary log, and unknown list ARE the model's context. No message history.
-File management system fully cannibalized into the K/V store.
+## Active: Tool Calling Migration — Final Phase
 
 ### Completed
+- [x] Migration schema — `known_entries` with domain/state/hash/meta/tokens/refs/turn
+- [x] SQL consolidated — 6 files (known_store, known_queries, known_checks, runs, turns, sessions)
+- [x] Tool definitions — 10 tools in `src/schema/tools/`, composed by ToolSchema.js with AJV
+- [x] KnownStore — all queries are SQL, zero `getAll`, ordered context via 8 bucket queries
+- [x] ContextAssembler — one flat ordered context array in system prompt
+- [x] TurnExecutor — file scan → context assembly → LLM → tool extraction → K/V store
+- [x] AgentLoop — resolve/inject via known store, unknowns gate, validation retry
+- [x] All 3 LLM clients — native tool calling via ToolSchema
+- [x] Sticky unknowns — `/:unknown/{seq}`, deduplicated, persist until dropped
+- [x] Unknowns gate — warn + retry when model idles with open unknowns
+- [x] Patch generation — HeuristicMatcher computes unified diff for edits
+- [x] `run/state` notification — one payload per turn (history, proposed with type, unknowns, telemetry)
+- [x] Resolution — `accept`/`reject` only, auto-resume/stop
+- [x] `write`/`unknown` flat tools — no nested objects
+- [x] `ask_user` renamed from `prompt`
+- [x] Content captured as reasoning, not suppressed
+- [x] AJV warn-and-heal (summary truncation)
+- [x] Project restructure — 7 directories, SQL consolidated
+- [x] Lint fully clean — biome + sqlfluff, zero `SELECT *`
+- [x] 88 tests (69 unit/integration + 19 E2E)
+- [x] TESTMAP.md maps ~60 of ~70 architectural promises to tests
+- [x] ARCHITECTURE.md fully aligned with implementation
+- [x] Client integration in progress
 
-- [x] Migration schema — `known_entries` with `domain`/`state`/`hash`/`meta`/`relevance`/`turn`, `turns` for usage stats. No `turn_elements`, `findings_*`, `pending_context`, `file_promotions`, `client_promotions`, `repo_map_files`, `repo_map_tags`, `repo_map_references`.
-- [x] SQL queries — upsert, get, delete, resolve, run log, next result key, next turn, create turn, update turn stats
-- [x] Tool definitions — one JSON file per tool in `src/domain/schema/tools/`, composed by `ToolSchema.js`
-- [x] `ToolSchema.js` — loads tools, strips unsupported strict-mode keywords for API, AJV validation, mode/required validation
-- [x] `ToolSchema.test.js` — 36 tests covering definitions, API stripping, argument validation, required/mode checks
-- [x] `KnownStore.js` — unified state manager (upsert, resolve, model projection, log, namespace routing, turn/result key generation)
-- [x] `ContextAssembler.js` — system prompt + user message (known/unknown/log embedded in system)
-- [x] `OpenRouterClient.js` — tools + tool_choice + empty-object shim, Ollama argument normalization
-- [x] `ToolExtractor.js` — reads tool_calls array, separates action/structural calls, static validation
-- [x] `TurnExecutor.js` — new execution flow. Reads prompt via PromptManager, runs hooks via RummyContext, assembles context via ContextAssembler. No TurnBuilder/Turn dependency.
-- [x] `AgentLoop.js` — resolve/inject operate on known store, no findings tables.
-- [x] `SessionManager.js` — activate/readOnly/ignore/drop write to known_entries across all active runs. No client_promotions/file_promotions.
-- [x] `ProjectAgent.js` — no FindingsProcessor/FindingsManager/StateEvaluator/TurnBuilder.
-- [x] Killed repo_map — `repo_map_files`, `repo_map_tags`, `repo_map_references` all removed. Files live in known_entries with `hash` for change detection, symbols in `meta`.
-- [x] Killed Turn.js, TurnBuilder.js — TurnExecutor uses PromptManager + RummyContext directly.
-- [x] All three LLM clients (OpenRouter, Ollama, OpenAI) use ToolSchema for native tool calling.
-- [x] AJV installed — server-side schema validation for constraints strict mode can't enforce
-- [x] Legacy tests archived to `test_old/`
-- [x] Doc alignment — ARCHITECTURE.md rewritten, consolidated to 3 docs, aligned with migration
+### Remaining — checklist
 
-### Remaining
+**Data integrity (do first):**
+- [ ] FileScanner: always store full content in `value`, symbols only in `meta`
+- [ ] FileScanner: promote root files (no `/` in path) to turn 1 on first scan
+- [ ] Delete resolution: erase the file key entirely on accept (not demote)
 
-**Completed since last update:**
-- [x] Sticky unknowns — `/:unknown/{seq}` entries, deduplicated, persist until dropped
-- [x] Unknowns gate — warn + retry (3x) when model idles with unresolved unknowns
-- [x] Internal continuation prompt — "N unresolved unknowns" on follow-up turns
-- [x] Content-as-reasoning — free-form content captured as `/:reasoning/{turn}`
-- [x] `getAll` eliminated — every query is purpose-built SQL
-- [x] Schema: `relevance` → `tokens` + `refs`. Tokens computed by SQL on UPSERT
-- [x] `prompt` tool → `ask_user`. User prompt stored as `/:prompt/{turn}`
-- [x] Context is one flat ordered array: active known → stored known → file paths → symbols → full files → results → unknowns → prompt
-- [x] 5 E2E tests passing (foundation + Rumsfeld Loop)
+**ResponseHealer (do second):**
+- [ ] Create `src/agent/ResponseHealer.js` — centralized module
+- [ ] Move summary truncation from TurnExecutor into healer
+- [ ] Move AJV warn logic from TurnExecutor into healer
+- [ ] Pluggable rules via hooks (future extensibility)
+- [ ] Healer returns `{ toolCalls, warnings }` — TurnExecutor calls it once
+- [ ] Warnings stored as `/:info/N` entries (model doesn't see, client does via history)
 
-**Testing (88 tests, 19 E2E):**
-- [x] run/state notification shape (4 E2E tests)
-- [x] Act mode lifecycle: propose → accept/reject → resume/stop (3 E2E tests)
-- [x] RPC methods: discover, getModels, getRuns, abort, inject, temperature, skills (7 E2E tests)
-- [x] TESTMAP.md maps ARCHITECTURE.md promises to tests
+**Persona (do third):**
+- [ ] PromptManager reads session persona from DB
+- [ ] Persona injected after system prompt, before tool schemas
+- [ ] E2E test: set persona, verify it appears in model context
 
-**Remaining:**
-- [ ] File scanner symbol extraction hardening (ctags/antlrmap meta storage)
-- [ ] Session prompt overrides (PromptManager doesn't check session DB)
-- [ ] File bootstrap: client-promoted states, change detection, cross-run bulk updates
-- [ ] Run modes: continue, lite, fork
-- [ ] Custom plugin registration E2E
+**Fork mode (do fourth):**
+- [ ] `fork_run.sql` — `INSERT INTO known_entries SELECT ... FROM known_entries WHERE run_id = :parent`
+- [ ] AgentLoop creates fork run and copies entries
+- [ ] E2E test: fork preserves known store from parent
+
+**Remaining E2E coverage:**
+- [ ] Continue run preserves known store across calls
+- [ ] Lite mode (`noContext: true`) skips file bootstrap
+- [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods set file state
+- [ ] `ask_user` proposed flow
+- [ ] `delete` tool with file erasure on accept
 
 ### Dead Code (already deleted)
-
-All of the following have been removed:
-- `FindingsProcessor.js`, `FindingsManager.js`, `StateEvaluator.js`
-- `Turn.js`, `TurnBuilder.js`
-- `RepoMap.js`, `repo_map_files`, `repo_map_tags`, `repo_map_references`
-- `ask.json`, `act.json` (old response_format schemas)
-- `gbnf.js` (GBNF grammar generator)
-- `context.js` plugin (feedback injection)
-- All findings SQL, pending_context SQL, file_promotions SQL, editor_promotions SQL, turn_elements SQL
-- `purge_consumed_context.sql`, `purge_orphaned_editor_promotions.sql`
+- FindingsProcessor, FindingsManager, StateEvaluator
+- Turn.js, TurnBuilder.js
+- RepoMap.js, repo_map_files, repo_map_tags, repo_map_references
+- ask.json, act.json, gbnf.js
+- context.js plugin
+- All findings SQL, pending_context SQL, file_promotions SQL, turn_elements SQL
 
 ---
 
-## Future: Project Condi
+## Future: Context Budgeting (final mission)
 
-With the K/V store proven, the door opens for:
+The `tokens`, `refs`, `turn`, and `write_count` fields are ready. When we get there:
 
-- **Knowledge graph extraction** — the `/:` sentinel is a scannable anchor. When
-  the model writes `/:known/auth_flow` inside another key's value, that's a
-  citation edge. Scan values for `/:` references to build a dependency graph.
-  Graph topology becomes the eviction policy.
-- **Context budgeting** — dynamically demote entries from `full`/`file` to
-  `symbols`/`stored` based on token budget. The model uses `read` to promote
-  on demand.
-- **Simulation harness** — replay recorded runs to test caching/eviction offline.
-- **Janitorial turns** — dedicated turns where the model consolidates or prunes
-  its own key space.
-- **Cross-run knowledge** — gated and careful. Currently run-scoped by design.
+- **Relevance engine** — compute `refs` from `meta.symbols` cross-references. Files referenced by promoted files get higher refs. The preheat cascade: root files → their referenced files → symbols.
+- **Budget enforcement** — before context assembly, check total tokens. Demote entries from turn > 0 to turn 0 based on: low refs, old turn, high tokens.
+- **Knowledge graph** — scan `/:known/*` values for `/:` references. Build citation edges. High-connectivity nodes resist demotion.
+- **Janitorial turns** — dedicated turns where the model consolidates its own key space.
+
+---
+
+## Future: Beyond Budgeting
+
+- **Smart context budgeting** — dynamic token allocation per bucket
+- **Simulation harness** — replay recorded runs offline
+- **Cross-run knowledge** — gated, careful, explicitly opted-in
 
 ---
 
 ## Historical
 
+### Tool Calling Migration (2026-03-29)
+- Replaced response_format with native tool calling
+- Collapsed 12 tables to 5 + 1 K/V store
+- Killed all legacy systems
+
 ### Provider Hardening (2026-03-29)
-- OpenAI-compatible provider, GBNF grammar, reasoning normalization
-- getContextSize fails hard, run status `failed`, healing layer
+- OpenAI-compatible provider, reasoning normalization
 - Provider model catalog with 24h cache
 
 ### Quality & Docs (2026-03-28)
-- Coverage 90/79/87, doc-driven integration tests, 12 e2e tests
+- Doc-driven integration tests, 12 e2e tests
 - ARCHITECTURE.md + PLUGINS.md alignment
 
 ### Run Naming + Model Enforcement (2026-03-28)
