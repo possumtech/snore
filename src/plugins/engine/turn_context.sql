@@ -47,7 +47,7 @@ SELECT
 		WHEN scheme = 'known' AND fidelity = 'full' THEN 'known'
 		WHEN scheme = 'known' AND fidelity = 'index' THEN 'keys'
 		WHEN scheme = 'unknown' THEN 'history'
-		WHEN scheme = 'prompt' THEN 'system'
+		WHEN scheme IN ('user', 'prompt') THEN 'system'
 		WHEN path = 'system://prompt' THEN 'system'
 		WHEN path = 'continuation://prompt' THEN 'system'
 		WHEN scheme IS NOT NULL THEN 'history'

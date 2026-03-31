@@ -8,11 +8,11 @@ export default function (scheme, state, turn) {
 	if (scheme === "known" && turn > 0) return "full";
 	if (scheme === "known" && turn === 0) return "index";
 	if (scheme === "unknown") return "full";
-	if (scheme === "prompt") return "full";
+	if (scheme === "user" || scheme === "prompt") return "full";
 	if (scheme === "http" || scheme === "https")
 		return turn > 0 ? "full" : "index";
 	if (
-		["system", "user", "reasoning", "content", "inject", "keys", "search"].includes(scheme)
+		["system", "reasoning", "content", "inject", "keys", "search"].includes(scheme)
 	)
 		return null;
 	return "full";

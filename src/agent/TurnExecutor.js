@@ -119,22 +119,16 @@ export default class TurnExecutor {
 			systemPrompt,
 			"info",
 		);
-		if (loopPrompt && !options?.isContinuation) {
+		if (loopPrompt) {
+			const scheme = options?.isContinuation ? "prompt" : "user";
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				`prompt://${turn}`,
+				`${scheme}://${turn}`,
 				loopPrompt,
 				"info",
 			);
 		}
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			`user://${turn}`,
-			loopPrompt || "",
-			"info",
-		);
 
 		if (process.env.RUMMY_DEBUG === "true") {
 			console.log(

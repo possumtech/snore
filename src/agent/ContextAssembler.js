@@ -249,8 +249,8 @@ export default class ContextAssembler {
 				continue;
 			}
 
-			// Prompt
-			if (scheme === "prompt") {
+			// Prompt (user or continuation)
+			if (scheme === "user" || scheme === "prompt") {
 				prompt = row.content;
 				continue;
 			}

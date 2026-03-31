@@ -14,7 +14,7 @@ classified AS (
 		, tokens AS tokens_full
 		, fidelityOf(scheme, state, turn) AS fidelity
 		, CASE
-			WHEN scheme = 'prompt'
+			WHEN scheme IN ('user', 'prompt')
 				THEN ROW_NUMBER() OVER (
 					PARTITION BY run_id, scheme
 					ORDER BY id DESC
@@ -37,7 +37,7 @@ projected AS (
 					WHEN scheme IS NULL THEN value
 					WHEN scheme = 'known' THEN value
 					WHEN scheme = 'unknown' THEN value
-					WHEN scheme = 'prompt' THEN value
+					WHEN scheme IN ('user', 'prompt') THEN value
 					WHEN scheme IN ('http', 'https') THEN value
 					WHEN state = 'summary' THEN value
 					WHEN scheme IN ('env', 'run', 'ask_user') THEN value
@@ -58,7 +58,7 @@ projected AS (
 				scheme IS NOT NULL
 				AND fidelity = 'full'
 				AND scheme NOT IN (
-					'known', 'unknown', 'prompt', 'http', 'https'
+					'known', 'unknown', 'user', 'prompt', 'http', 'https'
 				)
 				THEN json_object(
 					'tool', COALESCE(scheme, state)
@@ -95,11 +95,11 @@ SELECT
 				WHEN scheme IN ('http', 'https') AND fidelity = 'full'
 					THEN 5
 				WHEN scheme NOT IN (
-					'known', 'unknown', 'prompt', 'http', 'https'
+					'known', 'unknown', 'user', 'prompt', 'http', 'https'
 				)
 				AND scheme IS NOT NULL THEN 6
 				WHEN scheme = 'unknown' THEN 7
-				WHEN scheme = 'prompt' THEN 8
+				WHEN scheme IN ('user', 'prompt') THEN 8
 				ELSE 9
 			END
 			, id
