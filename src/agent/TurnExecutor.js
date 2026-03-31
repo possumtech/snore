@@ -7,7 +7,6 @@ import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
 import ResponseHealer from "./ResponseHealer.js";
-import WebFetcher from "./WebFetcher.js";
 import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
@@ -16,15 +15,13 @@ export default class TurnExecutor {
 	#hooks;
 	#knownStore;
 	#fileScanner;
-	#webFetcher;
 
-	constructor(db, llmProvider, hooks, knownStore, webFetcher) {
+	constructor(db, llmProvider, hooks, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
 		this.#fileScanner = new FileScanner(knownStore, db, hooks);
-		this.#webFetcher = webFetcher;
 	}
 
 	async execute({
@@ -96,6 +93,7 @@ export default class TurnExecutor {
 		const systemPrompt = await PromptManager.getSystemPrompt(type, {
 			db: this.#db,
 			sessionId,
+			hooks: this.#hooks,
 		});
 		const context = await this.#knownStore.getModelContext(currentRunId);
 		const messages = ContextAssembler.assemble({
@@ -257,8 +255,8 @@ export default class TurnExecutor {
 
 			if (cmd.name === "read") {
 				if (!cmd.path) continue;
-				// URL fetch — download and store, then promote
-				if (/^https?:\/\//.test(cmd.path) && this.#webFetcher) {
+				// URL fetch via plugin hook — download and store, then promote
+				if (/^https?:\/\//.test(cmd.path)) {
 					await this.#fetchUrl(currentRunId, turn, cmd.path);
 				}
 				await this.#knownStore.promoteByPattern(
@@ -597,46 +595,38 @@ export default class TurnExecutor {
 	}
 
 	async #fetchUrl(runId, turn, rawUrl) {
-		const url = WebFetcher.cleanUrl(rawUrl);
-		// Skip if already in store
+		const url = rawUrl.replace(/[?#].*$/, "").replace(/\/$/, "");
 		const existing = await this.#knownStore.getValue(runId, url);
 		if (existing !== null) return;
 
-		const result = await this.#webFetcher.fetch(url);
-		if (result.error) {
-			console.warn(`[RUMMY] Fetch failed: ${url} — ${result.error}`);
-			return;
-		}
-
-		const header = result.title ? `# ${result.title}\n\n` : "";
-		const content = header + (result.content || "");
-
-		await this.#knownStore.upsert(runId, turn, url, content, "full", {
-			meta: {
-				title: result.title,
-				excerpt: result.excerpt,
-				byline: result.byline,
-				siteName: result.siteName,
-			},
-		});
-	}
-
-	async #processSearch(runId, turn, query) {
-		const results = await this.#webFetcher.search(query);
-		const resultPath = await this.#knownStore.nextResultPath(runId, "search");
-
-		const listing = results
-			.map((r) => `${r.title}\n  ${WebFetcher.cleanUrl(r.url)}\n  ${r.snippet}`)
-			.join("\n\n");
+		const result = await this.#hooks.action.fetch.filter(null, { url });
+		if (!result) return;
 
 		await this.#knownStore.upsert(
 			runId,
 			turn,
+			result.url,
+			result.value,
+			"full",
+			{
+				meta: result.meta,
+			},
+		);
+	}
+
+	async #processSearch(runId, turn, query) {
+		const result = await this.#hooks.action.search.filter(null, { query });
+		if (!result) return;
+
+		const resultPath = await this.#knownStore.nextResultPath(runId, "search");
+		await this.#knownStore.upsert(
+			runId,
+			turn,
 			resultPath,
-			`${results.length} results for "${query}"\n\n${listing}`,
+			result.value,
 			"info",
 			{
-				meta: { query, count: results.length, results },
+				meta: result.meta,
 			},
 		);
 	}
