@@ -147,7 +147,7 @@ describe("KnownStore integration", () => {
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
 			await store.upsert(RUN_ID, 1, "edit://1", "", "proposed", {
-				meta: { path: "src/app.js", search: "old", replace: "new" },
+				meta: { file: "src/app.js", search: "old", replace: "new" },
 			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
@@ -448,9 +448,7 @@ describe("KnownStore integration", () => {
 		});
 	});
 
-	describe("scheme CHECK constraint", {
-		skip: "CHECK with IS NULL not enforced — investigating",
-	}, () => {
+	describe("scheme CHECK constraint", () => {
 		it("rejects invalid file state", async () => {
 			await assert.rejects(
 				() => store.upsert(RUN_ID, 0, "bad.js", "", "proposed"),

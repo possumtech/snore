@@ -193,7 +193,7 @@ export default class KnownStore {
 		for (const r of await this.#db.get_results.all({ run_id: runId })) {
 			const tool = KnownStore.toolFromPath(r.path);
 			const meta = r.meta ? JSON.parse(r.meta) : {};
-			const target = meta.command || meta.path || meta.question || "";
+			const target = meta.command || meta.file || meta.path || meta.question || "";
 
 			let value = "";
 			if (r.state === "summary") value = r.value;
@@ -243,7 +243,7 @@ export default class KnownStore {
 		return rows.map((row) => {
 			const tool = KnownStore.toolFromPath(row.path);
 			const meta = row.meta ? JSON.parse(row.meta) : {};
-			const target = meta.command || meta.path || meta.question || "";
+			const target = meta.command || meta.file || meta.path || meta.question || "";
 
 			let value = "";
 			if (row.state === "summary") value = row.value;

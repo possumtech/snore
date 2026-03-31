@@ -97,7 +97,7 @@ describe("E2E: Client Scenarios", () => {
 
 				// Apply edit to disk
 				if (editProposed.meta?.blocks) {
-					const filePath = join(projectPath, editProposed.meta.path);
+					const filePath = join(projectPath, editProposed.meta.file);
 					try {
 						let content = await fs.readFile(filePath, "utf8");
 						for (const block of editProposed.meta.blocks) {
@@ -374,7 +374,7 @@ describe("E2E: Client Scenarios", () => {
 
 				if (type === "edit" && meta?.patch) {
 					// Apply the edit to disk so the model sees the change
-					const filePath = join(projectPath, meta.path);
+					const filePath = join(projectPath, meta.file);
 					try {
 						const content = await fs.readFile(filePath, "utf8");
 						// Apply search/replace from blocks

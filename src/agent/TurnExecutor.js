@@ -468,7 +468,7 @@ export default class TurnExecutor {
 				patch || "",
 				state,
 				{
-					meta: { path: entry.path, blocks: cmd.blocks, patch, warning, error },
+					meta: { file: entry.path, blocks: cmd.blocks, patch, warning, error },
 				},
 			);
 

@@ -84,28 +84,27 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, CHECK (
-		(
-			scheme IS NULL
-			AND state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
-		)
-		OR (scheme = 'known' AND state IN ('full', 'stored'))
-		OR (scheme = 'unknown' AND state IN ('full', 'stored'))
-		OR (scheme = 'read' AND state IN ('pass', 'info'))
-		OR (scheme = 'drop' AND state IN ('pass', 'info'))
-		OR (scheme = 'edit' AND state IN ('proposed', 'pass', 'warn', 'error'))
-		OR (scheme = 'run' AND state IN ('proposed', 'pass', 'warn'))
-		OR (scheme = 'env' AND state IN ('proposed', 'pass', 'warn'))
-		OR (scheme = 'delete' AND state IN ('proposed', 'pass', 'warn'))
-		OR (scheme = 'ask_user' AND state IN ('proposed', 'pass', 'warn'))
-		OR (scheme = 'summary' AND state = 'summary')
-		OR (scheme = 'system' AND state = 'info')
-		OR (scheme = 'user' AND state = 'info')
-		OR (scheme = 'reasoning' AND state = 'info')
-		OR (scheme = 'prompt' AND state = 'info')
-		OR (scheme = 'keys' AND state = 'info')
-		OR (scheme = 'inject' AND state = 'info')
-		OR (scheme = 'retry' AND state = 'error')
-		OR (scheme IN ('http', 'https') AND state IN ('full', 'readonly'))
+		CASE
+			WHEN scheme IS NULL
+				THEN state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
+			WHEN scheme IN ('known', 'unknown')
+				THEN state IN ('full', 'stored')
+			WHEN scheme IN ('edit')
+				THEN state IN ('proposed', 'pass', 'warn', 'error')
+			WHEN scheme IN ('run', 'env', 'delete', 'ask_user')
+				THEN state IN ('proposed', 'pass', 'warn')
+			WHEN scheme IN ('read', 'drop')
+				THEN state IN ('pass', 'info')
+			WHEN scheme = 'summary'
+				THEN state = 'summary'
+			WHEN scheme IN ('system', 'user', 'reasoning', 'prompt', 'keys', 'inject')
+				THEN state = 'info'
+			WHEN scheme = 'retry'
+				THEN state = 'error'
+			WHEN scheme IN ('http', 'https')
+				THEN state IN ('full', 'readonly')
+			ELSE 0
+		END
 	)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_path
