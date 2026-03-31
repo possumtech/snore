@@ -13,6 +13,7 @@ sqlfluff). TESTMAP.md at 0 untested promises. Response healing: always recover, 
 
 - [ ] Pattern tooling — glorp-powered bulk operations (`path`/`value`/`keys` on all store-facing tools)
 - [ ] Continuation prompt makeover — "state of the run" report: what changed this turn, context budget used/remaining, open unknowns, pending actions. The model should know where it is, what it did, and what it costs.
+- [ ] ResponseHealer — single class: model garbage in, structured response out. Consolidates summary healing (TurnExecutor), progress detection (AgentLoop), and repetition detection (AgentLoop). The core question is "did we make progress?" — not specific rules about unknowns. Failure modes: idle turns (nothing happened), repetitive turns (same thing happened), empty turns (no output). Unknowns are just context, not a special gate.
 
 ---
 
