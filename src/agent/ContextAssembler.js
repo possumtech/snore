@@ -198,10 +198,7 @@ export default class ContextAssembler {
 		let continuation = null;
 
 		for (const row of rows) {
-			const meta = row.meta ? JSON.parse(row.meta) : null;
-			const { scheme, fidelity } = row;
-
-			// Synthetic rows
+			// Synthetic rows (injected by engine, no category)
 			if (row.path === "system://prompt") {
 				systemContent = row.content;
 				continue;
@@ -211,9 +208,10 @@ export default class ContextAssembler {
 				continue;
 			}
 
-			// Files (scheme IS NULL)
-			if (scheme === null) {
-				if (fidelity === "full") {
+			const meta = row.meta ? JSON.parse(row.meta) : null;
+
+			switch (row.category) {
+				case "file": {
 					const constraint = meta?.constraint;
 					const label =
 						constraint === "readonly"
@@ -227,55 +225,36 @@ export default class ContextAssembler {
 						tokens: row.tokens,
 						state: label,
 					});
-				} else if (fidelity === "summary") {
-					symbolFiles.push({ path: row.path, value: row.content });
-				} else {
-					storedFiles.push({ path: row.path });
+					break;
 				}
-				continue;
-			}
-
-			// Knowledge
-			if (scheme === "known") {
-				if (fidelity === "full")
+				case "file_symbols":
+					symbolFiles.push({ path: row.path, value: row.content });
+					break;
+				case "file_index":
+					storedFiles.push({ path: row.path });
+					break;
+				case "known":
 					activeKnown.push({ path: row.path, value: row.content });
-				else storedKnown.push({ path: row.path });
-				continue;
-			}
-
-			// Unknowns
-			if (scheme === "unknown") {
-				unknowns.push({ value: row.content });
-				continue;
-			}
-
-			// Prompt (user or continuation)
-			if (scheme === "user" || scheme === "prompt") {
-				prompt = row.content;
-				continue;
-			}
-
-			// URLs
-			if (scheme === "http" || scheme === "https") {
-				if (fidelity === "full")
-					files.push({
+					break;
+				case "known_index":
+					storedKnown.push({ path: row.path });
+					break;
+				case "unknown":
+					unknowns.push({ value: row.content });
+					break;
+				case "prompt":
+					prompt = row.content;
+					break;
+				case "result":
+					results.push({
 						path: row.path,
 						value: row.content,
-						tokens: row.tokens,
-						state: "file",
+						tool: meta?.tool,
+						target: meta?.target,
+						state: meta?.state,
 					});
-				else storedFiles.push({ path: row.path });
-				continue;
+					break;
 			}
-
-			// Results (everything else with a scheme)
-			results.push({
-				path: row.path,
-				value: row.content,
-				tool: meta?.tool,
-				target: meta?.target,
-				state: meta?.state,
-			});
 		}
 
 		const parts = [];

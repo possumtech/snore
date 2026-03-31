@@ -57,6 +57,7 @@ export default class Engine {
 					content: rummy.systemPrompt,
 					tokens: countTokens(rummy.systemPrompt),
 					meta: null,
+					category: "system",
 				});
 			}
 
@@ -82,6 +83,7 @@ export default class Engine {
 					content: rummy.loopPrompt,
 					tokens: countTokens(rummy.loopPrompt),
 					meta: null,
+					category: "prompt",
 				});
 			}
 		}, 20);

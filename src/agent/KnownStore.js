@@ -133,26 +133,7 @@ export default class KnownStore {
 	 * Get the chronological log (result-domain entries).
 	 */
 	async getLog(runId) {
-		const rows = await this.#db.get_results.all({ run_id: runId });
-		return rows.map((row) => {
-			const tool = KnownStore.toolFromPath(row.path);
-			const meta = row.meta ? JSON.parse(row.meta) : {};
-			const target =
-				meta.command || meta.file || meta.path || meta.question || "";
-
-			let value = "";
-			if (row.state === "summary") value = row.value;
-			else if (tool === "env" || tool === "run" || tool === "ask_user")
-				value = row.value;
-
-			return {
-				tool: tool || row.state,
-				target,
-				status: row.state,
-				path: row.path,
-				value,
-			};
-		});
+		return this.#db.get_results.all({ run_id: runId });
 	}
 
 	async getFileEntries(runId) {

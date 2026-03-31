@@ -5,14 +5,9 @@ WHERE run_id = :run_id
 ORDER BY path;
 
 -- PREP: get_results
-SELECT path, state, value, meta
-FROM known_entries
-WHERE
-	run_id = :run_id
-	AND scheme IS NOT NULL
-	AND state != 'proposed'
-	AND scheme NOT IN ('system', 'user', 'reasoning', 'content', 'prompt', 'known', 'unknown')
-ORDER BY id;
+SELECT tool, target, status, path, value
+FROM v_run_log
+WHERE run_id = :run_id;
 
 -- PREP: get_unknowns
 SELECT path, value

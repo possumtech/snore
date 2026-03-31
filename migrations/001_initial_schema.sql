@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 			WHEN scheme = 'summary'
 				THEN state = 'summary'
 			WHEN scheme IN (
-				'system', 'user', 'reasoning', 'prompt',
+				'system', 'user', 'reasoning', 'content', 'prompt',
 				'keys', 'inject', 'search'
 			) THEN state = 'info'
 			WHEN scheme = 'retry'
@@ -157,9 +157,27 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, content TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, meta JSON
+	, category TEXT NOT NULL DEFAULT 'result'
 );
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn
 ON turn_context (run_id, turn);
+
+-- Enforce valid run state transitions.
+-- queued    → running, aborted
+-- running   → proposed, completed, failed, aborted
+-- proposed  → running, completed, aborted
+CREATE TRIGGER IF NOT EXISTS trg_run_state_transition
+BEFORE UPDATE OF status ON runs
+FOR EACH ROW
+WHEN OLD.status != NEW.status
+BEGIN
+	SELECT RAISE(ABORT, 'invalid run state transition')
+	WHERE NOT (
+		(OLD.status = 'queued'    AND NEW.status IN ('running', 'aborted'))
+		OR (OLD.status = 'running'  AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
+		OR (OLD.status = 'proposed' AND NEW.status IN ('running', 'completed', 'aborted'))
+	);
+END;
 
 -- Provider model catalog (cached from OpenRouter /models, etc.)
 CREATE TABLE IF NOT EXISTS provider_models (

@@ -4,7 +4,7 @@ WHERE run_id = :run_id AND turn = :turn;
 
 -- PREP: materialize_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, content, tokens, meta
+	run_id, turn, ordinal, path, fidelity, content, tokens, meta, category
 )
 SELECT
 	run_id
@@ -15,19 +15,20 @@ SELECT
 	, content
 	, tokens
 	, meta
+	, category
 FROM v_model_context
 WHERE run_id = :run_id;
 
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, content, tokens, meta
+	run_id, turn, ordinal, path, fidelity, content, tokens, meta, category
 )
 VALUES (
-	:run_id, :turn, :ordinal, :path, :fidelity, :content, :tokens, :meta
+	:run_id, :turn, :ordinal, :path, :fidelity, :content, :tokens, :meta, :category
 );
 
 -- PREP: get_turn_context
-SELECT ordinal, path, scheme, fidelity, content, tokens, meta
+SELECT ordinal, path, scheme, fidelity, content, tokens, meta, category
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn
 ORDER BY ordinal;
@@ -39,18 +40,16 @@ WHERE run_id = :run_id AND turn = :turn;
 
 -- PREP: get_turn_distribution
 SELECT
-	CASE
-		WHEN scheme IS NULL AND fidelity = 'full' THEN 'files'
-		WHEN scheme IS NULL AND fidelity = 'summary' THEN 'files'
-		WHEN scheme IS NULL AND fidelity = 'index' THEN 'keys'
-		WHEN scheme IN ('http', 'https') THEN 'files'
-		WHEN scheme = 'known' AND fidelity = 'full' THEN 'known'
-		WHEN scheme = 'known' AND fidelity = 'index' THEN 'keys'
-		WHEN scheme = 'unknown' THEN 'history'
-		WHEN scheme IN ('user', 'prompt') THEN 'system'
-		WHEN path = 'system://prompt' THEN 'system'
-		WHEN path = 'continuation://prompt' THEN 'system'
-		WHEN scheme IS NOT NULL THEN 'history'
+	CASE category
+		WHEN 'file' THEN 'files'
+		WHEN 'file_symbols' THEN 'files'
+		WHEN 'file_index' THEN 'keys'
+		WHEN 'known' THEN 'known'
+		WHEN 'known_index' THEN 'keys'
+		WHEN 'unknown' THEN 'history'
+		WHEN 'result' THEN 'history'
+		WHEN 'prompt' THEN 'system'
+		WHEN 'system' THEN 'system'
 		ELSE 'system'
 	END AS bucket,
 	COALESCE(SUM(tokens), 0) AS tokens,

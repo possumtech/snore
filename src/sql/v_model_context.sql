@@ -30,6 +30,7 @@ projected AS (
 		, id
 		, path
 		, scheme
+		, state
 		, fidelity
 		, CASE fidelity
 			WHEN 'full'
@@ -73,6 +74,18 @@ projected AS (
 				)
 			ELSE NULL
 		END AS meta
+		, CASE
+			WHEN scheme IS NULL AND fidelity = 'full' THEN 'file'
+			WHEN scheme IS NULL AND fidelity = 'summary' THEN 'file_symbols'
+			WHEN scheme IS NULL THEN 'file_index'
+			WHEN scheme IN ('http', 'https') AND fidelity = 'full' THEN 'file'
+			WHEN scheme IN ('http', 'https') THEN 'file_index'
+			WHEN scheme = 'known' AND fidelity = 'full' THEN 'known'
+			WHEN scheme = 'known' THEN 'known_index'
+			WHEN scheme = 'unknown' THEN 'unknown'
+			WHEN scheme IN ('user', 'prompt') THEN 'prompt'
+			ELSE 'result'
+		END AS category
 	FROM classified
 	WHERE fidelity IS NOT NULL AND prompt_rank = 1
 )
@@ -83,23 +96,19 @@ SELECT
 	, fidelity
 	, content
 	, meta
+	, category
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY
-			CASE
-				WHEN scheme = 'known' AND fidelity = 'full' THEN 1
-				WHEN scheme = 'known' AND fidelity = 'index' THEN 2
-				WHEN scheme IS NULL AND fidelity = 'index' THEN 3
-				WHEN scheme IS NULL AND fidelity = 'summary' THEN 4
-				WHEN scheme IS NULL AND fidelity = 'full' THEN 5
-				WHEN scheme IN ('http', 'https') AND fidelity = 'full'
-					THEN 5
-				WHEN scheme NOT IN (
-					'known', 'unknown', 'user', 'prompt', 'http', 'https'
-				)
-				AND scheme IS NOT NULL THEN 6
-				WHEN scheme = 'unknown' THEN 7
-				WHEN scheme IN ('user', 'prompt') THEN 8
+			CASE category
+				WHEN 'known' THEN 1
+				WHEN 'known_index' THEN 2
+				WHEN 'file_index' THEN 3
+				WHEN 'file_symbols' THEN 4
+				WHEN 'file' THEN 5
+				WHEN 'result' THEN 6
+				WHEN 'unknown' THEN 7
+				WHEN 'prompt' THEN 8
 				ELSE 9
 			END
 			, id
