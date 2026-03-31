@@ -411,44 +411,61 @@ describe("Engine integration", () => {
 		});
 	});
 
-	describe("symbol file query fix", () => {
-		it("symbol files at turn 0 do not appear in get_symbol_files", async () => {
+	describe("symbol file bucketing via VIEW", () => {
+		it("symbol files at turn 0 are bucketed as file:path", async () => {
 			await store.upsert(RUN_ID, 0, "src/demoted.js", pad(100), "symbols", {
 				meta: { symbols: "function foo()" },
 			});
 
-			const symbols = await tdb.db.get_symbol_files.all({
-				run_id: RUN_ID,
+			const hooks2 = new HookRegistry();
+			Engine.register(hooks2);
+			const rummy = makeRummy(tdb.db, store, {
+				sequence: 1,
+				contextSize: 50000,
 			});
+			await hooks2.processTurn(rummy);
+
+			const rows = await tdb.db.get_turn_context.all({
+				run_id: RUN_ID,
+				turn: 1,
+			});
+			const demoted = rows.find((r) => r.path === "src/demoted.js");
+			assert.ok(demoted, "demoted symbols file should appear in turn_context");
 			assert.strictEqual(
-				symbols.length,
-				0,
-				"demoted symbols should not appear",
+				demoted.bucket,
+				"file:path",
+				"demoted symbols should be file:path bucket",
 			);
 		});
 
-		it("symbol files at turn > 0 appear in get_symbol_files", async () => {
+		it("symbol files at turn > 0 are bucketed as file:symbols", async () => {
 			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "symbols", {
 				meta: { symbols: "function bar()" },
 			});
 
-			const symbols = await tdb.db.get_symbol_files.all({
-				run_id: RUN_ID,
+			const hooks2 = new HookRegistry();
+			Engine.register(hooks2);
+			const rummy = makeRummy(tdb.db, store, {
+				sequence: 4,
+				contextSize: 50000,
 			});
-			assert.strictEqual(symbols.length, 1);
-			assert.strictEqual(symbols[0].path, "src/active.js");
-		});
+			await hooks2.processTurn(rummy);
 
-		it("demoted symbol files appear in get_stored_files", async () => {
-			await store.upsert(RUN_ID, 0, "src/cold.js", pad(100), "symbols", {
-				meta: { symbols: "function baz()" },
-			});
-
-			const stored = await tdb.db.get_stored_files.all({
+			const rows = await tdb.db.get_turn_context.all({
 				run_id: RUN_ID,
+				turn: 4,
 			});
-			const found = stored.find((f) => f.path === "src/cold.js");
-			assert.ok(found, "demoted symbols file should appear in stored files");
+			const active = rows.find((r) => r.path === "src/active.js");
+			assert.ok(active, "active symbols file should appear in turn_context");
+			assert.strictEqual(
+				active.bucket,
+				"file:symbols",
+				"active symbols should be file:symbols bucket",
+			);
+			assert.ok(
+				active.content.includes("function bar()"),
+				"symbols content should come from meta",
+			);
 		});
 	});
 });

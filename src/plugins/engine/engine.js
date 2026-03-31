@@ -41,48 +41,57 @@ export default class Engine {
 				}
 			}
 
-			// Materialize turn_context from post-enforcement known_entries
-			await materialize(
-				db,
-				runId,
-				sequence,
-				rummy.systemPrompt,
-				rummy.loopPrompt,
-			);
+			// Materialize turn_context: clear, system prompt, VIEW rows, continuation
+			await db.clear_turn_context.run({
+				run_id: runId,
+				turn: sequence,
+			});
+
+			if (rummy.systemPrompt) {
+				await db.insert_turn_context.run({
+					run_id: runId,
+					turn: sequence,
+					ordinal: 0,
+					path: "system://prompt",
+					bucket: "system",
+					content: rummy.systemPrompt,
+					tokens: countTokens(rummy.systemPrompt),
+					meta: null,
+				});
+			}
+
+			await db.materialize_turn_context.run({
+				run_id: runId,
+				turn: sequence,
+			});
+
+			const rows = await db.get_turn_context.all({
+				run_id: runId,
+				turn: sequence,
+			});
+			const hasPrompt = rows.some((r) => r.bucket === "prompt");
+
+			if (!hasPrompt && rummy.loopPrompt) {
+				const maxOrdinal = rows.length > 0 ? rows.at(-1).ordinal : 0;
+				await db.insert_turn_context.run({
+					run_id: runId,
+					turn: sequence,
+					ordinal: maxOrdinal + 1,
+					path: "continuation://prompt",
+					bucket: "continuation",
+					content: rummy.loopPrompt,
+					tokens: countTokens(rummy.loopPrompt),
+					meta: null,
+				});
+			}
 		}, 20);
 	}
 }
 
 // --- Budget enforcement ---
 
-const TIERS = ["result", "file_full", "known", "file_symbols", "file_path"];
-
-function classify(entry) {
-	if (
-		entry.scheme !== null &&
-		entry.scheme !== "known" &&
-		entry.scheme !== "unknown"
-	)
-		return "result";
-	if (entry.scheme === null && entry.state !== "symbols") return "file_full";
-	if (entry.scheme === "known") return "known";
-	if (entry.scheme === null && entry.state === "symbols") return "file_symbols";
-	return "file_path";
-}
-
-function compareDemotion(a, b) {
-	const ta = TIERS.indexOf(classify(a));
-	const tb = TIERS.indexOf(classify(b));
-	if (ta !== tb) return ta - tb;
-	if (a.turn !== b.turn) return a.turn - b.turn;
-	if (a.refs !== b.refs) return a.refs - b.refs;
-	return b.tokens - a.tokens;
-}
-
 async function enforce(store, runId, currentTurn, budget, total, entries) {
-	const candidates = entries
-		.filter((e) => e.turn !== currentTurn)
-		.toSorted(compareDemotion);
+	const candidates = entries.filter((e) => e.turn !== currentTurn);
 
 	const demoted = [];
 	let remaining = total;
@@ -90,9 +99,7 @@ async function enforce(store, runId, currentTurn, budget, total, entries) {
 	for (const entry of candidates) {
 		if (remaining <= budget) break;
 
-		const tier = classify(entry);
-
-		if (tier === "file_full") {
+		if (entry.tier === 1) {
 			const before = entry.tokens;
 			await store.setFileState(runId, entry.path, "symbols");
 			const meta = await store.getMeta(runId, entry.path);
@@ -109,111 +116,4 @@ async function enforce(store, runId, currentTurn, budget, total, entries) {
 	}
 
 	return demoted;
-}
-
-// --- Materialization ---
-
-function schemeOf(path) {
-	const idx = path.indexOf("://");
-	return idx > 0 ? path.slice(0, idx) : null;
-}
-
-async function materialize(db, runId, turn, systemPrompt, loopPrompt) {
-	await db.clear_turn_context.run({ run_id: runId, turn });
-
-	let ordinal = 0;
-
-	const insert = (path, bucket, content, meta = null) => {
-		const tokens = countTokens(content);
-		return db.insert_turn_context.run({
-			run_id: runId,
-			turn,
-			ordinal: ordinal++,
-			path,
-			bucket,
-			content,
-			tokens,
-			meta: meta ? JSON.stringify(meta) : null,
-		});
-	};
-
-	// 0. System prompt
-	if (systemPrompt) {
-		await insert("system://prompt", "system", systemPrompt);
-	}
-
-	// 1. Active known
-	for (const r of await db.get_active_known.all({ run_id: runId })) {
-		await insert(r.path, "known", r.value);
-	}
-
-	// 2. Stored known
-	for (const r of await db.get_stored_known.all({ run_id: runId })) {
-		await insert(r.path, "stored", "");
-	}
-
-	// 3. Stored file paths
-	for (const r of await db.get_stored_files.all({ run_id: runId })) {
-		await insert(r.path, "file:path", "");
-	}
-
-	// 4. Symbol files
-	for (const r of await db.get_symbol_files.all({ run_id: runId })) {
-		const meta = r.meta ? JSON.parse(r.meta) : null;
-		await insert(r.path, "file:symbols", meta?.symbols || "");
-	}
-
-	// 5. Full files
-	for (const r of await db.get_full_files.all({ run_id: runId })) {
-		const fileState =
-			r.state === "readonly"
-				? "file:readonly"
-				: r.state === "active"
-					? "file:active"
-					: "file";
-		await insert(r.path, "file", r.value, {
-			state: fileState,
-			tokens_full: r.tokens,
-		});
-	}
-
-	// 6. Chronological results
-	for (const r of await db.get_results.all({ run_id: runId })) {
-		const tool = schemeOf(r.path);
-		const rmeta = r.meta ? JSON.parse(r.meta) : {};
-		const target =
-			rmeta.command || rmeta.file || rmeta.path || rmeta.question || "";
-
-		let value = "";
-		if (r.state === "summary") value = r.value;
-		else if (tool === "env" || tool === "run" || tool === "ask_user")
-			value = r.value;
-		else if (tool === "edit" && rmeta.blocks?.length > 0)
-			value = rmeta.blocks
-				.map((b) =>
-					b.search === null
-						? `+++ ${b.replace?.slice(0, 200)}`
-						: `--- ${b.search?.slice(0, 100)}\n+++ ${b.replace?.slice(0, 200)}`,
-				)
-				.join("\n");
-
-		await insert(r.path, "result", value, {
-			tool: tool || r.state,
-			target,
-			state: r.state,
-		});
-	}
-
-	// 7. Unknowns
-	for (const r of await db.get_unknowns.all({ run_id: runId })) {
-		await insert(r.path, "unknown", r.value);
-	}
-
-	// 8. Prompt / continuation
-	const prompt = await db.get_latest_prompt.get({ run_id: runId });
-	if (prompt) {
-		await insert(prompt.path, "prompt", prompt.value);
-	} else if (loopPrompt) {
-		await insert("continuation://prompt", "continuation", loopPrompt);
-	}
 }

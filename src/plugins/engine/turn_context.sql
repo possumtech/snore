@@ -2,6 +2,22 @@
 DELETE FROM turn_context
 WHERE run_id = :run_id AND turn = :turn;
 
+-- PREP: materialize_turn_context
+INSERT INTO turn_context (
+	run_id, turn, ordinal, path, bucket, content, tokens, meta
+)
+SELECT
+	run_id
+	, :turn
+	, ordinal
+	, path
+	, bucket
+	, content
+	, tokens
+	, meta
+FROM v_model_context
+WHERE run_id = :run_id;
+
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
 	run_id, turn, ordinal, path, bucket, content, tokens, meta
