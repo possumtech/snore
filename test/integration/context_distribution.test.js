@@ -56,7 +56,7 @@ describe("context_distribution bucket correctness", () => {
 	});
 
 	it("known bucket includes promoted known entries", async () => {
-		await store.upsert(RUN_ID, 1, "/:known:auth_flow", "JWT tokens", "full");
+		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", "full");
 
 		const dist = await store.getContextDistribution(RUN_ID);
 		const known = dist.find((b) => b.bucket === "known");
@@ -65,8 +65,8 @@ describe("context_distribution bucket correctness", () => {
 	});
 
 	it("history bucket includes result entries", async () => {
-		await store.upsert(RUN_ID, 1, "/:read:1", "file contents", "pass");
-		await store.upsert(RUN_ID, 1, "/:summary:1", "did a thing", "summary");
+		await store.upsert(RUN_ID, 1, "read://1", "file contents", "pass");
+		await store.upsert(RUN_ID, 1, "summary://1", "did a thing", "summary");
 
 		const dist = await store.getContextDistribution(RUN_ID);
 		const history = dist.find((b) => b.bucket === "history");
@@ -75,14 +75,14 @@ describe("context_distribution bucket correctness", () => {
 	});
 
 	it("proposed entries excluded from history bucket", async () => {
-		await store.upsert(RUN_ID, 1, "/:edit:1", "diff content", "proposed");
+		await store.upsert(RUN_ID, 1, "edit://1", "diff content", "proposed");
 
 		const dist = await store.getContextDistribution(RUN_ID);
 		const history = dist.find((b) => b.bucket === "history");
 		const historyEntries = history ? history.entries : 0;
 
 		// proposed should not count toward history
-		await store.upsert(RUN_ID, 1, "/:edit:2", "another diff", "proposed");
+		await store.upsert(RUN_ID, 1, "edit://2", "another diff", "proposed");
 		const dist2 = await store.getContextDistribution(RUN_ID);
 		const history2 = dist2.find((b) => b.bucket === "history");
 		assert.strictEqual(
@@ -97,7 +97,7 @@ describe("context_distribution bucket correctness", () => {
 		const histBefore = distBefore.find((b) => b.bucket === "history");
 		const countBefore = histBefore ? histBefore.entries : 0;
 
-		await store.upsert(RUN_ID, 1, "/:unknown:1", "what is X?", "full");
+		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
 
 		const distAfter = await store.getContextDistribution(RUN_ID);
 		const histAfter = distAfter.find((b) => b.bucket === "history");

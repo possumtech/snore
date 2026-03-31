@@ -41,40 +41,40 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("getUnresolved returns proposed entries", async () => {
-		await store.upsert(RUN_ID, 1, "/:edit:1", "diff content", "proposed", {
+		await store.upsert(RUN_ID, 1, "edit://1", "diff content", "proposed", {
 			meta: { file: "app.js" },
 		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 1);
-		assert.strictEqual(unresolved[0].path, "/:edit:1");
+		assert.strictEqual(unresolved[0].path, "edit://1");
 	});
 
 	it("multiple proposed entries all returned", async () => {
-		await store.upsert(RUN_ID, 1, "/:run:1", "echo hi", "proposed");
+		await store.upsert(RUN_ID, 1, "run://1", "echo hi", "proposed");
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 2);
 	});
 
 	it("resolving an entry removes it from unresolved", async () => {
-		await store.resolve(RUN_ID, "/:edit:1", "pass", "applied");
+		await store.resolve(RUN_ID, "edit://1", "pass", "applied");
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 1);
-		assert.strictEqual(unresolved[0].path, "/:run:1");
+		assert.strictEqual(unresolved[0].path, "run://1");
 	});
 
 	it("resolving all entries clears the lock", async () => {
-		await store.resolve(RUN_ID, "/:run:1", "warn", "rejected");
+		await store.resolve(RUN_ID, "run://1", "warn", "rejected");
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 0);
 	});
 
 	it("non-proposed result entries do not block", async () => {
-		await store.upsert(RUN_ID, 1, "/:read:2", "contents", "pass");
-		await store.upsert(RUN_ID, 1, "/:summary:2", "summary text", "summary");
+		await store.upsert(RUN_ID, 1, "env://2", "contents", "pass");
+		await store.upsert(RUN_ID, 1, "summary://2", "summary text", "summary");
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 0);

@@ -110,7 +110,7 @@ export default class TurnExecutor {
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
-			`/:system:${turn}`,
+			`system://${turn}`,
 			systemPrompt,
 			"info",
 		);
@@ -118,7 +118,7 @@ export default class TurnExecutor {
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				`/:prompt:${turn}`,
+				`prompt://${turn}`,
 				loopPrompt,
 				"info",
 			);
@@ -126,7 +126,7 @@ export default class TurnExecutor {
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
-			`/:user:${turn}`,
+			`user://${turn}`,
 			loopPrompt || "",
 			"info",
 		);
@@ -180,7 +180,7 @@ export default class TurnExecutor {
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				`/:reasoning:${turn}`,
+				`reasoning://${turn}`,
 				reasoning,
 				"info",
 			);

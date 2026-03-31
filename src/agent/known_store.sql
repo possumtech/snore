@@ -1,10 +1,10 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, turn, path, value, domain, state, hash, meta
+	run_id, turn, path, value, scheme, state, hash, meta
 	, tokens, updated_at
 )
 VALUES (
-	:run_id, :turn, :path, :value, :domain, :state, :hash, :meta
+	:run_id, :turn, :path, :value, :scheme, :state, :hash, :meta
 	, length(:value) / 4
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
@@ -36,7 +36,7 @@ WHERE run_id = :run_id AND path = :path;
 
 -- PREP: delete_file_entries_by_pattern
 DELETE FROM known_entries
-WHERE run_id = :run_id AND glorp(:pattern, path) AND domain = 'file';
+WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL;
 
 -- PREP: resolve_known_entry
 UPDATE known_entries
@@ -52,7 +52,7 @@ SET
 	state = :state
 	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND glorp(:pattern, path) AND domain = 'file';
+WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL;
 
 -- PREP: promote_path
 UPDATE known_entries
@@ -74,14 +74,14 @@ FROM known_entries
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_entry_state
-SELECT state, domain, turn
+SELECT state, scheme, turn
 FROM known_entries
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_file_states_by_pattern
 SELECT path, state, turn
 FROM known_entries
-WHERE run_id = :run_id AND glorp(:pattern, path) AND domain = 'file'
+WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL
 ORDER BY path;
 
 -- PREP: get_entry_meta
@@ -110,7 +110,7 @@ WHERE
 	AND (:value IS NULL OR glorp(:value, value));
 
 -- PREP: get_entries_by_pattern
-SELECT path, value, domain, state, tokens, meta
+SELECT path, value, scheme, state, tokens, meta
 FROM known_entries
 WHERE
 	run_id = :run_id

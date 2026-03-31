@@ -368,7 +368,7 @@ export default class AgentLoop {
 			await this.#knownStore.resolve(runId, path, "pass", output || "");
 
 			// If accepting a delete, erase the target path
-			if (path.startsWith("/:delete:")) {
+			if (path.startsWith("delete://")) {
 				const meta = await this.#knownStore.getMeta(runId, path);
 				if (meta?.path) {
 					await this.#knownStore.remove(runId, meta.path);

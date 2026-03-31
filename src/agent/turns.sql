@@ -26,5 +26,6 @@ SELECT path, state AS status, value, meta
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'result'
+	AND scheme IS NOT NULL
+	AND scheme NOT IN ('known', 'unknown')
 ORDER BY id;

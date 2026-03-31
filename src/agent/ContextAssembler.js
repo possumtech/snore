@@ -144,7 +144,7 @@ function renderContext(context) {
 							? "✗"
 							: "·";
 			if (r.state === "summary") return `* summary: ${r.value}`;
-			const tool = r.tool || r.path.match(/^\/:(\w+):/)?.[1] || "?";
+			const tool = r.tool || r.path.match(/^(\w+):\/\//)?.[1] || "?";
 			const target = r.target || "";
 			const detail = r.value ? ` — ${r.value.slice(0, 120)}` : "";
 			return `* ${tool} ${target} ${check}${detail}`;

@@ -1,5 +1,5 @@
 -- PREP: get_known_entries
-SELECT path, domain, state, value, turn, hash, meta
+SELECT path, scheme, state, value, turn, hash, meta
 FROM known_entries
 WHERE run_id = :run_id
 ORDER BY path;
@@ -9,8 +9,7 @@ SELECT path, value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'known'
-	AND path LIKE '/:known:%'
+	AND scheme = 'known'
 	AND turn > 0
 ORDER BY path;
 
@@ -19,8 +18,7 @@ SELECT path
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'known'
-	AND path LIKE '/:known:%'
+	AND scheme = 'known'
 	AND turn = 0
 ORDER BY path;
 
@@ -29,7 +27,7 @@ SELECT path
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'file'
+	AND scheme IS NULL
 	AND state != 'ignore'
 	AND turn = 0
 	AND state != 'symbols'
@@ -40,7 +38,7 @@ SELECT path, value, meta
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'file'
+	AND scheme IS NULL
 	AND state = 'symbols'
 ORDER BY path;
 
@@ -49,7 +47,7 @@ SELECT path, state, value, tokens
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'file'
+	AND scheme IS NULL
 	AND state != 'ignore'
 	AND state != 'symbols'
 	AND turn > 0
@@ -60,9 +58,9 @@ SELECT path, state, value, meta
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND domain = 'result'
+	AND scheme IS NOT NULL
 	AND state != 'proposed'
-	AND path NOT REGEXP '^/:(system|user|reasoning|prompt):'
+	AND scheme NOT IN ('system', 'user', 'reasoning', 'prompt', 'known', 'unknown')
 ORDER BY id;
 
 -- PREP: get_unknowns
@@ -70,7 +68,7 @@ SELECT path, value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND path LIKE '/:unknown:%'
+	AND scheme = 'unknown'
 ORDER BY id;
 
 -- PREP: get_latest_prompt
@@ -78,12 +76,12 @@ SELECT path, value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND path LIKE '/:prompt:%'
+	AND scheme = 'prompt'
 ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_turn_audit
-SELECT path, domain, state, turn, value, meta
+SELECT path, scheme, state, turn, value, meta
 FROM known_entries
 WHERE
 	run_id = :run_id

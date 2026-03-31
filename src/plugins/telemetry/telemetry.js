@@ -1,6 +1,6 @@
 /**
  * DebugLoggerPlugin: Logs turn data to console when RUMMY_DEBUG=true.
- * Audit data lives in known_entries (/:system:*, /:user:*, /:reasoning:*).
+ * Audit data lives in known_entries (system://*, user://*, reasoning://*).
  */
 export default class DebugLoggerPlugin {
 	static register(hooks) {

@@ -37,48 +37,48 @@ describe("KnownStore integration", () => {
 		await tdb.cleanup();
 	});
 
-	describe("domain routing", () => {
-		it("bare paths are file domain", () => {
-			assert.strictEqual(KnownStore.domain("src/app.js"), "file");
-			assert.strictEqual(KnownStore.domain("package.json"), "file");
+	describe("scheme extraction", () => {
+		it("bare paths have null scheme", () => {
+			assert.strictEqual(KnownStore.scheme("src/app.js"), null);
+			assert.strictEqual(KnownStore.scheme("package.json"), null);
 		});
 
-		it("/:known: prefix is known domain", () => {
-			assert.strictEqual(KnownStore.domain("/:known:auth_flow"), "known");
+		it("known:// scheme", () => {
+			assert.strictEqual(KnownStore.scheme("known://auth_flow"), "known");
 		});
 
-		it("/: prefix without known is result domain", () => {
-			assert.strictEqual(KnownStore.domain("/:read:4"), "result");
-			assert.strictEqual(KnownStore.domain("/:edit:7"), "result");
-			assert.strictEqual(KnownStore.domain("/:summary:1"), "result");
+		it("tool schemes", () => {
+			assert.strictEqual(KnownStore.scheme("read://4"), "read");
+			assert.strictEqual(KnownStore.scheme("edit://7"), "edit");
+			assert.strictEqual(KnownStore.scheme("summary://1"), "summary");
 		});
 
-		it("/:unknown:* is known domain", () => {
-			assert.strictEqual(KnownStore.domain("/:unknown:1"), "known");
-			assert.strictEqual(KnownStore.domain("/:unknown:42"), "known");
+		it("unknown:// scheme", () => {
+			assert.strictEqual(KnownStore.scheme("unknown://1"), "unknown");
+			assert.strictEqual(KnownStore.scheme("unknown://42"), "unknown");
 		});
 	});
 
 	describe("toolFromPath", () => {
 		it("extracts tool name from result keys", () => {
-			assert.strictEqual(KnownStore.toolFromPath("/:read:4"), "read");
-			assert.strictEqual(KnownStore.toolFromPath("/:edit:7"), "edit");
-			assert.strictEqual(KnownStore.toolFromPath("/:summary:1"), "summary");
+			assert.strictEqual(KnownStore.toolFromPath("read://4"), "read");
+			assert.strictEqual(KnownStore.toolFromPath("edit://7"), "edit");
+			assert.strictEqual(KnownStore.toolFromPath("summary://1"), "summary");
 		});
 
 		it("returns null for bare file paths", () => {
 			assert.strictEqual(KnownStore.toolFromPath("src/app.js"), null);
 		});
 
-		it("returns 'known' for /:known: keys", () => {
-			assert.strictEqual(KnownStore.toolFromPath("/:known:auth"), "known");
+		it("returns 'known' for known:// keys", () => {
+			assert.strictEqual(KnownStore.toolFromPath("known://auth"), "known");
 		});
 	});
 
 	describe("isSystemPath", () => {
 		it("detects /: prefix", () => {
-			assert.ok(KnownStore.isSystemPath("/:known:x"));
-			assert.ok(KnownStore.isSystemPath("/:read:1"));
+			assert.ok(KnownStore.isSystemPath("known://x"));
+			assert.ok(KnownStore.isSystemPath("read://1"));
 			assert.ok(!KnownStore.isSystemPath("src/app.js"));
 		});
 	});
@@ -89,28 +89,28 @@ describe("KnownStore integration", () => {
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.path === "src/app.js");
 			assert.ok(entry);
-			assert.strictEqual(entry.domain, "file");
+			assert.strictEqual(entry.scheme, null);
 			assert.strictEqual(entry.state, "full");
 			assert.strictEqual(entry.value, "const x = 1;");
 		});
 
 		it("inserts a knowledge entry", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:db_type", "SQLite", "full");
+			await store.upsert(RUN_ID, 0, "known://db_type", "SQLite", "full");
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "/:known:db_type");
+			const entry = all.find((e) => e.path === "known://db_type");
 			assert.ok(entry);
-			assert.strictEqual(entry.domain, "known");
+			assert.strictEqual(entry.scheme, "known");
 			assert.strictEqual(entry.state, "full");
 		});
 
 		it("inserts a result entry", async () => {
-			await store.upsert(RUN_ID, 1, "/:read:1", "file contents", "pass", {
+			await store.upsert(RUN_ID, 1, "read://1", "file contents", "pass", {
 				meta: { command: "read src/app.js" },
 			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "/:read:1");
+			const entry = all.find((e) => e.path === "read://1");
 			assert.ok(entry);
-			assert.strictEqual(entry.domain, "result");
+			assert.strictEqual(entry.scheme, "read");
 			assert.strictEqual(entry.state, "pass");
 			assert.ok(entry.meta);
 			const meta = JSON.parse(entry.meta);
@@ -118,59 +118,59 @@ describe("KnownStore integration", () => {
 		});
 
 		it("upsert overwrites value on conflict", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:db_type", "PostgreSQL", "full");
+			await store.upsert(RUN_ID, 0, "known://db_type", "PostgreSQL", "full");
 			const rows = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = rows.find((e) => e.path === "/:known:db_type");
+			const entry = rows.find((e) => e.path === "known://db_type");
 			assert.strictEqual(entry.value, "PostgreSQL");
 		});
 
 		it("upsert preserves meta when new meta is null", async () => {
-			await store.upsert(RUN_ID, 0, "/:read:1", "updated", "pass");
+			await store.upsert(RUN_ID, 0, "read://1", "updated", "pass");
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "/:read:1");
+			const entry = all.find((e) => e.path === "read://1");
 			assert.ok(entry.meta, "meta should be preserved from first write");
 		});
 	});
 
 	describe("remove", () => {
 		it("deletes an entry", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:temp", "temporary", "full");
+			await store.upsert(RUN_ID, 0, "known://temp", "temporary", "full");
 			let all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			assert.ok(all.find((e) => e.path === "/:known:temp"));
+			assert.ok(all.find((e) => e.path === "known://temp"));
 
-			await store.remove(RUN_ID, "/:known:temp");
+			await store.remove(RUN_ID, "known://temp");
 			all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			assert.ok(!all.find((e) => e.path === "/:known:temp"));
+			assert.ok(!all.find((e) => e.path === "known://temp"));
 		});
 	});
 
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
-			await store.upsert(RUN_ID, 1, "/:edit:1", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "edit://1", "", "proposed", {
 				meta: { path: "src/app.js", search: "old", replace: "new" },
 			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
-			assert.strictEqual(unresolved[0].path, "/:edit:1");
+			assert.strictEqual(unresolved[0].path, "edit://1");
 
-			await store.resolve(RUN_ID, "/:edit:1", "pass", "edit applied");
+			await store.resolve(RUN_ID, "edit://1", "pass", "edit applied");
 			const after = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(after.length, 0);
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "/:edit:1");
+			const entry = all.find((e) => e.path === "edit://1");
 			assert.strictEqual(entry.state, "pass");
 			assert.strictEqual(entry.value, "edit applied");
 		});
 
 		it("changes proposed to warn on rejection", async () => {
-			await store.upsert(RUN_ID, 1, "/:run:1", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "run://1", "", "proposed", {
 				meta: { command: "npm test" },
 			});
-			await store.resolve(RUN_ID, "/:run:1", "warn", "rejected by user");
+			await store.resolve(RUN_ID, "run://1", "warn", "rejected by user");
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "/:run:1");
+			const entry = all.find((e) => e.path === "run://1");
 			assert.strictEqual(entry.state, "warn");
 		});
 	});
@@ -192,12 +192,12 @@ describe("KnownStore integration", () => {
 		});
 
 		it("hides proposed entries", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:edit:99", "", "proposed", {
+			await store.upsert(RUN_ID, CURRENT_TURN, "edit://99", "", "proposed", {
 				meta: { path: "x.js" },
 			});
 			const model = await store.getModelContext(RUN_ID);
-			assert.ok(!model.find((e) => e.path === "/:edit:99"));
-			await store.resolve(RUN_ID, "/:edit:99", "pass", "done");
+			assert.ok(!model.find((e) => e.path === "edit://99"));
+			await store.resolve(RUN_ID, "edit://99", "pass", "done");
 		});
 
 		it("expanded files (turn == currentTurn) show full value", async () => {
@@ -245,7 +245,7 @@ describe("KnownStore integration", () => {
 			);
 			const model = await store.getModelContext(RUN_ID);
 			const app = model.find((e) => e.path === "src/app.js");
-			assert.strictEqual(app.state, "file");
+			assert.strictEqual(app.state, "known");
 			assert.strictEqual(app.value, "const x = 1;");
 		});
 
@@ -253,12 +253,12 @@ describe("KnownStore integration", () => {
 			await store.upsert(
 				RUN_ID,
 				CURRENT_TURN,
-				"/:read:1",
+				"read://1",
 				"file contents",
 				"pass",
 			);
 			const model = await store.getModelContext(RUN_ID);
-			const read = model.find((e) => e.path === "/:read:1");
+			const read = model.find((e) => e.path === "read://1");
 			assert.strictEqual(read.state, "pass");
 			assert.strictEqual(read.value, "");
 		});
@@ -267,20 +267,20 @@ describe("KnownStore integration", () => {
 			await store.upsert(
 				RUN_ID,
 				CURRENT_TURN,
-				"/:known:db_type",
+				"known://db_type",
 				"PostgreSQL",
 				"full",
 			);
 			const model = await store.getModelContext(RUN_ID);
-			const known = model.find((e) => e.path === "/:known:db_type");
+			const known = model.find((e) => e.path === "known://db_type");
 			assert.strictEqual(known.state, "full");
 			assert.strictEqual(known.value, "PostgreSQL");
 		});
 
 		it("collapsed known shows as stored with empty value", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:old_fact", "stale info", "full");
+			await store.upsert(RUN_ID, 0, "known://old_fact", "stale info", "full");
 			const model = await store.getModelContext(RUN_ID);
-			const old = model.find((e) => e.path === "/:known:old_fact");
+			const old = model.find((e) => e.path === "known://old_fact");
 			assert.strictEqual(old.state, "stored");
 			assert.strictEqual(old.value, "");
 		});
@@ -289,30 +289,30 @@ describe("KnownStore integration", () => {
 			await store.upsert(
 				RUN_ID,
 				CURRENT_TURN,
-				"/:unknown:1",
+				"unknown://1",
 				"What is the session store?",
 				"full",
 			);
 			await store.upsert(
 				RUN_ID,
 				CURRENT_TURN,
-				"/:system:5",
+				"system://5",
 				"prompt text",
 				"info",
 			);
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:user:5", "user text", "info");
+			await store.upsert(RUN_ID, CURRENT_TURN, "user://5", "user text", "info");
 			await store.upsert(
 				RUN_ID,
 				CURRENT_TURN,
-				"/:reasoning:5",
+				"reasoning://5",
 				"thinking...",
 				"info",
 			);
 
 			const model = await store.getModelContext(RUN_ID);
-			assert.ok(!model.find((e) => e.path === "/:system:5"));
-			assert.ok(!model.find((e) => e.path === "/:user:5"));
-			assert.ok(!model.find((e) => e.path === "/:reasoning:5"));
+			assert.ok(!model.find((e) => e.path === "system://5"));
+			assert.ok(!model.find((e) => e.path === "user://5"));
+			assert.ok(!model.find((e) => e.path === "reasoning://5"));
 			const unknowns = model.filter((e) => e.state === "unknown");
 			assert.ok(unknowns.length > 0, "unknowns should appear in context");
 			assert.strictEqual(unknowns[0].value, "What is the session store?");
@@ -351,9 +351,9 @@ describe("KnownStore integration", () => {
 			const key2 = await store.nextResultPath(RUN_ID, "edit");
 			const key3 = await store.nextResultPath(RUN_ID, "read");
 
-			assert.strictEqual(key1, "/:read:1");
-			assert.strictEqual(key2, "/:edit:2");
-			assert.strictEqual(key3, "/:read:3");
+			assert.strictEqual(key1, "read://1");
+			assert.strictEqual(key2, "edit://2");
+			assert.strictEqual(key3, "read://3");
 		});
 	});
 
@@ -386,13 +386,13 @@ describe("KnownStore integration", () => {
 
 		it("derives tool name from key prefix", async () => {
 			const log = await store.getLog(RUN_ID);
-			const readEntry = log.find((e) => e.path.startsWith("/:read:"));
+			const readEntry = log.find((e) => e.path.startsWith("read://"));
 			assert.strictEqual(readEntry.tool, "read");
 		});
 
 		it("derives target from meta", async () => {
 			const log = await store.getLog(RUN_ID);
-			const editEntry = log.find((e) => e.path === "/:edit:1");
+			const editEntry = log.find((e) => e.path === "edit://1");
 			assert.ok(editEntry);
 			assert.strictEqual(editEntry.target, "src/app.js");
 		});
@@ -406,15 +406,15 @@ describe("KnownStore integration", () => {
 			assert.strictEqual(before, "content");
 
 			// Setup: proposed delete entry targeting that file
-			await store.upsert(RUN_ID, 1, "/:delete:50", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "delete://50", "", "proposed", {
 				meta: { path: "src/doomed.js" },
 			});
 
 			// Resolve: accept the delete
-			await store.resolve(RUN_ID, "/:delete:50", "pass", "");
+			await store.resolve(RUN_ID, "delete://50", "pass", "");
 
 			// Verify: target file key is gone — use resolve to check meta, then remove
-			const meta = await store.getMeta(RUN_ID, "/:delete:50");
+			const meta = await store.getMeta(RUN_ID, "delete://50");
 			assert.strictEqual(meta.path, "src/doomed.js");
 			await store.remove(RUN_ID, meta.path);
 
@@ -431,12 +431,12 @@ describe("KnownStore integration", () => {
 			await store.upsert(RUN_ID, 1, "src/survivor.js", "alive", "full");
 
 			// Setup: proposed delete
-			await store.upsert(RUN_ID, 1, "/:delete:51", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "delete://51", "", "proposed", {
 				meta: { path: "src/survivor.js" },
 			});
 
 			// Resolve: reject
-			await store.resolve(RUN_ID, "/:delete:51", "warn", "rejected");
+			await store.resolve(RUN_ID, "delete://51", "warn", "rejected");
 
 			// Verify: file still exists
 			const value = await store.getValue(RUN_ID, "src/survivor.js");
@@ -448,7 +448,7 @@ describe("KnownStore integration", () => {
 		});
 	});
 
-	describe("domain CHECK constraint", () => {
+	describe("scheme CHECK constraint", () => {
 		it("rejects invalid file state", async () => {
 			await assert.rejects(
 				() => store.upsert(RUN_ID, 0, "bad.js", "", "proposed"),
@@ -458,14 +458,14 @@ describe("KnownStore integration", () => {
 
 		it("rejects invalid known state", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "/:known:bad", "", "proposed"),
+				() => store.upsert(RUN_ID, 0, "known://bad", "", "proposed"),
 				/CHECK constraint/,
 			);
 		});
 
-		it("rejects invalid result state", async () => {
+		it("rejects invalid edit state", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "/:read:999", "", "full"),
+				() => store.upsert(RUN_ID, 0, "edit://999", "", "full"),
 				/CHECK constraint/,
 			);
 		});

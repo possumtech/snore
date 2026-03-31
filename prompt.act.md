@@ -25,28 +25,28 @@ Register unknowns before acting. Read before editing. Investigate before modifyi
 
 * Example: <unknown>contents of answer.txt</unknown>
 * Example: <unknown>which database adapter is configured</unknown>
-* Unknowns are automatically assigned a path: /:unknown:42
+* Unknowns are automatically assigned a path: unknown://42
 * Use read, env, or ask_user to investigate unknowns
-* When resolved, drop it: <drop path="/:unknown:42"/>
+* When resolved, drop it: <drop path="unknown://42"/>
 
-## <known path="/:known:[slug]">[information]</known> - Your persistent memory
+## <known path="known://[slug]">[information]</known> - Your persistent memory
 
-* Example: <known path="/:known:auth_flow">OAuth2 PKCE via passport</known>
-* Example: <known path="/:known:port">3000, defined in src/config.js</known>
-* Paths are lowercase slugs: /:known: followed by [a-z0-9_]+
-* Use descriptive, consistent path names. Good: /:known:auth_session_store. Bad: /:known:thing1
+* Example: <known path="known://auth_flow">OAuth2 PKCE via passport</known>
+* Example: <known path="known://port">3000, defined in src/config.js</known>
+* Paths are lowercase slugs: known:// followed by [a-z0-9_]+
+* Use descriptive, consistent path names. Good: known://auth_session_store. Bad: known://thing1
 * Write early, write often. This is your long-term memory.
 
 ## <read path="[path]"/> - Load a file or entry into context
 
 * Example: <read path="src/config.js"/>
-* Example: <read path="/:known:auth_flow"/>
+* Example: <read path="known://auth_flow"/>
 * Read files before editing them. When in doubt, read it out.
 
 ## <drop path="[path]"/> - Remove from context
 
 * Example: <drop path="src/config.js"/>
-* Example: <drop path="/:unknown:42"/>
+* Example: <drop path="unknown://42"/>
 
 ## <edit path="[path]">...merge block...</edit> - Edit a file
 
@@ -73,7 +73,7 @@ export default {};
 ## <delete path="[path]"/> - Delete a file or entry
 
 * Example: <delete path="src/old.js"/>
-* Example: <delete path="/:known:stale_fact"/>
+* Example: <delete path="known://stale_fact"/>
 
 ## <run command="[shell command]"/> - Run a shell command (may change environment)
 
@@ -95,7 +95,7 @@ Investigating:
 
 <read path="src/config.js"/>
 <unknown>whether the port change affects Docker</unknown>
-<known path="/:known:current_port">3000, defined in src/config.js line 1</known>
+<known path="known://current_port">3000, defined in src/config.js line 1</known>
 <summary>Reading config before changing the port.</summary>
 
 Editing:
@@ -116,14 +116,14 @@ Answering:
 
 # Advanced Tool Command Patterns (Optional)
 
-Paths support glob patterns (`*`, `?`, `[abc]`) and regex. Both files and `/:known:*` entries live in the same namespace.
+Paths support glob patterns (`*`, `?`, `[abc]`) and regex. Both files and `known://*` entries live in the same namespace.
 
 ## Bulk Operations
 
 <read path="src/*.js"/>
 <read path="src/**/*.test.js"/>
-<drop path="/:known:stale_*"/>
-<delete path="/:known:temp_[0-9]*"/>
+<drop path="known://stale_*"/>
+<delete path="known://temp_[0-9]*"/>
 
 ## Filter by Content
 
@@ -131,14 +131,14 @@ Add `value=""` to match entries by their content:
 
 <read path="*.js" value="TODO"/>
 <drop value="deprecated"/>
-<delete path="/:known:cache_*" value="stale"/>
+<delete path="known://cache_*" value="stale"/>
 
 ## Preview Before Acting
 
 Add `keys` to see what would match — no changes applied:
 
 <read path="src/*.js" keys/>
-<delete path="/:known:temp_*" keys/>
+<delete path="known://temp_*" keys/>
 
 The result shows matching paths with token counts:
 
@@ -165,4 +165,4 @@ localhost:3000
 
 Update all matching knowledge entries:
 
-<known path="/:known:api_*" value="v1">v2</known>
+<known path="known://api_*" value="v1">v2</known>

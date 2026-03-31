@@ -43,9 +43,9 @@ describe("Pattern operations integration", () => {
 		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "full");
 
 		// Seed knowledge
-		await store.upsert(RUN_ID, 0, "/:known:auth_flow", "OAuth2 PKCE", "full");
-		await store.upsert(RUN_ID, 0, "/:known:auth_secret", "hunter2", "full");
-		await store.upsert(RUN_ID, 0, "/:known:db_type", "SQLite", "full");
+		await store.upsert(RUN_ID, 0, "known://auth_flow", "OAuth2 PKCE", "full");
+		await store.upsert(RUN_ID, 0, "known://auth_secret", "hunter2", "full");
+		await store.upsert(RUN_ID, 0, "known://db_type", "SQLite", "full");
 	});
 
 	after(async () => {
@@ -71,7 +71,7 @@ describe("Pattern operations integration", () => {
 		it("matches known keys with glob", async () => {
 			const matches = await store.getEntriesByPattern(
 				RUN_ID,
-				"/:known:auth_*",
+				"known://auth_*",
 				null,
 			);
 			assert.strictEqual(matches.length, 2);
@@ -157,61 +157,61 @@ describe("Pattern operations integration", () => {
 
 	describe("deleteByPattern", () => {
 		it("deletes matching entries", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:temp_a", "x", "full");
-			await store.upsert(RUN_ID, 0, "/:known:temp_b", "y", "full");
+			await store.upsert(RUN_ID, 0, "known://temp_a", "x", "full");
+			await store.upsert(RUN_ID, 0, "known://temp_b", "y", "full");
 
-			await store.deleteByPattern(RUN_ID, "/:known:temp_*", null);
+			await store.deleteByPattern(RUN_ID, "known://temp_*", null);
 
 			const matches = await store.getEntriesByPattern(
 				RUN_ID,
-				"/:known:temp_*",
+				"known://temp_*",
 				null,
 			);
 			assert.strictEqual(matches.length, 0);
 		});
 
 		it("deletes with value filter", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:cache_a", "stale", "full");
-			await store.upsert(RUN_ID, 0, "/:known:cache_b", "fresh", "full");
+			await store.upsert(RUN_ID, 0, "known://cache_a", "stale", "full");
+			await store.upsert(RUN_ID, 0, "known://cache_b", "fresh", "full");
 
-			await store.deleteByPattern(RUN_ID, "/:known:cache_*", "stale");
+			await store.deleteByPattern(RUN_ID, "known://cache_*", "stale");
 
 			const remaining = await store.getEntriesByPattern(
 				RUN_ID,
-				"/:known:cache_*",
+				"known://cache_*",
 				null,
 			);
 			assert.strictEqual(remaining.length, 1);
-			assert.strictEqual(remaining[0].path, "/:known:cache_b");
+			assert.strictEqual(remaining[0].path, "known://cache_b");
 		});
 	});
 
 	describe("updateValueByPattern", () => {
 		it("bulk updates matching values", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:ver_a", "v1", "full");
-			await store.upsert(RUN_ID, 0, "/:known:ver_b", "v1", "full");
+			await store.upsert(RUN_ID, 0, "known://ver_a", "v1", "full");
+			await store.upsert(RUN_ID, 0, "known://ver_b", "v1", "full");
 
-			await store.updateValueByPattern(RUN_ID, "/:known:ver_*", null, "v2");
+			await store.updateValueByPattern(RUN_ID, "known://ver_*", null, "v2");
 
-			const a = await store.getValue(RUN_ID, "/:known:ver_a");
-			const b = await store.getValue(RUN_ID, "/:known:ver_b");
+			const a = await store.getValue(RUN_ID, "known://ver_a");
+			const b = await store.getValue(RUN_ID, "known://ver_b");
 			assert.strictEqual(a, "v2");
 			assert.strictEqual(b, "v2");
 		});
 
 		it("updates with value filter", async () => {
-			await store.upsert(RUN_ID, 0, "/:known:status_a", "stale", "full");
-			await store.upsert(RUN_ID, 0, "/:known:status_b", "fresh", "full");
+			await store.upsert(RUN_ID, 0, "known://status_a", "stale", "full");
+			await store.upsert(RUN_ID, 0, "known://status_b", "fresh", "full");
 
 			await store.updateValueByPattern(
 				RUN_ID,
-				"/:known:status_*",
+				"known://status_*",
 				"stale",
 				"refreshed",
 			);
 
-			const a = await store.getValue(RUN_ID, "/:known:status_a");
-			const b = await store.getValue(RUN_ID, "/:known:status_b");
+			const a = await store.getValue(RUN_ID, "known://status_a");
+			const b = await store.getValue(RUN_ID, "known://status_b");
 			assert.strictEqual(a, "refreshed");
 			assert.strictEqual(b, "fresh");
 		});

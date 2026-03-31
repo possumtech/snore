@@ -7,11 +7,9 @@ export default class KnownStore {
 		this.#db = db;
 	}
 
-	static domain(path) {
-		if (path.startsWith("/:known:") || path.startsWith("/:unknown:"))
-			return "known";
-		if (path.startsWith("/:")) return "result";
-		return "file";
+	static scheme(path) {
+		const idx = path.indexOf("://");
+		return idx > 0 ? path.slice(0, idx) : null;
 	}
 
 	async nextTurn(runId) {
@@ -21,7 +19,7 @@ export default class KnownStore {
 
 	async nextResultPath(runId, toolName) {
 		const row = await this.#db.next_result_key.get({ run_id: runId });
-		return `/:${toolName}:${row.seq}`;
+		return `${toolName}://${row.seq}`;
 	}
 
 	async upsert(
@@ -32,13 +30,13 @@ export default class KnownStore {
 		state,
 		{ meta = null, hash = null, updatedAt = null } = {},
 	) {
-		const domain = KnownStore.domain(path);
+		const scheme = KnownStore.scheme(path);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			turn,
 			path,
 			value,
-			domain,
+			scheme,
 			state,
 			hash,
 			meta: meta ? JSON.stringify(meta) : null,
@@ -138,13 +136,13 @@ export default class KnownStore {
 	 * Each bucket is a separate SQL query. No full-table scan.
 	 *
 	 * Order:
-	 *   1. Active known (/:known:* at turn > 0)
-	 *   2. Stored known (/:known:* at turn 0)
+	 *   1. Active known (known://* at turn > 0)
+	 *   2. Stored known (known://* at turn 0)
 	 *   3. Stored file paths (turn 0, not symbols, not ignore)
 	 *   4. Symbol files
 	 *   5. Full files (turn > 0, not ignore)
 	 *   6. Chronological results (not proposed)
-	 *   7. Unknowns (/:unknown:*)
+	 *   7. Unknowns (unknown://*)
 	 *   8. Latest user prompt
 	 */
 	async getModelContext(runId) {
@@ -339,11 +337,10 @@ export default class KnownStore {
 	}
 
 	static toolFromPath(path) {
-		const match = path.match(/^\/:([a-z_]+):/);
-		return match ? match[1] : null;
+		return KnownStore.scheme(path);
 	}
 
 	static isSystemPath(path) {
-		return path.startsWith("/:");
+		return path.includes("://");
 	}
 }

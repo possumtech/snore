@@ -66,15 +66,15 @@ CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 
 -- Known K/V Store: the unified state machine
 -- Files, knowledge, tool results, audit — everything is a keyed entry.
--- domain + state are normalized columns;
--- the model sees a projection (e.g. "file:symbols").
+-- scheme: extracted from URI (known://, edit://, etc.)
+-- NULL for bare file paths.
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0
 	, path TEXT NOT NULL
 	, value TEXT NOT NULL DEFAULT ''
-	, domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
+	, scheme TEXT
 	, state TEXT NOT NULL
 	, hash TEXT
 	, meta JSON
@@ -85,20 +85,33 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, CHECK (
 		(
-			domain = 'file'
+			scheme IS NULL
 			AND state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
 		)
-		OR (domain = 'known' AND state IN ('full', 'stored'))
-		OR (
-			domain = 'result'
-			AND state IN ('proposed', 'pass', 'info', 'warn', 'error', 'summary')
-		)
+		OR (scheme = 'known' AND state IN ('full', 'stored'))
+		OR (scheme = 'unknown' AND state IN ('full', 'stored'))
+		OR (scheme = 'read' AND state IN ('pass', 'info'))
+		OR (scheme = 'drop' AND state IN ('pass', 'info'))
+		OR (scheme = 'edit' AND state IN ('proposed', 'pass', 'warn', 'error'))
+		OR (scheme = 'run' AND state IN ('proposed', 'pass', 'warn'))
+		OR (scheme = 'env' AND state IN ('proposed', 'pass', 'warn'))
+		OR (scheme = 'delete' AND state IN ('proposed', 'pass', 'warn'))
+		OR (scheme = 'ask_user' AND state IN ('proposed', 'pass', 'warn'))
+		OR (scheme = 'summary' AND state = 'summary')
+		OR (scheme = 'system' AND state = 'info')
+		OR (scheme = 'user' AND state = 'info')
+		OR (scheme = 'reasoning' AND state = 'info')
+		OR (scheme = 'prompt' AND state = 'info')
+		OR (scheme = 'keys' AND state = 'info')
+		OR (scheme = 'inject' AND state = 'info')
+		OR (scheme = 'retry' AND state = 'error')
+		OR (scheme IN ('http', 'https') AND state IN ('full', 'readonly'))
 	)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_key
+CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_path
 ON known_entries (run_id, path);
-CREATE INDEX IF NOT EXISTS idx_known_entries_domain_state
-ON known_entries (run_id, domain, state);
+CREATE INDEX IF NOT EXISTS idx_known_entries_scheme_state
+ON known_entries (run_id, scheme, state);
 CREATE INDEX IF NOT EXISTS idx_known_entries_turn
 ON known_entries (run_id, turn);
 
@@ -111,7 +124,7 @@ SELECT
 	, meta
 	, turn
 FROM known_entries
-WHERE domain = 'result' AND state = 'proposed';
+WHERE state = 'proposed';
 
 -- TURN HISTORY VIEW: reconstructed from known_entries
 CREATE VIEW IF NOT EXISTS v_turn_history AS
@@ -119,7 +132,7 @@ SELECT
 	run_id
 	, turn
 	, path
-	, domain
+	, scheme
 	, state
 	, value
 	, meta
