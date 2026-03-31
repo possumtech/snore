@@ -12,7 +12,7 @@ classified AS (
 		, turn
 		, meta
 		, tokens AS tokens_full
-		, bucketOf(scheme, state, turn) AS bucket
+		, fidelityOf(scheme, state, turn) AS fidelity
 		, CASE
 			WHEN scheme = 'prompt'
 				THEN ROW_NUMBER() OVER (
@@ -22,43 +22,44 @@ classified AS (
 			ELSE 1
 		END AS prompt_rank
 	FROM known_entries
-	WHERE state NOT IN ('proposed', 'ignore')
+	WHERE state NOT IN ('proposed')
 ),
 projected AS (
 	SELECT
 		run_id
 		, id
 		, path
-		, bucket
-		, CASE bucket
-			WHEN 'known' THEN value
-			WHEN 'stored' THEN ''
-			WHEN 'file:path' THEN ''
-			WHEN 'file:symbols'
-				THEN COALESCE(json_extract(meta, '$.symbols'), '')
-			WHEN 'file' THEN value
-			WHEN 'unknown' THEN value
-			WHEN 'prompt' THEN value
-			WHEN 'result'
+		, scheme
+		, fidelity
+		, CASE fidelity
+			WHEN 'full'
 				THEN CASE
+					WHEN scheme IS NULL THEN value
+					WHEN scheme = 'known' THEN value
+					WHEN scheme = 'unknown' THEN value
+					WHEN scheme = 'prompt' THEN value
+					WHEN scheme IN ('http', 'https') THEN value
 					WHEN state = 'summary' THEN value
 					WHEN scheme IN ('env', 'run', 'ask_user') THEN value
 					ELSE ''
 				END
+			WHEN 'summary'
+				THEN COALESCE(json_extract(meta, '$.symbols'), '')
 			ELSE ''
 		END AS content
-		, CASE bucket
-			WHEN 'file'
+		, CASE
+			WHEN scheme IS NULL AND fidelity = 'full'
 				THEN json_object(
-					'state'
-					, CASE state
-						WHEN 'readonly' THEN 'file:readonly'
-						WHEN 'active' THEN 'file:active'
-						ELSE 'file'
-					END
+					'constraint'
+					, json_extract(meta, '$.constraint')
 					, 'tokens_full', tokens_full
 				)
-			WHEN 'result'
+			WHEN
+				scheme IS NOT NULL
+				AND fidelity = 'full'
+				AND scheme NOT IN (
+					'known', 'unknown', 'prompt', 'http', 'https'
+				)
 				THEN json_object(
 					'tool', COALESCE(scheme, state)
 					, 'target', COALESCE(
@@ -73,26 +74,33 @@ projected AS (
 			ELSE NULL
 		END AS meta
 	FROM classified
-	WHERE bucket IS NOT NULL AND prompt_rank = 1
+	WHERE fidelity IS NOT NULL AND prompt_rank = 1
 )
 SELECT
 	run_id
 	, path
-	, bucket
+	, scheme
+	, fidelity
 	, content
 	, meta
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY
-			CASE bucket
-				WHEN 'known' THEN 1
-				WHEN 'stored' THEN 2
-				WHEN 'file:path' THEN 3
-				WHEN 'file:symbols' THEN 4
-				WHEN 'file' THEN 5
-				WHEN 'result' THEN 6
-				WHEN 'unknown' THEN 7
-				WHEN 'prompt' THEN 8
+			CASE
+				WHEN scheme = 'known' AND fidelity = 'full' THEN 1
+				WHEN scheme = 'known' AND fidelity = 'index' THEN 2
+				WHEN scheme IS NULL AND fidelity = 'index' THEN 3
+				WHEN scheme IS NULL AND fidelity = 'summary' THEN 4
+				WHEN scheme IS NULL AND fidelity = 'full' THEN 5
+				WHEN scheme IN ('http', 'https') AND fidelity = 'full'
+					THEN 5
+				WHEN scheme NOT IN (
+					'known', 'unknown', 'prompt', 'http', 'https'
+				)
+				AND scheme IS NOT NULL THEN 6
+				WHEN scheme = 'unknown' THEN 7
+				WHEN scheme = 'prompt' THEN 8
+				ELSE 9
 			END
 			, id
 	) AS ordinal

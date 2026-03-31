@@ -411,8 +411,8 @@ describe("Engine integration", () => {
 		});
 	});
 
-	describe("symbol file bucketing via VIEW", () => {
-		it("symbol files at turn 0 are bucketed as file:path", async () => {
+	describe("symbol file fidelity via VIEW", () => {
+		it("symbol files at turn 0 have index fidelity", async () => {
 			await store.upsert(RUN_ID, 0, "src/demoted.js", pad(100), "symbols", {
 				meta: { symbols: "function foo()" },
 			});
@@ -432,13 +432,13 @@ describe("Engine integration", () => {
 			const demoted = rows.find((r) => r.path === "src/demoted.js");
 			assert.ok(demoted, "demoted symbols file should appear in turn_context");
 			assert.strictEqual(
-				demoted.bucket,
-				"file:path",
-				"demoted symbols should be file:path bucket",
+				demoted.fidelity,
+				"index",
+				"demoted symbols should have index fidelity",
 			);
 		});
 
-		it("symbol files at turn > 0 are bucketed as file:symbols", async () => {
+		it("symbol files at turn > 0 have summary fidelity", async () => {
 			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "symbols", {
 				meta: { symbols: "function bar()" },
 			});
@@ -458,9 +458,9 @@ describe("Engine integration", () => {
 			const active = rows.find((r) => r.path === "src/active.js");
 			assert.ok(active, "active symbols file should appear in turn_context");
 			assert.strictEqual(
-				active.bucket,
-				"file:symbols",
-				"active symbols should be file:symbols bucket",
+				active.fidelity,
+				"summary",
+				"active symbols should have summary fidelity",
 			);
 			assert.ok(
 				active.content.includes("function bar()"),

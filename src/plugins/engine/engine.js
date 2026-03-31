@@ -53,7 +53,7 @@ export default class Engine {
 					turn: sequence,
 					ordinal: 0,
 					path: "system://prompt",
-					bucket: "system",
+					fidelity: "full",
 					content: rummy.systemPrompt,
 					tokens: countTokens(rummy.systemPrompt),
 					meta: null,
@@ -69,7 +69,7 @@ export default class Engine {
 				run_id: runId,
 				turn: sequence,
 			});
-			const hasPrompt = rows.some((r) => r.bucket === "prompt");
+			const hasPrompt = rows.some((r) => r.scheme === "prompt");
 
 			if (!hasPrompt && rummy.loopPrompt) {
 				const maxOrdinal = rows.length > 0 ? rows.at(-1).ordinal : 0;
@@ -78,7 +78,7 @@ export default class Engine {
 					turn: sequence,
 					ordinal: maxOrdinal + 1,
 					path: "continuation://prompt",
-					bucket: "continuation",
+					fidelity: "full",
 					content: rummy.loopPrompt,
 					tokens: countTokens(rummy.loopPrompt),
 					meta: null,

@@ -49,19 +49,29 @@ export default class FileScanner {
 		});
 		if (activeRuns.length === 0) return;
 
-		// Stat all files concurrently (no content reads)
+		// Load file constraints for this project
+		const constraintRows = await this.#db.get_file_constraints.all({
+			project_id: projectId,
+		});
+		const constraints = new Map(
+			constraintRows.map((c) => [c.pattern, c.visibility]),
+		);
+
+		// Stat all files concurrently (no content reads), skip ignored
 		const diskStats = new Map();
 		const statResults = await Promise.all(
-			mappableFiles.map(async (relPath) => {
-				const fullPath = join(projectPath, relPath);
-				try {
-					const stat = await fs.stat(fullPath);
-					if (!stat.isFile()) return null;
-					return { relPath, mtime: stat.mtimeMs, fullPath };
-				} catch {
-					return null;
-				}
-			}),
+			mappableFiles
+				.filter((relPath) => constraints.get(relPath) !== "ignore")
+				.map(async (relPath) => {
+					const fullPath = join(projectPath, relPath);
+					try {
+						const stat = await fs.stat(fullPath);
+						if (!stat.isFile()) return null;
+						return { relPath, mtime: stat.mtimeMs, fullPath };
+					} catch {
+						return null;
+					}
+				}),
 		);
 		for (const entry of statResults) {
 			if (entry)
@@ -72,11 +82,17 @@ export default class FileScanner {
 		}
 
 		for (const run of activeRuns) {
-			await this.#syncRun(run.id, projectPath, diskStats, currentTurn);
+			await this.#syncRun(
+				run.id,
+				projectPath,
+				diskStats,
+				currentTurn,
+				constraints,
+			);
 		}
 	}
 
-	async #syncRun(runId, projectPath, diskStats, currentTurn) {
+	async #syncRun(runId, projectPath, diskStats, currentTurn, constraints) {
 		const existing = await this.#knownStore.getFileEntries(runId);
 		const fileKeys = new Map();
 		for (const entry of existing) {
@@ -111,6 +127,7 @@ export default class FileScanner {
 
 			const isRoot = !relPath.includes("/");
 			const turn = isRoot ? currentTurn : entry?.turn || 0;
+			const constraint = constraints.get(relPath) || null;
 
 			await this.#knownStore.upsert(
 				runId,
@@ -120,6 +137,7 @@ export default class FileScanner {
 				entry?.state || "full",
 				{
 					hash,
+					meta: { constraint },
 					updatedAt: new Date(mtime).toISOString(),
 				},
 			);
@@ -136,13 +154,14 @@ export default class FileScanner {
 				if (!symbolText) continue;
 				const current = await this.#knownStore.getValue(runId, relPath);
 				if (current !== null) {
+					const constraint = constraints.get(relPath) || null;
 					await this.#knownStore.upsert(
 						runId,
 						currentTurn,
 						relPath,
 						current,
 						"full",
-						{ meta: { symbols: symbolText } },
+						{ meta: { symbols: symbolText, constraint } },
 					);
 				}
 			}
@@ -166,6 +185,7 @@ export default class FileScanner {
 				continue;
 			}
 			const isRoot = !relPath.includes("/");
+			const constraint = constraints.get(relPath) || null;
 			await this.#knownStore.upsert(
 				runId,
 				isRoot ? currentTurn : 0,
@@ -174,6 +194,7 @@ export default class FileScanner {
 				"full",
 				{
 					hash: hashContent(content),
+					meta: { constraint },
 					updatedAt: new Date(mtime).toISOString(),
 				},
 			);

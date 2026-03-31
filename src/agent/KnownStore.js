@@ -30,13 +30,11 @@ export default class KnownStore {
 		state,
 		{ meta = null, hash = null, updatedAt = null } = {},
 	) {
-		const scheme = KnownStore.scheme(path);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			turn,
 			path,
 			value,
-			scheme,
 			state,
 			hash,
 			meta: meta ? JSON.stringify(meta) : null,

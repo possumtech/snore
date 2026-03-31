@@ -1,10 +1,10 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, turn, path, value, scheme, state, hash, meta
+	run_id, turn, path, value, state, hash, meta
 	, tokens, tokens_full, updated_at
 )
 VALUES (
-	:run_id, :turn, :path, :value, :scheme, :state, :hash, :meta
+	:run_id, :turn, :path, :value, :state, :hash, :meta
 	, length(:value) / 4
 	, length(:value) / 4
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
@@ -52,9 +52,7 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	state = :state
-	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
 	, tokens = CASE
-		WHEN :state = 'ignore' THEN 0
 		WHEN :state = 'symbols'
 			THEN CASE
 				WHEN

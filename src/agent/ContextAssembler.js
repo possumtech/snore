@@ -199,49 +199,83 @@ export default class ContextAssembler {
 
 		for (const row of rows) {
 			const meta = row.meta ? JSON.parse(row.meta) : null;
-			switch (row.bucket) {
-				case "system":
-					systemContent = row.content;
-					break;
-				case "file":
+			const { scheme, fidelity } = row;
+
+			// Synthetic rows
+			if (row.path === "system://prompt") {
+				systemContent = row.content;
+				continue;
+			}
+			if (row.path === "continuation://prompt") {
+				continuation = row.content;
+				continue;
+			}
+
+			// Files (scheme IS NULL)
+			if (scheme === null) {
+				if (fidelity === "full") {
+					const constraint = meta?.constraint;
+					const label =
+						constraint === "readonly"
+							? "file:readonly"
+							: constraint === "active"
+								? "file:active"
+								: "file";
 					files.push({
 						path: row.path,
 						value: row.content,
 						tokens: row.tokens,
-						state: meta?.state || "file",
+						state: label,
 					});
-					break;
-				case "file:symbols":
+				} else if (fidelity === "summary") {
 					symbolFiles.push({ path: row.path, value: row.content });
-					break;
-				case "file:path":
+				} else {
 					storedFiles.push({ path: row.path });
-					break;
-				case "known":
+				}
+				continue;
+			}
+
+			// Knowledge
+			if (scheme === "known") {
+				if (fidelity === "full")
 					activeKnown.push({ path: row.path, value: row.content });
-					break;
-				case "stored":
-					storedKnown.push({ path: row.path });
-					break;
-				case "result":
-					results.push({
+				else storedKnown.push({ path: row.path });
+				continue;
+			}
+
+			// Unknowns
+			if (scheme === "unknown") {
+				unknowns.push({ value: row.content });
+				continue;
+			}
+
+			// Prompt
+			if (scheme === "prompt") {
+				prompt = row.content;
+				continue;
+			}
+
+			// URLs
+			if (scheme === "http" || scheme === "https") {
+				if (fidelity === "full")
+					files.push({
 						path: row.path,
 						value: row.content,
-						tool: meta?.tool,
-						target: meta?.target,
-						state: meta?.state,
+						tokens: row.tokens,
+						state: "file",
 					});
-					break;
-				case "unknown":
-					unknowns.push({ value: row.content });
-					break;
-				case "prompt":
-					prompt = row.content;
-					break;
-				case "continuation":
-					continuation = row.content;
-					break;
+				else storedFiles.push({ path: row.path });
+				continue;
 			}
+
+			// Results (everything else with a scheme)
+			results.push({
+				path: row.path,
+				value: row.content,
+				tool: meta?.tool,
+				target: meta?.target,
+				state: meta?.state,
+			});
 		}
 
 		const parts = [];

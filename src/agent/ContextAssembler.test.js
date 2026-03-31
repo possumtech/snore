@@ -178,7 +178,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 0,
 					path: "system://prompt",
-					bucket: "system",
+					scheme: "system",
+					fidelity: "full",
 					content: "You are helpful.",
 					tokens: 5,
 					meta: null,
@@ -186,7 +187,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 1,
 					path: "known://auth",
-					bucket: "known",
+					scheme: "known",
+					fidelity: "full",
 					content: "JWT",
 					tokens: 1,
 					meta: null,
@@ -194,15 +196,17 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 2,
 					path: "src/app.js",
-					bucket: "file",
+					scheme: null,
+					fidelity: "full",
 					content: "const x = 1;",
 					tokens: 5,
-					meta: JSON.stringify({ state: "file" }),
+					meta: null,
 				},
 				{
 					ordinal: 3,
 					path: "continuation://prompt",
-					bucket: "continuation",
+					scheme: "continuation",
+					fidelity: "full",
 					content: "Turn 2/15",
 					tokens: 3,
 					meta: null,
@@ -219,12 +223,13 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages[1].content, "Turn 2/15");
 		});
 
-		it("uses prompt bucket as prompt, not continuation", () => {
+		it("uses prompt scheme as prompt, not continuation", () => {
 			const rows = [
 				{
 					ordinal: 0,
 					path: "system://prompt",
-					bucket: "system",
+					scheme: "system",
+					fidelity: "full",
 					content: "sys",
 					tokens: 1,
 					meta: null,
@@ -232,7 +237,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 1,
 					path: "prompt://1",
-					bucket: "prompt",
+					scheme: "prompt",
+					fidelity: "full",
 					content: "User prompt",
 					tokens: 3,
 					meta: null,
@@ -249,7 +255,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 0,
 					path: "system://prompt",
-					bucket: "system",
+					scheme: "system",
+					fidelity: "full",
 					content: "sys",
 					tokens: 1,
 					meta: null,
@@ -257,7 +264,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 1,
 					path: "edit://1",
-					bucket: "result",
+					scheme: "edit",
+					fidelity: "full",
 					content: "",
 					tokens: 0,
 					meta: JSON.stringify({
@@ -269,7 +277,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 2,
 					path: "summary://1",
-					bucket: "result",
+					scheme: "summary",
+					fidelity: "full",
 					content: "Fixed it",
 					tokens: 2,
 					meta: JSON.stringify({
@@ -291,7 +300,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 0,
 					path: "system://prompt",
-					bucket: "system",
+					scheme: "system",
+					fidelity: "full",
 					content: "sys",
 					tokens: 1,
 					meta: null,
@@ -303,12 +313,13 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages[0].content, "sys");
 		});
 
-		it("renders file:path and stored buckets", () => {
+		it("renders index fidelity for files and stored known", () => {
 			const rows = [
 				{
 					ordinal: 0,
 					path: "system://prompt",
-					bucket: "system",
+					scheme: "system",
+					fidelity: "full",
 					content: "sys",
 					tokens: 1,
 					meta: null,
@@ -316,7 +327,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 1,
 					path: "src/utils.js",
-					bucket: "file:path",
+					scheme: null,
+					fidelity: "index",
 					content: "",
 					tokens: 0,
 					meta: null,
@@ -324,7 +336,8 @@ describe("ContextAssembler", () => {
 				{
 					ordinal: 2,
 					path: "known://old",
-					bucket: "stored",
+					scheme: "known",
+					fidelity: "index",
 					content: "",
 					tokens: 0,
 					meta: null,
@@ -335,10 +348,10 @@ describe("ContextAssembler", () => {
 
 			assert.ok(
 				content.includes("File Index"),
-				"stored files render as File Index",
+				"index files render as File Index",
 			);
 			assert.ok(content.includes("src/utils.js"));
-			assert.ok(content.includes("Stored"), "stored known renders as Stored");
+			assert.ok(content.includes("Stored"), "index known renders as Stored");
 			assert.ok(content.includes("known://old"));
 		});
 	});

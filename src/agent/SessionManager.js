@@ -60,12 +60,12 @@ export default class SessionManager {
 	}
 
 	async syncBuffered(projectId, files) {
-		// Buffer sync: mark client-active files across all active runs
-		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
-		for (const run of runs) {
-			for (const path of files) {
-				await this.#knownStore.upsert(run.id, 0, path, "", "active");
-			}
+		for (const path of files) {
+			await this.#db.upsert_file_constraint.run({
+				project_id: projectId,
+				pattern: path,
+				visibility: "active",
+			});
 		}
 	}
 
@@ -87,9 +87,15 @@ export default class SessionManager {
 		const run = await this.#db.get_latest_run.get({ project_id: projectId });
 		if (!run) return [];
 		const rows = await this.#knownStore.getFileStatesByPattern(run.id, path);
+		const constraints = await this.#db.get_file_constraints.all({
+			project_id: projectId,
+		});
+		const constraintMap = new Map(
+			constraints.map((c) => [c.pattern, c.visibility]),
+		);
 		return rows.map((r) => ({
 			path: r.path,
-			state: r.state,
+			state: constraintMap.get(r.path) || r.state,
 			turn: r.turn,
 		}));
 	}
@@ -101,19 +107,28 @@ export default class SessionManager {
 		return relative(project.path, path);
 	}
 
-	async #setFileState(projectId, pattern, state) {
+	async #setConstraint(projectId, pattern, constraint) {
 		const path = await this.#normalizePath(projectId, pattern);
 		if (!path) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
 			pattern: path,
-			constraint: state,
+			constraint,
 		});
 
-		const runs = await this.#db.get_all_runs.all({ project_id: projectId });
-		for (const run of runs) {
-			await this.#knownStore.setFileState(run.id, path, state);
+		await this.#db.upsert_file_constraint.run({
+			project_id: projectId,
+			pattern: path,
+			constraint,
+		});
+
+		// ignore → demote across all runs so file leaves context immediately
+		if (constraint === "ignore") {
+			const runs = await this.#db.get_all_runs.all({ project_id: projectId });
+			for (const run of runs) {
+				await this.#knownStore.demoteByPattern(run.id, path, null);
+			}
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
@@ -121,7 +136,7 @@ export default class SessionManager {
 			projectId,
 			projectPath: project.path,
 			pattern: path,
-			constraint: state,
+			constraint,
 			db: this.#db,
 		});
 
@@ -129,15 +144,15 @@ export default class SessionManager {
 	}
 
 	async activate(projectId, pattern) {
-		return this.#setFileState(projectId, pattern, "active");
+		return this.#setConstraint(projectId, pattern, "active");
 	}
 
 	async readOnly(projectId, pattern) {
-		return this.#setFileState(projectId, pattern, "readonly");
+		return this.#setConstraint(projectId, pattern, "readonly");
 	}
 
 	async ignore(projectId, pattern) {
-		return this.#setFileState(projectId, pattern, "ignore");
+		return this.#setConstraint(projectId, pattern, "ignore");
 	}
 
 	async drop(projectId, pattern) {
@@ -147,20 +162,20 @@ export default class SessionManager {
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
 			pattern: path,
-			constraint: null,
+			visibility: null,
 		});
 
-		const runs = await this.#db.get_all_runs.all({ project_id: projectId });
-		for (const run of runs) {
-			await this.#knownStore.removeFilesByPattern(run.id, path);
-		}
+		await this.#db.delete_file_constraint.run({
+			project_id: projectId,
+			pattern: path,
+		});
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
 			pattern: path,
-			constraint: null,
+			visibility: null,
 			db: this.#db,
 		});
 

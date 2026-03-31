@@ -17,8 +17,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 	, client_id TEXT
 	, persona TEXT
 	, system_prompt TEXT
-	, temperature REAL
-	, context_limit INTEGER
+	, temperature REAL CHECK (
+		temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
+	)
+	, context_limit INTEGER CHECK (context_limit IS NULL OR context_limit >= 1024)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -40,8 +42,8 @@ CREATE TABLE IF NOT EXISTS runs (
 	)
 	, config JSON
 	, alias TEXT NOT NULL UNIQUE
-	, next_result_seq INTEGER NOT NULL DEFAULT 1
-	, next_turn INTEGER NOT NULL DEFAULT 1
+	, next_result_seq INTEGER NOT NULL DEFAULT 1 CHECK (next_result_seq >= 1)
+	, next_turn INTEGER NOT NULL DEFAULT 1 CHECK (next_turn >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -51,11 +53,11 @@ CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias);
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, sequence INTEGER NOT NULL
-	, prompt_tokens INTEGER DEFAULT 0
-	, completion_tokens INTEGER DEFAULT 0
-	, total_tokens INTEGER DEFAULT 0
-	, cost REAL DEFAULT 0
+	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
+	, prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0)
+	, completion_tokens INTEGER NOT NULL DEFAULT 0 CHECK (completion_tokens >= 0)
+	, total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0)
+	, cost REAL NOT NULL DEFAULT 0 CHECK (cost >= 0)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
@@ -64,30 +66,43 @@ CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 
+-- File constraints: client-set visibility rules, project-scoped.
+-- Persists across runs. Orthogonal to fidelity.
+CREATE TABLE IF NOT EXISTS file_constraints (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
+	, pattern TEXT NOT NULL
+	, visibility TEXT NOT NULL CHECK (visibility IN ('active', 'readonly', 'ignore'))
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, UNIQUE (project_id, pattern)
+);
+CREATE INDEX IF NOT EXISTS idx_file_constraints_project
+ON file_constraints (project_id);
+
 -- Known K/V Store: the unified state machine
 -- Files, knowledge, tool results, audit — everything is a keyed entry.
--- scheme: extracted from URI (known://, edit://, etc.)
--- NULL for bare file paths.
+-- scheme: derived from path via schemeOf(). Generated column — always correct by definition.
+-- File states: 'full' or 'symbols' (fidelity only, no client constraints).
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, turn INTEGER NOT NULL DEFAULT 0
+	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
 	, path TEXT NOT NULL
 	, value TEXT NOT NULL DEFAULT ''
-	, scheme TEXT
+	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, state TEXT NOT NULL
 	, hash TEXT
 	, meta JSON
-	, tokens INTEGER NOT NULL DEFAULT 0
-	, tokens_full INTEGER NOT NULL DEFAULT 0
-	, refs INTEGER NOT NULL DEFAULT 0
-	, write_count INTEGER NOT NULL DEFAULT 1
+	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
+	, tokens_full INTEGER NOT NULL DEFAULT 0 CHECK (tokens_full >= 0)
+	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
+	, write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, CHECK (
 		CASE
 			WHEN scheme IS NULL
-				THEN state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
+				THEN state IN ('full', 'symbols')
 			WHEN scheme IN ('known', 'unknown')
 				THEN state IN ('full', 'stored')
 			WHEN scheme IN ('edit')
@@ -105,7 +120,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 			WHEN scheme = 'retry'
 				THEN state = 'error'
 			WHEN scheme IN ('http', 'https')
-				THEN state IN ('full', 'readonly')
+				THEN state IN ('full')
 			ELSE 0
 		END
 	)
@@ -130,15 +145,17 @@ WHERE state = 'proposed';
 
 -- Turn context: materialized snapshot of what the model sees each turn.
 -- known_entries is the warehouse. turn_context is the shipment.
+-- scheme: derived from path. fidelity: how much of the entry the model sees.
 CREATE TABLE IF NOT EXISTS turn_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, turn INTEGER NOT NULL
-	, ordinal INTEGER NOT NULL
+	, turn INTEGER NOT NULL CHECK (turn >= 1)
+	, ordinal INTEGER NOT NULL CHECK (ordinal >= 0)
 	, path TEXT NOT NULL
-	, bucket TEXT NOT NULL
+	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
+	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'summary', 'index'))
 	, content TEXT NOT NULL DEFAULT ''
-	, tokens INTEGER NOT NULL DEFAULT 0
+	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, meta JSON
 );
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn

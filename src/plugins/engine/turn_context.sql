@@ -4,14 +4,14 @@ WHERE run_id = :run_id AND turn = :turn;
 
 -- PREP: materialize_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, bucket, content, tokens, meta
+	run_id, turn, ordinal, path, fidelity, content, tokens, meta
 )
 SELECT
 	run_id
 	, :turn
 	, ordinal
 	, path
-	, bucket
+	, fidelity
 	, content
 	, tokens
 	, meta
@@ -20,14 +20,14 @@ WHERE run_id = :run_id;
 
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, bucket, content, tokens, meta
+	run_id, turn, ordinal, path, fidelity, content, tokens, meta
 )
 VALUES (
-	:run_id, :turn, :ordinal, :path, :bucket, :content, :tokens, :meta
+	:run_id, :turn, :ordinal, :path, :fidelity, :content, :tokens, :meta
 );
 
 -- PREP: get_turn_context
-SELECT ordinal, path, bucket, content, tokens, meta
+SELECT ordinal, path, scheme, fidelity, content, tokens, meta
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn
 ORDER BY ordinal;
@@ -40,11 +40,17 @@ WHERE run_id = :run_id AND turn = :turn;
 -- PREP: get_turn_distribution
 SELECT
 	CASE
-		WHEN bucket IN ('system', 'continuation', 'prompt') THEN 'system'
-		WHEN bucket IN ('file', 'file:symbols') THEN 'files'
-		WHEN bucket IN ('file:path', 'stored') THEN 'keys'
-		WHEN bucket = 'known' THEN 'known'
-		WHEN bucket IN ('result', 'unknown') THEN 'history'
+		WHEN scheme IS NULL AND fidelity = 'full' THEN 'files'
+		WHEN scheme IS NULL AND fidelity = 'summary' THEN 'files'
+		WHEN scheme IS NULL AND fidelity = 'index' THEN 'keys'
+		WHEN scheme IN ('http', 'https') THEN 'files'
+		WHEN scheme = 'known' AND fidelity = 'full' THEN 'known'
+		WHEN scheme = 'known' AND fidelity = 'index' THEN 'keys'
+		WHEN scheme = 'unknown' THEN 'history'
+		WHEN scheme = 'prompt' THEN 'system'
+		WHEN path = 'system://prompt' THEN 'system'
+		WHEN path = 'continuation://prompt' THEN 'system'
+		WHEN scheme IS NOT NULL THEN 'history'
 		ELSE 'system'
 	END AS bucket,
 	COALESCE(SUM(tokens), 0) AS tokens,
