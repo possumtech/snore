@@ -6,6 +6,7 @@ import HeuristicMatcher from "./HeuristicMatcher.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
+import ResponseHealer from "./ResponseHealer.js";
 import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
