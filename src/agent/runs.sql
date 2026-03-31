@@ -27,10 +27,24 @@ FROM runs
 WHERE id = :id;
 
 -- PREP: get_runs_by_session
-SELECT alias, type, status, created_at
-FROM runs
-WHERE session_id = :session_id
-ORDER BY created_at DESC;
+SELECT
+	r.alias
+	, r.type
+	, r.status
+	, r.created_at
+	, r.next_turn - 1 AS turn
+	, (
+		SELECT ke.value
+		FROM known_entries AS ke
+		WHERE
+			ke.run_id = r.id
+			AND ke.scheme = 'summary'
+		ORDER BY ke.id DESC
+		LIMIT 1
+	) AS summary
+FROM runs AS r
+WHERE r.session_id = :session_id
+ORDER BY r.created_at DESC;
 
 -- PREP: get_next_run_alias
 SELECT

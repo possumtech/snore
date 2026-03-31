@@ -177,16 +177,24 @@ export default class TurnExecutor {
 		// Parse XML commands from content
 		const { commands, unparsed } = XmlParser.parse(content);
 
-		// Store reasoning (explicit reasoning + unparsed text)
-		const reasoning = [responseMessage?.reasoning_content, unparsed]
-			.filter(Boolean)
-			.join("\n");
-		if (reasoning) {
+		// Store reasoning (model thinking)
+		if (responseMessage?.reasoning_content) {
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
 				`reasoning://${turn}`,
-				reasoning,
+				responseMessage.reasoning_content,
+				"info",
+			);
+		}
+
+		// Store content (unparsed assistant text)
+		if (unparsed) {
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`content://${turn}`,
+				unparsed,
 				"info",
 			);
 		}

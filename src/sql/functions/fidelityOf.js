@@ -12,7 +12,7 @@ export default function (scheme, state, turn) {
 	if (scheme === "http" || scheme === "https")
 		return turn > 0 ? "full" : "index";
 	if (
-		["system", "user", "reasoning", "inject", "keys", "search"].includes(scheme)
+		["system", "user", "reasoning", "content", "inject", "keys", "search"].includes(scheme)
 	)
 		return null;
 	return "full";

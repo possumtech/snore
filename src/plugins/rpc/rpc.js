@@ -267,10 +267,74 @@ export default class CoreRpcPlugin {
 					run: r.alias,
 					type: r.type,
 					status: r.status,
+					turn: r.turn,
+					summary: r.summary || "",
 					created: r.created_at,
 				}));
 			},
-			description: "List all runs for the current session.",
+			description:
+				"List all runs for the current session with turn count and latest summary.",
+			requiresInit: true,
+		});
+
+		r.register("getRun", {
+			handler: async (params, ctx) => {
+				const run = await ctx.db.get_run_by_alias.get({
+					alias: params.run,
+				});
+				if (!run)
+					throw new Error(msg("error.run_not_found", { runId: params.run }));
+
+				const [telemetry, reasoning, content, history, promptRow, summaryRow] =
+					await Promise.all([
+						ctx.db.get_run_usage.get({ run_id: run.id }),
+						ctx.db.get_reasoning.all({ run_id: run.id }),
+						ctx.db.get_content.all({ run_id: run.id }),
+						ctx.db.get_history.all({ run_id: run.id }),
+						ctx.db.get_latest_user_prompt.get({ run_id: run.id }),
+						ctx.db.get_latest_summary.get({ run_id: run.id }),
+					]);
+
+				return {
+					run: run.alias,
+					turn: run.next_turn - 1,
+					status: run.status,
+					context: {
+						telemetry: {
+							prompt_tokens: telemetry.prompt_tokens,
+							completion_tokens: telemetry.completion_tokens,
+							total_tokens: telemetry.total_tokens,
+							cost: telemetry.cost,
+						},
+						reasoning: reasoning.map((r) => ({
+							path: r.path,
+							value: r.value,
+							turn: r.turn,
+						})),
+						content: content.map((c) => ({
+							path: c.path,
+							value: c.value,
+							turn: c.turn,
+						})),
+						history: history.map((h) => {
+							const scheme = h.path.split("://")[0];
+							return {
+								scheme,
+								path: h.path,
+								status: h.status,
+								value: h.value,
+								meta: h.meta ? JSON.parse(h.meta) : null,
+								turn: h.turn,
+							};
+						}),
+					},
+					last_user_prompt: promptRow?.value || "",
+					last_summary: summaryRow?.value || "",
+				};
+			},
+			description:
+				"Get full run detail: context (telemetry, reasoning, content, history), last prompt, last summary.",
+			params: { run: "string — run alias" },
 			requiresInit: true,
 		});
 
