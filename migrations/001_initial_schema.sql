@@ -128,18 +128,21 @@ SELECT
 FROM known_entries
 WHERE state = 'proposed';
 
--- TURN HISTORY VIEW: reconstructed from known_entries
-CREATE VIEW IF NOT EXISTS v_turn_history AS
-SELECT
-	run_id
-	, turn
-	, path
-	, scheme
-	, state
-	, value
-	, meta
-FROM known_entries
-ORDER BY run_id, turn, id;
+-- Turn context: materialized snapshot of what the model sees each turn.
+-- known_entries is the warehouse. turn_context is the shipment.
+CREATE TABLE IF NOT EXISTS turn_context (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, turn INTEGER NOT NULL
+	, ordinal INTEGER NOT NULL
+	, path TEXT NOT NULL
+	, bucket TEXT NOT NULL
+	, content TEXT NOT NULL DEFAULT ''
+	, tokens INTEGER NOT NULL DEFAULT 0
+	, meta JSON
+);
+CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn
+ON turn_context (run_id, turn);
 
 -- Provider model catalog (cached from OpenRouter /models, etc.)
 CREATE TABLE IF NOT EXISTS provider_models (

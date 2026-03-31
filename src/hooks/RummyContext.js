@@ -55,6 +55,14 @@ export default class RummyContext {
 		return this.#context.contextSize || null;
 	}
 
+	get systemPrompt() {
+		return this.#context.systemPrompt || "";
+	}
+
+	get loopPrompt() {
+		return this.#context.loopPrompt || "";
+	}
+
 	get system() {
 		return this.#root.children.find((c) => c.tag === "system");
 	}

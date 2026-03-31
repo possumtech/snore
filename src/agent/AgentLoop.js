@@ -266,8 +266,10 @@ export default class AgentLoop {
 						completion_tokens: runUsage.completion_tokens,
 						total_tokens: runUsage.total_tokens,
 						cost: runUsage.cost,
-						context_distribution:
-							await this.#knownStore.getContextDistribution(currentRunId),
+						context_distribution: await this.#db.get_turn_distribution.all({
+							run_id: currentRunId,
+							turn: result.turn,
+						}),
 					},
 				});
 				if (unresolved.length > 0) {
@@ -298,8 +300,10 @@ export default class AgentLoop {
 					summary: latestSummary?.value || "",
 					unknownCount: unknowns.length,
 					usage: runUsage,
-					contextDistribution:
-						await this.#knownStore.getContextDistribution(currentRunId),
+					contextDistribution: await this.#db.get_turn_distribution.all({
+						run_id: currentRunId,
+						turn: result.turn,
+					}),
 				};
 
 				const progress = healer.assessProgress(result);

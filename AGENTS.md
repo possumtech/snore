@@ -14,8 +14,8 @@ Move/copy across file and K/V namespaces. Edit search/replace attribute mode.
 ## Todo: Relevance Engine
 
 `src/plugins/engine/engine.js` — an `onTurn` hook (priority 20) that manages
-context budget. Runs after file scan and existing plugins (priority 10), before
-context assembly (hardcoded after all hooks in TurnExecutor).
+context budget and materializes `turn_context`. Runs after file scan and
+existing plugins (priority 10), before context assembly (reads `turn_context`).
 
 ### Phase 0: Budget Enforcement (the engine) ✓
 
@@ -46,6 +46,19 @@ context assembly (hardcoded after all hooks in TurnExecutor).
 - [x] Promote restores `tokens` to `tokens_full`
 - [x] Demotion report injection + no report when unnecessary
 - [x] Symbol file query: turn 0 hidden, turn > 0 visible, demoted in stored files
+
+### turn_context Refactor ✓
+
+Materialized `turn_context` table replaces the fragmented query pipeline.
+
+- [x] **Schema** — `turn_context` table (run_id, turn, ordinal, path, bucket, content, tokens, meta)
+- [x] **tokens split** — `tokens` (context cost) + `tokens_full` (raw value cost) in `known_entries`
+- [x] **Engine materializes** — after budget enforcement, writes turn_context from known_entries
+- [x] **ContextAssembler.assembleFromTurnContext()** — renders from turn_context rows
+- [x] **TurnExecutor** — systemPrompt built before hooks, passed via RummyContext
+- [x] **AgentLoop** — context_distribution reads from `get_turn_distribution`
+- [x] **Deleted** — `getModelContext()`, `getContextDistribution()`, `get_context_distribution` SQL, `v_turn_history` view
+- [x] **Tests** — 80 unit + 82 integration, all passing
 
 ### Phase 2: Metrics
 

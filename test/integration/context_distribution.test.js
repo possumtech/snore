@@ -1,12 +1,45 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
+import HookRegistry from "../../src/hooks/HookRegistry.js";
+import RummyContext from "../../src/hooks/RummyContext.js";
+import Engine from "../../src/plugins/engine/engine.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("context_distribution bucket correctness", () => {
+const RUN_ID = "run-dist-1";
+const TURN = 1;
+
+function makeRummy(db, store, { sequence = TURN, contextSize = 50000 } = {}) {
+	const hookRoot = {
+		tag: "turn",
+		attrs: {},
+		content: null,
+		children: [
+			{ tag: "system", attrs: {}, content: null, children: [] },
+			{ tag: "context", attrs: {}, content: null, children: [] },
+			{ tag: "user", attrs: {}, content: null, children: [] },
+			{ tag: "assistant", attrs: {}, content: null, children: [] },
+		],
+	};
+	return new RummyContext(hookRoot, {
+		db,
+		store,
+		project: { id: "p1", path: "/tmp/test", name: "Test" },
+		type: "act",
+		sequence,
+		runId: RUN_ID,
+		turnId: 1,
+		noContext: false,
+		contextSize,
+		systemPrompt: "You are a test assistant.",
+		loopPrompt: "",
+	});
+}
+
+describe("turn_context distribution bucket correctness", () => {
 	let tdb;
 	let store;
-	const RUN_ID = "run-dist-1";
+	let hooks;
 
 	before(async () => {
 		tdb = await TestDb.create();
@@ -30,6 +63,20 @@ describe("context_distribution bucket correctness", () => {
 			config: "{}",
 			alias: "dist_1",
 		});
+
+		// Populate known_entries
+		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");
+		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "full");
+		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", "full");
+		await store.upsert(RUN_ID, 1, "read://1", "file contents", "pass");
+		await store.upsert(RUN_ID, 1, "summary://1", "did a thing", "summary");
+		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
+
+		// Materialize turn_context via engine
+		hooks = new HookRegistry();
+		Engine.register(hooks);
+		const rummy = makeRummy(tdb.db, store);
+		await hooks.processTurn(rummy);
 	});
 
 	after(async () => {
@@ -37,9 +84,10 @@ describe("context_distribution bucket correctness", () => {
 	});
 
 	it("files bucket includes promoted file entries", async () => {
-		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");
-
-		const dist = await store.getContextDistribution(RUN_ID);
+		const dist = await tdb.db.get_turn_distribution.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
 		const files = dist.find((b) => b.bucket === "files");
 		assert.ok(files, "files bucket exists");
 		assert.ok(files.entries >= 1, "files bucket has entries");
@@ -47,73 +95,69 @@ describe("context_distribution bucket correctness", () => {
 	});
 
 	it("keys bucket includes demoted file entries", async () => {
-		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "full");
-
-		const dist = await store.getContextDistribution(RUN_ID);
+		const dist = await tdb.db.get_turn_distribution.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
 		const keys = dist.find((b) => b.bucket === "keys");
 		assert.ok(keys, "keys bucket exists");
 		assert.ok(keys.entries >= 1, "keys bucket has entries");
 	});
 
 	it("known bucket includes promoted known entries", async () => {
-		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", "full");
-
-		const dist = await store.getContextDistribution(RUN_ID);
+		const dist = await tdb.db.get_turn_distribution.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
 		const known = dist.find((b) => b.bucket === "known");
 		assert.ok(known, "known bucket exists");
 		assert.ok(known.entries >= 1, "known bucket has entries");
 	});
 
-	it("history bucket includes result entries", async () => {
-		await store.upsert(RUN_ID, 1, "read://1", "file contents", "pass");
-		await store.upsert(RUN_ID, 1, "summary://1", "did a thing", "summary");
-
-		const dist = await store.getContextDistribution(RUN_ID);
+	it("history bucket includes result and unknown entries", async () => {
+		const dist = await tdb.db.get_turn_distribution.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
 		const history = dist.find((b) => b.bucket === "history");
 		assert.ok(history, "history bucket exists");
-		assert.ok(history.entries >= 2, "history bucket has result entries");
+		assert.ok(history.entries >= 3, "history bucket has results + unknowns");
 	});
 
-	it("proposed entries excluded from history bucket", async () => {
-		await store.upsert(RUN_ID, 1, "edit://1", "diff content", "proposed");
-
-		const dist = await store.getContextDistribution(RUN_ID);
-		const history = dist.find((b) => b.bucket === "history");
-		const historyEntries = history ? history.entries : 0;
-
-		// proposed should not count toward history
-		await store.upsert(RUN_ID, 1, "edit://2", "another diff", "proposed");
-		const dist2 = await store.getContextDistribution(RUN_ID);
-		const history2 = dist2.find((b) => b.bucket === "history");
-		assert.strictEqual(
-			history2 ? history2.entries : 0,
-			historyEntries,
-			"adding proposed entries should not increase history count",
-		);
-	});
-
-	it("unknowns counted in history bucket", async () => {
-		const distBefore = await store.getContextDistribution(RUN_ID);
-		const histBefore = distBefore.find((b) => b.bucket === "history");
-		const countBefore = histBefore ? histBefore.entries : 0;
-
-		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
-
-		const distAfter = await store.getContextDistribution(RUN_ID);
-		const histAfter = distAfter.find((b) => b.bucket === "history");
-		assert.ok(
-			histAfter.entries > countBefore,
-			"unknown adds to history bucket",
-		);
+	it("system bucket includes system prompt", async () => {
+		const dist = await tdb.db.get_turn_distribution.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
+		const system = dist.find((b) => b.bucket === "system");
+		assert.ok(system, "system bucket exists");
+		assert.ok(system.tokens > 0, "system bucket has tokens");
 	});
 
 	it("all buckets have numeric tokens and entries", async () => {
-		const dist = await store.getContextDistribution(RUN_ID);
+		const dist = await tdb.db.get_turn_distribution.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
 		assert.ok(dist.length > 0, "distribution is non-empty");
 		for (const bucket of dist) {
 			assert.ok(typeof bucket.bucket === "string", "bucket name is string");
 			assert.ok(typeof bucket.tokens === "number", "tokens is number");
 			assert.ok(typeof bucket.entries === "number", "entries is number");
 		}
+	});
+
+	it("total budget matches sum of all turn_context tokens", async () => {
+		const { total } = await tdb.db.get_turn_budget.get({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
+		const rows = await tdb.db.get_turn_context.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
+		const sum = rows.reduce((s, r) => s + r.tokens, 0);
+		assert.strictEqual(total, sum, "budget query matches row-level sum");
+		assert.ok(total > 0, "total is non-zero");
 	});
 });

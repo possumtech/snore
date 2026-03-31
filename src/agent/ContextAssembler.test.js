@@ -171,4 +171,175 @@ describe("ContextAssembler", () => {
 			assert.ok(promptPos > knowledgePos);
 		});
 	});
+
+	describe("assembleFromTurnContext", () => {
+		it("renders system prompt + context + continuation", () => {
+			const rows = [
+				{
+					ordinal: 0,
+					path: "system://prompt",
+					bucket: "system",
+					content: "You are helpful.",
+					tokens: 5,
+					meta: null,
+				},
+				{
+					ordinal: 1,
+					path: "known://auth",
+					bucket: "known",
+					content: "JWT",
+					tokens: 1,
+					meta: null,
+				},
+				{
+					ordinal: 2,
+					path: "src/app.js",
+					bucket: "file",
+					content: "const x = 1;",
+					tokens: 5,
+					meta: JSON.stringify({ state: "file" }),
+				},
+				{
+					ordinal: 3,
+					path: "continuation://prompt",
+					bucket: "continuation",
+					content: "Turn 2/15",
+					tokens: 3,
+					meta: null,
+				},
+			];
+			const messages = ContextAssembler.assembleFromTurnContext(rows);
+
+			assert.strictEqual(messages.length, 2);
+			assert.strictEqual(messages[0].role, "system");
+			assert.ok(messages[0].content.includes("You are helpful."));
+			assert.ok(messages[0].content.includes("known://auth"));
+			assert.ok(messages[0].content.includes("const x = 1;"));
+			assert.strictEqual(messages[1].role, "user");
+			assert.strictEqual(messages[1].content, "Turn 2/15");
+		});
+
+		it("uses prompt bucket as prompt, not continuation", () => {
+			const rows = [
+				{
+					ordinal: 0,
+					path: "system://prompt",
+					bucket: "system",
+					content: "sys",
+					tokens: 1,
+					meta: null,
+				},
+				{
+					ordinal: 1,
+					path: "prompt://1",
+					bucket: "prompt",
+					content: "User prompt",
+					tokens: 3,
+					meta: null,
+				},
+			];
+			const messages = ContextAssembler.assembleFromTurnContext(rows);
+
+			assert.strictEqual(messages.length, 1);
+			assert.ok(messages[0].content.includes("User prompt"));
+		});
+
+		it("renders results with status symbols", () => {
+			const rows = [
+				{
+					ordinal: 0,
+					path: "system://prompt",
+					bucket: "system",
+					content: "sys",
+					tokens: 1,
+					meta: null,
+				},
+				{
+					ordinal: 1,
+					path: "edit://1",
+					bucket: "result",
+					content: "",
+					tokens: 0,
+					meta: JSON.stringify({
+						tool: "edit",
+						target: "app.js",
+						state: "pass",
+					}),
+				},
+				{
+					ordinal: 2,
+					path: "summary://1",
+					bucket: "result",
+					content: "Fixed it",
+					tokens: 2,
+					meta: JSON.stringify({
+						tool: "summary",
+						target: "",
+						state: "summary",
+					}),
+				},
+			];
+			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const content = messages[0].content;
+
+			assert.ok(content.includes("✓"), "pass result should have check mark");
+			assert.ok(content.includes("summary: Fixed it"), "summary should render");
+		});
+
+		it("renders empty context when no entries", () => {
+			const rows = [
+				{
+					ordinal: 0,
+					path: "system://prompt",
+					bucket: "system",
+					content: "sys",
+					tokens: 1,
+					meta: null,
+				},
+			];
+			const messages = ContextAssembler.assembleFromTurnContext(rows);
+
+			assert.strictEqual(messages.length, 1);
+			assert.strictEqual(messages[0].content, "sys");
+		});
+
+		it("renders file:path and stored buckets", () => {
+			const rows = [
+				{
+					ordinal: 0,
+					path: "system://prompt",
+					bucket: "system",
+					content: "sys",
+					tokens: 1,
+					meta: null,
+				},
+				{
+					ordinal: 1,
+					path: "src/utils.js",
+					bucket: "file:path",
+					content: "",
+					tokens: 0,
+					meta: null,
+				},
+				{
+					ordinal: 2,
+					path: "known://old",
+					bucket: "stored",
+					content: "",
+					tokens: 0,
+					meta: null,
+				},
+			];
+			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const content = messages[0].content;
+
+			assert.ok(
+				content.includes("File Index"),
+				"stored files render as File Index",
+			);
+			assert.ok(content.includes("src/utils.js"));
+			assert.ok(content.includes("Stored"), "stored known renders as Stored");
+			assert.ok(content.includes("known://old"));
+		});
+	});
 });

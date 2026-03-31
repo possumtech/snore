@@ -731,9 +731,11 @@ hooks.onTurn(async (rummy) => {
 
 The `store` property provides the full KnownStore API: `upsert`, `promote`,
 `demote`, `remove`, `resolve`, `getValue`, `getMeta`, `getFileEntries`,
-`getModelContext`, `getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`,
+`getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`,
 `recountTokens`. This is how the Relevance Engine (and any plugin that manages
-context) interacts with the K/V store.
+context) interacts with the K/V store. The engine materializes `turn_context`
+from `known_entries` each turn — plugins read `turn_context` for the exact
+model view, not `known_entries` directly.
 
 ### 7.4 Events
 

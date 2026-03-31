@@ -57,7 +57,14 @@ export default class TurnExecutor {
 			await this.#fileScanner.scan(project.path, project.id, files, turn);
 		}
 
-		// Run hooks
+		// Build system prompt before hooks (static for the turn)
+		const systemPrompt = await PromptManager.getSystemPrompt(type, {
+			db: this.#db,
+			sessionId,
+			hooks: this.#hooks,
+		});
+
+		// Run hooks — engine materializes turn_context at priority 20
 		const hookRoot = {
 			tag: "turn",
 			attrs: {},
@@ -79,6 +86,8 @@ export default class TurnExecutor {
 			turnId: turnRow.id,
 			noContext,
 			contextSize,
+			systemPrompt,
+			loopPrompt,
 		});
 		await this.#hooks.processTurn(rummy);
 
@@ -89,18 +98,12 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Assemble context
-		const systemPrompt = await PromptManager.getSystemPrompt(type, {
-			db: this.#db,
-			sessionId,
-			hooks: this.#hooks,
+		// Assemble context from materialized turn_context
+		const rows = await this.#db.get_turn_context.all({
+			run_id: currentRunId,
+			turn,
 		});
-		const context = await this.#knownStore.getModelContext(currentRunId);
-		const messages = ContextAssembler.assemble({
-			systemPrompt,
-			context,
-			userMessage: loopPrompt,
-		});
+		const messages = ContextAssembler.assembleFromTurnContext(rows);
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,

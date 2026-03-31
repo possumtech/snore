@@ -132,111 +132,6 @@ export default class KnownStore {
 	}
 
 	/**
-	 * Build the ordered model context array.
-	 * Each bucket is a separate SQL query. No full-table scan.
-	 *
-	 * Order:
-	 *   1. Active known (known://* at turn > 0)
-	 *   2. Stored known (known://* at turn 0)
-	 *   3. Stored file paths (turn 0, not symbols, not ignore)
-	 *   4. Symbol files
-	 *   5. Full files (turn > 0, not ignore)
-	 *   6. Chronological results (not proposed)
-	 *   7. Unknowns (unknown://*)
-	 *   8. Latest user prompt
-	 */
-	async getModelContext(runId) {
-		const context = [];
-
-		// 1. Active known
-		for (const r of await this.#db.get_active_known.all({ run_id: runId })) {
-			context.push({ path: r.path, state: "full", value: r.value });
-		}
-
-		// 2. Stored known
-		for (const r of await this.#db.get_stored_known.all({ run_id: runId })) {
-			context.push({ path: r.path, state: "stored", value: "" });
-		}
-
-		// 3. Stored file paths
-		for (const r of await this.#db.get_stored_files.all({ run_id: runId })) {
-			context.push({ path: r.path, state: "file:path", value: "" });
-		}
-
-		// 4. Symbol files — value from meta.symbols, never raw file content
-		for (const r of await this.#db.get_symbol_files.all({ run_id: runId })) {
-			const meta = r.meta ? JSON.parse(r.meta) : null;
-			context.push({
-				path: r.path,
-				state: "file:symbols",
-				value: meta?.symbols || "",
-			});
-		}
-
-		// 5. Full files
-		for (const r of await this.#db.get_full_files.all({ run_id: runId })) {
-			const fileState =
-				r.state === "readonly"
-					? "file:readonly"
-					: r.state === "active"
-						? "file:active"
-						: "file";
-			context.push({
-				path: r.path,
-				state: fileState,
-				value: r.value,
-				tokens: r.tokens,
-			});
-		}
-
-		// 6. Chronological results — filtered by tool type
-		for (const r of await this.#db.get_results.all({ run_id: runId })) {
-			const tool = KnownStore.toolFromPath(r.path);
-			const meta = r.meta ? JSON.parse(r.meta) : {};
-			const target =
-				meta.command || meta.file || meta.path || meta.question || "";
-
-			let value = "";
-			if (r.state === "summary") value = r.value;
-			else if (tool === "env" || tool === "run" || tool === "ask_user")
-				value = r.value;
-			else if (tool === "edit" && meta.blocks?.length > 0)
-				value = meta.blocks
-					.map((b) =>
-						b.search === null
-							? `+++ ${b.replace?.slice(0, 200)}`
-							: `--- ${b.search?.slice(0, 100)}\n+++ ${b.replace?.slice(0, 200)}`,
-					)
-					.join("\n");
-
-			context.push({
-				path: r.path,
-				state: r.state,
-				value,
-				tool: tool || r.state,
-				target,
-			});
-		}
-
-		// 7. Unknowns
-		for (const r of await this.#db.get_unknowns.all({ run_id: runId })) {
-			context.push({ path: r.path, state: "unknown", value: r.value });
-		}
-
-		// 8. Latest prompt
-		const prompt = await this.#db.get_latest_prompt.get({ run_id: runId });
-		if (prompt) {
-			context.push({
-				path: prompt.path,
-				state: "prompt",
-				value: prompt.value,
-			});
-		}
-
-		return context;
-	}
-
-	/**
 	 * Get the chronological log (result-domain entries).
 	 */
 	async getLog(runId) {
@@ -309,14 +204,6 @@ export default class KnownStore {
 	 */
 	async getTurnAudit(runId, turn) {
 		return this.#db.get_turn_audit.all({ run_id: runId, turn });
-	}
-
-	/**
-	 * Token distribution across context buckets.
-	 * Returns: [{ bucket, tokens, entries }]
-	 */
-	async getContextDistribution(runId) {
-		return this.#db.get_context_distribution.all({ run_id: runId });
 	}
 
 	/**

@@ -31,6 +31,8 @@ function makeRummy(db, store, { sequence = 1, contextSize = 1000 } = {}) {
 		turnId: 1,
 		noContext: false,
 		contextSize,
+		systemPrompt: "test system prompt",
+		loopPrompt: "",
 	});
 }
 
@@ -143,7 +145,11 @@ describe("Engine integration", () => {
 				path: "src/keep.js",
 			});
 			assert.strictEqual(file.turn, 1, "file should still be promoted");
-			assert.strictEqual(file.state, "full", "file should remain at full fidelity");
+			assert.strictEqual(
+				file.state,
+				"full",
+				"file should remain at full fidelity",
+			);
 
 			const edit = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
@@ -200,11 +206,7 @@ describe("Engine integration", () => {
 				run_id: RUN_ID,
 				path: "src/sacred.js",
 			});
-			assert.strictEqual(
-				row.turn,
-				5,
-				"current-turn entry must not be demoted",
-			);
+			assert.strictEqual(row.turn, 5, "current-turn entry must not be demoted");
 			assert.strictEqual(
 				row.state,
 				"full",
@@ -365,9 +367,7 @@ describe("Engine integration", () => {
 			const promoted = await tdb.db.get_promoted_entries.all({
 				run_id: RUN_ID,
 			});
-			const entry = promoted.find(
-				(e) => e.path === "known://test_entry",
-			);
+			const entry = promoted.find((e) => e.path === "known://test_entry");
 			assert.strictEqual(
 				entry.tokens,
 				200,
@@ -388,9 +388,7 @@ describe("Engine integration", () => {
 			await hooks.processTurn(rummy);
 
 			const results = await tdb.db.get_results.all({ run_id: RUN_ID });
-			const report = results.find((r) =>
-				r.value.includes("engine demoted"),
-			);
+			const report = results.find((r) => r.value.includes("engine demoted"));
 			assert.ok(report, "should inject a demotion report");
 			assert.ok(
 				report.value.includes("budget:"),
@@ -408,14 +406,8 @@ describe("Engine integration", () => {
 			await hooks.processTurn(rummy);
 
 			const results = await tdb.db.get_results.all({ run_id: RUN_ID });
-			const report = results.find((r) =>
-				r.value.includes("engine demoted"),
-			);
-			assert.strictEqual(
-				report,
-				undefined,
-				"no report when no demotions",
-			);
+			const report = results.find((r) => r.value.includes("engine demoted"));
+			assert.strictEqual(report, undefined, "no report when no demotions");
 		});
 	});
 
@@ -436,14 +428,9 @@ describe("Engine integration", () => {
 		});
 
 		it("symbol files at turn > 0 appear in get_symbol_files", async () => {
-			await store.upsert(
-				RUN_ID,
-				3,
-				"src/active.js",
-				pad(100),
-				"symbols",
-				{ meta: { symbols: "function bar()" } },
-			);
+			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "symbols", {
+				meta: { symbols: "function bar()" },
+			});
 
 			const symbols = await tdb.db.get_symbol_files.all({
 				run_id: RUN_ID,
@@ -461,10 +448,7 @@ describe("Engine integration", () => {
 				run_id: RUN_ID,
 			});
 			const found = stored.find((f) => f.path === "src/cold.js");
-			assert.ok(
-				found,
-				"demoted symbols file should appear in stored files",
-			);
+			assert.ok(found, "demoted symbols file should appear in stored files");
 		});
 	});
 });

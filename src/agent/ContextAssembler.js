@@ -184,4 +184,138 @@ export default class ContextAssembler {
 
 		return messages;
 	}
+
+	static assembleFromTurnContext(rows) {
+		let systemContent = "";
+		const files = [];
+		const symbolFiles = [];
+		const storedFiles = [];
+		const activeKnown = [];
+		const storedKnown = [];
+		const results = [];
+		const unknowns = [];
+		let prompt = null;
+		let continuation = null;
+
+		for (const row of rows) {
+			const meta = row.meta ? JSON.parse(row.meta) : null;
+			switch (row.bucket) {
+				case "system":
+					systemContent = row.content;
+					break;
+				case "file":
+					files.push({
+						path: row.path,
+						value: row.content,
+						tokens: row.tokens,
+						state: meta?.state || "file",
+					});
+					break;
+				case "file:symbols":
+					symbolFiles.push({ path: row.path, value: row.content });
+					break;
+				case "file:path":
+					storedFiles.push({ path: row.path });
+					break;
+				case "known":
+					activeKnown.push({ path: row.path, value: row.content });
+					break;
+				case "stored":
+					storedKnown.push({ path: row.path });
+					break;
+				case "result":
+					results.push({
+						path: row.path,
+						value: row.content,
+						tool: meta?.tool,
+						target: meta?.target,
+						state: meta?.state,
+					});
+					break;
+				case "unknown":
+					unknowns.push({ value: row.content });
+					break;
+				case "prompt":
+					prompt = row.content;
+					break;
+				case "continuation":
+					continuation = row.content;
+					break;
+			}
+		}
+
+		const parts = [];
+
+		if (files.length > 0) {
+			const fileBlocks = files.map((f) => {
+				const lang = langFor(f.path);
+				const tokens = f.tokens ? ` (${f.tokens} tokens)` : "";
+				const label =
+					f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
+				return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
+			});
+			parts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
+		}
+
+		if (symbolFiles.length > 0) {
+			const symBlocks = symbolFiles.map(
+				(f) => `#### ${f.path} (symbols)\n${f.value}`,
+			);
+			parts.push(symBlocks.join("\n\n"));
+		}
+
+		if (storedFiles.length > 0) {
+			parts.push(
+				`### File Index\n${storedFiles.map((f) => f.path).join(", ")}`,
+			);
+		}
+
+		if (activeKnown.length > 0) {
+			const lines = activeKnown.map((k) => `* ${k.path} — ${k.value}`);
+			parts.push(`### Knowledge\n${lines.join("\n")}`);
+		}
+
+		if (storedKnown.length > 0) {
+			parts.push(`### Stored\n${storedKnown.map((k) => k.path).join(", ")}`);
+		}
+
+		if (results.length > 0) {
+			const lines = results.map((r) => {
+				const check =
+					r.state === "pass" || r.state === "summary"
+						? "✓"
+						: r.state === "warn" || r.state === "error"
+							? "✗"
+							: "·";
+				if (r.state === "summary") return `* summary: ${r.value}`;
+				const tool = r.tool || r.path.match(/^(\w+):\/\//)?.[1] || "?";
+				const target = r.target || "";
+				const detail = r.value ? ` — ${r.value.slice(0, 120)}` : "";
+				return `* ${tool} ${target} ${check}${detail}`;
+			});
+			parts.push(`### History\n${lines.join("\n")}`);
+		}
+
+		if (unknowns.length > 0) {
+			const lines = unknowns.map((u) => `* ${u.value}`);
+			parts.push(`### Unknowns\n${lines.join("\n")}`);
+		}
+
+		if (prompt) {
+			parts.push(`### Prompt\n${prompt}`);
+		}
+
+		const sections = [systemContent];
+		const rendered =
+			parts.length > 0 ? `## Context\n\n${parts.join("\n\n")}` : "";
+		if (rendered) sections.push(rendered);
+
+		const messages = [{ role: "system", content: sections.join("\n\n") }];
+
+		if (!prompt && continuation) {
+			messages.push({ role: "user", content: continuation });
+		}
+
+		return messages;
+	}
 }
