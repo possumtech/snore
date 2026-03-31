@@ -36,7 +36,7 @@ WHERE run_id = :run_id AND key = :key;
 
 -- PREP: delete_file_entries_by_pattern
 DELETE FROM known_entries
-WHERE run_id = :run_id AND key REGEXP :pattern AND domain = 'file';
+WHERE run_id = :run_id AND glorp(:pattern, key) AND domain = 'file';
 
 -- PREP: resolve_known_entry
 UPDATE known_entries
@@ -52,7 +52,7 @@ SET
 	state = :state
 	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND key REGEXP :pattern AND domain = 'file';
+WHERE run_id = :run_id AND glorp(:pattern, key) AND domain = 'file';
 
 -- PREP: promote_key
 UPDATE known_entries
@@ -81,7 +81,7 @@ WHERE run_id = :run_id AND key = :key;
 -- PREP: get_file_states_by_pattern
 SELECT key, state, turn
 FROM known_entries
-WHERE run_id = :run_id AND key REGEXP :pattern AND domain = 'file'
+WHERE run_id = :run_id AND glorp(:pattern, key) AND domain = 'file'
 ORDER BY key;
 
 -- PREP: get_entry_meta

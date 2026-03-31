@@ -106,35 +106,27 @@ export default class SessionManager {
 		return relative(project.path, path);
 	}
 
-	#toRegex(pattern) {
-		if (!pattern) return null;
-		if (/[*+?^${}()|[\]\\]/.test(pattern)) return pattern;
-		return `^${pattern.replace(/\./g, "\\.")}$`;
-	}
 
 	async #setFileState(projectId, pattern, state) {
-		const regexPattern = this.#toRegex(
-			await this.#normalizePath(projectId, pattern),
-		);
-		if (!regexPattern) return { status: "ok" };
+		const path = await this.#normalizePath(projectId, pattern);
+		if (!path) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern: regexPattern,
+			pattern: path,
 			constraint: state,
 		});
 
-		// Update state across all active runs (preserves file content)
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		for (const run of runs) {
-			await this.#knownStore.setFileState(run.id, regexPattern, state);
+			await this.#knownStore.setFileState(run.id, path, state);
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
-			pattern: regexPattern,
+			pattern: path,
 			constraint: state,
 			db: this.#db,
 		});
@@ -155,28 +147,25 @@ export default class SessionManager {
 	}
 
 	async drop(projectId, pattern) {
-		const regexPattern = this.#toRegex(
-			await this.#normalizePath(projectId, pattern),
-		);
-		if (!regexPattern) return { status: "ok" };
+		const path = await this.#normalizePath(projectId, pattern);
+		if (!path) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern: regexPattern,
+			pattern: path,
 			constraint: null,
 		});
 
-		// Remove file entries matching pattern from all active runs
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		for (const run of runs) {
-			await this.#knownStore.removeFilesByPattern(run.id, regexPattern);
+			await this.#knownStore.removeFilesByPattern(run.id, path);
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
-			pattern: regexPattern,
+			pattern: path,
 			constraint: null,
 			db: this.#db,
 		});

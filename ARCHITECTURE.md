@@ -149,15 +149,23 @@ captured as `/:reasoning:N` (hidden from model, available for audit).
 
 ### 2.1 Tool Commands
 
+Every store-facing tool uses a unified attribute set:
+
+- **`path=""`** — targets entries by key. Accepts exact paths, globs (`src/*.js`), or regex (`^src/.*\.test\.js$`). Matches against the K/V store key namespace — file paths AND `/:known:*` keys.
+- **`value=""`** — filters entries by content. Same pattern support. When combined with `path`, they AND together.
+- **`keys`** — boolean flag. When present, resolves the pattern and returns the matching key list as a `/:keys:N` info entry. No state change. Preview before committing.
+
+At least one of `path` or `value` must be provided on store-facing tools.
+
 **Shared (ask + act):**
 
 | Tag | Format | Required |
 |-----|--------|----------|
 | `<summary>` | `<summary>text</summary>` | Yes |
-| `<known>` | `<known key="/:known:slug">value</known>` | No |
+| `<known>` | `<known path="/:known:slug">value</known>` | No |
 | `<unknown>` | `<unknown>text</unknown>` | No |
-| `<read>` | `<read key="path"/>` | No |
-| `<drop>` | `<drop key="path"/>` | No |
+| `<read>` | `<read path="path" value="pattern?" keys?/>` | No |
+| `<drop>` | `<drop path="path" value="pattern?" keys?/>` | No |
 | `<env>` | `<env command="cmd"/>` | No |
 | `<ask_user>` | `<ask_user question="q" options="a, b, c"/>` | No |
 
@@ -166,19 +174,30 @@ captured as `/:reasoning:N` (hidden from model, available for audit).
 | Tag | Format |
 |-----|--------|
 | `<run>` | `<run command="cmd"/>` |
-| `<delete>` | `<delete key="path"/>` |
-| `<edit>` | `<edit file="path">SEARCH/REPLACE blocks</edit>` |
+| `<delete>` | `<delete path="path" value="pattern?" keys?/>` |
+| `<edit>` | `<edit path="path" value="pattern?" keys?>SEARCH/REPLACE blocks</edit>` |
 
 Edit uses git merge conflict format inside the tag body:
 
 ```
-<edit file="src/config.js">
+<edit path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
 const port = 8080;
 >>>>>>> REPLACE
 </edit>
+```
+
+Patterns enable bulk operations:
+
+```xml
+<read path="src/*.js"/>                           <!-- promote all JS files -->
+<read path="*.js" value="TODO" keys/>             <!-- preview: which JS files contain TODO? -->
+<drop path="/:known:stale_*"/>                    <!-- demote all stale knowledge -->
+<edit path="src/*.config.js" value="localhost">    <!-- edit all configs containing localhost -->
+<delete path="/:known:temp_*"/>                   <!-- delete all temp knowledge entries -->
+<known path="/:known:cache_*" value="stale">refreshed</known>  <!-- bulk update -->
 ```
 
 Tool commands are defined in the system prompt (`prompt.act.md`, `prompt.ask.md`)
@@ -188,43 +207,48 @@ No JSON schema, no AJV, no `strict: true`, no `tool_choice`.
 ### 2.2 How Commands Become Known Entries
 
 Every parsed command writes to the known store. The model sees results as
-entries in the context next turn.
+entries in the context next turn. Pattern-based commands operate on all matches.
 
-**`<known>`** — UPSERTs the key/value pair into the store with domain `known`,
-state `full`. The model emits one tag per entry.
+**`<known>`** — UPSERTs the key/value pair. Domain `known`, state `full`.
+With a pattern in `path`, bulk-updates all matching entries' values. With `value`,
+filters by current content before overwriting.
 
 **`<summary>`** — creates a `/:summary:N` entry with domain `result`, state `summary`.
 
 **`<unknown>`** — each tag creates a sticky `/:unknown:N` entry (domain `known`,
-state `full`). Unknowns persist across turns until explicitly dropped by the model
-via `<drop key="/:unknown:N"/>`. The server deduplicates on insert — identical text
-is not re-registered. Unknowns appear in context position 7 (before the prompt)
-every turn. The server warns and retries (up to 3 times) if the model attempts
-to complete with unresolved unknowns and no investigation tools called.
+state `full`). Unknowns persist across turns until explicitly dropped via
+`<drop path="/:unknown:N"/>`. The server deduplicates on insert. Unknowns appear
+in context position 7 (before the prompt) every turn. The server warns and retries
+(up to 3 times) if the model idles with unresolved unknowns.
 
-**`<read>`** — promotes the key by setting `turn` to the current turn number.
-The value is already in the store (from the file scanner or a previous write).
-Promotion makes it visible in the model's context next turn. One integer update.
+**`<read>`** — promotes matching entries by setting `turn` to the current turn.
+Values are already in the store (from the file scanner or a previous write).
+Promotion makes them visible in context next turn. With patterns, bulk-promotes.
 
-**`<drop>`** — demotes the key by setting `turn` to 0 (purgatory). The value stays
-in the store but disappears from the model's context. One integer update.
+**`<drop>`** — demotes matching entries by setting `turn` to 0 (purgatory).
+Values stay in the store but disappear from context. With patterns, bulk-demotes.
 
 **`<env>`** — creates a `/:env:N` entry with domain `result`, state `proposed`.
 The client executes the command and resolves with output.
 
-**`<edit>`** — the server computes a unified diff from the file's current content
-(in known_entries) and the model's SEARCH/REPLACE blocks via HeuristicMatcher.
-Creates a `/:edit:N` entry with state `proposed`. The `meta` field stores
-`{file, blocks, patch, warning, error}`. The patch is sent to the client for review.
+**`<edit>`** — the server resolves the `path`/`value` pattern to matching entries,
+then applies the SEARCH/REPLACE blocks to each via HeuristicMatcher. Creates one
+`/:edit:N` entry per match. For **file domain** entries: state `proposed` (client
+reviews the diff). For **known/result domain** entries: state `pass` (applied
+immediately — K/V entries are server state, not user files).
 
 **`<run>`** — creates a `/:run:N` entry with domain `result`, state `proposed`.
 The client executes and resolves with output.
 
-**`<delete>`** — creates a `/:delete:N` entry with domain `result`, state `proposed`.
-The client confirms and resolves.
+**`<delete>`** — resolves the pattern to matching entries. Creates one `/:delete:N`
+entry per match with state `proposed`. The client confirms and resolves.
 
 **`<ask_user>`** — creates a `/:ask_user:N` entry with domain `result`, state `proposed`.
 The client shows the question and resolves with the selected answer.
+
+**`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
+the matching key list as a `/:keys:N` info entry. No state change occurs. The model
+sees the list next turn and can issue targeted follow-up commands.
 
 ### 2.3 Promotion Model
 
@@ -232,8 +256,11 @@ The client shows the question and resolves with the selected answer.
 
 | Command | Effect |
 |---------|--------|
-| `<read key="x"/>` | Set `turn` to current turn → value appears in context |
-| `<drop key="x"/>` | Set `turn` to 0 → value hidden from context (purgatory) |
+| `<read path="x"/>` | Set `turn` to current turn → value appears in context |
+| `<drop path="x"/>` | Set `turn` to 0 → value hidden from context (purgatory) |
+
+Both support patterns: `<read path="src/*.js"/>` promotes all matching files.
+`<drop value="deprecated"/>` demotes all entries containing "deprecated".
 
 All other action commands (`env`, `edit`, `run`, `delete`, `ask_user`) create new
 result entries as `proposed`. The `delete` command for `/:known:*` or `/:[tool]:*`
