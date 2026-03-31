@@ -137,8 +137,11 @@ export default class AgentLoop {
 			});
 		}
 
-		const modelContextSize = await this.#llmProvider.getContextSize(requestedModel);
-		const limitRow = await this.#db.get_session_context_limit.get({ id: String(sessionId || "") });
+		const modelContextSize =
+			await this.#llmProvider.getContextSize(requestedModel);
+		const limitRow = await this.#db.get_session_context_limit.get({
+			id: String(sessionId || ""),
+		});
 		const contextSize = limitRow?.context_limit
 			? Math.min(limitRow.context_limit, modelContextSize)
 			: modelContextSize;
@@ -148,7 +151,8 @@ export default class AgentLoop {
 		let lastSummaryText = null;
 		let repetitionCount = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
-		const MAX_UNKNOWN_WARNINGS = Number(process.env.RUMMY_MAX_UNKNOWN_WARNINGS) || 3;
+		const MAX_UNKNOWN_WARNINGS =
+			Number(process.env.RUMMY_MAX_UNKNOWN_WARNINGS) || 3;
 		const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
 
 		const controller = new AbortController();
@@ -157,8 +161,15 @@ export default class AgentLoop {
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				if (controller.signal.aborted) {
-					await this.#db.update_run_status.run({ id: currentRunId, status: "aborted" });
-					const out = { run: currentAlias, status: "aborted", turn: loopIteration };
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: "aborted",
+					});
+					const out = {
+						run: currentAlias,
+						status: "aborted",
+						turn: loopIteration,
+					};
 					await hook.completed.emit({ sessionId, ...out });
 					return out;
 				}
@@ -235,7 +246,8 @@ export default class AgentLoop {
 						completion_tokens: runUsage.completion_tokens,
 						total_tokens: runUsage.total_tokens,
 						cost: runUsage.cost,
-						context_distribution: await this.#knownStore.getContextDistribution(currentRunId),
+						context_distribution:
+							await this.#knownStore.getContextDistribution(currentRunId),
 					},
 				});
 				if (unresolved.length > 0) {
@@ -243,7 +255,12 @@ export default class AgentLoop {
 						id: currentRunId,
 						status: "proposed",
 					});
-					const out = { run: currentAlias, status: "proposed", turn: result.turn, proposed: unresolved };
+					const out = {
+						run: currentAlias,
+						status: "proposed",
+						turn: result.turn,
+						proposed: unresolved,
+					};
 					await hook.completed.emit({ sessionId, ...out });
 					return out;
 				}
@@ -256,16 +273,31 @@ export default class AgentLoop {
 				});
 
 				// Repetition detection: same summary + no new actions = stuck
-				if (result.summaryText === lastSummaryText && !result.flags.hasAct && !result.flags.hasReads) {
+				if (
+					result.summaryText === lastSummaryText &&
+					!result.flags.hasAct &&
+					!result.flags.hasReads
+				) {
 					repetitionCount++;
 					if (repetitionCount >= MAX_REPETITIONS) {
-						console.warn(`[RUMMY] Repetition detected: "${result.summaryText?.slice(0, 60)}" repeated ${repetitionCount} times. Force-completing.`);
-						const staleUnknowns = await this.#db.get_unknowns.all({ run_id: currentRunId });
+						console.warn(
+							`[RUMMY] Repetition detected: "${result.summaryText?.slice(0, 60)}" repeated ${repetitionCount} times. Force-completing.`,
+						);
+						const staleUnknowns = await this.#db.get_unknowns.all({
+							run_id: currentRunId,
+						});
 						for (const u of staleUnknowns) {
 							await this.#knownStore.demote(currentRunId, u.key);
 						}
-						await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
-						const out = { run: currentAlias, status: "completed", turn: result.turn };
+						await this.#db.update_run_status.run({
+							id: currentRunId,
+							status: "completed",
+						});
+						const out = {
+							run: currentAlias,
+							status: "completed",
+							turn: result.turn,
+						};
 						await hook.completed.emit({ sessionId, ...out });
 						return out;
 					}
@@ -301,7 +333,11 @@ export default class AgentLoop {
 					id: currentRunId,
 					status: "completed",
 				});
-				const out = { run: currentAlias, status: "completed", turn: result.turn };
+				const out = {
+					run: currentAlias,
+					status: "completed",
+					turn: result.turn,
+				};
 				await hook.completed.emit({ sessionId, ...out });
 				return out;
 			}
@@ -311,7 +347,10 @@ export default class AgentLoop {
 			return out;
 		} catch (err) {
 			if (controller.signal.aborted) {
-				await this.#db.update_run_status.run({ id: currentRunId, status: "aborted" });
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "aborted",
+				});
 				return { run: currentAlias, status: "aborted", turn: loopIteration };
 			}
 			console.warn(`[RUMMY] Run failed: ${err.message}`);
@@ -319,7 +358,12 @@ export default class AgentLoop {
 				id: currentRunId,
 				status: "failed",
 			});
-			const out = { run: currentAlias, status: "failed", turn: loopIteration, error: err.message };
+			const out = {
+				run: currentAlias,
+				status: "failed",
+				turn: loopIteration,
+				error: err.message,
+			};
 			await hook.completed.emit({ sessionId, ...out });
 			return out;
 		} finally {
@@ -348,9 +392,7 @@ export default class AgentLoop {
 		} else if (action === "reject") {
 			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
 		} else {
-			throw new Error(
-				msg("error.resolution_invalid", { action }),
-			);
+			throw new Error(msg("error.resolution_invalid", { action }));
 		}
 
 		const unresolved = await this.#knownStore.getUnresolved(runId);

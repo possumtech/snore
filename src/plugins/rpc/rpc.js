@@ -50,7 +50,9 @@ export default class CoreRpcPlugin {
 			},
 			description:
 				"Get model metadata and context sizing. Returns { alias, model, context_length, limit, effective, name, max_completion_tokens }.",
-			params: { model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT" },
+			params: {
+				model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT",
+			},
 			requiresInit: true,
 		});
 
@@ -196,7 +198,8 @@ export default class CoreRpcPlugin {
 		r.register("run/abort", {
 			handler: async (params, ctx) => {
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				if (!runRow) throw new Error(msg("error.run_not_found", { runId: params.run }));
+				if (!runRow)
+					throw new Error(msg("error.run_not_found", { runId: params.run }));
 				// Signal the in-flight loop to stop
 				ctx.projectAgent.abortRun(runRow.id);
 				await ctx.db.update_run_status.run({
@@ -217,7 +220,8 @@ export default class CoreRpcPlugin {
 					throw new Error(msg("error.run_name_invalid"));
 				}
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: run });
-				if (!runRow) throw new Error(msg("error.run_not_found", { runId: run }));
+				if (!runRow)
+					throw new Error(msg("error.run_not_found", { runId: run }));
 				try {
 					await ctx.db.rename_run.run({
 						id: runRow.id,
@@ -362,14 +366,14 @@ export default class CoreRpcPlugin {
 				try {
 					modelMax = await ctx.projectAgent.getModelContextSize(model);
 				} catch {}
-				const effective = limit
-					? Math.min(limit, modelMax || limit)
-					: modelMax;
+				const effective = limit ? Math.min(limit, modelMax || limit) : modelMax;
 				return { model_max: modelMax, limit, effective };
 			},
 			description:
 				"Get context sizing. Returns { model_max (from provider), limit (session override or null), effective (actual size used) }.",
-			params: { model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT" },
+			params: {
+				model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT",
+			},
 			requiresInit: true,
 		});
 

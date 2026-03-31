@@ -13,16 +13,16 @@ const ALL_TOOLS = new Set([...SELF_CLOSING_TOOLS, ...CONTENT_TOOLS]);
 
 function parseEditContent(content) {
 	const blocks = [];
-	const re = /<<<<<<< SEARCH\n([^]*?)\n=======\n([^]*?)\n>>>>>>> REPLACE/g;
-	const replaceOnly = /^=======\n([^]*?)\n>>>>>>> REPLACE/gm;
-	let m;
+	const re =
+		/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
+	const replaceOnly = /^=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
 
-	while ((m = re.exec(content)) !== null) {
+	for (const m of content.matchAll(re)) {
 		blocks.push({ search: m[1], replace: m[2] });
 	}
 
 	if (blocks.length === 0) {
-		while ((m = replaceOnly.exec(content)) !== null) {
+		for (const m of content.matchAll(replaceOnly)) {
 			blocks.push({ search: null, replace: m[1] });
 		}
 	}

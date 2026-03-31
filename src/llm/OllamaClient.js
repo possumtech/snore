@@ -24,7 +24,9 @@ export default class OllamaClient {
 
 		if (!response.ok) {
 			const error = await response.text();
-			throw new Error(msg("error.ollama_api", { status: `${response.status} - ${error}` }));
+			throw new Error(
+				msg("error.ollama_api", { status: `${response.status} - ${error}` }),
+			);
 		}
 
 		const data = await response.json();
@@ -54,7 +56,12 @@ export default class OllamaClient {
 					),
 				});
 				if (!response.ok) {
-					throw new Error(msg("error.ollama_show_failed", { status: response.status, baseUrl: this.#baseUrl }));
+					throw new Error(
+						msg("error.ollama_show_failed", {
+							status: response.status,
+							baseUrl: this.#baseUrl,
+						}),
+					);
 				}
 				const data = await response.json();
 				const info = data.model_info || {};
@@ -68,7 +75,10 @@ export default class OllamaClient {
 					await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
 					continue;
 				}
-				throw new Error(msg("error.ollama_unreachable", { baseUrl: this.#baseUrl }), { cause: err });
+				throw new Error(
+					msg("error.ollama_unreachable", { baseUrl: this.#baseUrl }),
+					{ cause: err },
+				);
 			}
 		}
 	}

@@ -148,9 +148,9 @@ describe("E2E: RPC Methods", () => {
 
 	it("persona round-trip", async () => {
 		await client.call("persona", { text: "You are a pirate." });
-		const session = await tdb.db.get_session_by_id.all({ id: "" });
+		const _session = await tdb.db.get_session_by_id.all({ id: "" });
 		// Persona is session-level — verify via DB since no getPersona RPC
-		const sessions = await tdb.db.get_session_by_id.all({
+		const _sessions = await tdb.db.get_session_by_id.all({
 			id: String(client.sessionId || ""),
 		});
 		// We can't easily get sessionId from client, verify by asking

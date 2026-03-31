@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import fs from "node:fs/promises";
 import { join } from "node:path";
 
 function hashContent(content) {
@@ -64,7 +64,11 @@ export default class FileScanner {
 			}),
 		);
 		for (const entry of statResults) {
-			if (entry) diskStats.set(entry.relPath, { mtime: entry.mtime, fullPath: entry.fullPath });
+			if (entry)
+				diskStats.set(entry.relPath, {
+					mtime: entry.mtime,
+					fullPath: entry.fullPath,
+				});
 		}
 
 		for (const run of activeRuns) {
@@ -123,10 +127,10 @@ export default class FileScanner {
 
 		// Extract symbols via plugin hook
 		if (changedPaths.length > 0 && this.#hooks?.file?.symbols) {
-			const symbolMap = await this.#hooks.file.symbols.filter(
-				new Map(),
-				{ paths: changedPaths, projectPath },
-			);
+			const symbolMap = await this.#hooks.file.symbols.filter(new Map(), {
+				paths: changedPaths,
+				projectPath,
+			});
 			for (const [relPath, symbols] of symbolMap) {
 				const symbolText = formatSymbols(symbols);
 				if (!symbolText) continue;

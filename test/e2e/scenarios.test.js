@@ -29,10 +29,7 @@ describe("E2E: Client Scenarios", () => {
 			join(projectPath, "hello.js"),
 			'function greet() { return "hello"; }\nmodule.exports = greet;\n',
 		);
-		await fs.writeFile(
-			join(projectPath, "wizard.txt"),
-			"My robe is purple\n",
-		);
+		await fs.writeFile(join(projectPath, "wizard.txt"), "My robe is purple\n");
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
@@ -116,7 +113,11 @@ describe("E2E: Client Scenarios", () => {
 
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
-					resolution: { key: editProposed.key, action: "accept", output: "applied" },
+					resolution: {
+						key: editProposed.key,
+						action: "accept",
+						output: "applied",
+					},
 				});
 
 				await client.assertRun(

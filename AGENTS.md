@@ -4,69 +4,8 @@
 
 XML tool commands in response content, parsed by htmlparser2. Single `known_entries`
 K/V store as the unified state machine. Markdown context rendering. tiktoken token
-counting with `/4` fallback. 4 production dependencies. 39/39 E2E on potato (Qwen3-14B).
-
-### Completed
-- [x] Migration schema — `known_entries` with domain/state/hash/meta/tokens/refs/turn
-- [x] SQL consolidated — 6 files (known_store, known_queries, known_checks, runs, turns, sessions)
-- [x] KnownStore — all queries are SQL, zero `getAll`, ordered context via 8 bucket queries
-- [x] ContextAssembler — markdown rendering (code fences, bullet lists, file index)
-- [x] TurnExecutor — file scan → context assembly → LLM → XML parsing → K/V store
-- [x] AgentLoop — resolve/inject, unknowns gate, repetition detection, abort signal
-- [x] XML tool commands — htmlparser2 parsing, forgiving recovery, reasoning capture
-- [x] All 3 LLM clients — lazy-init, stripped to `{model, messages}` in, content out
-- [x] Sticky unknowns — `/:unknown:N`, deduplicated, persist until dropped
-- [x] Unknowns gate — directive prompt ("Use `<read/>` or `<drop/>` to resolve")
-- [x] Repetition detection — 3 identical summaries = force-complete, drops stale unknowns
-- [x] Patch generation — HeuristicMatcher computes unified diff for edits
-- [x] `run/state` notification — one payload per turn with context_distribution telemetry
-- [x] Resolution — `accept`/`reject` only, auto-resume/stop
-- [x] Persona — PromptManager reads session persona, injects as `## Persona`
-- [x] Fork mode — `fork_known_entries` SQL copies parent store
-- [x] FileScanner — async stat, mtime-first, symbols in meta
-- [x] ProjectContext — git results cached per HEAD hash
-- [x] PromptManager — prompt files cached after first read
-- [x] tiktoken — o200k_base encoding, `/4` on hot path, async recount after turn
-- [x] Reasoning capture — provider normalization + free-form text between XML tags
-- [x] Symbol extraction pluginized — `hooks.file.symbols` filter, antlrmap/ctags as default plugin
-- [x] Symbol formatting — kind, line numbers, tree structure via stack algorithm
-- [x] Plugin hooks wired — ask/act completed, llm.request, llm.response, run.step.completed
-- [x] Dead hooks removed — agent.warn, agent.action, ui.prompt, editor.diff, run.command
-- [x] KnownStore on RummyContext — `rummy.store` for plugin access
-- [x] Context distribution telemetry — 5 buckets: system, files, keys, known, history
-- [x] Context limit RPC — setContextLimit/getContext, session-level override
-- [x] AbortController — run/abort signals in-flight loop to stop
-- [x] Edit history shows search/replace — model sees what it changed
-- [x] i18n sweep — 28 keys in lang/en.json, all client-facing errors through msg()
-- [x] Loop constants configurable — RUMMY_MAX_TURNS, RUMMY_MAX_UNKNOWN_WARNINGS, RUMMY_MAX_REPETITIONS
-- [x] Delete tool integration tests — accept erases target, reject preserves
-- [x] test_old/ deleted — 428K, 52 files
-- [x] Lint fully clean — biome + sqlfluff, zero `SELECT *`
-
-### Pre-Audit Checklist — COMPLETE
-
-All bugs fixed, all tests written, all docs aligned. See Stabilization Sprint below.
-
-### Dead Code (already deleted)
-- FindingsProcessor, FindingsManager, StateEvaluator, ResponseHealer, ToolExtractor
-- ToolSchema.js, ToolSchema.test.js, src/schema/ directory, ajv dependency
-- Turn.js, TurnBuilder.js
-- RepoMap.js, repo_map_files, repo_map_tags, repo_map_references
-- ask.json, act.json, gbnf.js, system.ask.md, system.act.md
-- context.js plugin, test_old/ (52 files)
-- All findings SQL, pending_context SQL, file_promotions SQL, turn_elements SQL
-
----
-
-## Response Healing Philosophy
-
-Every malformed model response is a diagnostic opportunity, not a "model drift" excuse. When healing a response, ask in order:
-
-1. **Can we recover?** Extract the data and continue. htmlparser2 handles unclosed tags, missing slashes, etc.
-2. **Can we warn usefully?** Log structured warnings that help future healing rules.
-3. **Did our structure cause this?** Check if context formatting, prompt wording, or tool definitions nudged the model toward the failure.
-4. **Did we miss something in prompts?** Check examples, instructions, continuation prompts.
-5. **Model drift is the LAST answer**, after all of the above have been ruled out.
+counting with `/4` fallback. 4 production dependencies. Lint fully clean (biome +
+sqlfluff). TESTMAP.md at 0 untested promises. Response healing: always recover, never throw.
 
 ---
 
@@ -91,6 +30,15 @@ The `tokens`, `refs`, `turn`, and `write_count` fields are ready. The Relevance 
 ---
 
 ## Historical
+
+### Pre-Audit Sprint (2026-03-30)
+- Bug fixes: setFileState preserves content, fileStatus queries real state, getModelInfo on ProjectAgent, summary healing
+- Response healing: plain text → summary, missing summary → placeholder, empty → placeholder. Never throw on model output.
+- AgentLoop catch returns `{ status: "failed" }` instead of re-throwing
+- Tests: state_lock, file_scanner, context_distribution, plugin_registration, file visibility RPCs
+- TESTMAP.md at 0 untested promises (134 tests: 37 unit + 56 integration + 42 E2E)
+- XmlParser regex modernized (`[\s\S]` + `matchAll`), lint fully clean
+- antlrmap 0.0.3 → 0.0.8
 
 ### Stabilization Sprint (2026-03-30)
 - Plugin system: symbol extraction, KnownStore on RummyContext, all hooks wired

@@ -419,7 +419,11 @@ describe("KnownStore integration", () => {
 			await store.remove(RUN_ID, meta.key);
 
 			const after = await store.getValue(RUN_ID, "src/doomed.js");
-			assert.strictEqual(after, null, "target file should be removed from store");
+			assert.strictEqual(
+				after,
+				null,
+				"target file should be removed from store",
+			);
 		});
 
 		it("reject preserves the target file key", async () => {
@@ -436,7 +440,11 @@ describe("KnownStore integration", () => {
 
 			// Verify: file still exists
 			const value = await store.getValue(RUN_ID, "src/survivor.js");
-			assert.strictEqual(value, "alive", "target file should survive rejection");
+			assert.strictEqual(
+				value,
+				"alive",
+				"target file should survive rejection",
+			);
 		});
 	});
 

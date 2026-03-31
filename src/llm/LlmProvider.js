@@ -35,7 +35,8 @@ export default class LlmProvider {
 
 	#getOpenAi() {
 		if (!this.#openAi) {
-			const baseUrl = process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE;
+			const baseUrl =
+				process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE;
 			if (!baseUrl) throw new Error(msg("error.openai_base_url_missing"));
 			this.#openAi = new OpenAiClient(baseUrl, process.env.OPENAI_API_KEY);
 		}
@@ -48,8 +49,7 @@ export default class LlmProvider {
 
 	static resolve(alias) {
 		const actual = process.env[`RUMMY_MODEL_${alias}`];
-		if (!actual)
-			throw new Error(msg("error.model_alias_unknown", { alias }));
+		if (!actual) throw new Error(msg("error.model_alias_unknown", { alias }));
 		return actual;
 	}
 
@@ -65,12 +65,20 @@ export default class LlmProvider {
 
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
-			return this.#getOllama().completion(messages, localModel, resolvedOptions);
+			return this.#getOllama().completion(
+				messages,
+				localModel,
+				resolvedOptions,
+			);
 		}
 
 		if (resolvedModel.startsWith("openai/")) {
 			const localModel = resolvedModel.replace("openai/", "");
-			return this.#getOpenAi().completion(messages, localModel, resolvedOptions);
+			return this.#getOpenAi().completion(
+				messages,
+				localModel,
+				resolvedOptions,
+			);
 		}
 
 		return this.#getOpenRouter().completion(

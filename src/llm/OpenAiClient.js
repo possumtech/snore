@@ -27,7 +27,9 @@ export default class OpenAiClient {
 
 		if (!response.ok) {
 			const error = await response.text();
-			throw new Error(msg("error.openai_api", { status: `${response.status} - ${error}` }));
+			throw new Error(
+				msg("error.openai_api", { status: `${response.status} - ${error}` }),
+			);
 		}
 
 		const data = await response.json();
@@ -57,7 +59,12 @@ export default class OpenAiClient {
 			signal: AbortSignal.timeout(timeout),
 		});
 		if (!response.ok) {
-			throw new Error(msg("error.openai_models_failed", { status: response.status, baseUrl: this.#baseUrl }));
+			throw new Error(
+				msg("error.openai_models_failed", {
+					status: response.status,
+					baseUrl: this.#baseUrl,
+				}),
+			);
 		}
 		const data = await response.json();
 		const model = data.data?.[0];

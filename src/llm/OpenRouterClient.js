@@ -44,9 +44,17 @@ export default class OpenRouterClient {
 		if (!response.ok) {
 			const error = await response.text();
 			if (response.status === 401 || response.status === 403) {
-				throw new Error(msg("error.openrouter_auth", { status: `${response.status} - ${error}` }));
+				throw new Error(
+					msg("error.openrouter_auth", {
+						status: `${response.status} - ${error}`,
+					}),
+				);
 			}
-			throw new Error(msg("error.openrouter_api", { status: `${response.status} - ${error}` }));
+			throw new Error(
+				msg("error.openrouter_api", {
+					status: `${response.status} - ${error}`,
+				}),
+			);
 		}
 		const data = await response.json();
 
@@ -73,7 +81,9 @@ export default class OpenRouterClient {
 			signal: AbortSignal.timeout(CATALOG_TIMEOUT),
 		});
 		if (!response.ok) {
-			throw new Error(msg("error.openrouter_catalog", { status: response.status }));
+			throw new Error(
+				msg("error.openrouter_catalog", { status: response.status }),
+			);
 		}
 		const data = await response.json();
 		for (const m of data.data || []) {
@@ -123,14 +133,16 @@ export default class OpenRouterClient {
 			await this.#ensureCatalog();
 			found = await this.#db.get_provider_model.get({ id: model });
 		}
-		if (!found) throw new Error(msg("error.openrouter_model_not_found", { model }));
+		if (!found)
+			throw new Error(msg("error.openrouter_model_not_found", { model }));
 		if (this.#capabilities) {
 			this.#capabilities.set(model, {
 				...found,
 				supported_parameters: JSON.parse(found.supported_parameters || "[]"),
 			});
 		}
-		if (!found.context_length) throw new Error(msg("error.openrouter_no_context_length", { model }));
+		if (!found.context_length)
+			throw new Error(msg("error.openrouter_no_context_length", { model }));
 		return found.context_length;
 	}
 }

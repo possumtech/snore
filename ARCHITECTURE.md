@@ -243,9 +243,21 @@ keys removes the entry from the store entirely.
 
 1. **Prompt instructions + examples** — system prompt describes tool commands with format and examples. The model is told "You must respond with tool commands and may ONLY respond with tool commands."
 2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML. Warns but does not reject.
-3. **Server-side validation** — confirms `<summary>` is present. Injects `"..."` placeholder if missing. Rejects and retries only on completely empty responses (no commands at all).
+3. **Response healing** — every malformed response is recovered, never rejected. Plain text responses (no XML) are used as the summary. Commands without `<summary>` get a `"..."` placeholder injected. Empty responses get a placeholder. The server never throws on model output.
 4. **Unknowns gate** — if the model has unresolved `/:unknown:*` entries and called no investigation commands (`read`, `env`, etc.), the server warns and retries up to 3 times. Investigating resets the counter. After 3 idle warnings, the run completes anyway. The internal prompt on continuation turns shows "N unresolved unknowns."
 5. **Reasoning capture** — any free-form text between tags is captured as `/:reasoning:N` (audit only, hidden from model).
+
+### 2.6 Response Healing Philosophy
+
+Every malformed model response is a diagnostic opportunity, not a "model drift" excuse. When healing a response, ask in order:
+
+1. **Can we recover?** Extract the data and continue. htmlparser2 handles unclosed tags, missing slashes, etc. Plain text responses become the summary.
+2. **Can we warn usefully?** Log structured warnings that help future healing rules.
+3. **Did our structure cause this?** Check if context formatting, prompt wording, or tool definitions nudged the model toward the failure.
+4. **Did we miss something in prompts?** Check examples, instructions, continuation prompts.
+5. **Model drift is the LAST answer**, after all of the above have been ruled out.
+
+The server must never throw on model output. Errors in the catch block return `{ status: "failed" }` — they don't re-throw and crash the RPC request.
 
 ### 2.5 Server Execution Order
 

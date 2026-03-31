@@ -1,9 +1,9 @@
-import msg from "./messages.js";
 import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
 import HeuristicMatcher from "./HeuristicMatcher.js";
+import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
 import XmlParser from "./XmlParser.js";
 
@@ -43,7 +43,9 @@ export default class TurnExecutor {
 
 		const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 		if (unresolved.length > 0) {
-			throw new Error(msg("error.unresolved_proposed", { count: unresolved.length }));
+			throw new Error(
+				msg("error.unresolved_proposed", { count: unresolved.length }),
+			);
 		}
 
 		// File scan
@@ -147,7 +149,11 @@ export default class TurnExecutor {
 			sessionId,
 			runId: currentRunId,
 		});
-		await this.#hooks.llm.request.completed.emit({ model: requestedModel, turn, usage: result.usage });
+		await this.#hooks.llm.request.completed.emit({
+			model: requestedModel,
+			turn,
+			usage: result.usage,
+		});
 		const responseMessage = result.choices?.[0]?.message;
 		const content = responseMessage?.content || "";
 

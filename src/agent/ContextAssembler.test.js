@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import ContextAssembler from "./ContextAssembler.js";
 
 describe("ContextAssembler", () => {
@@ -40,7 +40,12 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "src/app.js", state: "file", value: "const x = 1;", tokens: 5 },
+					{
+						key: "src/app.js",
+						state: "file",
+						value: "const x = 1;",
+						tokens: 5,
+					},
 				],
 				userMessage: "",
 			});
@@ -52,9 +57,7 @@ describe("ContextAssembler", () => {
 		it("renders active known as bullet list", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
-				context: [
-					{ key: "/:known:auth", state: "full", value: "OAuth2 PKCE" },
-				],
+				context: [{ key: "/:known:auth", state: "full", value: "OAuth2 PKCE" }],
 				userMessage: "",
 			});
 			assert.ok(messages[0].content.includes("* /:known:auth — OAuth2 PKCE"));
@@ -99,8 +102,20 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "/:read:1", state: "pass", value: "", tool: "read", target: "src/a.js" },
-					{ key: "/:summary:1", state: "summary", value: "Did stuff.", tool: "summary", target: "" },
+					{
+						key: "/:read:1",
+						state: "pass",
+						value: "",
+						tool: "read",
+						target: "src/a.js",
+					},
+					{
+						key: "/:summary:1",
+						state: "summary",
+						value: "Did stuff.",
+						tool: "summary",
+						target: "",
+					},
 				],
 				userMessage: "",
 			});
@@ -113,7 +128,11 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "src/utils.js", state: "file:symbols", value: "foo(a, b)\nbar()" },
+					{
+						key: "src/utils.js",
+						state: "file:symbols",
+						value: "foo(a, b)\nbar()",
+					},
 				],
 				userMessage: "",
 			});
