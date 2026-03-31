@@ -70,7 +70,9 @@ export default class Engine {
 				run_id: runId,
 				turn: sequence,
 			});
-			const hasPrompt = rows.some((r) => r.scheme === "user" || r.scheme === "prompt");
+			const hasPrompt = rows.some(
+				(r) => r.scheme === "user" || r.scheme === "prompt",
+			);
 
 			if (!hasPrompt && rummy.loopPrompt) {
 				const maxOrdinal = rows.length > 0 ? rows.at(-1).ordinal : 0;

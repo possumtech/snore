@@ -7,20 +7,32 @@ const cache = new Map();
 // --- Detection ---
 
 const XPATH_AXES = new Set([
-	"child", "descendant", "descendant-or-self", "parent", "ancestor",
-	"ancestor-or-self", "following", "following-sibling", "preceding",
-	"preceding-sibling", "self", "attribute", "namespace",
+	"child",
+	"descendant",
+	"descendant-or-self",
+	"parent",
+	"ancestor",
+	"ancestor-or-self",
+	"following",
+	"following-sibling",
+	"preceding",
+	"preceding-sibling",
+	"self",
+	"attribute",
+	"namespace",
 ]);
 
-const XPATH_FUNCTIONS = /\b(position|last|contains|starts-with|not|text|count|sum|name|local-name|string-length|normalize-space|concat|substring|translate|boolean|number|string|true|false|ceiling|floor|round|id|lang|comment|processing-instruction)\s*\(/;
+const XPATH_FUNCTIONS =
+	/\b(position|last|contains|starts-with|not|text|count|sum|name|local-name|string-length|normalize-space|concat|substring|translate|boolean|number|string|true|false|ceiling|floor|round|id|lang|comment|processing-instruction)\s*\(/;
 
-const UNAMBIGUOUS_REGEX = /\\[dwsbBDWSn]|\(\?|^\^|\.\+|\.\*|\.\?|\([^)]*\|[^)]*\)|\{\d+\}|\{\d+,\d*\}/;
+const UNAMBIGUOUS_REGEX =
+	/\\[dwsbBDWSn]|\(\?|^\^|\.\+|\.\*|\.\?|\([^)]*\|[^)]*\)|\{\d+\}|\{\d+,\d*\}/;
 
 function isPlausibleJsonPath(pattern) {
 	if (pattern.startsWith("$.")) {
 		const after = pattern[2];
 		if (!after) return false;
-		if (/[a-zA-Z_*@.[\[]/.test(after)) return !pattern.includes("/");
+		if (/[a-zA-Z_*@.[[]/.test(after)) return !pattern.includes("/");
 		return false;
 	}
 	if (pattern.startsWith("$[")) return !pattern.includes("/");
@@ -48,11 +60,20 @@ function hasXPathPredicate(pattern) {
 }
 
 function detect(pattern) {
-	if ((pattern.startsWith("$.") || pattern.startsWith("$[") || pattern.startsWith("$..")) && isPlausibleJsonPath(pattern)) {
+	if (
+		(pattern.startsWith("$.") ||
+			pattern.startsWith("$[") ||
+			pattern.startsWith("$..")) &&
+		isPlausibleJsonPath(pattern)
+	) {
 		return "jsonpath";
 	}
 
-	if (pattern.startsWith("//") && pattern.length > 2 && /[a-zA-Z_*@.]/.test(pattern[2])) {
+	if (
+		pattern.startsWith("//") &&
+		pattern.length > 2 &&
+		/[a-zA-Z_*@.]/.test(pattern[2])
+	) {
 		return "xpath";
 	}
 
@@ -72,15 +93,8 @@ function globToRegex(glob) {
 	let result = "^";
 	for (let i = 0; i < glob.length; i++) {
 		const c = glob[i];
-		if (c === "*") {
-			if (glob[i + 1] === "*") {
-				result += ".*";
-				i++;
-				if (glob[i + 1] === "/") i++;
-			} else {
-				result += "[^/]*";
-			}
-		} else if (c === "?") result += "[^/]";
+		if (c === "*") result += ".*";
+		else if (c === "?") result += ".";
 		else if (c === "[") {
 			const close = glob.indexOf("]", i + 1);
 			if (close === -1) {
@@ -134,7 +148,10 @@ function parseJsonPath(path) {
 			} else {
 				const start = i;
 				while (i < path.length && path[i] !== "]") i++;
-				segments.push({ type: "index", value: parseInt(path.slice(start, i), 10) });
+				segments.push({
+					type: "index",
+					value: parseInt(path.slice(start, i), 10),
+				});
 				i++;
 			}
 		} else {

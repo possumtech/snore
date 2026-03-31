@@ -92,7 +92,7 @@ async function main() {
 	const dbPath = process.env.RUMMY_DB_PATH || join(rummyHome, "rummy.db");
 	const functionsDir = fileURLToPath(new URL("./src/sql/functions", import.meta.url));
 	const sqlFunctions = readdirSync(functionsDir)
-		.filter((f) => f.endsWith(".js"))
+		.filter((f) => f.endsWith(".js") && !f.endsWith(".test.js"))
 		.map((f) => join(functionsDir, f));
 
 	const db = await SqlRite.open({

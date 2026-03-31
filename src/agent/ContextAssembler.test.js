@@ -192,6 +192,7 @@ describe("ContextAssembler", () => {
 					content: "JWT",
 					tokens: 1,
 					meta: null,
+					category: "known",
 				},
 				{
 					ordinal: 2,
@@ -201,6 +202,7 @@ describe("ContextAssembler", () => {
 					content: "const x = 1;",
 					tokens: 5,
 					meta: null,
+					category: "file",
 				},
 				{
 					ordinal: 3,
@@ -223,7 +225,7 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages[1].content, "Turn 2/15");
 		});
 
-		it("uses prompt scheme as prompt, not continuation", () => {
+		it("uses user scheme as prompt in system content", () => {
 			const rows = [
 				{
 					ordinal: 0,
@@ -236,12 +238,13 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 1,
-					path: "prompt://1",
-					scheme: "prompt",
+					path: "user://1",
+					scheme: "user",
 					fidelity: "full",
 					content: "User prompt",
 					tokens: 3,
 					meta: null,
+					category: "prompt",
 				},
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
@@ -273,6 +276,7 @@ describe("ContextAssembler", () => {
 						target: "app.js",
 						state: "pass",
 					}),
+					category: "result",
 				},
 				{
 					ordinal: 2,
@@ -286,6 +290,7 @@ describe("ContextAssembler", () => {
 						target: "",
 						state: "summary",
 					}),
+					category: "result",
 				},
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
@@ -332,6 +337,7 @@ describe("ContextAssembler", () => {
 					content: "",
 					tokens: 0,
 					meta: null,
+					category: "file_index",
 				},
 				{
 					ordinal: 2,
@@ -341,6 +347,7 @@ describe("ContextAssembler", () => {
 					content: "",
 					tokens: 0,
 					meta: null,
+					category: "known_index",
 				},
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);

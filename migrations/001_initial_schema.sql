@@ -173,8 +173,8 @@ WHEN OLD.status != NEW.status
 BEGIN
 	SELECT RAISE(ABORT, 'invalid run state transition')
 	WHERE NOT (
-		(OLD.status = 'queued'    AND NEW.status IN ('running', 'aborted'))
-		OR (OLD.status = 'running'  AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
+		(OLD.status = 'queued' AND NEW.status IN ('running', 'aborted'))
+		OR (OLD.status = 'running' AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
 		OR (OLD.status = 'proposed' AND NEW.status IN ('running', 'completed', 'aborted'))
 	);
 END;

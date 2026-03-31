@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import hedberg from "./hedberg.js";
 
 describe("hedberg", () => {
@@ -40,7 +40,10 @@ describe("hedberg", () => {
 		});
 
 		it("parens in path stay glob", () => {
-			assert.equal(hedberg("src/utils (copy)/*", "src/utils (copy)/file.js"), 1);
+			assert.equal(
+				hedberg("src/utils (copy)/*", "src/utils (copy)/file.js"),
+				1,
+			);
 		});
 
 		it("non-numeric brace expansion stays glob", () => {
@@ -85,7 +88,8 @@ describe("hedberg", () => {
 	});
 
 	describe("xpath patterns", () => {
-		const xml = "<root><item id=\"3\"><name>test</name></item><item id=\"5\"/></root>";
+		const xml =
+			'<root><item id="3"><name>test</name></item><item id="5"/></root>';
 
 		it("matches //element", () => {
 			assert.equal(hedberg("//item", xml), 1);
@@ -116,7 +120,10 @@ describe("hedberg", () => {
 
 	describe("xpath NOT misdetected", () => {
 		it("C++ namespace path stays glob", () => {
-			assert.equal(hedberg("/path/to/std::vector.html", "/path/to/std::vector.html"), 1);
+			assert.equal(
+				hedberg("/path/to/std::vector.html", "/path/to/std::vector.html"),
+				1,
+			);
 		});
 	});
 

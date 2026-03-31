@@ -3,6 +3,7 @@ CREATE VIEW IF NOT EXISTS v_run_log AS
 SELECT
 	run_id
 	, path
+	, state AS status
 	, COALESCE(scheme, state) AS tool
 	, COALESCE(
 		json_extract(meta, '$.command')
@@ -11,10 +12,9 @@ SELECT
 		, json_extract(meta, '$.question')
 		, ''
 	) AS target
-	, state AS status
 	, CASE
 		WHEN state = 'summary' THEN value
-		WHEN scheme IN ('env', 'run', 'ask_user') THEN value
+		WHEN scheme IN ('env', 'run', 'ask_user', 'inject') THEN value
 		ELSE ''
 	END AS value
 FROM known_entries
