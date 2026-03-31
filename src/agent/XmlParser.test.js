@@ -187,6 +187,17 @@ export default {};
 			);
 			assert.strictEqual(commands[0].to, "src/new.js");
 		});
+
+		it("parses search with query", () => {
+			const { commands } = XmlParser.parse('<search path="node.js streams"/>');
+			assert.strictEqual(commands[0].name, "search");
+			assert.strictEqual(commands[0].path, "node.js streams");
+		});
+
+		it("search body as query", () => {
+			const { commands } = XmlParser.parse("<search>SQLite WAL mode</search>");
+			assert.strictEqual(commands[0].path, "SQLite WAL mode");
+		});
 	});
 
 	describe("alternative philosophies", () => {

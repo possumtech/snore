@@ -217,6 +217,27 @@ describe("Pattern operations integration", () => {
 		});
 	});
 
+	describe("search scheme", () => {
+		it("search result can be stored and retrieved", async () => {
+			await store.upsert(
+				RUN_ID,
+				1,
+				"search://1",
+				"1. SQLite WAL mode overview\n2. Write-Ahead Logging explained",
+				"info",
+			);
+
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"search://*",
+				null,
+			);
+			assert.strictEqual(matches.length, 1);
+			assert.strictEqual(matches[0].path, "search://1");
+			assert.ok(matches[0].value.includes("WAL"));
+		});
+	});
+
 	describe("search/replace edit mode", () => {
 		it("literal search and replace on file content", async () => {
 			await store.upsert(

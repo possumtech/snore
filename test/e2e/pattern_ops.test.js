@@ -111,6 +111,26 @@ describe("E2E: Pattern Operations", () => {
 		assert.ok(known.length > 0, "Should have known entries");
 	});
 
+	it("search returns results", { timeout: TIMEOUT }, async () => {
+		const result = await client.call("ask", {
+			model,
+			prompt:
+				'Search the web for "SQLite WAL mode": <search path="SQLite WAL mode"/>',
+		});
+
+		await client.assertRun(result, "completed", "search returns results");
+
+		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
+		const entries = await tdb.db.get_known_entries.all({
+			run_id: runRow.id,
+		});
+		const searchEntries = entries.filter((e) => e.scheme === "search");
+		assert.ok(
+			searchEntries.length >= 1,
+			`Should have at least one search result entry, got ${searchEntries.length}`,
+		);
+	});
+
 	it("edit with search/replace attributes", { timeout: TIMEOUT }, async () => {
 		const result = await client.call("act", {
 			model,

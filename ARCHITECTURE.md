@@ -187,6 +187,9 @@ At least one of `path` or `value` must be provided on store-facing tools.
 | `<run>` | `<run command="cmd"/>` |
 | `<delete>` | `<delete path="path" value="pattern?" keys?/>` |
 | `<edit>` | `<edit path="path" search="text" replace="text"/>` or `<edit path="path">SEARCH/REPLACE blocks</edit>` |
+| `<search>` | `<search path="query"/>` |
+| `<move>` | `<move path="from" to="to"/>` |
+| `<copy>` | `<copy path="from" to="to"/>` |
 
 Edit has two modes:
 
@@ -263,6 +266,19 @@ entry per match with state `proposed`. The client confirms and resolves.
 
 **`<ask_user>`** — creates a `ask_user://N` entry with scheme-specific, state `proposed`.
 The client shows the question and resolves with the selected answer.
+
+**`<search>`** — hits SearXNG, stores results as `search://N` info entry. Results list
+title, URL, and snippet per hit.
+
+**`<move>`** — reads source value, writes to destination, removes source. File
+destinations → proposed. K/V destinations → immediate.
+
+**`<copy>`** — reads source value, writes to destination. Source stays. Same file/K/V
+split as move.
+
+**`<read path="https://...">`** — fetches the URL via Playwright, extracts readable
+content via Readability, converts to markdown via Turndown, and stores at the
+param-stripped URL.
 
 **`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
 the matching list as a `keys://N` info entry. No state change occurs. The entry
