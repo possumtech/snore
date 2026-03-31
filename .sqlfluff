@@ -1,6 +1,7 @@
 [sqlfluff]
 dialect = sqlite
 templater = raw
+max_line_length = 100
 # AL01, AL02: Explicit AS for aliases
 # AM04: Ambiguous column count (SELECT *)
 # CV01: No column numbers in GROUP BY/ORDER BY
@@ -10,6 +11,9 @@ templater = raw
 # LT02: Indentation
 # LT05: Leading commas
 rules = AL01, AL02, AM04, CV01, JJ01, ST06, LT01, LT02, LT05
+
+[sqlfluff:rules:layout.long_lines]
+max_line_length = 100
 
 [sqlfluff:indentation]
 indent_unit = tab
