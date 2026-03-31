@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -90,9 +90,15 @@ async function main() {
 
 	// 5. Bootstrap Persistence
 	const dbPath = process.env.RUMMY_DB_PATH || join(rummyHome, "rummy.db");
+	const functionsDir = fileURLToPath(new URL("./src/sql/functions", import.meta.url));
+	const sqlFunctions = readdirSync(functionsDir)
+		.filter((f) => f.endsWith(".js"))
+		.map((f) => join(functionsDir, f));
+
 	const db = await SqlRite.open({
 		path: dbPath,
 		dir: ["migrations", "src"],
+		functions: sqlFunctions,
 	});
 
 	// 6. Database Hygiene (run on startup)

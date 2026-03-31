@@ -1,7 +1,16 @@
+import { readdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import SqlRite from "@possumtech/sqlrite";
+
+const functionsDir = fileURLToPath(
+	new URL("../../src/sql/functions", import.meta.url),
+);
+const sqlFunctions = readdirSync(functionsDir)
+	.filter((f) => f.endsWith(".js"))
+	.map((f) => join(functionsDir, f));
 
 export default class TestDb {
 	constructor(db, dbPath) {
@@ -14,10 +23,10 @@ export default class TestDb {
 			tmpdir(),
 			`rummy_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
 		);
-		// Scan both migrations and the new src structure for PREP/INIT tags
 		const db = await SqlRite.open({
 			path: dbPath,
 			dir: ["migrations", "src"],
+			functions: sqlFunctions,
 		});
 		return new TestDb(db, dbPath);
 	}
