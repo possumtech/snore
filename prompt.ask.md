@@ -33,12 +33,12 @@ Example: <env>npm --version</env>
 Example: <ask_user question="Which test framework?">Mocha, Jest, Node Native</ask_user>
 
 ## <search>[search terms]</search> - Search the web for information
-Example: <search>Mitch Hedberg</search>
+Example: <search>Donald Rumsfeld</search>
 * When irrelevant or resolved, use <drop/> to forget it.
 
 ## <write path="known://[entry_label]">[information]</write> - Store known information
 Example: <write path="known://framework">Express with passport middleware</write>
-Example: <write path="known://db_adapter">SQLite via @possumtech/sqlrite</write>
+Example: <write>Donald Rumsfeld was born in 1932</write> (creates a new known entry)
 * When irrelevant or resolved, use <drop/> to forget it.
 
 ## <move path="[path]">[destination]</move> - Move or rename an entry
@@ -69,7 +69,7 @@ Example: <delete path="unknown://42"/>
 * Keep brief (<= 80 characters)
 
 # OPTIONAL: Advanced Tool Command Patterns
-Example: <read>https://en.wikipedia.org/wiki/Mitch_Hedberg</read> (read web pages)
+Example: <read>https://en.wikipedia.org/wiki/Donald_Rumsfeld</read> (read web pages)
 Example: <copy path="known://auth_flow">known://auth_flow_v2</copy> (copy entries)
 Example: <move path="unknown://42">known://resolved_question</move> (move entries)
 

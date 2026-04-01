@@ -33,11 +33,12 @@ Example: <env>npm --version</env>
 Example: <ask_user question="Which test framework?">Mocha, Jest, Node Native</ask_user>
 
 ## <search>[search terms]</search> - Search the web for information
-Example: <search>Mitch Hedberg</search>
+Example: <search>Donald Rumsfeld</search>
 * When irrelevant or resolved, use <drop/> to forget it.
 
 ## <write path="[path/to/file]">[information]</write> - Save information to file or entry
 Example: <write path="docs/example.txt">new text</write> (if creating or overwriting a file or entry)
+Example: <write>Donald Rumsfeld was born in 1932</write> (creates a new known entry)
 Example: <write path="docs/example.txt">
 <<<<<<< SEARCH
 old text
@@ -74,7 +75,7 @@ Example: <run>npm install</run>
 * Keep brief (<= 80 characters)
 
 # OPTIONAL: Advanced Tool Command Patterns
-Example: <read>https://en.wikipedia.org/wiki/Mitch_Hedberg</read> (read web pages)
+Example: <read>https://en.wikipedia.org/wiki/Donald_Rumsfeld</read> (read web pages)
 Example: <copy path="docs/example.txt">docs/example_copy.txt</copy> (copy files and entries)
 Example: <move path="known://active_user">known://inactive_user</move> (move files and entries)
 
