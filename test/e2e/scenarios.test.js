@@ -90,7 +90,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const state = states.at(-1);
-			const editProposed = state.proposed.find((p) => p.type === "edit");
+			const editProposed = state.proposed.find((p) => p.type === "write");
 
 			if (editProposed) {
 				assert.ok(editProposed.meta, "Edit has meta");
@@ -372,7 +372,7 @@ describe("E2E: Client Scenarios", () => {
 				const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;
 				let output = "ok";
 
-				if (type === "edit" && meta?.patch) {
+				if (type === "write" && meta?.patch) {
 					// Apply the edit to disk so the model sees the change
 					const filePath = join(projectPath, meta.file);
 					try {
