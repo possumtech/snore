@@ -36,6 +36,7 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('user', 'full', 1, '["info"]', 0, 'audit'),
 ('prompt', 'full', 1, '["info"]', 0, 'audit'),
 ('reasoning', 'null', 0, '["info"]', 0, 'audit'),
+('model', 'null', 0, '["info"]', 0, 'audit'),
 ('content', 'null', 0, '["info"]', 0, 'audit'),
 ('inject', 'null', 0, '["info"]', 0, 'result'),
 ('keys', 'null', 0, '["info"]', 0, 'audit'),

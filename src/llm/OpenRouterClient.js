@@ -27,6 +27,8 @@ export default class OpenRouterClient {
 		const body = { model, messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
+		if (this.#capabilities?.supports(model, "include_reasoning"))
+			body.include_reasoning = true;
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const timeoutSignal = AbortSignal.timeout(timeout);

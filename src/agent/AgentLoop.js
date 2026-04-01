@@ -405,11 +405,12 @@ export default class AgentLoop {
 		const { path, action, output } = resolution;
 
 		if (action === "accept") {
-			await this.#knownStore.resolve(runId, path, "pass", output || "");
+			const meta = await this.#knownStore.getMeta(runId, path);
+			const resolvedValue = this.#composeResolvedContent(path, meta, output);
+			await this.#knownStore.resolve(runId, path, "pass", resolvedValue);
 
 			// If accepting a delete, erase the target path
 			if (path.startsWith("delete://")) {
-				const meta = await this.#knownStore.getMeta(runId, path);
 				if (meta?.path) {
 					await this.#knownStore.remove(runId, meta.path);
 				}
@@ -417,7 +418,6 @@ export default class AgentLoop {
 
 			// If accepting a move to file, remove the source entry
 			if (path.startsWith("move://")) {
-				const meta = await this.#knownStore.getMeta(runId, path);
 				if (meta?.isMove && meta?.from) {
 					await this.#knownStore.remove(runId, meta.from);
 				}
@@ -452,6 +452,20 @@ export default class AgentLoop {
 
 		await this.#db.update_run_status.run({ id: runId, status: "completed" });
 		return { run: runAlias, status: "completed" };
+	}
+
+	#composeResolvedContent(path, meta, output) {
+		const scheme = path.split("://")[0];
+		switch (scheme) {
+			case "env":
+				return `<env>${meta?.command || ""}</env><output>${output || ""}</output>`;
+			case "run":
+				return `<run>${meta?.command || ""}</run><output>${output || ""}</output>`;
+			case "ask_user":
+				return `${meta?.question || ""} Answered: ${output || ""}`;
+			default:
+				return output || "";
+		}
 	}
 
 	async inject(runAlias, message) {

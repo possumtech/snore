@@ -10,7 +10,7 @@ export default class OpenAiClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		const body = { model, messages };
+		const body = { model, messages, think: true };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

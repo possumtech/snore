@@ -489,12 +489,22 @@ exactly what was stored. Content uses unix-style semantics where possible.
 
 ### View fix
 
-- [ ] **Change `ELSE ''` to `ELSE value`** in `v_model_context.sql` content projection.
+- [x] **Change `ELSE ''` to `ELSE value`** in `v_model_context.sql` content projection.
       New schemes are visible by default. Silent content drops are eliminated.
+
+### Content composition at write time ✓
+
+- [x] **search://slug** — full search results (already stored, now visible)
+- [x] **env://slug** — `<env>command</env>` at creation, `<env>cmd</env><output>out</output>` at resolve
+- [x] **run://slug** — `<run>command</run><output>out</output>` at resolve
+- [x] **ask_user://slug** — question at creation, `Question? Answered: answer` at resolve
+- [x] **delete://slug** — `rm target_path`
+- [x] **move://slug** — `mv source destination`
+- [x] **copy://slug** — `cp source destination`
 
 ### Tests
 
-- [ ] **Update tool_visibility integration test** — all schemes pass
+- [x] **tool_visibility integration test** — all 11 schemes pass
 - [ ] **E2E: search-then-answer story** — ask a factual question only answerable
       via search, assert the model's answer contains the fact
 

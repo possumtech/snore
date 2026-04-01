@@ -51,8 +51,7 @@ projected AS (
 					WHEN scheme IN ('user', 'prompt') THEN value
 					WHEN scheme IN ('http', 'https') THEN value
 					WHEN state = 'summary' THEN value
-					WHEN scheme IN ('env', 'run', 'ask_user') THEN value
-					ELSE ''
+					ELSE value
 				END
 			WHEN 'summary'
 				THEN COALESCE(json_extract(meta, '$.symbols'), '')

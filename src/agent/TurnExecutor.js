@@ -175,6 +175,21 @@ export default class TurnExecutor {
 		// Parse XML commands from content
 		const { commands, unparsed } = XmlParser.parse(content);
 
+		// Store raw API response diagnostics
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`model://${turn}`,
+			JSON.stringify({
+				keys: responseMessage ? Object.keys(responseMessage) : [],
+				reasoning_content: responseMessage?.reasoning_content || null,
+				content: content.slice(0, 4096),
+				usage: result.usage || null,
+				model: result.model || requestedModel,
+			}),
+			"info",
+		);
+
 		// Store reasoning (model thinking)
 		if (responseMessage?.reasoning_content) {
 			await this.#knownStore.upsert(
@@ -319,18 +334,21 @@ export default class TurnExecutor {
 				continue;
 			}
 
-			// run, env — single proposed/pass entry
+			// run, env, ask_user — single proposed/pass entry
 			const resultPath = await this.#knownStore.slugPath(
 				currentRunId,
 				cmd.name,
 				cmd.command || cmd.path || cmd.question || "",
 			);
 			cmd.resultPath = resultPath;
+			const resultValue = cmd.command
+				? `<${cmd.name}>${cmd.command}</${cmd.name}>`
+				: "";
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
 				resultPath,
-				"",
+				resultValue,
 				cmd.name === "env" ? "pass" : "proposed",
 				{
 					meta: {
@@ -355,7 +373,7 @@ export default class TurnExecutor {
 				currentRunId,
 				turn,
 				resultPath,
-				"",
+				askUserCmd.question || "",
 				"proposed",
 				{
 					meta: { question: askUserCmd.question, options: askUserCmd.options },
@@ -620,17 +638,32 @@ export default class TurnExecutor {
 				entry.path,
 			);
 
+			const content = `rm ${entry.path}`;
 			if (entry.scheme === null) {
 				// File → proposed (client confirms deletion)
-				await this.#knownStore.upsert(runId, turn, resultPath, "", "proposed", {
-					meta: { path: entry.path },
-				});
+				await this.#knownStore.upsert(
+					runId,
+					turn,
+					resultPath,
+					content,
+					"proposed",
+					{
+						meta: { path: entry.path },
+					},
+				);
 			} else {
 				// K/V → immediate remove
 				await this.#knownStore.remove(runId, entry.path);
-				await this.#knownStore.upsert(runId, turn, resultPath, "", "pass", {
-					meta: { path: entry.path },
-				});
+				await this.#knownStore.upsert(
+					runId,
+					turn,
+					resultPath,
+					content,
+					"pass",
+					{
+						meta: { path: entry.path },
+					},
+				);
 			}
 		}
 	}
@@ -660,12 +693,14 @@ export default class TurnExecutor {
 
 		// File destinations → proposed (client writes to disk)
 		// K/V destinations → pass (immediate)
+		const verb = isMove ? "mv" : "cp";
+		const content = `${verb} ${cmd.path} ${cmd.to}`;
 		if (destScheme === null) {
 			await this.#knownStore.upsert(
 				runId,
 				turn,
 				resultPath,
-				source,
+				content,
 				"proposed",
 				{
 					meta: { from: cmd.path, to: cmd.to, isMove, warning },
@@ -676,7 +711,7 @@ export default class TurnExecutor {
 			if (isMove) {
 				await this.#knownStore.remove(runId, cmd.path);
 			}
-			await this.#knownStore.upsert(runId, turn, resultPath, "", "pass", {
+			await this.#knownStore.upsert(runId, turn, resultPath, content, "pass", {
 				meta: { from: cmd.path, to: cmd.to, isMove, warning },
 			});
 		}
