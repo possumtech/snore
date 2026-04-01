@@ -186,21 +186,24 @@ export default class ContextAssembler {
 	}
 
 	static assembleFromTurnContext(rows) {
-		let systemContent = "";
+		let instructions = "";
+		let continuation = null;
+
+		// Context buckets (system message)
 		const files = [];
 		const symbolFiles = [];
 		const storedFiles = [];
 		const activeKnown = [];
 		const storedKnown = [];
-		const results = [];
 		const unknowns = [];
+
+		// Message buckets (user message)
+		const messageEntries = [];
 		let prompt = null;
-		let continuation = null;
 
 		for (const row of rows) {
-			// Synthetic rows (injected by engine, no category)
 			if (row.path === "system://prompt") {
-				systemContent = row.content;
+				instructions = row.content;
 				continue;
 			}
 			if (row.path === "continuation://prompt") {
@@ -243,10 +246,14 @@ export default class ContextAssembler {
 					unknowns.push({ value: row.content });
 					break;
 				case "prompt":
-					prompt = row.content;
+					// user:// = genuine prompt, prompt:// = continuation (goes in messages)
+					if (row.scheme === "user") {
+						prompt = row.content;
+					}
+					messageEntries.push({ path: row.path, scheme: row.scheme, value: row.content });
 					break;
 				case "result":
-					results.push({
+					messageEntries.push({
 						path: row.path,
 						value: row.content,
 						tool: meta?.tool,
@@ -257,7 +264,32 @@ export default class ContextAssembler {
 			}
 		}
 
-		const parts = [];
+		// --- System message: instructions + context ---
+		const contextParts = [];
+
+		if (activeKnown.length > 0) {
+			const lines = activeKnown.map((k) => `* ${k.path} — ${k.value}`);
+			contextParts.push(`### Knowledge\n${lines.join("\n")}`);
+		}
+
+		if (storedKnown.length > 0) {
+			contextParts.push(
+				`### Stored\n${storedKnown.map((k) => k.path).join(", ")}`,
+			);
+		}
+
+		if (storedFiles.length > 0) {
+			contextParts.push(
+				`### File Index\n${storedFiles.map((f) => f.path).join(", ")}`,
+			);
+		}
+
+		if (symbolFiles.length > 0) {
+			const symBlocks = symbolFiles.map(
+				(f) => `#### ${f.path} (symbols)\n${f.value}`,
+			);
+			contextParts.push(symBlocks.join("\n\n"));
+		}
 
 		if (files.length > 0) {
 			const fileBlocks = files.map((f) => {
@@ -267,66 +299,53 @@ export default class ContextAssembler {
 					f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
 				return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
 			});
-			parts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
-		}
-
-		if (symbolFiles.length > 0) {
-			const symBlocks = symbolFiles.map(
-				(f) => `#### ${f.path} (symbols)\n${f.value}`,
-			);
-			parts.push(symBlocks.join("\n\n"));
-		}
-
-		if (storedFiles.length > 0) {
-			parts.push(
-				`### File Index\n${storedFiles.map((f) => f.path).join(", ")}`,
-			);
-		}
-
-		if (activeKnown.length > 0) {
-			const lines = activeKnown.map((k) => `* ${k.path} — ${k.value}`);
-			parts.push(`### Knowledge\n${lines.join("\n")}`);
-		}
-
-		if (storedKnown.length > 0) {
-			parts.push(`### Stored\n${storedKnown.map((k) => k.path).join(", ")}`);
-		}
-
-		if (results.length > 0) {
-			const lines = results.map((r) => {
-				const check =
-					r.state === "pass" || r.state === "summary"
-						? "✓"
-						: r.state === "warn" || r.state === "error"
-							? "✗"
-							: "·";
-				if (r.state === "summary") return `* summary: ${r.value}`;
-				const tool = r.tool || r.path.match(/^(\w+):\/\//)?.[1] || "?";
-				const target = r.target || "";
-				const detail = r.value ? ` — ${r.value.slice(0, 120)}` : "";
-				return `* ${tool} ${target} ${check}${detail}`;
-			});
-			parts.push(`### History\n${lines.join("\n")}`);
+			contextParts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
 		}
 
 		if (unknowns.length > 0) {
 			const lines = unknowns.map((u) => `* ${u.value}`);
-			parts.push(`### Unknowns\n${lines.join("\n")}`);
+			contextParts.push(`### Unknowns\n${lines.join("\n")}`);
+		}
+
+		const systemParts = [instructions];
+		if (contextParts.length > 0) {
+			systemParts.push(`<context>\n${contextParts.join("\n\n")}\n</context>`);
+		}
+
+		const messages = [
+			{ role: "system", content: systemParts.join("\n\n") },
+		];
+
+		// --- User message: messages + prompt/progress ---
+		const userParts = [];
+
+		if (messageEntries.length > 0) {
+			const lines = messageEntries.map((e) => {
+				if (e.scheme === "user") return `> ${e.value}`;
+				if (e.scheme === "prompt") return `> [continuation] ${e.value}`;
+				const check =
+					e.state === "pass" || e.state === "summary"
+						? "✓"
+						: e.state === "warn" || e.state === "error"
+							? "✗"
+							: "·";
+				if (e.state === "summary") return `* summary: ${e.value}`;
+				const tool = e.tool || e.path.match(/^(\w+):\/\//)?.[1] || "?";
+				const target = e.target || "";
+				const detail = e.value ? ` — ${e.value.slice(0, 120)}` : "";
+				return `* ${tool} ${target} ${check}${detail}`;
+			});
+			userParts.push(`<messages>\n${lines.join("\n")}\n</messages>`);
 		}
 
 		if (prompt) {
-			parts.push(`### Prompt\n${prompt}`);
+			userParts.push(`<prompt>${prompt}</prompt>`);
+		} else if (continuation) {
+			userParts.push(`<progress>${continuation}</progress>`);
 		}
 
-		const sections = [systemContent];
-		const rendered =
-			parts.length > 0 ? `## Context\n\n${parts.join("\n\n")}` : "";
-		if (rendered) sections.push(rendered);
-
-		const messages = [{ role: "system", content: sections.join("\n\n") }];
-
-		if (!prompt && continuation) {
-			messages.push({ role: "user", content: continuation });
+		if (userParts.length > 0) {
+			messages.push({ role: "user", content: userParts.join("\n") });
 		}
 
 		return messages;

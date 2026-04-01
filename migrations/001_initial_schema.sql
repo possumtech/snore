@@ -209,6 +209,7 @@ CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn
 ON turn_context (run_id, turn);
 
 -- Enforce valid run state transitions.
+-- completed → running: continuation (new turn on finished run)
 CREATE TRIGGER IF NOT EXISTS trg_run_state_transition
 BEFORE UPDATE OF status ON runs
 FOR EACH ROW
@@ -219,6 +220,7 @@ BEGIN
 		(OLD.status = 'queued' AND NEW.status IN ('running', 'aborted'))
 		OR (OLD.status = 'running' AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
 		OR (OLD.status = 'proposed' AND NEW.status IN ('running', 'completed', 'aborted'))
+		OR (OLD.status = 'completed' AND NEW.status IN ('running'))
 	);
 END;
 

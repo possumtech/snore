@@ -334,21 +334,47 @@ The server parses all XML commands from the response, then processes in strict o
 
 ## 3. Model Context
 
-No message history. The model's entire context is rendered as markdown in the
-system prompt. On the first turn, the user message carries the prompt. On
-continuation turns, the user message is empty — the prompt is in the context
-as a `prompt://N` entry.
+Two messages per turn. System carries stable truth (instructions + world state).
+User carries the conversation (message history + current task). Models treat
+system and user fundamentally differently — system is the behavioral contract,
+user is high-signal task input. The current task (prompt or progress) is always
+last in user — the highest-attention position.
 
-### 3.1 System Message Contents
+### 3.1 Message Structure
 
-1. **Role description + tool commands** — from `prompt.ask.md` or `prompt.act.md`
-2. **Context** — markdown rendered from `turn_context` by ContextAssembler
+```
+system:
+  <instructions>prompt.ask.md or prompt.act.md</instructions>
+  <context>files, knowledge, unknowns (rendered from turn_context)</context>
+
+user:
+  <messages>chronological: prompts, tool results, updates, summaries</messages>
+  <prompt>user question</prompt>        ← on first turn or new user input
+  — OR —
+  <progress>turn N/M, allowed tools</progress>  ← on continuation turns
+```
+
+**System** = instructions + context. Both are stable truth independent of the
+current task. Instructions define the model's role and tools. Context is the
+state of the world — files, knowledge, unknowns. Context is rendered from
+`turn_context` and ends with unknowns (the uncertainty boundary).
+
+**User** = messages + prompt/progress. Messages are the chronological conversation
+log: previous user prompts, tool call results, updates, and summaries. The model
+sees a narrative of what happened. The final element is always the current task:
+either `<prompt>` (genuine user question) or `<progress>` (continuation status).
+
+**Prompt** only appears when the user has asked something. It does not appear on
+continuation turns.
+
+**Progress** is ephemeral — it conveys turn count, token budget, and allowed tools
+for the current continuation. Stored for audit but not part of the message history.
 
 ### 3.2 Context Materialization
 
 Each turn, the engine materializes `turn_context` from `known_entries` via the
-`v_model_context` VIEW. The VIEW applies `fidelityOf()` to classify each entry
-and `countTokens()` for accurate token counts. Ordinal assignment uses
+`v_model_context` VIEW. The VIEW joins the `schemes` table for fidelity rules
+and uses `countTokens()` for accurate token counts. Ordinal assignment uses
 `ROW_NUMBER()` to establish render order:
 
 1. **Knowledge** — `known://*` at fidelity `full` (working memory)
@@ -356,12 +382,11 @@ and `countTokens()` for accurate token counts. Ordinal assignment uses
 3. **File Index** — files at fidelity `index` (path listing)
 4. **Symbol files** — files at fidelity `summary` (signatures only)
 5. **Full files** — files at fidelity `full` (complete content)
-6. **Results** — tool command results and summaries in id order
-7. **Unknowns** — `unknown://*` entries (uncertainty boundary)
-8. **Prompt** — latest `prompt://N` (the actual task, always last)
+6. **Unknowns** — `unknown://*` entries (uncertainty boundary, always last)
 
-The system prompt and continuation prompt are inserted as synthetic rows
-(not from the VIEW) by the engine.
+Results, summaries, updates, and prompts are NOT in context — they are in
+messages (user message). The context is the model's world state; messages
+are the conversation.
 
 ### 3.3 Fidelity
 
@@ -371,9 +396,9 @@ Each entry in `turn_context` has a `fidelity` level:
 - **`summary`** — partial representation (file symbols/signatures)
 - **`index`** — path/key listed, no content (file index, stored key listing)
 
-Fidelity is derived from `scheme`, `state`, and `turn` via `fidelityOf()`.
-`read(key)` promotes by setting turn to current turn (→ fidelity `full`).
-`drop(key)` demotes by setting turn to 0 (→ fidelity `index`).
+Fidelity is derived from `scheme`, `state`, and `turn` via the `schemes` table
+join in `v_model_context`. `read(key)` promotes by setting turn to current turn
+(→ fidelity `full`). `drop(key)` demotes by setting turn to 0 (→ fidelity `index`).
 
 ### 3.4 File Bootstrap
 

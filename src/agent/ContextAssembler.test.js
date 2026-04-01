@@ -221,11 +221,12 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[0].content.includes("You are helpful."));
 			assert.ok(messages[0].content.includes("known://auth"));
 			assert.ok(messages[0].content.includes("const x = 1;"));
+			assert.ok(messages[0].content.includes("<context>"));
 			assert.strictEqual(messages[1].role, "user");
-			assert.strictEqual(messages[1].content, "Turn 2/15");
+			assert.ok(messages[1].content.includes("<progress>Turn 2/15</progress>"));
 		});
 
-		it("uses user scheme as prompt in system content", () => {
+		it("uses user scheme as prompt in user message", () => {
 			const rows = [
 				{
 					ordinal: 0,
@@ -249,8 +250,9 @@ describe("ContextAssembler", () => {
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
 
-			assert.strictEqual(messages.length, 1);
-			assert.ok(messages[0].content.includes("User prompt"));
+			assert.strictEqual(messages.length, 2);
+			assert.ok(messages[1].role, "user");
+			assert.ok(messages[1].content.includes("<prompt>User prompt</prompt>"));
 		});
 
 		it("renders results with status symbols", () => {
@@ -294,10 +296,12 @@ describe("ContextAssembler", () => {
 				},
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
-			const content = messages[0].content;
+			assert.strictEqual(messages.length, 2);
+			const userContent = messages[1].content;
 
-			assert.ok(content.includes("✓"), "pass result should have check mark");
-			assert.ok(content.includes("summary: Fixed it"), "summary should render");
+			assert.ok(userContent.includes("✓"), "pass result should have check mark");
+			assert.ok(userContent.includes("summary: Fixed it"), "summary should render");
+			assert.ok(userContent.includes("<messages>"), "results in messages block");
 		});
 
 		it("renders empty context when no entries", () => {
