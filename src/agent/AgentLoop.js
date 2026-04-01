@@ -326,6 +326,22 @@ export default class AgentLoop {
 					}),
 				};
 
+				const repetition = healer.assessRepetition(result);
+				if (!repetition.continue) {
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: "completed",
+					});
+					const out = {
+						run: currentAlias,
+						status: "completed",
+						turn: result.turn,
+						reason: repetition.reason,
+					};
+					await hook.completed.emit({ sessionId, ...out });
+					return out;
+				}
+
 				const progress = healer.assessProgress(result);
 				if (progress.continue) continue;
 

@@ -153,4 +153,59 @@ describe("ResponseHealer", () => {
 			);
 		});
 	});
+
+	describe("assessRepetition", () => {
+		it("no commands does not increment", () => {
+			const healer = new ResponseHealer();
+			const result = healer.assessRepetition({ actionCalls: [], writeCalls: [] });
+			assert.strictEqual(result.continue, true);
+		});
+
+		it("same commands repeated 3x force-completes", () => {
+			const healer = new ResponseHealer();
+			const calls = { actionCalls: [{ name: "search", path: "Tom Petty" }], writeCalls: [] };
+			healer.assessRepetition(calls);
+			healer.assessRepetition(calls);
+			const result = healer.assessRepetition(calls);
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason.includes("repeated"));
+		});
+
+		it("different commands reset the counter", () => {
+			const healer = new ResponseHealer();
+			const search1 = { actionCalls: [{ name: "search", path: "Tom Petty" }], writeCalls: [] };
+			const search2 = { actionCalls: [{ name: "search", path: "Beatles" }], writeCalls: [] };
+			healer.assessRepetition(search1);
+			healer.assessRepetition(search1);
+			// Different command resets
+			healer.assessRepetition(search2);
+			// Back to original — counter restarts at 1
+			healer.assessRepetition(search1);
+			const result = healer.assessRepetition(search1);
+			// Only 2 repetitions of search1 after reset, not 3
+			assert.strictEqual(result.continue, true);
+		});
+
+		it("order of commands does not matter", () => {
+			const healer = new ResponseHealer();
+			const calls1 = { actionCalls: [{ name: "read", path: "a.js" }, { name: "read", path: "b.js" }], writeCalls: [] };
+			const calls2 = { actionCalls: [{ name: "read", path: "b.js" }, { name: "read", path: "a.js" }], writeCalls: [] };
+			healer.assessRepetition(calls1);
+			healer.assessRepetition(calls2);
+			const result = healer.assessRepetition(calls1);
+			assert.strictEqual(result.continue, false);
+		});
+
+		it("reset clears repetition state", () => {
+			const healer = new ResponseHealer();
+			const calls = { actionCalls: [{ name: "search", path: "query" }], writeCalls: [] };
+			healer.assessRepetition(calls);
+			healer.assessRepetition(calls);
+			healer.reset();
+			healer.assessRepetition(calls);
+			healer.assessRepetition(calls);
+			const result = healer.assessRepetition(calls);
+			assert.strictEqual(result.continue, false);
+		});
+	});
 });

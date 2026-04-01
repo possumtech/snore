@@ -511,14 +511,15 @@ reports progress while doing the exact same search every turn.
 (same name + same path/query) N consecutive turns, force-complete the run.
 Checked in AgentLoop after each turn, before the stall counter.
 
-- [ ] **Track recent commands** — after each turn, record the tool commands
-      emitted (name + path). Compare against previous turn's commands.
-- [ ] **Repetition counter** — increment when current turn's commands match
-      previous turn's commands exactly. Reset when they differ.
-- [ ] **Force-complete** — when counter hits `RUMMY_MAX_REPETITIONS`, log a
+- [x] **Track recent commands** — fingerprint tool commands (name + path/query),
+      sorted for order-independence. Stored on ResponseHealer instance.
+- [x] **Repetition counter** — increment when current turn's fingerprint matches
+      previous turn's. Reset when they differ.
+- [x] **Force-complete** — when counter hits `RUMMY_MAX_REPETITIONS`, log a
       warning and return `{ continue: false, reason }`.
-- [ ] **Integration with ResponseHealer** — add `assessRepetition()` or fold
-      into `assessProgress()`. Called before stall assessment.
+- [x] **Integration with ResponseHealer** — `assessRepetition()` called in
+      AgentLoop before `assessProgress()`. Catches loops even when model sends
+      genuine updates.
 
 ### Turn limit per loop
 
@@ -528,13 +529,13 @@ queue is implemented, each queued prompt gets its own turn counter.
 
 ### Tests
 
-- [ ] **Unit: repetition detection** — same commands 3x → force-complete
-- [ ] **Unit: different commands reset counter** — no false positives
+- [x] **Unit: repetition detection** — 5 tests in ResponseHealer.test.js
+- [x] **Unit: different commands reset counter** — no false positives
+- [x] **Unit: order independence** — sorted fingerprints
 - [ ] **Integration: search loop** — model searches same query repeatedly,
       loop terminates after RUMMY_MAX_REPETITIONS
-- [ ] **E2E: Tom Petty reproduction** — ask a question that triggers search,
-      verify the run completes (either with answer or force-complete),
-      verify it doesn't loop for 15 turns
+- [x] **E2E: Story 2 search turn** — loop defense caught repeated search,
+      force-completed, story still passed
 
 ---
 
@@ -577,22 +578,3 @@ All FKs follow. RETURNING on create queries. Aliases remain the external identif
 
 ---
 
-## Future: Dependency Alternatives
-
-**isomorphic-git** — Pure JS git implementation. Would eliminate all `execSync("git ...")`
-subprocess spawns in `GitProvider.js`. Currently `ProjectContext.open()` caches results
-keyed on HEAD hash, so the subprocess cost is amortized. Consider adopting if:
-(a) git operations expand beyond `ls-files`/`rev-parse`, or (b) we need to run in
-environments without git installed.
-
-## Future: Knowledge Graph
-
-Scan `known://*` values for URI references (file paths, `known://`, `https://`).
-Build citation edges. High-connectivity knowledge nodes resist demotion. Deferred
-until budget enforcement + ref counting are proven.
-
-## Future: Stored Key Compression
-
-Pattern-compress the `stored://` index. Instead of listing `known://users_dave`,
-`known://users_bob`, `known://users_stacy` individually, show `known://users_*`.
-Reduces noise in an ever-growing key space.

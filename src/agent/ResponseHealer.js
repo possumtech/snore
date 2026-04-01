@@ -1,7 +1,10 @@
 const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
+const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
 
 export default class ResponseHealer {
 	#stallCount = 0;
+	#lastFingerprint = null;
+	#repetitionCount = 0;
 
 	/**
 	 * Heal a missing status tag. Called when the model emits
@@ -19,6 +22,44 @@ export default class ResponseHealer {
 			`[RUMMY] Healed: missing <update>/<summary>. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
 		);
 		return "...";
+	}
+
+	/**
+	 * Check for repeated tool commands across turns.
+	 * Returns { continue: boolean, reason?: string }
+	 *
+	 * Fingerprints the commands (name + path/query). If the same fingerprint
+	 * repeats for MAX_REPETITIONS consecutive turns, force-complete.
+	 */
+	assessRepetition({ actionCalls, writeCalls }) {
+		const commands = [...(actionCalls || []), ...(writeCalls || [])];
+		if (commands.length === 0) {
+			this.#lastFingerprint = null;
+			this.#repetitionCount = 0;
+			return { continue: true };
+		}
+
+		const fingerprint = commands
+			.map((c) => `${c.name}:${c.path || c.command || c.question || ""}`)
+			.toSorted()
+			.join("|");
+
+		if (fingerprint === this.#lastFingerprint) {
+			this.#repetitionCount++;
+			if (this.#repetitionCount >= MAX_REPETITIONS) {
+				const reason = `Same commands repeated ${this.#repetitionCount} turns`;
+				console.warn(`[RUMMY] Loop detected: ${reason}. Force-completing.`);
+				return { continue: false, reason };
+			}
+			console.warn(
+				`[RUMMY] Repeated commands (${this.#repetitionCount}/${MAX_REPETITIONS}): ${fingerprint.slice(0, 80)}`,
+			);
+		} else {
+			this.#repetitionCount = 1;
+			this.#lastFingerprint = fingerprint;
+		}
+
+		return { continue: true };
 	}
 
 	/**
@@ -63,5 +104,7 @@ export default class ResponseHealer {
 	 */
 	reset() {
 		this.#stallCount = 0;
+		this.#lastFingerprint = null;
+		this.#repetitionCount = 0;
 	}
 }
