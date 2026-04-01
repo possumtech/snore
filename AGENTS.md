@@ -353,6 +353,191 @@ Refactor to the two-message architecture documented in ARCHITECTURE.md §3.1:
 
 ---
 
+## Todo: Prompt Queue
+
+All prompts flow through a persistent `prompt_queue` table. The queue IS the
+flow — not an exceptional path beside direct execution. RPC handlers INSERT
+into the queue and return immediately. A worker consumes from the queue.
+
+### Schema
+
+```sql
+CREATE TABLE prompt_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+    , run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+    , session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
+    , type TEXT NOT NULL CHECK (type IN ('ask', 'act'))
+    , model TEXT
+    , prompt TEXT NOT NULL
+    , config JSON
+    , status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'active', 'completed', 'aborted'))
+    , result JSON
+    , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Flow
+
+```
+ask/act RPC → INSERT INTO prompt_queue (pending) → return { run, queued: true }
+worker      → SELECT next pending for run → status = active → AgentLoop.run()
+            → status = completed, result = JSON → notify client
+```
+
+- One prompt active per run at a time
+- Multiple prompts queue in FIFO order
+- Natural completion → worker shifts next pending prompt
+- Abort → current prompt set to `aborted`, remaining pending prompts preserved
+  (user explicitly chose to stop THIS prompt, not all future prompts)
+- Server restart → pending prompts survive, active prompt reset to pending
+
+### What it replaces
+
+- `#activeRuns` Map in AgentLoop (check queue table instead)
+- The "is it busy" branching in `run()`
+- The race condition between concurrent ask calls on the same run
+- The `run/abort` handler's direct controller access (abort = UPDATE status)
+
+### Abort behavior with queue
+
+1. `run/abort` → UPDATE prompt_queue SET status = 'aborted' WHERE active
+2. Signal the in-flight controller
+3. Loop catches abort, run transitions to `completed`
+4. Worker checks for next pending prompt — if any, starts it
+5. If no pending prompts, run stays idle
+
+### RPC changes
+
+- `ask`/`act` → INSERT into queue, return `{ run, status: "queued" }`
+- `run/abort` → abort active prompt, return `{ status: "ok" }`
+- New: `run/queue` → return pending prompts for a run (diagnostic)
+
+---
+
+## Todo: Run State Machine v2
+
+All terminal states become restartable. The run lifecycle is open-ended —
+runs are reused across many prompts, not one-shot.
+
+### State transitions
+
+```
+queued    → running, aborted
+running   → proposed, completed, failed, aborted
+proposed  → running, completed, aborted
+completed → running, aborted
+failed    → running, aborted
+aborted   → running
+```
+
+### State meanings
+
+| State | Meaning | Run accepting prompts? |
+|-------|---------|----------------------|
+| `queued` | Created, not yet started | Yes (queue) |
+| `running` | Active loop in progress | Yes (queue) |
+| `proposed` | Blocked on client resolution | No (resolve first) |
+| `completed` | Idle after natural finish | Yes |
+| `failed` | Idle after error | Yes |
+| `aborted` | Idle after abort | Yes |
+
+### Proposed entry resolution
+
+Resolution is per-entry, not per-run. The run's `proposed` state means
+"blocked on client." Individual entries go `proposed → pass` (accept) or
+`proposed → warn` (reject). The run unblocks when zero proposed entries remain.
+No run-level accepted/rejected states — that's the entry's job.
+
+---
+
+## Todo: Tool Result Content Refactor
+
+See TOM_PETTY.md for the full bug report. The `v_model_context` VIEW silently
+drops content for 8 of 11 result schemes via `ELSE ''`. Every tool result must
+contain content the model can understand. See ARCHITECTURE.md §2.9 for the
+content contract.
+
+### Schema changes
+
+- [ ] **Remove `write` scheme** — write is the anti-tool. It acts ON other paths.
+      Successful writes update the target entry's value directly. Failed writes
+      set the target to `state = 'error'` with the error as content. No `write://`
+      entries in the store.
+- [ ] **Remove `retry` scheme** — errors belong to the target path. A failed edit
+      to `src/app.js` is `src/app.js | error | SEARCH block not found`.
+- [ ] **Remove `read` and `drop` from result schemes** — these don't create entries.
+      Read promotes, drop demotes. No `read://` or `drop://` entries.
+- [ ] **Update schemes table** — remove write, retry, read, drop rows.
+- [ ] **Update validation triggers** — reflect removed schemes.
+
+### Content composition at write time
+
+TurnExecutor builds the value string for each tool result. The model sees
+exactly what was stored. Content uses unix-style semantics where possible.
+
+- [ ] **search://slug** — full search results (already stored correctly, just invisible)
+- [ ] **env://slug** — `<env>command</env><output>...</output><error>...</error>`
+- [ ] **run://slug** — `<run>command</run><output>...</output><error>...</error>`
+- [ ] **ask_user://slug** — `Question? Answered: answer`
+- [ ] **delete://slug** — `rm target_path`
+- [ ] **move://slug** — `mv source destination`
+- [ ] **copy://slug** — `cp source destination`
+- [ ] **Write to file** — target path entry: `state = pass`, value = full content
+- [ ] **Write to file (error)** — target path entry: `state = error`, value = error + failed command
+- [ ] **Write to known://** — direct upsert (existing behavior, no result entry)
+
+### View fix
+
+- [ ] **Change `ELSE ''` to `ELSE value`** in `v_model_context.sql` content projection.
+      New schemes are visible by default. Silent content drops are eliminated.
+
+### Tests
+
+- [ ] **Update tool_visibility integration test** — all schemes pass
+- [ ] **E2E: search-then-answer story** — ask a factual question only answerable
+      via search, assert the model's answer contains the fact
+
+## Todo: Loop Defense
+
+Two layers of loop detection. The stall counter (already implemented) catches
+models that emit neither update nor summary. Loop defense catches models that
+repeat the same action — the Tom Petty pattern where the model diligently
+reports progress while doing the exact same search every turn.
+
+### Repetition detector
+
+`RUMMY_MAX_REPETITIONS` (default 3): if the model emits the same tool command
+(same name + same path/query) N consecutive turns, force-complete the run.
+Checked in AgentLoop after each turn, before the stall counter.
+
+- [ ] **Track recent commands** — after each turn, record the tool commands
+      emitted (name + path). Compare against previous turn's commands.
+- [ ] **Repetition counter** — increment when current turn's commands match
+      previous turn's commands exactly. Reset when they differ.
+- [ ] **Force-complete** — when counter hits `RUMMY_MAX_REPETITIONS`, log a
+      warning and return `{ continue: false, reason }`.
+- [ ] **Integration with ResponseHealer** — add `assessRepetition()` or fold
+      into `assessProgress()`. Called before stall assessment.
+
+### Turn limit per loop
+
+`RUMMY_MAX_TURNS` (default 15, already exists): maximum continuation turns
+per prompt. This is NOT a run-level limit — it's per-prompt. When the prompt
+queue is implemented, each queued prompt gets its own turn counter.
+
+### Tests
+
+- [ ] **Unit: repetition detection** — same commands 3x → force-complete
+- [ ] **Unit: different commands reset counter** — no false positives
+- [ ] **Integration: search loop** — model searches same query repeatedly,
+      loop terminates after RUMMY_MAX_REPETITIONS
+- [ ] **E2E: Tom Petty reproduction** — ask a question that triggers search,
+      verify the run completes (either with answer or force-complete),
+      verify it doesn't loop for 15 turns
+
+---
+
 ## Done: Abort Chain Fix ✓
 
 AbortSignal now threads through the full call chain:

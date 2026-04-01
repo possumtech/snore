@@ -509,14 +509,36 @@ No separate file index tables. File metadata (path, hash, symbols) lives in
 ### 4.2 Run Scope
 
 - `known_entries` — the unified state machine. Files, knowledge, tool results, audit.
+- `prompt_queue` — FIFO prompt queue. All prompts enter here. Worker consumes.
 - `turns` — usage stats (prompt_tokens, completion_tokens, cost). Operational, not model-facing.
-- `runs.next_result_seq` — sequential counter for result key generation
 - `runs.next_turn` — sequential counter for turn numbers
+
+Runs are long-lived. All terminal states (`completed`, `failed`, `aborted`) allow
+transition back to `running`. A run accumulates known entries across many prompts.
 
 Files are scanned from disk and written to `known_entries` per-run. Multiple
 concurrent runs reference the same files as separate entries (different `run_id`,
 same `key`). The file scanner updates all active runs in bulk when files change
 on disk.
+
+### 4.3 Prompt Queue
+
+All `ask`/`act` requests INSERT into `prompt_queue` and return immediately.
+A server-side worker processes one prompt per run at a time in FIFO order.
+
+| Column | Purpose |
+|--------|---------|
+| `run_id` | Which run this prompt belongs to |
+| `type` | `ask` or `act` |
+| `prompt` | The user's message |
+| `status` | `pending` → `active` → `completed` or `aborted` |
+| `result` | JSON result after completion |
+
+**Abort** sets the active prompt to `aborted`. Pending prompts survive —
+abort means "stop this," not "cancel everything."
+
+**Server restart** — active prompts reset to pending. Pending prompts are
+retried. The queue is crash-safe.
 
 ---
 
@@ -638,16 +660,24 @@ Resolution via `run/resolve` with `{ key, action: "accept"|"reject", output? }`.
 
 ### 5.3 Run Lifecycle
 
+All prompts flow through a persistent `prompt_queue` table. The queue is the
+default path — not an exceptional fallback.
+
 ```
-ask / act  →  turns  →  XML commands  →  known entries
-                                            │
-                              run/resolve ──┘ (per entry key: accept/reject)
-                                            │
-         ◄─────────────────────────────────┘ (auto-resume if all accepted)
+ask/act RPC → INSERT INTO prompt_queue (pending) → return { run, queued }
+worker      → SELECT next pending → AgentLoop.run() → turns → XML commands
+                                                                  │
+                                              run/resolve ────────┘ (per entry)
+                                                                  │
+                         ◄────────────────────────────────────────┘ (auto-resume)
+worker      → prompt completed → SELECT next pending → ... (or idle)
 ```
 
-Proposal gate: the application checks for proposed entries (§1.5) before each
-turn. The client resolves each entry by its key (§1.6).
+Multiple prompts to the same run queue in FIFO order. One active at a time.
+Abort stops the current prompt; remaining queued prompts survive.
+
+All terminal states (`completed`, `failed`, `aborted`) are restartable —
+runs are long-lived conversations, not one-shot operations.
 
 **Who applies edits to disk?** The client. The server proposes edits as known
 entries. The client resolves them (accept/reject) and writes accepted changes
@@ -999,7 +1029,25 @@ Always use `npm run test:*`. Never invoke node directly with a single env file.
 
 ---
 
-## 9. Database Hygiene
+## 9. RPC Audit Log
+
+Every RPC call is recorded unconditionally in `rpc_log`. No debug flag, no opt-in.
+
+```sql
+SELECT method, rpc_id, params, result, error, created_at
+FROM rpc_log WHERE session_id = ? ORDER BY id;
+```
+
+The log records what arrived, what was returned, and what errored. This is the
+first place to look when debugging client-server communication failures (e.g.,
+"did the client send `run/abort`?" — check the log, don't guess).
+
+Console output mirrors the DB log: `[RPC] → method(id)` on arrival,
+`[RPC] ← method(id)` on completion, `[RPC] ✗ (id)` on error.
+
+---
+
+## 10. Database Hygiene
 
 On every startup, the server runs cleanup:
 
