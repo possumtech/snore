@@ -333,7 +333,7 @@ export default class CoreRpcPlugin {
 				};
 			},
 			description:
-				"Get full run detail: context (telemetry, reasoning, content, history), last_user_prompt, last_summary. History entries use scheme:// paths: user:// = human prompt, prompt:// = automated continuation, content:// = assistant text, reasoning:// = model thinking, summary:// = turn summary, plus tool-specific schemes.",
+				"Get full run detail: context (telemetry, reasoning, content, history), last_user_prompt, last_summary. History entries use scheme:// paths: prompt:// = human prompt, progress:// = automated continuation, content:// = assistant text, reasoning:// = model thinking, summary:// = turn summary, plus tool-specific schemes.",
 			params: { run: "string — run alias" },
 			requiresInit: true,
 		});
@@ -445,7 +445,7 @@ export default class CoreRpcPlugin {
 		// Notifications
 		r.registerNotification(
 			"run/state",
-			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost, context_distribution[] } }. Schemes: user:// = human prompt, prompt:// = automated continuation, content:// = assistant text, reasoning:// = model thinking.",
+			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost, context_distribution[] } }. Schemes: prompt:// = human prompt, progress:// = automated continuation, content:// = assistant text, reasoning:// = model thinking.",
 		);
 		r.registerNotification(
 			"run/progress",

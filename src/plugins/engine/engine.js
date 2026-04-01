@@ -29,9 +29,9 @@ export default class Engine {
 						const before = ((total / rummy.contextSize) * 100) | 0;
 						const after = (((total - saved) / rummy.contextSize) * 100) | 0;
 						const names = demoted.map((d) => d.path).join(", ");
-						const report = `engine demoted: ${names} (budget: ${before}% → ${after}%)`;
-						const resultPath = await store.slugPath(runId, "inject", report);
-						await store.upsert(runId, sequence, resultPath, report, "info", {});
+						console.log(
+							`[ENGINE] Demoted: ${names} (budget: ${before}% → ${after}%)`,
+						);
 					}
 				}
 			}
@@ -58,24 +58,9 @@ export default class Engine {
 				turn: sequence,
 			});
 
-			const rows = await db.get_turn_context.all({
-				run_id: runId,
-				turn: sequence,
-			});
-			if (rummy.loopPrompt) {
-				const maxOrdinal = rows.length > 0 ? rows.at(-1).ordinal : 0;
-				await db.insert_turn_context.run({
-					run_id: runId,
-					turn: sequence,
-					ordinal: maxOrdinal + 1,
-					path: "continuation://prompt",
-					fidelity: "full",
-					content: rummy.loopPrompt,
-					tokens: countTokens(rummy.loopPrompt),
-					meta: null,
-					category: "prompt",
-				});
-			}
+			// prompt:// and progress:// entries are already in known_entries
+			// (stored by TurnExecutor before engine runs) and materialized
+			// via v_model_context. No synthetic injection needed.
 		}, 20);
 	}
 }

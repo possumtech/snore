@@ -207,9 +207,8 @@ export default class ContextAssembler {
 				instructions = row.content;
 				continue;
 			}
-			if (row.path === "continuation://prompt") {
+			if (row.scheme === "progress") {
 				continuation = row.content;
-				continue;
 			}
 
 			const meta = row.meta ? JSON.parse(row.meta) : null;
@@ -247,8 +246,8 @@ export default class ContextAssembler {
 					unknowns.push({ value: row.content });
 					break;
 				case "prompt":
-					// user:// = genuine prompt, prompt:// = continuation (goes in messages)
-					if (row.scheme === "user") {
+					// prompt:// = human prompt, progress:// = continuation
+					if (row.scheme === "prompt") {
 						prompt = row.content;
 					}
 					messageEntries.push({
@@ -332,8 +331,8 @@ export default class ContextAssembler {
 
 		if (messageEntries.length > 0) {
 			const lines = messageEntries.map((e) => {
-				if (e.scheme === "user") return `> ${e.value}`;
-				if (e.scheme === "prompt") return `> [continuation] ${e.value}`;
+				if (e.scheme === "prompt") return `> ${e.value}`;
+				if (e.scheme === "progress") return `> [continuation] ${e.value}`;
 				const check =
 					e.state === "pass" || e.state === "summary"
 						? "✓"

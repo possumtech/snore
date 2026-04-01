@@ -206,12 +206,13 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 3,
-					path: "continuation://prompt",
-					scheme: "continuation",
+					path: "progress://2",
+					scheme: "progress",
 					fidelity: "full",
 					content: "Turn 2/15",
 					tokens: 3,
 					meta: null,
+					category: "prompt",
 				},
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
@@ -240,8 +241,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 1,
-					path: "user://1",
-					scheme: "user",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					content: "User prompt",
 					tokens: 3,

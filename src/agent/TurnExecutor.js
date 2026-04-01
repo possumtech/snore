@@ -61,7 +61,7 @@ export default class TurnExecutor {
 		// Store user/continuation prompt BEFORE context materialization
 		// so v_model_context includes the current prompt
 		if (loopPrompt) {
-			const scheme = options?.isContinuation ? "prompt" : "user";
+			const scheme = options?.isContinuation ? "progress" : "prompt";
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,

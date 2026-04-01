@@ -12,15 +12,12 @@ SELECT
 		, json_extract(ke.meta, '$.question')
 		, ''
 	) AS target
-	, CASE
-		WHEN ke.state = 'summary' THEN ke.value
-		WHEN ke.scheme IN ('env', 'run', 'ask_user', 'inject') THEN ke.value
-		ELSE ''
-	END AS value
+	, ke.value
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.scheme IS NOT NULL
 	AND ke.state != 'proposed'
-	AND s.category NOT IN ('knowledge', 'audit')
+	AND s.category NOT IN ('knowledge')
+	AND ke.scheme NOT IN ('system', 'reasoning', 'model', 'content', 'keys')
 ORDER BY ke.id;

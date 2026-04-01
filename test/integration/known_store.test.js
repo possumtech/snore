@@ -30,7 +30,7 @@ describe("KnownStore integration", () => {
 		});
 
 		it("tool schemes", () => {
-			assert.strictEqual(KnownStore.scheme("read://4"), "read");
+			assert.strictEqual(KnownStore.scheme("search://4"), "search");
 			assert.strictEqual(KnownStore.scheme("write://7"), "write");
 			assert.strictEqual(KnownStore.scheme("summary://1"), "summary");
 		});
@@ -43,7 +43,7 @@ describe("KnownStore integration", () => {
 
 	describe("toolFromPath", () => {
 		it("extracts tool name from result keys", () => {
-			assert.strictEqual(KnownStore.toolFromPath("read://4"), "read");
+			assert.strictEqual(KnownStore.toolFromPath("search://4"), "search");
 			assert.strictEqual(KnownStore.toolFromPath("write://7"), "write");
 			assert.strictEqual(KnownStore.toolFromPath("summary://1"), "summary");
 		});
@@ -60,7 +60,7 @@ describe("KnownStore integration", () => {
 	describe("isSystemPath", () => {
 		it("detects /: prefix", () => {
 			assert.ok(KnownStore.isSystemPath("known://x"));
-			assert.ok(KnownStore.isSystemPath("read://1"));
+			assert.ok(KnownStore.isSystemPath("search://1"));
 			assert.ok(!KnownStore.isSystemPath("src/app.js"));
 		});
 	});
@@ -86,14 +86,14 @@ describe("KnownStore integration", () => {
 		});
 
 		it("inserts a result entry", async () => {
-			await store.upsert(RUN_ID, 1, "read://1", "file contents", "pass", {
+			await store.upsert(RUN_ID, 1, "search://1", "file contents", "info", {
 				meta: { command: "read src/app.js" },
 			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "read://1");
+			const entry = all.find((e) => e.path === "search://1");
 			assert.ok(entry);
-			assert.strictEqual(entry.scheme, "read");
-			assert.strictEqual(entry.state, "pass");
+			assert.strictEqual(entry.scheme, "search");
+			assert.strictEqual(entry.state, "info");
 			assert.ok(entry.meta);
 			const meta = JSON.parse(entry.meta);
 			assert.strictEqual(meta.command, "read src/app.js");
@@ -107,9 +107,9 @@ describe("KnownStore integration", () => {
 		});
 
 		it("upsert preserves meta when new meta is null", async () => {
-			await store.upsert(RUN_ID, 0, "read://1", "updated", "pass");
+			await store.upsert(RUN_ID, 0, "search://1", "updated", "info");
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "read://1");
+			const entry = all.find((e) => e.path === "search://1");
 			assert.ok(entry.meta, "meta should be preserved from first write");
 		});
 	});
@@ -188,14 +188,14 @@ describe("KnownStore integration", () => {
 
 	describe("slug path generation", () => {
 		it("generates content-derived slugs", async () => {
-			const key1 = await store.slugPath(RUN_ID, "read", "src/app.js");
-			assert.strictEqual(key1, "read://srcappjs");
+			const key1 = await store.slugPath(RUN_ID, "search", "src/app.js");
+			assert.strictEqual(key1, "search://srcappjs");
 		});
 
 		it("handles collisions with integer suffix", async () => {
-			await store.upsert(RUN_ID, 1, "read://srcappjs", "", "pass");
-			const key2 = await store.slugPath(RUN_ID, "read", "src/app.js");
-			assert.strictEqual(key2, "read://srcappjs2");
+			await store.upsert(RUN_ID, 1, "search://srcappjs", "", "info");
+			const key2 = await store.slugPath(RUN_ID, "search", "src/app.js");
+			assert.strictEqual(key2, "search://srcappjs2");
 		});
 
 		it("falls back to sequential for empty content", async () => {
@@ -233,8 +233,8 @@ describe("KnownStore integration", () => {
 
 		it("derives tool name from key prefix", async () => {
 			const log = await store.getLog(RUN_ID);
-			const readEntry = log.find((e) => e.path.startsWith("read://"));
-			assert.strictEqual(readEntry.tool, "read");
+			const searchEntry = log.find((e) => e.path.startsWith("search://"));
+			assert.strictEqual(searchEntry.tool, "search");
 		});
 
 		it("derives target from meta", async () => {

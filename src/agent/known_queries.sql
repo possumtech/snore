@@ -38,7 +38,7 @@ SELECT value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND scheme = 'user'
+	AND scheme = 'prompt'
 ORDER BY id DESC
 LIMIT 1;
 

@@ -44,7 +44,7 @@ export default class AgentLoop {
 			: "unknown read env ask_user search write move copy drop delete update summary";
 	}
 
-	#buildContinuationPrompt(type, turn, maxTurns, contextSize, report) {
+	#buildContinuationPrompt(_type, turn, maxTurns, contextSize, report) {
 		const parts = [];
 
 		if (report) {
@@ -474,14 +474,14 @@ export default class AgentLoop {
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
-		const resultPath = await this.#knownStore.slugPath(
+		const nextTurn = runRow.next_turn;
+		await this.#knownStore.upsert(
 			runRow.id,
-			"inject",
+			nextTurn,
+			`prompt://${nextTurn}`,
 			message,
+			"info",
 		);
-		await this.#knownStore.upsert(runRow.id, 0, resultPath, message, "info", {
-			meta: { source: "user" },
-		});
 
 		if (isActive) {
 			return { run: runAlias, status: runRow.status, injected: "queued" };

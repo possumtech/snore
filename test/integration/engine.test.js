@@ -361,7 +361,7 @@ describe("Engine integration", () => {
 	});
 
 	describe("demotion report", () => {
-		it("injects an info entry when demotions occur", async () => {
+		it("demotions are logged but do not pollute known_entries", async () => {
 			await store.upsert(RUN_ID, 1, "src/a.js", pad(500), "full");
 			await store.upsert(RUN_ID, 1, "src/b.js", pad(500), "full");
 
@@ -371,27 +371,13 @@ describe("Engine integration", () => {
 			});
 			await hooks.processTurn(rummy);
 
-			const results = await tdb.db.get_results.all({ run_id: RUN_ID });
-			const report = results.find((r) => r.value.includes("engine demoted"));
-			assert.ok(report, "should inject a demotion report");
-			assert.ok(
-				report.value.includes("budget:"),
-				"report should include budget percentages",
+			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const report = entries.find((e) => e.value?.includes("engine demoted"));
+			assert.strictEqual(
+				report,
+				undefined,
+				"engine telemetry should not be in known_entries",
 			);
-		});
-
-		it("does not inject a report when no demotions needed", async () => {
-			await store.upsert(RUN_ID, 1, "src/tiny.js", "small", "full");
-
-			const rummy = makeRummy(tdb.db, store, {
-				sequence: 2,
-				contextSize: 5000,
-			});
-			await hooks.processTurn(rummy);
-
-			const results = await tdb.db.get_results.all({ run_id: RUN_ID });
-			const report = results.find((r) => r.value.includes("engine demoted"));
-			assert.strictEqual(report, undefined, "no report when no demotions");
 		});
 	});
 

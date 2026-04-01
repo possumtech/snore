@@ -76,10 +76,8 @@ describe("Tool visibility: v_model_context content projection", () => {
 			{ name: "ask_user", state: "pass" },
 			{ name: "move", state: "pass" },
 			{ name: "copy", state: "pass" },
-			{ name: "read", state: "info" },
-			{ name: "drop", state: "info" },
 			{ name: "search", state: "info" },
-			{ name: "retry", state: "error" },
+			{ name: "keys", state: "info" },
 		];
 
 		// For each result scheme, insert an entry with known content
@@ -95,7 +93,13 @@ describe("Tool visibility: v_model_context content projection", () => {
 		}
 
 		// Also insert user prompt so engine has something to work with
-		await store.upsert(RUN_ID, TURN, `user://${TURN}`, "test question", "info");
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			`prompt://${TURN}`,
+			"test question",
+			"info",
+		);
 
 		// Materialize turn_context via engine
 		const hooks = new HookRegistry();
