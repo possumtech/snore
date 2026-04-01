@@ -96,20 +96,23 @@ Ignored files are excluded from scanning entirely.
 Unknowns are `unknown://N` entries. Sticky until the model drops them via
 `<drop path="unknown://42"/>`. Server deduplicates on insert.
 
-**Tool results** (`write://`, `run://`, `env://`, `delete://`, `ask_user://`, `move://`, `copy://`):
+**Tool results** (`run://`, `env://`, `delete://`, `ask_user://`, `move://`, `copy://`, `search://`):
 
 | State | Meaning |
 |-------|---------|
 | `proposed` | Awaiting user approval *(hidden until resolved)* |
 | `pass` | Succeeded/accepted |
 | `warn` | Rejected |
-| `error` | Failed (edit only) |
+
+**Write is not a result scheme.** Write acts ON other paths — the effect appears
+on the target entry itself (file or known://). Successful writes update the
+target's value. Failed writes set the target to `error` state with the error
+message as content. There is no `write://` scheme.
 
 **Internal** (`summary://`, `update://`, `system://`, `user://`, `prompt://`, `reasoning://`, `content://`, etc.):
 - `summary://N` — state `summary` (run termination signal)
 - `update://N` — state `info` (run continuation signal)
 - `system://N`, `user://N`, `prompt://N`, `reasoning://N`, `content://N`, `keys://N`, `inject://N` — state `info`
-- `retry://N` — state `error`
 
 ### 1.3 Path Namespaces
 
@@ -118,11 +121,11 @@ Unknowns are `unknown://N` entries. Sticky until the model drops them via
 | bare path | File paths | `src/app.js`, `package.json` |
 | `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
 | `unknown://` | Open questions | `unknown://1`, `unknown://42` |
-| `[tool]://` | Tool results | `write://7`, `run://12`, `summary://3`, `update://5` |
+| `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `summary://3`, `search://query` |
 | `http://`, `https://` | Fetched content | `https://docs.example.com/api` |
 
-Result paths use the tool name as scheme and a sequential integer per run.
-Tracked by `runs.next_result_seq`.
+Result paths use the tool name as scheme and a content-derived slug per run.
+Write has no result scheme — outcomes appear on the target path directly.
 
 Knowledge path constraint: `known://[a-z0-9_]+`. Short lowercase slugs.
 Prefer descriptive names — `known://oauth2_token_rotation` over `known://auth_rot`.
@@ -329,6 +332,52 @@ The server parses all XML commands from the response, then processes in strict o
 4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
 5. **Store status** — create `summary://N` or `update://N` entry.
 6. **Emit `run/state`** — send client notification with history, proposed, unknowns, and telemetry.
+
+### 2.9 Tool Result Content Contract
+
+Every tool result entry must contain content the model can understand — what
+the tool did and what happened. The model sees results in the `<messages>`
+section of the user message. If content is blank, the model knows a tool was
+invoked but not what it returned, causing retry loops.
+
+**Write is the exception.** Write does not create its own scheme entry. It acts
+directly on the target path. The target entry's state and value reflect the
+outcome.
+
+#### Result content by scheme
+
+| Scheme | Content format | Example |
+|--------|---------------|---------|
+| `search://` | Full search results | `31 results for "Tom Petty death date"\n\nTom Petty - Wikipedia...` |
+| `env://` | `<env>command</env><output>...</output>` | `<env>npm --version</env><output>10.2.0</output>` |
+| `run://` | `<run>command</run><output>...</output>` | `<run>npm test</run><output>12 passing</output>` |
+| `ask_user://` | `Question? Answered: answer` | `Which framework? Answered: Express` |
+| `delete://` | `rm target_path` | `rm src/old_file.js` |
+| `move://` | `mv source destination` | `mv known://draft known://final` |
+| `copy://` | `cp source destination` | `cp known://config known://config_backup` |
+| `read://` | *(no result entry — promotes target)* | — |
+| `drop://` | *(no result entry — demotes target)* | — |
+
+#### Write outcomes on target path
+
+| State | Content | When |
+|-------|---------|------|
+| `full` / `pass` | Full content after edit | Successful write to file or known entry |
+| `error` | Error message + failed command | SEARCH block not found, etc. |
+| `proposed` | Proposed content | File write awaiting client approval |
+
+The unix-style content formats (`rm`, `mv`, `cp`) leverage the model's shell
+training — these are unambiguous semantics the model understands without any
+custom explanation framework.
+
+#### Content projection in v_model_context
+
+The `v_model_context` VIEW projects `content` from `known_entries.value` for
+each scheme. **Every result scheme must be explicitly listed in the content
+projection CASE statement.** The default `ELSE ''` silently drops content.
+This is the source of the search invisibility bug — if a scheme is added to
+the schemes table but not to the view's content projection, the model sees
+the tool invocation but not its output.
 
 ---
 
