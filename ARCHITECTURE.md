@@ -96,7 +96,7 @@ Ignored files are excluded from scanning entirely.
 Unknowns are `unknown://N` entries. Sticky until the model drops them via
 `<drop path="unknown://42"/>`. Server deduplicates on insert.
 
-**Tool results** (`edit://`, `run://`, `env://`, `delete://`, `ask_user://`):
+**Tool results** (`write://`, `run://`, `env://`, `delete://`, `ask_user://`, `move://`, `copy://`):
 
 | State | Meaning |
 |-------|---------|
@@ -105,9 +105,10 @@ Unknowns are `unknown://N` entries. Sticky until the model drops them via
 | `warn` | Rejected |
 | `error` | Failed (edit only) |
 
-**Internal** (`summary://`, `system://`, `prompt://`, `reasoning://`, etc.):
-- `summary://N` — state `summary`
-- `system://N`, `prompt://N`, `user://N`, `keys://N`, `inject://N` — state `info`
+**Internal** (`summary://`, `update://`, `system://`, `user://`, `prompt://`, `reasoning://`, `content://`, etc.):
+- `summary://N` — state `summary` (run termination signal)
+- `update://N` — state `info` (run continuation signal)
+- `system://N`, `user://N`, `prompt://N`, `reasoning://N`, `content://N`, `keys://N`, `inject://N` — state `info`
 - `retry://N` — state `error`
 
 ### 1.3 Path Namespaces
@@ -117,7 +118,7 @@ Unknowns are `unknown://N` entries. Sticky until the model drops them via
 | bare path | File paths | `src/app.js`, `package.json` |
 | `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
 | `unknown://` | Open questions | `unknown://1`, `unknown://42` |
-| `[tool]://` | Tool results | `edit://7`, `run://12`, `summary://3` |
+| `[tool]://` | Tool results | `write://7`, `run://12`, `summary://3`, `update://5` |
 | `http://`, `https://` | Fetched content | `https://docs.example.com/api` |
 
 Result paths use the tool name as scheme and a sequential integer per run.
@@ -162,135 +163,100 @@ After all proposed entries are resolved:
 
 The model communicates via XML tags written directly in the response content.
 No native tool calling API. No message history. The server parses the response
-with htmlparser2 (forgiving HTML/XML parser). Any text between tool tags is
-captured as `reasoning://N` (hidden from model, available for audit).
+with htmlparser2 (forgiving HTML/XML parser). Free-form text between tool tags is
+captured as `content://N` (assistant text) and `reasoning://N` (model thinking).
+Both are hidden from the model but available for audit and client display.
 
-### 2.1 Tool Commands
+### 2.1 Tool Inventory
 
-Every store-facing tool uses a unified attribute set:
+The sacred prompts (`prompt.ask.md`, `prompt.act.md`) are the authoritative
+tool reference. This section documents server behavior for each tool.
 
-- **`path=""`** — targets entries by key. Accepts exact paths, globs (`src/*.js`), or regex (`^src/.*\.test\.js$`). Matches against the K/V store key namespace — file paths AND `known://*` keys.
-- **`value=""`** — filters entries by content. Same pattern support. When combined with `path`, they AND together.
-- **`keys`** — boolean flag. When present, resolves the pattern and returns the matching key list as a `keys://N` info entry. No state change. Preview before committing.
+| Tool | ask | act | Body content | Scheme | States |
+|------|-----|-----|-------------|--------|--------|
+| `<unknown>` | yes | yes | open question text | `unknown` | `full`, `stored` |
+| `<read>` | yes | yes | path (simple), or use attrs | `read` | `pass`, `info` |
+| `<env>` | yes | yes | shell command | `env` | `proposed`, `pass`, `warn` |
+| `<ask_user>` | yes | yes | comma-separated options | `ask_user` | `proposed`, `pass`, `warn` |
+| `<search>` | yes | yes | search query | `search` | `info` |
+| `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error` |
+| `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn` |
+| `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn` |
+| `<drop>` | yes | yes | — | `drop` | `pass`, `info` |
+| `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn` |
+| `<run>` | no | yes | shell command | `run` | `proposed`, `pass`, `warn` |
+| `<update>` | yes | yes | brief status text | `update` | `info` |
+| `<summary>` | yes | yes | final answer/result | `summary` | `summary` |
 
-At least one of `path` or `value` must be provided on store-facing tools.
+### 2.2 Unified Attribute System
 
-**Shared (ask + act):**
+Every store-facing tool uses the same attribute set. Pattern matching is via
+`hedberg()` — auto-detects glob, regex, XPath, and JSONPath.
 
-| Tag | Format | Required |
-|-----|--------|----------|
-| `<summary>` | `<summary>text</summary>` | Yes |
-| `<known>` | `<known path="known://slug">value</known>` | No |
-| `<unknown>` | `<unknown>text</unknown>` | No |
-| `<read>` | `<read path="path" value="pattern?" keys?/>` | No |
-| `<drop>` | `<drop path="path" value="pattern?" keys?/>` | No |
-| `<env>` | `<env command="cmd"/>` | No |
-| `<ask_user>` | `<ask_user question="q" options="a, b, c"/>` | No |
+| Attribute | Meaning | Tools |
+|-----------|---------|-------|
+| `path` | Target path (hedberg pattern) | read, write, drop, delete, move, copy |
+| `value` | Content filter (hedberg pattern) | read, write, drop, delete |
+| `keys` | Preview mode — show matches, no changes | read, write, drop, delete |
+| `question` | Question text | ask_user |
 
-**Act-only (extends shared):**
+The parser accepts both attribute-style (`<read path="x"/>`) and body-style
+(`<read>x</read>`) for applicable tools. Legacy attributes (`key=""`, `file=""`,
+`to=""`) are silently remapped.
 
-| Tag | Format |
-|-----|--------|
-| `<run>` | `<run command="cmd"/>` |
-| `<delete>` | `<delete path="path" value="pattern?" keys?/>` |
-| `<edit>` | `<edit path="path" search="text" replace="text"/>` or `<edit path="path">SEARCH/REPLACE blocks</edit>` |
-| `<search>` | `<search path="query"/>` |
-| `<move>` | `<move path="from" to="to"/>` |
-| `<copy>` | `<copy path="from" to="to"/>` |
-
-Edit has two modes:
-
-**Attribute mode** — `search` + `replace` for targeted find-and-replace. `search` supports
-plain strings (literal match) or regex. `replace` is always literal text.
-```xml
-<edit path="src/config.js" search="localhost" replace="0.0.0.0"/>
-```
-
-**Merge block mode** — git merge conflict format in the body for multi-line edits:
-```
-<edit path="src/config.js">
-<<<<<<< SEARCH
-const port = 3000;
-=======
-const port = 8080;
->>>>>>> REPLACE
-</edit>
-```
-
-Patterns enable bulk operations:
-
-```xml
-<read path="src/*.js"/>                           <!-- promote all JS files -->
-<read path="*.js" value="TODO" keys/>             <!-- preview: which JS files contain TODO? -->
-<drop path="known://stale_*"/>                    <!-- demote all stale knowledge -->
-<edit path="src/*.config.js" value="localhost">    <!-- edit all configs containing localhost -->
-<delete path="known://temp_*"/>                   <!-- delete all temp knowledge entries -->
-<known path="known://cache_*" value="stale">refreshed</known>  <!-- bulk update -->
-```
-
-Tool commands are defined in the system prompt (`prompt.act.md`, `prompt.ask.md`)
-with examples. The server parses them from the response content via htmlparser2.
-No JSON schema, no AJV, no `strict: true`, no `tool_choice`.
-
-### 2.2 How Commands Become Known Entries
+### 2.3 How Commands Become Known Entries
 
 Every parsed command writes to the known store. The model sees results as
 entries in the context next turn. Pattern-based commands operate on all matches.
 
-**`<known>`** — UPSERTs the key/value pair. Domain `known`, state `full`.
-With a pattern in `path`, bulk-updates all matching entries' values. With `value`,
-filters by current content before overwriting.
+**`<write>`** — the unified file + knowledge tool. Replaces old `<edit>` + `<known>`:
+- Plain body → create or overwrite the entry at `path`
+- SEARCH/REPLACE body → apply merge blocks via HeuristicMatcher
+- `path` + `value` attrs → bulk-update matching entries
+- File targets (scheme NULL): state `proposed` (client reviews)
+- K/V targets (known://, etc.): state `pass` (applied immediately)
 
-**`<summary>`** — creates a `summary://N` entry with scheme-specific, state `summary`.
-
-**`<unknown>`** — each tag creates a sticky `unknown://N` entry (scheme `known`,
-state `full`). Unknowns persist across turns until explicitly dropped via
-`<drop path="unknown://N"/>`. The server deduplicates on insert. Unknowns appear
-in context position 7 (before the prompt) every turn.
+**`<unknown>`** — creates a sticky `unknown://N` entry (state `full`).
+Persists across turns until explicitly dropped. Server deduplicates on insert.
 
 **`<read>`** — promotes matching entries by setting `turn` to the current turn.
-Values are already in the store (from the file scanner or a previous write).
+Values already exist in the store (from file scanner or previous write).
 Promotion makes them visible in context next turn. With patterns, bulk-promotes.
+URLs (`http://`, `https://`) are fetched via WebFetcher.
 
-**`<drop>`** — demotes matching entries by setting `turn` to 0 (purgatory).
-Values stay in the store but disappear from context. With patterns, bulk-demotes.
+**`<drop>`** — demotes matching entries by setting `turn` to 0. Values stay
+in the store but disappear from context. A dropped entry can be restored
+with `<read>`. With patterns, bulk-demotes.
 
-**`<env>`** — creates a `env://N` entry with scheme-specific, state `proposed`.
-The client executes the command and resolves with output.
+**`<delete>`** — removes entries from context AND permanently deletes them.
+File targets: state `proposed` (client confirms). K/V targets: immediate removal.
 
-**`<edit>`** — the server resolves the `path`/`value` pattern to matching entries.
-In **attribute mode** (`search`/`replace`), performs literal find-and-replace (or regex
-if `search` contains regex characters). In **merge block mode**, applies
-SEARCH/REPLACE blocks via HeuristicMatcher. Creates one `edit://N` entry per match.
-For **file (scheme NULL)** entries: state `proposed` (client reviews). For **non-file**
-entries: state `pass` (applied immediately — K/V entries are server state).
+**`<env>`** — creates an `env://N` entry, state `proposed`. The client executes
+the command and resolves with output.
 
-**`<run>`** — creates a `run://N` entry with scheme-specific, state `proposed`.
-The client executes and resolves with output.
+**`<run>`** — creates a `run://N` entry, state `proposed`. The client executes
+and resolves with output. Act-only.
 
-**`<delete>`** — resolves the pattern to matching entries. Creates one `delete://N`
-entry per match with state `proposed`. The client confirms and resolves.
+**`<ask_user>`** — creates an `ask_user://N` entry, state `proposed`. The client
+shows the question with options and resolves with the selected answer.
 
-**`<ask_user>`** — creates a `ask_user://N` entry with scheme-specific, state `proposed`.
-The client shows the question and resolves with the selected answer.
+**`<search>`** — web search via SearXNG. Stores results as `search://N` info entry.
 
-**`<search>`** — hits SearXNG, stores results as `search://N` info entry. Results list
-title, URL, and snippet per hit.
-
-**`<move>`** — reads source value, writes to destination, removes source. File
+**`<move>`** — reads source, writes to destination, removes source. File
 destinations → proposed. K/V destinations → immediate.
 
-**`<copy>`** — reads source value, writes to destination. Source stays. Same file/K/V
+**`<copy>`** — reads source, writes to destination. Source stays. Same file/K/V
 split as move.
 
-**`<read path="https://...">`** — fetches the URL via Playwright, extracts readable
-content via Readability, converts to markdown via Turndown, and stores at the
-param-stripped URL.
+**`<update>`** — stores as `update://N` info entry. Signals the model is still
+working. The run continues.
+
+**`<summary>`** — stores as `summary://N` summary entry. Signals the model is
+done. **The run terminates.**
 
 **`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
 the matching list as a `keys://N` info entry. No state change occurs. The entry
-includes per-path token count and a total so the model can gauge context budget
-impact before committing:
+includes per-path token count and total:
 
 ```
 23 paths (4812 tokens total)
@@ -299,53 +265,70 @@ src/config.js (128)
 known://auth_flow (56)
 ```
 
-### 2.3 Promotion Model
+### 2.4 Promotion Model
 
 `read` and `drop` operate on the `turn` field, not on state:
 
 | Command | Effect |
 |---------|--------|
-| `<read path="x"/>` | Set `turn` to current turn → value appears in context |
+| `<read>x</read>` | Set `turn` to current turn → value appears in context |
 | `<drop path="x"/>` | Set `turn` to 0 → value hidden from context (purgatory) |
 
 Both support patterns: `<read path="src/*.js"/>` promotes all matching files.
 `<drop value="deprecated"/>` demotes all entries containing "deprecated".
 
-All other action commands (`env`, `edit`, `run`, `delete`, `ask_user`) create new
+All other action commands (`env`, `run`, `delete`, `write`, `ask_user`) create new
 result entries as `proposed`. The `delete` command for `known://*` or `[tool]://*`
 paths removes the entry from the store entirely.
 
-### 2.4 Enforcement Layers
+### 2.5 update/summary Termination Protocol
 
-1. **Prompt instructions + examples** — system prompt describes tool commands with format and examples. The model is told "You must respond with tool commands and may ONLY respond with tool commands."
-2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML. Warns but does not reject.
-3. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. Plain text responses (no XML) are used as the summary. Commands without `<summary>` get a `"..."` placeholder injected. Empty responses get a placeholder. The server never throws on model output.
-4. **Forward motion** (`ResponseHealer`) — after each turn, assess whether the model made progress. Actions, reads, env commands, and knowledge writes count as progress. A summary-only turn with no actions = done. Repeated idle turns = stalled → force-complete after `RUMMY_MAX_STALLS` (default 3). Unknowns are context, not a gate.
-5. **Alternative philosophy resolution** — the parser silently accepts both attribute-style (`<read path="x"/>`) and body-style (`<read>x</read>`) for every tool. Legacy attributes (`key=""`, `file=""`) are silently remapped to `path=""`.
-6. **Reasoning capture** — any free-form text between tags is captured as `reasoning://N` (audit only, hidden from model).
+The model declares its own state via `<update/>` or `<summary/>`:
 
-### 2.6 Response Healing Philosophy
+| Signal | Meaning | Run continues? |
+|--------|---------|----------------|
+| `<update>` only | Model is still working | Yes |
+| `<summary>` only | Model is done | **No — run terminates** |
+| Both present | Summary wins | **No — run terminates** |
+| Neither present | Warn, increment stall counter | Yes (up to `RUMMY_MAX_STALLS`) |
+
+Stall protection: if the model emits neither `<update>` nor `<summary>` for
+`RUMMY_MAX_STALLS` consecutive turns (default 3), the run force-completes.
+
+When neither is present, the server heals from the response content: plain text
+becomes an update, empty responses get a `"..."` placeholder.
+
+### 2.6 Enforcement Layers
+
+1. **Prompt instructions + examples** — sacred prompts define tool commands with format and examples.
+2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML.
+3. **Syntax flexibility** — the parser accepts both attribute-style and body-style for every tool. Legacy attributes are silently remapped.
+4. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. The server never throws on model output.
+5. **Termination protocol** — `<summary>` terminates; `<update>` continues; neither → stall counter.
+6. **Content capture** — free-form text between tags is captured as `content://N` (assistant text, hidden from model). Model thinking is captured as `reasoning://N`.
+
+### 2.7 Response Healing Philosophy
 
 Every malformed model response is a diagnostic opportunity, not a "model drift" excuse. When healing a response, ask in order:
 
-1. **Can we recover?** Extract the data and continue. htmlparser2 handles unclosed tags, missing slashes, etc. Plain text responses become the summary.
+1. **Can we recover?** Extract the data and continue.
 2. **Can we warn usefully?** Log structured warnings that help future healing rules.
 3. **Did our structure cause this?** Check if context formatting, prompt wording, or tool definitions nudged the model toward the failure.
 4. **Did we miss something in prompts?** Check examples, instructions, continuation prompts.
 5. **Model drift is the LAST answer**, after all of the above have been ruled out.
 
-The server must never throw on model output. Errors in the catch block return `{ status: "failed" }` — they don't re-throw and crash the RPC request.
+The server must never throw on model output.
 
-### 2.5 Server Execution Order
+### 2.8 Server Execution Order
 
 The server parses all XML commands from the response, then processes in strict order:
 
-1. **Store audit entries** — create `system://N`, `user://N`, `prompt://N` entries before the LLM call.
-2. **Execute action commands** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`. `edit` also computes a unified diff patch via HeuristicMatcher.
-3. **Process unknowns** — create `unknown://N` entries, deduplicated against existing unknowns.
-4. **Process known entries** — UPSERT each `<known>` tag's key/value pair.
-5. **Store summary** — create `summary://N` entry.
-6. **Emit `run/state`** — build and send the client notification with history, proposed, unknowns, and telemetry.
+1. **Store audit entries** — create `system://N`, `user://N` or `prompt://N`, `reasoning://N`, `content://N` entries.
+2. **Execute action commands** — `read` promotes, `drop` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result keys.
+3. **Process unknowns** — create `unknown://N` entries, deduplicated.
+4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
+5. **Store status** — create `summary://N` or `update://N` entry.
+6. **Emit `run/state`** — send client notification with history, proposed, unknowns, and telemetry.
 
 ---
 
@@ -749,8 +732,7 @@ hooks.onTurn(async (rummy) => {
 
 The `store` property provides the full KnownStore API: `upsert`, `promote`,
 `demote`, `remove`, `resolve`, `getValue`, `getMeta`, `getFileEntries`,
-`getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`,
-`recountTokens`.
+`getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`.
 
 The engine materializes `turn_context` from `known_entries` each turn via
 the `v_model_context` VIEW (`INSERT INTO turn_context SELECT FROM v_model_context`).
@@ -831,11 +813,12 @@ and views. Source: `src/sql/functions/`.
 
 | Function | Deterministic | Purpose |
 |----------|--------------|---------|
-| `schemeOf(path)` | Yes | Extract URI scheme from path (`"edit://1"` → `"edit"`, `"src/app.js"` → NULL) |
+| `schemeOf(path)` | Yes | Extract URI scheme from path (`"write://1"` → `"write"`, `"src/app.js"` → NULL) |
 | `fidelityOf(scheme, state, turn)` | Yes | Classify entry into fidelity tier (`full`/`summary`/`index`/NULL) |
 | `countTokens(text)` | Yes | Tiktoken o200k_base token count, `ceil(len/4)` fallback |
 | `tierOf(scheme, state)` | Yes | Demotion priority tier (0–4) for budget enforcement |
 | `langFor(path)` | Yes | File extension → syntax language name |
+| `hedberg(pattern, string)` | Yes | Universal pattern matching — auto-detects glob, regex, XPath, JSONPath |
 
 `schemeOf` powers the generated `scheme` column on `known_entries` and
 `turn_context`. `fidelityOf` powers the `v_model_context` VIEW.
@@ -1004,4 +987,4 @@ RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
 | **Domain** | The entry's namespace: `file`, `known`, or `result`. |
 | **State** | The entry's status within its scheme. Server-internal; the model sees a projection. |
 | **Result Key** | A `[tool]://N` key generated for each tool command. Sequential per run. |
-| **Rumsfeld Loop** | The turn cycle: the model uses `<known>` to persist knowledge, `<unknown>` to declare uncertainty, and `<summary>` to report status. Forces discovery before modification. |
+| **Rumsfeld Loop** | The turn cycle: the model uses `<write>` to persist knowledge, `<unknown>` to declare uncertainty, `<update>` to signal continued work, and `<summary>` to terminate. Forces discovery before modification. |
