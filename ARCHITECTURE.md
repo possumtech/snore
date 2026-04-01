@@ -32,25 +32,7 @@ CREATE TABLE known_entries (
     , write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
     , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     , updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    , CHECK (CASE
-        WHEN scheme IS NULL
-            THEN state IN ('full', 'symbols')
-        WHEN scheme IN ('known', 'unknown')
-            THEN state IN ('full', 'stored')
-        WHEN scheme = 'edit'
-            THEN state IN ('proposed', 'pass', 'warn', 'error')
-        WHEN scheme IN ('run', 'env', 'delete', 'ask_user', 'move', 'copy')
-            THEN state IN ('proposed', 'pass', 'warn')
-        WHEN scheme IN ('read', 'drop')
-            THEN state IN ('pass', 'info')
-        WHEN scheme = 'summary' THEN state = 'summary'
-        WHEN scheme IN ('system', 'user', 'reasoning', 'prompt', 'keys', 'inject', 'search')
-            THEN state = 'info'
-        WHEN scheme = 'retry' THEN state = 'error'
-        WHEN scheme IN ('http', 'https')
-            THEN state IN ('full')
-        ELSE 0
-      END)
+    -- State validated by trigger against schemes.valid_states
 );
 CREATE UNIQUE INDEX idx_known_entries_run_path ON known_entries (run_id, path);
 CREATE INDEX idx_known_entries_scheme_state ON known_entries (run_id, scheme, state);
@@ -58,7 +40,7 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 ```
 
 **Columns:**
-- `path` — the entry's address. Bare file paths (`src/app.js`) or URIs (`known://auth`, `edit://7`).
+- `path` — the entry's address. Bare file paths (`src/app.js`) or URIs (`known://auth`, `env://node_version`).
 - `scheme` — generated column: `schemeOf(path)`. Always correct by definition. Drives the CHECK constraint and indexed queries.
 - `turn` — integer sequence number. Heat signal for files, production turn for results.
 - `hash` — SHA-256 content hash for file change detection.
@@ -93,8 +75,8 @@ Ignored files are excluded from scanning entirely.
 | `full` | Value loaded | `full` |
 | `stored` | Key exists, value not in context | `stored` |
 
-Unknowns are `unknown://N` entries. Sticky until the model drops them via
-`<drop path="unknown://42"/>`. Server deduplicates on insert.
+Unknowns are `unknown://N` entries. Sticky until the model stores them via
+`<store path="unknown://42"/>`. Server deduplicates on insert.
 
 **Tool results** (`run://`, `env://`, `delete://`, `ask_user://`, `move://`, `copy://`, `search://`):
 
@@ -109,10 +91,12 @@ on the target entry itself (file or known://). Successful writes update the
 target's value. Failed writes set the target to `error` state with the error
 message as content. There is no `write://` scheme.
 
-**Internal** (`summary://`, `update://`, `system://`, `user://`, `prompt://`, `reasoning://`, `content://`, etc.):
+**Internal** (`summary://`, `update://`, `system://`, `prompt://`, `progress://`, `reasoning://`, `content://`, `model://`):
 - `summary://N` — state `summary` (run termination signal)
 - `update://N` — state `info` (run continuation signal)
-- `system://N`, `user://N`, `prompt://N`, `reasoning://N`, `content://N`, `keys://N`, `inject://N` — state `info`
+- `prompt://N` — state `info` (human prompt)
+- `progress://N` — state `info` (automated continuation)
+- `system://N`, `reasoning://N`, `content://N`, `model://N` — state `info` (audit)
 
 ### 1.3 Path Namespaces
 
@@ -121,7 +105,9 @@ message as content. There is no `write://` scheme.
 | bare path | File paths | `src/app.js`, `package.json` |
 | `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
 | `unknown://` | Open questions | `unknown://1`, `unknown://42` |
-| `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `summary://3`, `search://query` |
+| `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `search://query`, `summary://answer` |
+| `prompt://` | Human prompts | `prompt://1`, `prompt://2` |
+| `progress://` | Continuations | `progress://2`, `progress://3` |
 | `http://`, `https://` | Fetched content | `https://docs.example.com/api` |
 
 Result paths use the tool name as scheme and a content-derived slug per run.
@@ -178,15 +164,15 @@ tool reference. This section documents server behavior for each tool.
 | Tool | ask | act | Body content | Scheme | States |
 |------|-----|-----|-------------|--------|--------|
 | `<unknown>` | yes | yes | open question text | `unknown` | `full`, `stored` |
-| `<read>` | yes | yes | path (simple), or use attrs | `read` | `pass`, `info` |
+| `<read>` | yes | yes | path (simple), or use attrs | *(none — promotes target)* | — |
 | `<env>` | yes | yes | shell command | `env` | `proposed`, `pass`, `warn` |
 | `<ask_user>` | yes | yes | comma-separated options | `ask_user` | `proposed`, `pass`, `warn` |
 | `<search>` | yes | yes | search query | `search` | `info` |
-| `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error` |
-| `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn` |
-| `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn` |
-| `<drop>` | yes | yes | — | `drop` | `pass`, `info` |
-| `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn` |
+| `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error`, `keys` |
+| `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn`, `keys` |
+| `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn`, `keys` |
+| `<store>` | yes | yes | — | *(none — demotes target)* | — |
+| `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn`, `keys` |
 | `<run>` | no | yes | shell command | `run` | `proposed`, `pass`, `warn` |
 | `<update>` | yes | yes | brief status text | `update` | `info` |
 | `<summary>` | yes | yes | final answer/result | `summary` | `summary` |
@@ -198,9 +184,9 @@ Every store-facing tool uses the same attribute set. Pattern matching is via
 
 | Attribute | Meaning | Tools |
 |-----------|---------|-------|
-| `path` | Target path (hedberg pattern) | read, write, drop, delete, move, copy |
-| `value` | Content filter (hedberg pattern) | read, write, drop, delete |
-| `keys` | Preview mode — show matches, no changes | read, write, drop, delete |
+| `path` | Target path (hedberg pattern) | read, write, store, delete, move, copy |
+| `value` | Content filter (hedberg pattern) | read, write, store, delete |
+| `keys` | Preview mode — show matches, no changes | read, write, store, delete |
 | `question` | Question text | ask_user |
 
 The parser accepts both attribute-style (`<read path="x"/>`) and body-style
@@ -220,15 +206,15 @@ entries in the context next turn. Pattern-based commands operate on all matches.
 - K/V targets (known://, etc.): state `pass` (applied immediately)
 
 **`<unknown>`** — creates a sticky `unknown://N` entry (state `full`).
-Persists across turns until explicitly dropped. Server deduplicates on insert.
+Persists across turns until explicitly stored. Server deduplicates on insert.
 
 **`<read>`** — promotes matching entries by setting `turn` to the current turn.
 Values already exist in the store (from file scanner or previous write).
 Promotion makes them visible in context next turn. With patterns, bulk-promotes.
 URLs (`http://`, `https://`) are fetched via WebFetcher.
 
-**`<drop>`** — demotes matching entries by setting `turn` to 0. Values stay
-in the store but disappear from context. A dropped entry can be restored
+**`<store>`** — demotes matching entries by setting `turn` to 0. Values stay
+in the store but disappear from context. A stored entry can be restored
 with `<read>`. With patterns, bulk-demotes.
 
 **`<delete>`** — removes entries from context AND permanently deletes them.
@@ -270,15 +256,15 @@ known://auth_flow (56)
 
 ### 2.4 Promotion Model
 
-`read` and `drop` operate on the `turn` field, not on state:
+`read` and `store` operate on the `turn` field, not on state:
 
 | Command | Effect |
 |---------|--------|
 | `<read>x</read>` | Set `turn` to current turn → value appears in context |
-| `<drop path="x"/>` | Set `turn` to 0 → value hidden from context (purgatory) |
+| `<store path="x"/>` | Set `turn` to 0 → value hidden from context (stored) |
 
 Both support patterns: `<read path="src/*.js"/>` promotes all matching files.
-`<drop value="deprecated"/>` demotes all entries containing "deprecated".
+`<store value="deprecated"/>` demotes all entries containing "deprecated".
 
 All other action commands (`env`, `run`, `delete`, `write`, `ask_user`) create new
 result entries as `proposed`. The `delete` command for `known://*` or `[tool]://*`
@@ -293,13 +279,20 @@ The model declares its own state via `<update/>` or `<summary/>`:
 | `<update>` only | Model is still working | Yes |
 | `<summary>` only | Model is done | **No — run terminates** |
 | Both present | Summary wins | **No — run terminates** |
-| Neither present | Warn, increment stall counter | Yes (up to `RUMMY_MAX_STALLS`) |
+| Neither present (with tools) | Healed to update, increment stall counter | Yes (up to `RUMMY_MAX_STALLS`) |
+| Neither present (plain text, no tools) | Healed to summary | **No — run terminates** |
 
-Stall protection: if the model emits neither `<update>` nor `<summary>` for
-`RUMMY_MAX_STALLS` consecutive turns (default 3), the run force-completes.
+**Stall protection:** if the model emits tool commands without `<update>` or
+`<summary>` for `RUMMY_MAX_STALLS` consecutive turns (default 3), the run
+force-completes. Healed updates (from tool-only responses) count as stalls.
 
-When neither is present, the server heals from the response content: plain text
-becomes an update, empty responses get a `"..."` placeholder.
+**Plain text healing:** if the model responds with plain text and zero tool
+commands, it answered the question. The text is treated as a summary and the
+run terminates. A model that's still working uses tools.
+
+**Repetition detection:** if the model emits the same tool commands
+(name + path) for `RUMMY_MAX_REPETITIONS` consecutive turns (default 3),
+the run force-completes. Catches search loops and other retry patterns.
 
 ### 2.6 Enforcement Layers
 
@@ -307,8 +300,8 @@ becomes an update, empty responses get a `"..."` placeholder.
 2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML.
 3. **Syntax flexibility** — the parser accepts both attribute-style and body-style for every tool. Legacy attributes are silently remapped.
 4. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. The server never throws on model output.
-5. **Termination protocol** — `<summary>` terminates; `<update>` continues; neither → stall counter.
-6. **Content capture** — free-form text between tags is captured as `content://N` (assistant text, hidden from model). Model thinking is captured as `reasoning://N`.
+5. **Termination protocol** — `<summary>` terminates; `<update>` continues; plain text → summary; tools without status → stall counter; repeated commands → loop detection.
+6. **Content capture** — free-form text between tags is captured as `content://N` (assistant text). Model thinking is `reasoning://N`. Raw API response diagnostics are `model://N`. All hidden from model.
 
 ### 2.7 Response Healing Philosophy
 
@@ -327,7 +320,7 @@ The server must never throw on model output.
 The server parses all XML commands from the response, then processes in strict order:
 
 1. **Store audit entries** — create `system://N`, `user://N` or `prompt://N`, `reasoning://N`, `content://N` entries.
-2. **Execute action commands** — `read` promotes, `drop` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result keys.
+2. **Execute action commands** — `read` promotes, `store` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result entries.
 3. **Process unknowns** — create `unknown://N` entries, deduplicated.
 4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
 5. **Store status** — create `summary://N` or `update://N` entry.
@@ -355,8 +348,6 @@ outcome.
 | `delete://` | `rm target_path` | `rm src/old_file.js` |
 | `move://` | `mv source destination` | `mv known://draft known://final` |
 | `copy://` | `cp source destination` | `cp known://config known://config_backup` |
-| `read://` | *(no result entry — promotes target)* | — |
-| `drop://` | *(no result entry — demotes target)* | — |
 
 #### Write outcomes on target path
 
@@ -447,7 +438,7 @@ Each entry in `turn_context` has a `fidelity` level:
 
 Fidelity is derived from `scheme`, `state`, and `turn` via the `schemes` table
 join in `v_model_context`. `read(key)` promotes by setting turn to current turn
-(→ fidelity `full`). `drop(key)` demotes by setting turn to 0 (→ fidelity `index`).
+(→ fidelity `full`). `store(key)` demotes by setting turn to 0 (→ fidelity `index`).
 
 ### 3.4 File Bootstrap
 
@@ -585,7 +576,7 @@ Writes to `file_constraints` table. Constraints persist across runs.
 | `run/resolve` | `run`, `resolution: {key, action: 'accept'\|'reject', output?}` | Resolve a proposed entry by its key |
 | `run/abort` | `run` | Signal in-flight loop to stop via AbortController. Sets status to `aborted`. |
 | `run/rename` | `run`, `name` | Rename a run. `[a-z_]+`, must be unique. |
-| `run/inject` | `run`, `message` | Inject context (creates `inject://N` info entry) |
+| `run/inject` | `run`, `message` | Inject a human prompt into a run (creates `prompt://N` entry) |
 | `getRuns` | — | List runs for session |
 
 All run params accept the **run name** (e.g. `ccp_1`), not a UUID. Model aliases
@@ -917,15 +908,15 @@ and views. Source: `src/sql/functions/`.
 
 | Function | Deterministic | Purpose |
 |----------|--------------|---------|
-| `schemeOf(path)` | Yes | Extract URI scheme from path (`"write://1"` → `"write"`, `"src/app.js"` → NULL) |
-| `fidelityOf(scheme, state, turn)` | Yes | Classify entry into fidelity tier (`full`/`summary`/`index`/NULL) |
+| `schemeOf(path)` | Yes | Extract URI scheme from path (`"env://1"` → `"env"`, `"src/app.js"` → NULL) |
 | `countTokens(text)` | Yes | Tiktoken o200k_base token count, `ceil(len/4)` fallback |
-| `tierOf(scheme, state)` | Yes | Demotion priority tier (0–4) for budget enforcement |
 | `langFor(path)` | Yes | File extension → syntax language name |
 | `hedberg(pattern, string)` | Yes | Universal pattern matching — auto-detects glob, regex, XPath, JSONPath |
+| `slugify(text)` | Yes | Content-derived slug: lowercase, strip non-[a-z0-9_], max 32 chars |
 
 `schemeOf` powers the generated `scheme` column on `known_entries` and
-`turn_context`. `fidelityOf` powers the `v_model_context` VIEW.
+`turn_context`. Fidelity and tier are derived from the `schemes` table join
+in `v_model_context` — no functions needed.
 
 ### 7.8 Examples
 
