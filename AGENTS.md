@@ -43,6 +43,13 @@ materialization, model comprehension — actually works under sustained use.
 Every assertion targets **content and behavior**. If the model's answer is
 correct, the test passes.
 
+**Graceful recovery is not failure.** A turn where the model stumbles but the
+system recovers (healer continues, next turn succeeds) is a passing test. Assert
+on checkpoint outcomes — "after this sequence, the answer is X" — not on each
+turn being flawless. However, if a specific tool interaction fails repeatedly
+across test runs, isolate it: that's an infrastructure bug worth investigating,
+not noise to ignore.
+
 ### Test Infrastructure
 
 Shared `before()`: git-initialized temp project with known files:
