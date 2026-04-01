@@ -186,15 +186,21 @@ describe("KnownStore integration", () => {
 		});
 	});
 
-	describe("result key generation", () => {
-		it("generates sequential keys", async () => {
-			const key1 = await store.nextResultPath(RUN_ID, "read");
-			const key2 = await store.nextResultPath(RUN_ID, "write");
-			const key3 = await store.nextResultPath(RUN_ID, "read");
+	describe("slug path generation", () => {
+		it("generates content-derived slugs", async () => {
+			const key1 = await store.slugPath(RUN_ID, "read", "src/app.js");
+			assert.strictEqual(key1, "read://srcappjs");
+		});
 
-			assert.strictEqual(key1, "read://1");
-			assert.strictEqual(key2, "write://2");
-			assert.strictEqual(key3, "read://3");
+		it("handles collisions with integer suffix", async () => {
+			await store.upsert(RUN_ID, 1, "read://srcappjs", "", "pass");
+			const key2 = await store.slugPath(RUN_ID, "read", "src/app.js");
+			assert.strictEqual(key2, "read://srcappjs2");
+		});
+
+		it("falls back to sequential for empty content", async () => {
+			const key1 = await store.slugPath(RUN_ID, "env", "");
+			assert.match(key1, /^env:\/\/\d+$/);
 		});
 	});
 

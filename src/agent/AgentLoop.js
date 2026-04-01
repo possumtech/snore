@@ -427,9 +427,10 @@ export default class AgentLoop {
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
-		const resultPath = await this.#knownStore.nextResultPath(
+		const resultPath = await this.#knownStore.slugPath(
 			runRow.id,
 			"inject",
+			message,
 		);
 		await this.#knownStore.upsert(runRow.id, 0, resultPath, message, "info", {
 			meta: { source: "user" },

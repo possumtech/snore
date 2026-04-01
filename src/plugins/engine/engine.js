@@ -29,12 +29,13 @@ export default class Engine {
 					const before = ((total / rummy.contextSize) * 100) | 0;
 					const after = (((total - saved) / rummy.contextSize) * 100) | 0;
 					const names = demoted.map((d) => d.path).join(", ");
-					const resultPath = await store.nextResultPath(runId, "inject");
+					const report = `engine demoted: ${names} (budget: ${before}% → ${after}%)`;
+					const resultPath = await store.slugPath(runId, "inject", report);
 					await store.upsert(
 						runId,
 						sequence,
 						resultPath,
-						`engine demoted: ${names} (budget: ${before}% → ${after}%)`,
+						report,
 						"info",
 						{},
 					);

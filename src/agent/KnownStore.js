@@ -1,3 +1,5 @@
+import slugify from "../sql/functions/slugify.js";
+
 export default class KnownStore {
 	#db;
 
@@ -15,9 +17,33 @@ export default class KnownStore {
 		return row.turn;
 	}
 
-	async nextResultPath(runId, toolName) {
-		const row = await this.#db.next_result_key.get({ run_id: runId });
-		return `${toolName}://${row.seq}`;
+	async slugPath(runId, scheme, content) {
+		const base = slugify(content || "");
+		const prefix = `${scheme}://`;
+
+		if (!base) {
+			const row = await this.#db.next_result_key.get({ run_id: runId });
+			return `${prefix}${row.seq}`;
+		}
+
+		const candidate = `${prefix}${base}`;
+		const existing = await this.#db.get_entry_value.get({
+			run_id: runId,
+			path: candidate,
+		});
+		if (!existing) return candidate;
+
+		// Collision — find next available integer suffix
+		let n = 2;
+		while (true) {
+			const suffixed = `${prefix}${base}${n}`;
+			const row = await this.#db.get_entry_value.get({
+				run_id: runId,
+				path: suffixed,
+			});
+			if (!row) return suffixed;
+			n++;
+		}
 	}
 
 	async upsert(

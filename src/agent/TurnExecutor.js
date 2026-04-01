@@ -254,9 +254,10 @@ export default class TurnExecutor {
 				const listing = matches
 					.map((m) => `${m.path} (${m.tokens_full})`)
 					.join("\n");
-				const keysPath = await this.#knownStore.nextResultPath(
+				const keysPath = await this.#knownStore.slugPath(
 					currentRunId,
 					"keys",
+					cmd.path,
 				);
 				await this.#knownStore.upsert(
 					currentRunId,
@@ -313,9 +314,10 @@ export default class TurnExecutor {
 			}
 
 			// run, env — single proposed/pass entry
-			const resultPath = await this.#knownStore.nextResultPath(
+			const resultPath = await this.#knownStore.slugPath(
 				currentRunId,
 				cmd.name,
+				cmd.command || cmd.path || cmd.question || "",
 			);
 			cmd.resultPath = resultPath;
 			await this.#knownStore.upsert(
@@ -337,9 +339,10 @@ export default class TurnExecutor {
 
 		// Step 1b: ask_user
 		if (askUserCmd) {
-			const resultPath = await this.#knownStore.nextResultPath(
+			const resultPath = await this.#knownStore.slugPath(
 				currentRunId,
 				"ask_user",
+				askUserCmd.question || "",
 			);
 			askUserCmd.resultPath = resultPath;
 			await this.#knownStore.upsert(
@@ -360,9 +363,10 @@ export default class TurnExecutor {
 				await this.#knownStore.getUnknownValues(currentRunId);
 			for (const cmd of unknownCalls) {
 				if (existingValues.has(cmd.value)) continue;
-				const unknownPath = await this.#knownStore.nextResultPath(
+				const unknownPath = await this.#knownStore.slugPath(
 					currentRunId,
 					"unknown",
+					cmd.value,
 				);
 				await this.#knownStore.upsert(
 					currentRunId,
@@ -376,7 +380,23 @@ export default class TurnExecutor {
 
 		// Step 3: Write entries (plain upsert or bulk update)
 		for (const cmd of writeCalls) {
-			if (!cmd.path) continue;
+			// Naked write — no path, generate known:// slug from content
+			if (!cmd.path) {
+				if (!cmd.value) continue;
+				const sluggedPath = await this.#knownStore.slugPath(
+					currentRunId,
+					"known",
+					cmd.value,
+				);
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					sluggedPath,
+					cmd.value,
+					"full",
+				);
+				continue;
+			}
 
 			// keys flag — preview matches
 			if (cmd.keys) {
@@ -389,9 +409,10 @@ export default class TurnExecutor {
 				const listing = matches
 					.map((m) => `${m.path} (${m.tokens_full})`)
 					.join("\n");
-				const keysPath = await this.#knownStore.nextResultPath(
+				const keysPath = await this.#knownStore.slugPath(
 					currentRunId,
 					"keys",
+					cmd.path,
 				);
 				await this.#knownStore.upsert(
 					currentRunId,
@@ -424,9 +445,10 @@ export default class TurnExecutor {
 
 		// Step 4: Status (summary terminates, update continues)
 		if (summaryText) {
-			const summaryPath = await this.#knownStore.nextResultPath(
+			const summaryPath = await this.#knownStore.slugPath(
 				currentRunId,
 				"summary",
+				summaryText,
 			);
 			await this.#knownStore.upsert(
 				currentRunId,
@@ -436,9 +458,10 @@ export default class TurnExecutor {
 				"summary",
 			);
 		} else if (updateText) {
-			const updatePath = await this.#knownStore.nextResultPath(
+			const updatePath = await this.#knownStore.slugPath(
 				currentRunId,
 				"update",
+				updateText,
 			);
 			await this.#knownStore.upsert(
 				currentRunId,
@@ -477,7 +500,7 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.nextResultPath(runId, "write");
+			const resultPath = await this.#knownStore.slugPath(runId, "write", entry.path);
 			let patch = null;
 			let warning = null;
 			let error = null;
@@ -559,7 +582,7 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.nextResultPath(runId, "delete");
+			const resultPath = await this.#knownStore.slugPath(runId, "delete", entry.path);
 
 			if (entry.scheme === null) {
 				// File → proposed (client confirms deletion)
@@ -593,7 +616,7 @@ export default class TurnExecutor {
 			warning = `Overwrote existing entry at ${cmd.to}`;
 		}
 
-		const resultPath = await this.#knownStore.nextResultPath(runId, cmd.name);
+		const resultPath = await this.#knownStore.slugPath(runId, cmd.name, cmd.path);
 
 		// File destinations → proposed (client writes to disk)
 		// K/V destinations → pass (immediate)
@@ -643,7 +666,7 @@ export default class TurnExecutor {
 		const result = await this.#hooks.action.search.filter(null, { query });
 		if (!result) return;
 
-		const resultPath = await this.#knownStore.nextResultPath(runId, "search");
+		const resultPath = await this.#knownStore.slugPath(runId, "search", query);
 		await this.#knownStore.upsert(
 			runId,
 			turn,
