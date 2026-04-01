@@ -9,29 +9,24 @@ const promptCache = new Map();
 
 export default class PromptManager {
 	static async getSystemPrompt(
-		type,
+		_mode,
 		{ db = null, sessionId = null, hooks = null } = {},
 	) {
-		// Base system prompt from file (cached after first read)
-		let base = promptCache.get(type);
+		// Base system prompt from file (cached — single prompt.md for all modes)
+		let base = promptCache.get("system");
 		if (!base) {
-			const modePath = join(ROOT_DIR, `prompt.${type}.md`);
 			try {
-				base = await fs.readFile(modePath, "utf8");
+				base = await fs.readFile(join(ROOT_DIR, "prompt.md"), "utf8");
 			} catch {
-				try {
-					base = await fs.readFile(join(ROOT_DIR, "system.md"), "utf8");
-				} catch {
-					base = "You are a helpful software engineering assistant.";
-				}
+				base = "You are a helpful software engineering assistant.";
 			}
-			promptCache.set(type, base);
+			promptCache.set("system", base);
 		}
 
 		// Plugin tool documentation injection
 		let prompt = base;
 		if (hooks?.prompt?.tools) {
-			const pluginTools = await hooks.prompt.tools.filter([], { type });
+			const pluginTools = await hooks.prompt.tools.filter([], {});
 			if (pluginTools.length > 0) {
 				prompt = `${prompt}\n\n${pluginTools.join("\n\n")}`;
 			}

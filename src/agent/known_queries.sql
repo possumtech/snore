@@ -38,6 +38,15 @@ SELECT value
 FROM known_entries
 WHERE
 	run_id = :run_id
+	AND scheme IN ('ask', 'act')
+ORDER BY id DESC
+LIMIT 1;
+
+-- PREP: get_latest_prompt
+SELECT path, scheme, value, meta
+FROM known_entries
+WHERE
+	run_id = :run_id
 	AND scheme = 'prompt'
 ORDER BY id DESC
 LIMIT 1;

@@ -96,7 +96,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			`prompt://${TURN}`,
+			`ask://${TURN}`,
 			"test question",
 			"info",
 		);

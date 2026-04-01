@@ -38,8 +38,8 @@ export default class AgentLoop {
 		return `${prefix}${row.next_seq}`;
 	}
 
-	static toolsForType(type) {
-		return type === "act"
+	static toolsForMode(mode) {
+		return mode === "act"
 			? "unknown read env ask_user search write move copy store delete run update summary"
 			: "unknown read env ask_user search write move copy drop delete update summary";
 	}
@@ -72,7 +72,7 @@ export default class AgentLoop {
 	}
 
 	async run(
-		type,
+		mode,
 		sessionId,
 		model,
 		prompt,
@@ -80,7 +80,7 @@ export default class AgentLoop {
 		run = null,
 		options = {},
 	) {
-		const hook = type === "ask" ? this.#hooks.ask : this.#hooks.act;
+		const hook = mode === "ask" ? this.#hooks.ask : this.#hooks.act;
 		await hook.started.emit({
 			sessionId,
 			model,
@@ -125,7 +125,6 @@ export default class AgentLoop {
 			const runRow = await this.#db.create_run.get({
 				session_id: sessionId,
 				parent_run_id: existingRun.id,
-				type: type || "ask",
 				config: JSON.stringify({ model: requestedModel, noContext }),
 				alias: currentAlias,
 			});
@@ -177,7 +176,6 @@ export default class AgentLoop {
 			const runRow = await this.#db.create_run.get({
 				session_id: sessionId,
 				parent_run_id: null,
-				type: type || "ask",
 				config: JSON.stringify({ model: requestedModel, noContext }),
 				alias: currentAlias,
 			});
@@ -228,7 +226,7 @@ export default class AgentLoop {
 					turnPrompt = prompt;
 				} else {
 					turnPrompt = this.#buildContinuationPrompt(
-						type,
+						mode,
 						loopIteration,
 						MAX_LOOP_ITERATIONS,
 						contextSize,
@@ -237,7 +235,7 @@ export default class AgentLoop {
 				}
 
 				const result = await this.#turnExecutor.execute({
-					type,
+					mode,
 					project,
 					sessionId,
 					currentRunId,
@@ -447,7 +445,13 @@ export default class AgentLoop {
 		// Auto-resume if any action was accepted
 		const hasAccepted = await this.#knownStore.hasAcceptedActions(runId);
 		if (hasAccepted) {
-			return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
+			const latestPrompt = await this.#db.get_latest_prompt.get({
+				run_id: runId,
+			});
+			const resumeMode = latestPrompt?.meta
+				? JSON.parse(latestPrompt.meta).mode
+				: "ask";
+			return this.run(resumeMode, runRow.session_id, null, "", null, runAlias);
 		}
 
 		await this.#db.update_run_status.run({ id: runId, status: "completed" });
@@ -475,10 +479,20 @@ export default class AgentLoop {
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
 		const nextTurn = runRow.next_turn;
+
+		// Inject creates a prompt (ask mode — injections are questions)
 		await this.#knownStore.upsert(
 			runRow.id,
 			nextTurn,
 			`prompt://${nextTurn}`,
+			"",
+			"info",
+			{ meta: { mode: "ask" } },
+		);
+		await this.#knownStore.upsert(
+			runRow.id,
+			nextTurn,
+			`ask://${nextTurn}`,
 			message,
 			"info",
 		);
@@ -487,7 +501,7 @@ export default class AgentLoop {
 			return { run: runAlias, status: runRow.status, injected: "queued" };
 		}
 
-		return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
+		return this.run("ask", runRow.session_id, null, "", null, runAlias);
 	}
 
 	async getRunHistory(runAlias) {

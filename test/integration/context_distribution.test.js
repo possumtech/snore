@@ -56,7 +56,7 @@ describe("turn_context distribution bucket correctness", () => {
 		await store.upsert(RUN_ID, 1, "search://1", "search results", "info");
 		await store.upsert(RUN_ID, 1, "summary://1", "did a thing", "summary");
 		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
-		await store.upsert(RUN_ID, 1, "prompt://1", "test question", "info");
+		await store.upsert(RUN_ID, 1, "ask://1", "test question", "info");
 
 		// Materialize turn_context via engine
 		hooks = new HookRegistry();

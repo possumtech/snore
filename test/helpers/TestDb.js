@@ -35,7 +35,6 @@ export default class TestDb {
 		path = "/tmp/test",
 		name = "Test",
 		clientId = "c1",
-		type = "act",
 		alias = "test_1",
 	} = {}) {
 		const project = await this.db.upsert_project.get({ path, name });
@@ -46,7 +45,6 @@ export default class TestDb {
 		const run = await this.db.create_run.get({
 			session_id: session.id,
 			parent_run_id: null,
-			type,
 			config: "{}",
 			alias,
 		});

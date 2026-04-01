@@ -201,6 +201,7 @@ export default class ContextAssembler {
 		// Message buckets (user message)
 		const messageEntries = [];
 		let prompt = null;
+		let promptMode = null;
 
 		for (const row of rows) {
 			if (row.path === "system://prompt") {
@@ -246,15 +247,18 @@ export default class ContextAssembler {
 					unknowns.push({ value: row.content });
 					break;
 				case "prompt":
-					// prompt:// = human prompt, progress:// = continuation
-					if (row.scheme === "prompt") {
+					// ask:// or act:// = human prompt, progress:// = continuation
+					if (row.scheme === "ask" || row.scheme === "act") {
 						prompt = row.content;
+						promptMode = row.scheme;
 					}
-					messageEntries.push({
-						path: row.path,
-						scheme: row.scheme,
-						value: row.content,
-					});
+					if (row.scheme !== "prompt") {
+						messageEntries.push({
+							path: row.path,
+							scheme: row.scheme,
+							value: row.content,
+						});
+					}
 					break;
 				case "result":
 					messageEntries.push({
@@ -331,7 +335,8 @@ export default class ContextAssembler {
 
 		if (messageEntries.length > 0) {
 			const lines = messageEntries.map((e) => {
-				if (e.scheme === "prompt") return `> ${e.value}`;
+				if (e.scheme === "ask") return `> [ask] ${e.value}`;
+				if (e.scheme === "act") return `> [act] ${e.value}`;
 				if (e.scheme === "progress") return `> [continuation] ${e.value}`;
 				const check =
 					e.state === "pass" || e.state === "summary"
@@ -348,9 +353,12 @@ export default class ContextAssembler {
 			userParts.push(`<messages>\n${lines.join("\n")}\n</messages>`);
 		}
 
-		const tools = AgentLoop.toolsForType(type);
-		if (prompt) {
-			userParts.push(`<prompt tools="${tools}">${prompt}</prompt>`);
+		const effectiveMode = promptMode || type;
+		const tools = AgentLoop.toolsForMode(effectiveMode);
+		if (prompt && promptMode) {
+			userParts.push(
+				`<${promptMode} tools="${tools}">${prompt}</${promptMode}>`,
+			);
 		} else if (continuation) {
 			userParts.push(`<progress tools="${tools}">${continuation}</progress>`);
 		}

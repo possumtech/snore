@@ -23,7 +23,7 @@ classified AS (
 			ELSE NULL
 		END AS fidelity
 		, CASE
-			WHEN ke.scheme IN ('prompt', 'progress')
+			WHEN ke.scheme IN ('ask', 'act', 'progress')
 				THEN ROW_NUMBER() OVER (
 					PARTITION BY ke.run_id, ke.scheme
 					ORDER BY ke.id DESC
@@ -48,7 +48,7 @@ projected AS (
 					WHEN scheme IS NULL THEN value
 					WHEN scheme = 'known' THEN value
 					WHEN scheme = 'unknown' THEN value
-					WHEN scheme IN ('prompt', 'progress') THEN value
+					WHEN scheme IN ('ask', 'act', 'progress') THEN value
 					WHEN scheme IN ('http', 'https') THEN value
 					WHEN state = 'summary' THEN value
 					ELSE value
@@ -68,7 +68,7 @@ projected AS (
 				scheme IS NOT NULL
 				AND fidelity = 'full'
 				AND scheme NOT IN (
-					'known', 'unknown', 'prompt', 'progress', 'http', 'https'
+					'known', 'unknown', 'ask', 'act', 'progress', 'http', 'https'
 				)
 				THEN json_object(
 					'tool', COALESCE(scheme, state)
@@ -92,7 +92,7 @@ projected AS (
 			WHEN scheme = 'known' AND fidelity = 'full' THEN 'known'
 			WHEN scheme = 'known' THEN 'known_index'
 			WHEN scheme = 'unknown' THEN 'unknown'
-			WHEN scheme IN ('prompt', 'progress') THEN 'prompt'
+			WHEN scheme IN ('ask', 'act', 'progress') THEN 'prompt'
 			ELSE 'result'
 		END AS category
 	FROM classified

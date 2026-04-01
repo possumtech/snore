@@ -265,7 +265,6 @@ export default class CoreRpcPlugin {
 				});
 				return rows.map((r) => ({
 					run: r.alias,
-					type: r.type,
 					status: r.status,
 					turn: r.turn,
 					summary: r.summary || "",
@@ -285,19 +284,31 @@ export default class CoreRpcPlugin {
 				if (!run)
 					throw new Error(msg("error.run_not_found", { runId: params.run }));
 
-				const [telemetry, reasoning, content, history, promptRow, summaryRow] =
-					await Promise.all([
-						ctx.db.get_run_usage.get({ run_id: run.id }),
-						ctx.db.get_reasoning.all({ run_id: run.id }),
-						ctx.db.get_content.all({ run_id: run.id }),
-						ctx.db.get_history.all({ run_id: run.id }),
-						ctx.db.get_latest_user_prompt.get({ run_id: run.id }),
-						ctx.db.get_latest_summary.get({ run_id: run.id }),
-					]);
+				const [
+					telemetry,
+					reasoning,
+					content,
+					history,
+					promptRow,
+					summaryRow,
+					latestPrompt,
+				] = await Promise.all([
+					ctx.db.get_run_usage.get({ run_id: run.id }),
+					ctx.db.get_reasoning.all({ run_id: run.id }),
+					ctx.db.get_content.all({ run_id: run.id }),
+					ctx.db.get_history.all({ run_id: run.id }),
+					ctx.db.get_latest_user_prompt.get({ run_id: run.id }),
+					ctx.db.get_latest_summary.get({ run_id: run.id }),
+					ctx.db.get_latest_prompt.get({ run_id: run.id }),
+				]);
 
+				const promptMeta = latestPrompt?.meta
+					? JSON.parse(latestPrompt.meta)
+					: null;
 				return {
 					run: run.alias,
 					turn: run.next_turn - 1,
+					mode: promptMeta?.mode || null,
 					status: run.status,
 					context: {
 						telemetry: {

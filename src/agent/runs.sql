@@ -2,33 +2,30 @@
 INSERT INTO runs (
 	session_id
 	, parent_run_id
-	, type
 	, config
 	, alias
 )
 VALUES (
 	:session_id
 	, :parent_run_id
-	, :type
 	, :config
 	, :alias
 )
 RETURNING id;
 
 -- PREP: get_run_by_alias
-SELECT id, session_id, parent_run_id, type, status, config, alias, next_turn, created_at
+SELECT id, session_id, parent_run_id, status, config, alias, next_turn, created_at
 FROM runs
 WHERE alias = :alias;
 
 -- PREP: get_run_by_id
-SELECT id, session_id, parent_run_id, type, status, config, alias, next_turn, created_at
+SELECT id, session_id, parent_run_id, status, config, alias, next_turn, created_at
 FROM runs
 WHERE id = :id;
 
 -- PREP: get_runs_by_session
 SELECT
 	r.alias
-	, r.type
 	, r.status
 	, r.created_at
 	, r.next_turn - 1 AS turn

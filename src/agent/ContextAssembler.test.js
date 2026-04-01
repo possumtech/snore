@@ -241,8 +241,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 1,
-					path: "prompt://1",
-					scheme: "prompt",
+					path: "ask://1",
+					scheme: "ask",
 					fidelity: "full",
 					content: "User prompt",
 					tokens: 3,
@@ -254,7 +254,7 @@ describe("ContextAssembler", () => {
 
 			assert.strictEqual(messages.length, 2);
 			assert.ok(messages[1].role, "user");
-			assert.ok(messages[1].content.includes('<prompt tools="'));
+			assert.ok(messages[1].content.includes('<ask tools="'));
 			assert.ok(messages[1].content.includes("User prompt"));
 		});
 

@@ -25,7 +25,7 @@ export default class TurnExecutor {
 	}
 
 	async execute({
-		type,
+		mode,
 		project,
 		sessionId,
 		currentRunId,
@@ -58,21 +58,38 @@ export default class TurnExecutor {
 			await this.#fileScanner.scan(project.path, project.id, files, turn);
 		}
 
-		// Store user/continuation prompt BEFORE context materialization
+		// Store prompt entries BEFORE context materialization
 		// so v_model_context includes the current prompt
-		if (loopPrompt) {
-			const scheme = options?.isContinuation ? "progress" : "prompt";
+		if (loopPrompt && !options?.isContinuation) {
+			// New prompt — create loop identity + payload
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				`${scheme}://${turn}`,
+				`prompt://${turn}`,
+				"",
+				"info",
+				{ meta: { mode } },
+			);
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`${mode}://${turn}`,
+				loopPrompt,
+				"info",
+			);
+		} else if (loopPrompt) {
+			// Continuation — progress entry
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`progress://${turn}`,
 				loopPrompt,
 				"info",
 			);
 		}
 
 		// Build system prompt before hooks (static for the turn)
-		const systemPrompt = await PromptManager.getSystemPrompt(type, {
+		const systemPrompt = await PromptManager.getSystemPrompt(mode, {
 			db: this.#db,
 			sessionId,
 			hooks: this.#hooks,
@@ -94,7 +111,7 @@ export default class TurnExecutor {
 			db: this.#db,
 			store: this.#knownStore,
 			project,
-			type,
+			type: mode,
 			sequence: turn,
 			runId: currentRunId,
 			turnId: turnRow.id,
@@ -117,7 +134,9 @@ export default class TurnExecutor {
 			run_id: currentRunId,
 			turn,
 		});
-		const messages = ContextAssembler.assembleFromTurnContext(rows, { type });
+		const messages = ContextAssembler.assembleFromTurnContext(rows, {
+			type: mode,
+		});
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,

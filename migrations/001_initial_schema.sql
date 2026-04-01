@@ -33,7 +33,9 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('summary', 'full', 1, '["summary"]', 0, 'structural'),
 ('update', 'null', 0, '["info"]', 0, 'structural'),
 ('system', 'null', 0, '["info"]', 0, 'audit'),
-('prompt', 'full', 1, '["info"]', 0, 'audit'),
+('prompt', 'null', 0, '["info"]', 0, 'audit'),
+('ask', 'full', 1, '["info"]', 0, 'audit'),
+('act', 'full', 1, '["info"]', 0, 'audit'),
 ('progress', 'full', 1, '["info"]', 0, 'audit'),
 ('reasoning', 'null', 0, '["info"]', 0, 'audit'),
 ('model', 'null', 0, '["info"]', 0, 'audit'),
@@ -75,7 +77,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
 	, parent_run_id INTEGER REFERENCES runs (id) ON DELETE SET NULL
-	, type TEXT NOT NULL CHECK (type IN ('ask', 'act'))
+	, type TEXT
 	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
 	)
