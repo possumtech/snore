@@ -268,27 +268,7 @@ export default class TurnExecutor {
 		for (const cmd of actionCalls) {
 			// keys flag — preview matches, no state change
 			if (cmd.keys && cmd.path) {
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.value,
-				);
-				const total = matches.reduce((sum, m) => sum + m.tokens_full, 0);
-				const listing = matches
-					.map((m) => `${m.path} (${m.tokens_full})`)
-					.join("\n");
-				const keysPath = await this.#knownStore.slugPath(
-					currentRunId,
-					"keys",
-					cmd.path,
-				);
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					keysPath,
-					`${matches.length} paths (${total} tokens total)\n${listing}`,
-					"info",
-				);
+				await this.#storeKeysPreview(currentRunId, turn, cmd);
 				continue;
 			}
 
@@ -311,7 +291,7 @@ export default class TurnExecutor {
 				await this.#processSearch(currentRunId, turn, cmd.path);
 				continue;
 			}
-			if (cmd.name === "drop") {
+			if (cmd.name === "store") {
 				if (!cmd.path) continue;
 				await this.#knownStore.demoteByPattern(
 					currentRunId,
@@ -426,27 +406,7 @@ export default class TurnExecutor {
 
 			// keys flag — preview matches
 			if (cmd.keys) {
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.value,
-				);
-				const total = matches.reduce((sum, m) => sum + m.tokens_full, 0);
-				const listing = matches
-					.map((m) => `${m.path} (${m.tokens_full})`)
-					.join("\n");
-				const keysPath = await this.#knownStore.slugPath(
-					currentRunId,
-					"keys",
-					cmd.path,
-				);
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					keysPath,
-					`${matches.length} paths (${total} tokens total)\n${listing}`,
-					"info",
-				);
+				await this.#storeKeysPreview(currentRunId, turn, cmd);
 				continue;
 			}
 
@@ -538,6 +498,28 @@ export default class TurnExecutor {
 			contextSize,
 			usage,
 		};
+	}
+
+	async #storeKeysPreview(runId, turn, cmd) {
+		const matches = await this.#knownStore.getEntriesByPattern(
+			runId,
+			cmd.path,
+			cmd.value,
+		);
+		const total = matches.reduce((sum, m) => sum + m.tokens_full, 0);
+		const listing = matches
+			.map((m) => `${m.path} (${m.tokens_full})`)
+			.join("\n");
+		const scheme = cmd.name || "write";
+		const keysPath = await this.#knownStore.slugPath(runId, scheme, cmd.path);
+		const filter = cmd.value ? ` value="${cmd.value}"` : "";
+		await this.#knownStore.upsert(
+			runId,
+			turn,
+			keysPath,
+			`${cmd.name} path="${cmd.path}"${filter}: ${matches.length} matches (${total} tokens)\n${listing}`,
+			"keys",
+		);
 	}
 
 	async #processEdit(runId, turn, cmd) {

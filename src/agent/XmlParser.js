@@ -2,7 +2,7 @@ import { Parser } from "htmlparser2";
 
 const STORE_TOOLS = new Set([
 	"read",
-	"drop",
+	"store",
 	"delete",
 	"write",
 	"move",
@@ -108,7 +108,7 @@ function resolveCommand(name, attrs, body) {
 		return { name, value };
 	}
 
-	if (name === "read" || name === "drop" || name === "delete") {
+	if (name === "read" || name === "store" || name === "delete") {
 		// Canonical: path in attr. Alt: path in body.
 		const path = a.path || trimmed || null;
 		return { name, path, value: a.value, keys: a.keys };

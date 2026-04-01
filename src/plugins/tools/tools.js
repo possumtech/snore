@@ -12,7 +12,7 @@ export default class CoreToolsPlugin {
 
 		// Investigation (direct execution)
 		tools.register("read", { modes: BOTH, category: "ask" });
-		tools.register("drop", { modes: BOTH, category: "ask" });
+		tools.register("store", { modes: BOTH, category: "ask" });
 		tools.register("env", { modes: BOTH, category: "ask" });
 		tools.register("search", { modes: BOTH, category: "ask" });
 

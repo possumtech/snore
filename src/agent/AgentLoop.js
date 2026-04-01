@@ -40,7 +40,7 @@ export default class AgentLoop {
 
 	static toolsForType(type) {
 		return type === "act"
-			? "unknown read env ask_user search write move copy drop delete run update summary"
+			? "unknown read env ask_user search write move copy store delete run update summary"
 			: "unknown read env ask_user search write move copy drop delete update summary";
 	}
 

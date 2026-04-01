@@ -77,7 +77,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 			{ name: "move", state: "pass" },
 			{ name: "copy", state: "pass" },
 			{ name: "search", state: "info" },
-			{ name: "keys", state: "info" },
+			{ name: "write", state: "keys" },
 		];
 
 		// For each result scheme, insert an entry with known content
