@@ -324,32 +324,139 @@ Entries promoted but untouched for N turns get demoted automatically.
 
 ---
 
-## Todo: Message Structure Refactor
+## Todo: Unified Prompt Architecture
 
-ContextAssembler currently renders everything into a single system message.
-Refactor to the two-message architecture documented in ARCHITECTURE.md §3.1:
+### Motivation
 
-**System** = `<instructions/>` + `<context/>`
-**User** = `<messages/>` + `<prompt/>` or `<progress/>`
+Model caching requires an identical system prompt across ask and act modes.
+The mode distinction moves from the system prompt to the user message. One
+`prompt.md` replaces `prompt.ask.md` and `prompt.act.md`. The system prompt
+is cached; only the user message varies per turn.
 
-- [ ] **Split turn_context into context vs messages** — context entries (files,
-      knowledge, unknowns) go in system. Message entries (prompts, tool results,
-      updates, summaries) go in user. The `category` column or `schemes.category`
-      can drive the split.
-- [ ] **Render context in system** — instructions (sacred prompt) + `<context>` tag
-      wrapping files, knowledge, unknowns. Ends with unknowns.
-- [ ] **Render messages in user** — `<messages>` tag wrapping chronological prompt,
-      tool, update, summary entries. Followed by `<prompt>` or `<progress>`.
-- [ ] **Prompt vs progress** — `<prompt>` only on turns with genuine user input.
-      `<progress>` on continuation turns (ephemeral, stored for audit).
-- [ ] **Remove prompt from context ordering** — prompts are no longer ordinal 8
-      in v_model_context. They're in messages.
-- [ ] **Update v_model_context VIEW** — exclude message-domain entries (results,
-      summaries, updates, prompts) from the context view.
-- [ ] **Update engine** — continuation injection goes to messages, not context.
-- [ ] **Update ContextAssembler** — new `assembleFromTurnContext` builds two
-      messages instead of one. Delete legacy `assemble()` if unused.
-- [ ] **Update tests** — ContextAssembler tests, engine tests, E2E.
+### Prompt schemes: prompt://, ask://, act://, progress://
+
+Runs no longer have a type. A run is a long-lived conversation that contains
+multiple prompts, each with its own mode.
+
+| Scheme | What it is | In messages |
+|--------|------------|-------------|
+| `prompt://N` | Loop identity — mode and starting turn | Not rendered directly |
+| `ask://N` | Human prompt text (ask mode) | `<ask tools="...">question</ask>` |
+| `act://N` | Human prompt text (act mode) | `<act tools="...">instruction</act>` |
+| `progress://N` | Automated continuation | `<progress tools="...">Turn 2/15</progress>` |
+
+`prompt://` is the loop container. Its value carries `{ "mode": "ask" }` or
+`{ "mode": "act" }` in meta. The server reads the latest `prompt://` to
+determine the current mode for enforcement.
+
+`ask://` and `act://` carry the actual prompt text. They are rendered in
+`<messages>` as the user's words and as the `<ask>`/`<act>` tag for the
+current turn.
+
+The tools attribute on `<ask>` excludes `run`. The tools attribute on `<act>`
+includes everything. `<progress>` inherits the tools from the current
+`prompt://` entry's mode.
+
+Remove: `runs.type` column (mode lives on prompt entries, not on runs).
+
+Example flow — ask then act on same run:
+
+```
+prompt://1   | info | meta: { "mode": "ask" }
+ask://1      | info | When did Tom Petty pass away?
+progress://2 | info | Turn 2/15...
+summary://s1 | summary | October 2, 2017
+
+prompt://4   | info | meta: { "mode": "act" }
+act://4      | info | Refactor the auth module
+progress://5 | info | Turn 5/15...
+```
+
+### Server-side mode enforcement
+
+The server reads the latest `ask://` or `act://` entry to determine the
+current mode. TurnExecutor checks mode before executing mutating commands:
+
+- `ask` mode: reject `<run>`, reject file writes, reject file deletes.
+  Known entry writes are allowed. `<write path="known://...">` is fine.
+  `<write path="src/app.js">` is rejected.
+- `act` mode: everything allowed.
+
+Enforcement is per-command in TurnExecutor, not per-run. A mixed-mode run
+correctly restricts each prompt's turns.
+
+### PromptManager
+
+Loads `prompt.md` always. No mode branching. The sacred prompt is a single
+cached document.
+
+### ContextAssembler
+
+The user message renders prompts with mode-specific tags:
+
+```
+<messages>
+> [ask] What database does this project use?
+* search search://tom_petty · 30 results for "Tom Petty death date"...
+* summary: October 2, 2017
+> [act] Refactor the auth module
+...
+</messages>
+<ask tools="unknown read env ask_user search write move copy store delete update summary">
+  What port does the app listen on?
+</ask>
+```
+
+Or on continuation turns:
+
+```
+<progress tools="unknown read env ask_user search write move copy store delete update summary">
+  Turn 2/15 · 64000 tokens (25%)
+  Required: <update/> if still working, <summary/> if done. Not both.
+</progress>
+```
+
+### getRun RPC
+
+Returns the active prompt's mode derived from the latest `ask://` or `act://`
+entry. No `runs.type` field.
+
+```json
+{ "run": "xfast_1", "mode": "ask", "turn": 3, "status": "running" }
+```
+
+### Terminology
+
+| Term | Scheme | Meaning |
+|------|--------|---------|
+| Prompt | `prompt://N` | Loop container. Mode (ask/act) + starting turn. |
+| Ask payload | `ask://N` | User's message text for an ask-mode prompt. |
+| Act payload | `act://N` | User's message text for an act-mode prompt. |
+| Progress | `progress://N` | Server continuation within a prompt. |
+| Turn | — | Single LLM request/response within a prompt. |
+| Run | — | Long-lived conversation containing multiple prompts. No type. |
+
+### Implementation
+
+- [ ] **prompt.md** — single unified sacred prompt (already written by user)
+- [ ] **PromptManager** — always load prompt.md
+- [ ] **Schemes table** — add `prompt` (loop identity), `ask`, `act`;
+      keep `progress`; remove old `prompt` definition
+- [ ] **TurnExecutor** — create `prompt://N` + `ask://N` or `act://N` on each
+      new prompt; create `progress://N` on continuations;
+      enforce mode restrictions on mutating commands
+- [ ] **AgentLoop** — remove `type` from run creation; pass mode from RPC to
+      TurnExecutor; derive mode from latest `prompt://` entry on continuation
+- [ ] **ContextAssembler** — render `<ask>`, `<act>`, `<progress>` tags with
+      mode-appropriate tools attribute
+- [ ] **v_model_context VIEW** — update scheme references (prompt/progress → prompt/ask/act/progress)
+- [ ] **known_queries.sql** — `get_latest_user_prompt` → check `ask` or `act` scheme
+- [ ] **runs.sql** — `create_run` no longer requires `type`; `runs.type` nullable or removed
+- [ ] **rpc.js** — `ask`/`act` RPCs stamp `prompt://` + payload entry, not the run;
+      `getRun` returns mode from latest `prompt://` entry
+- [ ] **Delete prompt.ask.md, prompt.act.md** — replaced by prompt.md
+- [ ] **Update all tests** — E2E, integration, unit
+- [ ] **Update ARCHITECTURE.md** — §2, §3, §5
 
 ---
 
@@ -366,7 +473,7 @@ CREATE TABLE prompt_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT
     , run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
     , session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
-    , type TEXT NOT NULL CHECK (type IN ('ask', 'act'))
+    , mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
     , model TEXT
     , prompt TEXT NOT NULL
     , config JSON
@@ -380,16 +487,15 @@ CREATE TABLE prompt_queue (
 ### Flow
 
 ```
-ask/act RPC → INSERT INTO prompt_queue (pending) → return { run, queued: true }
+ask/act RPC → INSERT INTO prompt_queue (pending, mode) → return { run, queued }
 worker      → SELECT next pending for run → status = active → AgentLoop.run()
-            → status = completed, result = JSON → notify client
+            → store ask://N or act://N → execute turns → completed
 ```
 
 - One prompt active per run at a time
 - Multiple prompts queue in FIFO order
 - Natural completion → worker shifts next pending prompt
 - Abort → current prompt set to `aborted`, remaining pending prompts preserved
-  (user explicitly chose to stop THIS prompt, not all future prompts)
 - Server restart → pending prompts survive, active prompt reset to pending
 
 ### What it replaces
@@ -409,7 +515,7 @@ worker      → SELECT next pending for run → status = active → AgentLoop.ru
 
 ### RPC changes
 
-- `ask`/`act` → INSERT into queue, return `{ run, status: "queued" }`
+- `ask`/`act` → INSERT into queue with mode, return `{ run, status: "queued" }`
 - `run/abort` → abort active prompt, return `{ status: "ok" }`
 - New: `run/queue` → return pending prompts for a run (diagnostic)
 
@@ -418,7 +524,7 @@ worker      → SELECT next pending for run → status = active → AgentLoop.ru
 ## Todo: Run State Machine v2
 
 All terminal states become restartable. The run lifecycle is open-ended —
-runs are reused across many prompts, not one-shot.
+runs are reused across many prompts, not one-shot. Runs have no type.
 
 ### State transitions
 
