@@ -19,11 +19,11 @@ export default class ProjectAgent {
 		this.#llm = new LlmProvider();
 		const knownStore = new KnownStore(db);
 
-		const turnExecutor = new TurnExecutor(db, llm, hooks, knownStore);
+		const turnExecutor = new TurnExecutor(db, this.#llm, hooks, knownStore);
 
 		this.#agentLoop = new AgentLoop(
 			db,
-			llm,
+			this.#llm,
 			hooks,
 			turnExecutor,
 			knownStore,

@@ -172,11 +172,11 @@ tool reference. This section documents server behavior for each tool.
 | `<env>` | yes | yes | shell command | `env` | `proposed`, `pass`, `warn` |
 | `<ask_user>` | yes | yes | comma-separated options | `ask_user` | `proposed`, `pass`, `warn` |
 | `<search>` | yes | yes | search query | `search` | `info` |
-| `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error`, `keys` |
-| `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn`, `keys` |
-| `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn`, `keys` |
+| `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error`, `pattern` |
+| `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn`, `pattern` |
+| `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn`, `pattern` |
 | `<store>` | yes | yes | — | *(none — demotes target)* | — |
-| `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn`, `keys` |
+| `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn`, `pattern` |
 | `<run>` | no | yes | shell command | `run` | `proposed`, `pass`, `warn` |
 | `<update>` | yes | yes | brief status text | `update` | `info` |
 | `<summary>` | yes | yes | final answer/result | `summary` | `summary` |
@@ -190,7 +190,7 @@ Every store-facing tool uses the same attribute set. Pattern matching is via
 |-----------|---------|-------|
 | `path` | Target path (hedberg pattern) | read, write, store, delete, move, copy |
 | `value` | Content filter (hedberg pattern) | read, write, store, delete |
-| `keys` | Preview mode — show matches as `keys` state entry on tool's scheme, no changes | read, write, store, delete |
+| `preview` | Preview mode — show matches as `pattern` state entry on tool's scheme, no changes | read, write, store, delete |
 | `question` | Question text | ask_user |
 
 The parser accepts both attribute-style (`<read path="x"/>`) and body-style
@@ -247,10 +247,22 @@ working. The run continues.
 **`<summary>`** — stores as `summary://N` summary entry. Signals the model is
 done. **The run terminates.**
 
-**`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
-the matching list as an entry under the tool's own scheme with `state: "keys"`.
-No state change occurs on the matched entries. The result entry includes
-per-path token count and total:
+**`preview` flag** — any store-facing tool with `preview` resolves the pattern and stores
+the matching list as an entry under the tool's own scheme with `state: "pattern"`.
+No state change occurs on the matched entries. The result entry content is
+prefixed with "PREVIEW" and includes per-path token count and total:
+
+```
+PREVIEW 23 paths (4812 tokens total)
+src/auth.js (342)
+src/config.js (128)
+known://auth_flow (56)
+```
+
+**Bulk operations** — pattern-based `read`, `store`, `write`, and `delete` that
+execute (not preview) also produce result entries with `state: "pattern"` showing
+matched paths and token counts. The content has the same format but without the
+"PREVIEW" prefix:
 
 ```
 23 paths (4812 tokens total)
@@ -557,7 +569,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 | Method | Params | Description |
 |--------|--------|-------------|
 | `getModels` | — | List available model aliases |
-| `getModelInfo` | `model?` | Returns `{ alias, model, context_size, limit, effective, name, max_completion_tokens }` |
+| `getModelInfo` | `model?` | Returns `{ alias, model, context_size, limit, effective }` |
 
 #### File Visibility (Project-Scoped)
 
@@ -679,7 +691,14 @@ runs are long-lived conversations, not one-shot operations.
 entries. The client resolves them (accept/reject) and writes accepted changes
 to its own filesystem. The server never touches the working tree.
 
-### 5.4 Run Modes
+### 5.4 Mode Enforcement
+
+In **ask** mode, the server rejects mutating operations before they reach the
+client. Rejected tools: file writes, file deletes, file move/copy targets,
+`<run>`. K/V operations (`known://` writes, stores, deletes) are allowed in
+both modes.
+
+### 5.5 Run Modes
 
 | Mode | Params | Behavior |
 |------|--------|----------|
@@ -1089,7 +1108,7 @@ RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
 | `@possumtech/sqlrite` | SQLite (author's own anti-ORM) |
 | `ws` | WebSocket server |
 | `htmlparser2` | XML parsing for model response tool commands |
-| `tiktoken` | Token counting (o200k_base encoding, with `length/4` fallback). Registered as `countTokens()` SQL function via SqlRite. |
+| `tiktoken` | Token counting (o200k_base encoding, with `length/4` fallback). Registered as `countTokens()` SQL function via SqlRite. Required dependency. |
 
 **Optional:** `@possumtech/antlrmap` — ANTLR4-based symbol extraction (formal grammars).
 **CLI deps:** `ctags` (universal-ctags, fallback symbol extraction), `git` (file tracking, cached per HEAD hash).
