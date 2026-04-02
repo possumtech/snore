@@ -90,49 +90,42 @@ function renderContext(context) {
 			storedKnown.push(entry);
 			continue;
 		}
-		// Results (pass, warn, error, summary, info)
 		results.push(entry);
 	}
 
 	const parts = [];
 
-	// Files with content
 	if (files.length > 0) {
 		const fileBlocks = files.map((f) => {
 			const lang = langFor(f.path);
 			const tokens = f.tokens ? ` (${f.tokens} tokens)` : "";
 			const label =
 				f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
-			return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
+			return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.body}\n\`\`\``;
 		});
 		parts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
 	}
 
-	// Symbol files
 	if (symbolFiles.length > 0) {
 		const symBlocks = symbolFiles.map(
-			(f) => `#### ${f.path} (summary)\n${f.value}`,
+			(f) => `#### ${f.path} (summary)\n${f.body}`,
 		);
 		parts.push(symBlocks.join("\n\n"));
 	}
 
-	// Stored file paths
 	if (storedFiles.length > 0) {
 		parts.push(`### File Index\n${storedFiles.map((f) => f.path).join(", ")}`);
 	}
 
-	// Active knowledge
 	if (activeKnown.length > 0) {
-		const lines = activeKnown.map((k) => `* ${k.path} — ${k.value}`);
+		const lines = activeKnown.map((k) => `* ${k.path} — ${k.body}`);
 		parts.push(`### Knowledge\n${lines.join("\n")}`);
 	}
 
-	// Stored knowledge
 	if (storedKnown.length > 0) {
 		parts.push(`### Stored\n${storedKnown.map((k) => k.path).join(", ")}`);
 	}
 
-	// Results / history
 	if (results.length > 0) {
 		const lines = results.map((r) => {
 			const check =
@@ -143,24 +136,22 @@ function renderContext(context) {
 						: r.state === "error"
 							? "✗"
 							: "·";
-			if (r.state === "summary") return `* summary: ${r.value}`;
+			if (r.state === "summary") return `* summary: ${r.body}`;
 			const tool = r.tool || r.path.match(/^(\w+):\/\//)?.[1] || "?";
 			const target = r.target || "";
-			const detail = r.value ? ` — ${r.value.slice(0, 120)}` : "";
+			const detail = r.body ? ` — ${r.body.slice(0, 120)}` : "";
 			return `* ${tool} ${target} ${check}${detail}`;
 		});
 		parts.push(`### History\n${lines.join("\n")}`);
 	}
 
-	// Unknowns
 	if (unknowns.length > 0) {
-		const lines = unknowns.map((u) => `* ${u.value}`);
+		const lines = unknowns.map((u) => `* ${u.body}`);
 		parts.push(`### Unknowns\n${lines.join("\n")}`);
 	}
 
-	// Prompt
 	if (prompt) {
-		parts.push(`### Prompt\n${prompt.value}`);
+		parts.push(`### Prompt\n${prompt.body}`);
 	}
 
 	return parts.length > 0 ? `## Context\n\n${parts.join("\n\n")}` : "";
@@ -170,13 +161,11 @@ export default class ContextAssembler {
 	static assemble({ systemPrompt, context, userMessage }) {
 		const sections = [systemPrompt];
 
-		// Context as markdown
 		const rendered = renderContext(context);
 		if (rendered) sections.push(rendered);
 
 		const messages = [{ role: "system", content: sections.join("\n\n") }];
 
-		// User message only if no prompt in context
 		const hasPrompt = context.some((e) => e.state === "prompt");
 		if (!hasPrompt && userMessage) {
 			messages.push({ role: "user", content: userMessage });
@@ -206,19 +195,19 @@ export default class ContextAssembler {
 
 		for (const row of rows) {
 			if (row.path === "system://prompt") {
-				instructions = row.content;
+				instructions = row.body;
 				continue;
 			}
 			if (row.scheme === "progress") {
-				continuation = row.content;
+				continuation = row.body;
 				continuationOrdinal = row.ordinal;
 			}
 
-			const meta = row.meta ? JSON.parse(row.meta) : null;
+			const attrs = row.attributes ? JSON.parse(row.attributes) : null;
 
 			switch (row.category) {
 				case "file": {
-					const constraint = meta?.constraint;
+					const constraint = attrs?.constraint;
 					const label =
 						constraint === "readonly"
 							? "file:readonly"
@@ -227,57 +216,54 @@ export default class ContextAssembler {
 								: "file";
 					files.push({
 						path: row.path,
-						value: row.content,
+						body: row.body,
 						tokens: row.tokens,
 						state: label,
 					});
 					break;
 				}
 				case "file_summary":
-					symbolFiles.push({ path: row.path, value: row.content });
+					symbolFiles.push({ path: row.path, body: row.body });
 					break;
 				case "file_index":
 					storedFiles.push({ path: row.path });
 					break;
 				case "known":
-					activeKnown.push({ path: row.path, value: row.content });
+					activeKnown.push({ path: row.path, body: row.body });
 					break;
 				case "known_index":
 					storedKnown.push({ path: row.path });
 					break;
 				case "unknown":
-					unknowns.push({ value: row.content });
+					unknowns.push({ body: row.body });
 					break;
 				case "prompt":
-					// ask:// or act:// = human prompt, progress:// = continuation
 					if (row.scheme === "ask" || row.scheme === "act") {
-						prompt = row.content;
+						prompt = row.body;
 						promptMode = row.scheme;
 						promptOrdinal = row.ordinal;
-						// Current prompt renders as <ask>/<act> tag, not in messages
 					} else if (row.scheme === "progress") {
-						// Progress entries go in messages as history
 						messageEntries.push({
 							path: row.path,
 							scheme: row.scheme,
-							value: row.content,
+							body: row.body,
 						});
 					}
 					break;
 				case "result":
 					messageEntries.push({
 						path: row.path,
-						value: row.content,
-						tool: meta?.tool,
-						target: meta?.target,
-						state: meta?.state,
+						body: row.body,
+						tool: attrs?.tool,
+						target: attrs?.target,
+						state: attrs?.state,
 					});
 					break;
 				case "structural":
 					messageEntries.push({
 						path: row.path,
 						scheme: row.scheme,
-						value: row.content,
+						body: row.body,
 						state: row.scheme === "summarize" ? "summary" : "info",
 					});
 					break;
@@ -288,7 +274,7 @@ export default class ContextAssembler {
 		const contextParts = [];
 
 		if (activeKnown.length > 0) {
-			const lines = activeKnown.map((k) => `* ${k.path} — ${k.value}`);
+			const lines = activeKnown.map((k) => `* ${k.path} — ${k.body}`);
 			contextParts.push(`### Knowledge\n${lines.join("\n")}`);
 		}
 
@@ -306,7 +292,7 @@ export default class ContextAssembler {
 
 		if (symbolFiles.length > 0) {
 			const symBlocks = symbolFiles.map(
-				(f) => `#### ${f.path} (summary)\n${f.value}`,
+				(f) => `#### ${f.path} (summary)\n${f.body}`,
 			);
 			contextParts.push(symBlocks.join("\n\n"));
 		}
@@ -317,13 +303,13 @@ export default class ContextAssembler {
 				const tokens = f.tokens ? ` (${f.tokens} tokens)` : "";
 				const label =
 					f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
-				return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
+				return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.body}\n\`\`\``;
 			});
 			contextParts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
 		}
 
 		if (unknowns.length > 0) {
-			const lines = unknowns.map((u) => `* ${u.value}`);
+			const lines = unknowns.map((u) => `* ${u.body}`);
 			contextParts.push(`### Unknowns\n${lines.join("\n")}`);
 		}
 
@@ -339,19 +325,19 @@ export default class ContextAssembler {
 
 		if (messageEntries.length > 0) {
 			const lines = messageEntries.map((e) => {
-				if (e.scheme === "ask") return `> [ask] ${e.value}`;
-				if (e.scheme === "act") return `> [act] ${e.value}`;
-				if (e.scheme === "progress") return `> [continuation] ${e.value}`;
+				if (e.scheme === "ask") return `> [ask] ${e.body}`;
+				if (e.scheme === "act") return `> [act] ${e.body}`;
+				if (e.scheme === "progress") return `> [continuation] ${e.body}`;
 				const check =
 					e.state === "pass" || e.state === "summary"
 						? "✓"
 						: e.state === "warn" || e.state === "error"
 							? "✗"
 							: "·";
-				if (e.state === "summary") return `* summary: ${e.value}`;
+				if (e.state === "summary") return `* summary: ${e.body}`;
 				const tool = e.tool || e.path.match(/^(\w+):\/\//)?.[1] || "?";
 				const target = e.target || "";
-				const detail = e.value ? ` — ${e.value.slice(0, 120)}` : "";
+				const detail = e.body ? ` — ${e.body.slice(0, 120)}` : "";
 				return `* ${tool} ${target} ${check}${detail}`;
 			});
 			userParts.push(`<messages>\n${lines.join("\n")}\n</messages>`);
@@ -365,17 +351,14 @@ export default class ContextAssembler {
 		const injected =
 			prompt && continuation && promptOrdinal > continuationOrdinal;
 		if (injected) {
-			// Injection: human prompt arrived after progress — takes precedence
 			userParts.push(
 				`<${promptMode} tools="${tools}"${warn}>${prompt}</${promptMode}>`,
 			);
 		} else if (continuation) {
-			// Continuation turn: progress
 			userParts.push(
 				`<progress tools="${tools}"${warn}>${continuation}</progress>`,
 			);
 		} else if (prompt && promptMode) {
-			// First turn: human prompt
 			userParts.push(
 				`<${promptMode} tools="${tools}"${warn}>${prompt}</${promptMode}>`,
 			);

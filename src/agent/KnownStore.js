@@ -24,7 +24,7 @@ export default class KnownStore {
 		if (!base) return `${prefix}${Date.now()}`;
 
 		const candidate = `${prefix}${base}`;
-		const existing = await this.#db.get_entry_value.get({
+		const existing = await this.#db.get_entry_body.get({
 			run_id: runId,
 			path: candidate,
 		});
@@ -37,18 +37,18 @@ export default class KnownStore {
 		runId,
 		turn,
 		path,
-		value,
+		body,
 		state,
-		{ meta = null, hash = null, updatedAt = null } = {},
+		{ attributes = null, hash = null, updatedAt = null } = {},
 	) {
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			turn,
 			path,
-			value,
+			body,
 			state,
 			hash,
-			meta: meta ? JSON.stringify(meta) : null,
+			attributes: attributes ? JSON.stringify(attributes) : null,
 			updated_at: updatedAt,
 		});
 	}
@@ -83,66 +83,63 @@ export default class KnownStore {
 		});
 	}
 
-	static #valuePattern(value) {
-		if (!value) return null;
-		if (/[*+?^${}()|[\]\\]/.test(value)) return value;
-		return `*${value}*`;
+	static #bodyPattern(body) {
+		if (!body) return null;
+		if (/[*+?^${}()|[\]\\]/.test(body)) return body;
+		return `*${body}*`;
 	}
 
-	async promoteByPattern(runId, path, value, turn) {
+	async promoteByPattern(runId, path, body, turn) {
 		await this.#db.promote_by_pattern.run({
 			run_id: runId,
 			path,
-			value: KnownStore.#valuePattern(value),
+			body: KnownStore.#bodyPattern(body),
 			turn,
 		});
 	}
 
-	async demoteByPattern(runId, path, value) {
+	async demoteByPattern(runId, path, body) {
 		await this.#db.demote_by_pattern.run({
 			run_id: runId,
 			path,
-			value: KnownStore.#valuePattern(value),
+			body: KnownStore.#bodyPattern(body),
 		});
 	}
 
-	async getEntriesByPattern(runId, path, value) {
+	async getEntriesByPattern(runId, path, body) {
 		return this.#db.get_entries_by_pattern.all({
 			run_id: runId,
 			path,
-			value: KnownStore.#valuePattern(value),
+			body: KnownStore.#bodyPattern(body),
 		});
 	}
 
-	async deleteByPattern(runId, path, value) {
+	async deleteByPattern(runId, path, body) {
 		await this.#db.delete_entries_by_pattern.run({
 			run_id: runId,
 			path,
-			value: KnownStore.#valuePattern(value),
+			body: KnownStore.#bodyPattern(body),
 		});
 	}
 
-	async updateValueByPattern(runId, path, value, newValue) {
-		await this.#db.update_value_by_pattern.run({
+	async updateBodyByPattern(runId, path, body, newBody) {
+		await this.#db.update_body_by_pattern.run({
 			run_id: runId,
 			path,
-			value: KnownStore.#valuePattern(value),
-			new_value: newValue,
+			body: KnownStore.#bodyPattern(body),
+			new_body: newBody,
 		});
 	}
 
-	async resolve(runId, path, state, value) {
+	async resolve(runId, path, state, body) {
 		await this.#db.resolve_known_entry.run({
 			run_id: runId,
 			path,
 			state,
-			value,
+			body,
 		});
 	}
 
-	/**
-	 * Get the chronological log (result-domain entries).
-	 */
 	async getLog(runId) {
 		return this.#db.get_results.all({ run_id: runId });
 	}
@@ -176,22 +173,19 @@ export default class KnownStore {
 
 	async getUnknownValues(runId) {
 		const rows = await this.#db.get_unknown_values.all({ run_id: runId });
-		return new Set(rows.map((r) => r.value));
+		return new Set(rows.map((r) => r.body));
 	}
 
-	async getValue(runId, path) {
-		const row = await this.#db.get_entry_value.get({ run_id: runId, path });
-		return row?.value ?? null;
+	async getBody(runId, path) {
+		const row = await this.#db.get_entry_body.get({ run_id: runId, path });
+		return row?.body ?? null;
 	}
 
-	async getMeta(runId, path) {
-		const row = await this.#db.get_entry_meta.get({ run_id: runId, path });
-		return row?.meta ? JSON.parse(row.meta) : null;
+	async getAttributes(runId, path) {
+		const row = await this.#db.get_entry_attributes.get({ run_id: runId, path });
+		return row?.attributes ? JSON.parse(row.attributes) : null;
 	}
 
-	/**
-	 * Get all entries written on a specific turn (audit/debug).
-	 */
 	async getTurnAudit(runId, turn) {
 		return this.#db.get_turn_audit.all({ run_id: runId, turn });
 	}

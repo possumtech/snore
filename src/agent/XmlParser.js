@@ -80,7 +80,7 @@ function parseEditContent(content) {
  */
 const KNOWN_ATTRS = new Set([
 	"path",
-	"value",
+	"body",
 	"preview",
 	"question",
 	"options",
@@ -112,9 +112,9 @@ function normalizeAttrs(attrs) {
  * Resolve the competing attr-vs-body philosophies per tool.
  * If the canonical attribute is missing, the body fills it. Silent.
  */
-function resolveCommand(name, attrs, body) {
+function resolveCommand(name, attrs, rawBody) {
 	const a = normalizeAttrs(attrs);
-	const trimmed = body.trim();
+	const trimmed = rawBody.trim();
 
 	if (name === "write") {
 		// Structured edit detection — merge conflict, udiff, Claude XML
@@ -125,12 +125,12 @@ function resolveCommand(name, attrs, body) {
 				(trimmed.includes("\n-") || trimmed.includes("\n+"))) ||
 			trimmed.includes("<old_text>");
 		if (hasEdit) {
-			const blocks = parseEditContent(body);
+			const blocks = parseEditContent(rawBody);
 			if (blocks.length > 0) {
 				return {
 					name,
 					path: a.path,
-					value: a.value,
+					body: a.body,
 					preview: a.preview,
 					blocks,
 				};
@@ -156,66 +156,60 @@ function resolveCommand(name, attrs, body) {
 			return {
 				name,
 				path: a.path,
-				value: a.value,
+				body: a.body,
 				preview: a.preview,
 				search: a.search,
 				replace,
 			};
 		}
-		// Body + value attr → bulk update (value filters, body replaces)
-		if (trimmed && a.value) {
+		// Body + body attr → bulk update (body filters, trimmed replaces)
+		if (trimmed && a.body) {
 			return {
 				name,
 				path: a.path,
-				filter: a.value,
-				value: trimmed,
+				filter: a.body,
+				body: trimmed,
 				preview: a.preview,
 			};
 		}
 		// Plain write → create/overwrite
-		const value = trimmed || a.value || "";
-		return { name, path: a.path, value, preview: a.preview };
+		const body = trimmed || a.body || "";
+		return { name, path: a.path, body, preview: a.preview };
 	}
 
 	if (name === "summarize" || name === "update" || name === "unknown") {
-		// Canonical: text in body. Alt: value in attr.
-		const value = trimmed || a.value || "";
-		return { name, value };
+		const body = trimmed || a.body || "";
+		return { name, body };
 	}
 
 	if (name === "read" || name === "store" || name === "delete") {
-		// Canonical: path in attr. Alt: path in body.
 		const path = a.path || trimmed || null;
-		return { name, path, value: a.value, preview: a.preview };
+		return { name, path, body: a.body, preview: a.preview };
 	}
 
 	if (name === "search") {
-		// Canonical: path (query) in attr. Alt: query in body.
 		const path = a.path || trimmed || null;
 		const results = a.results ? Number(a.results) : null;
 		return { name, path, results };
 	}
 
 	if (name === "move" || name === "copy") {
-		// Canonical: path (from) and to attrs. Alt: to in body.
 		const to = a.to || trimmed || null;
 		return { name, path: a.path, to };
 	}
 
 	if (name === "run" || name === "env") {
-		// Canonical: command in attr. Alt: command in body.
 		const command = a.command || trimmed || null;
 		return { name, command };
 	}
 
 	if (name === "ask_user") {
-		// Canonical: question in attr, options in attr or body.
 		const question = a.question || null;
 		const options = a.options || trimmed || null;
 		return { name, question, options };
 	}
 
-	return { name, ...a, value: trimmed || a.value };
+	return { name, ...a, body: trimmed || a.body };
 }
 
 export default class XmlParser {
@@ -241,18 +235,17 @@ export default class XmlParser {
 				onopentag(name, attrs) {
 					if (!ALL_TOOLS.has(name)) {
 						if (current) {
-							current.body += `<${name}>`;
+							current.rawBody += `<${name}>`;
 						}
 						return;
 					}
 
-					// Every tool can have a body — start collecting
-					current = { name, attrs, body: "" };
+					current = { name, attrs, rawBody: "" };
 				},
 
 				ontext(text) {
 					if (current) {
-						current.body += text;
+						current.rawBody += text;
 					} else {
 						textChunks.push(text);
 					}
@@ -264,14 +257,13 @@ export default class XmlParser {
 							warnings.push(`Unclosed <${name}> tag — content captured anyway`);
 						}
 						commands.push(
-							resolveCommand(current.name, current.attrs, current.body),
+							resolveCommand(current.name, current.attrs, current.rawBody),
 						);
 						current = null;
 					} else if (current) {
-						current.body += `</${name}>`;
+						current.rawBody += `</${name}>`;
 					} else if (isImplied && ALL_TOOLS.has(name)) {
 						// Self-closing tag that htmlparser2 auto-closed
-						// Already handled by onopentag → current was set, body is empty
 					}
 				},
 
@@ -293,7 +285,7 @@ export default class XmlParser {
 		// Flush any unclosed tool tag
 		if (current) {
 			warnings.push(`Unclosed <${current.name}> tag — content captured anyway`);
-			commands.push(resolveCommand(current.name, current.attrs, current.body));
+			commands.push(resolveCommand(current.name, current.attrs, current.rawBody));
 			current = null;
 		}
 

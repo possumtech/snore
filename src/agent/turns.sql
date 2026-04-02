@@ -22,7 +22,7 @@ FROM turns
 WHERE run_id = :run_id;
 
 -- PREP: get_run_log
-SELECT ke.path, ke.state AS status, ke.value, ke.meta
+SELECT ke.path, ke.state AS status, ke.body, ke.attributes
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE

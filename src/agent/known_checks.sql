@@ -6,14 +6,14 @@ WHERE
 	AND scheme = 'unknown';
 
 -- PREP: get_unknown_values
-SELECT value
+SELECT body
 FROM known_entries
 WHERE
 	run_id = :run_id
 	AND scheme = 'unknown';
 
 -- PREP: get_unresolved
-SELECT path, value, meta, turn
+SELECT path, body, attributes, turn
 FROM known_entries
 WHERE
 	run_id = :run_id

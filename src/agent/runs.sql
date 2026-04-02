@@ -30,7 +30,7 @@ SELECT
 	, r.created_at
 	, r.next_turn - 1 AS turn
 	, (
-		SELECT ke.value
+		SELECT ke.body
 		FROM known_entries AS ke
 		WHERE
 			ke.run_id = r.id
@@ -58,12 +58,12 @@ RETURNING next_turn - 1 AS turn;
 
 -- PREP: fork_known_entries
 INSERT INTO known_entries (
-	run_id, turn, path, value, state
-	, hash, meta, tokens, tokens_full, refs, write_count
+	run_id, turn, path, body, state
+	, hash, attributes, tokens, tokens_full, refs, write_count
 )
 SELECT
-	:new_run_id, turn, path, value, state
-	, hash, meta, tokens, tokens_full, refs, write_count
+	:new_run_id, turn, path, body, state
+	, hash, attributes, tokens, tokens_full, refs, write_count
 FROM known_entries
 WHERE run_id = :parent_run_id;
 

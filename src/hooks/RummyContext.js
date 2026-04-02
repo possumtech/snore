@@ -81,19 +81,19 @@ export default class RummyContext {
 
 	// --- Tool methods (same operations the model uses) ---
 
-	async write({ path, value, state = "full", meta } = {}) {
+	async write({ path, body, state = "full", attributes } = {}) {
 		if (!path) {
 			const slugify = (await import("../sql/functions/slugify.js")).default;
-			const base = slugify(value || "");
+			const base = slugify(body || "");
 			path = `known://${base || Date.now()}`;
 		}
 		await this.store.upsert(
 			this.runId,
 			this.sequence,
 			path,
-			value || "",
+			body || "",
 			state,
-			meta ? { meta } : undefined,
+			attributes ? { attributes } : undefined,
 		);
 		return path;
 	}
@@ -111,26 +111,26 @@ export default class RummyContext {
 	}
 
 	async move(from, to) {
-		const value = await this.store.getValue(this.runId, from);
-		if (value === null) return;
-		await this.store.upsert(this.runId, this.sequence, to, value, "full");
+		const body = await this.store.getBody(this.runId, from);
+		if (body === null) return;
+		await this.store.upsert(this.runId, this.sequence, to, body, "full");
 		await this.store.remove(this.runId, from);
 	}
 
 	async copy(from, to) {
-		const value = await this.store.getValue(this.runId, from);
-		if (value === null) return;
-		await this.store.upsert(this.runId, this.sequence, to, value, "full");
+		const body = await this.store.getBody(this.runId, from);
+		if (body === null) return;
+		await this.store.upsert(this.runId, this.sequence, to, body, "full");
 	}
 
 	// --- Plugin-only methods (superset) ---
 
-	async getMeta(path) {
-		return this.store.getMeta(this.runId, path);
+	async getAttributes(path) {
+		return this.store.getAttributes(this.runId, path);
 	}
 
-	async getEntries(pattern, valueFilter) {
-		return this.store.getEntriesByPattern(this.runId, pattern, valueFilter);
+	async getEntries(pattern, bodyFilter) {
+		return this.store.getEntriesByPattern(this.runId, pattern, bodyFilter);
 	}
 
 	async log(message) {

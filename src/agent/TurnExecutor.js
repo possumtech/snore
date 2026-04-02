@@ -61,14 +61,13 @@ export default class TurnExecutor {
 		// Store prompt entries BEFORE context materialization
 		// so v_model_context includes the current prompt
 		if (loopPrompt && !options?.isContinuation) {
-			// New prompt — create loop identity + payload
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
 				`prompt://${turn}`,
 				"",
 				"info",
-				{ meta: { mode } },
+				{ attributes: { mode } },
 			);
 			await this.#knownStore.upsert(
 				currentRunId,
@@ -78,7 +77,6 @@ export default class TurnExecutor {
 				"info",
 			);
 		} else if (loopPrompt) {
-			// Continuation — progress entry
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
@@ -262,8 +260,8 @@ export default class TurnExecutor {
 		let askUserCmd = null;
 
 		for (const cmd of commands) {
-			if (cmd.name === "summarize") summaryText = cmd.value;
-			else if (cmd.name === "update") updateText = cmd.value;
+			if (cmd.name === "summarize") summaryText = cmd.body;
+			else if (cmd.name === "update") updateText = cmd.body;
 			else if (cmd.name === "write" && (cmd.blocks || cmd.search))
 				actionCalls.push(cmd);
 			else if (cmd.name === "write") writeCalls.push(cmd);
@@ -312,7 +310,6 @@ export default class TurnExecutor {
 					console.warn(`[RUMMY] Rejected <run> in ask mode`);
 					continue;
 				}
-				// File writes (scheme === null) are prohibited in ask mode
 				if (cmd.name === "write" && cmd.path) {
 					const scheme = KnownStore.scheme(cmd.path);
 					if (scheme === null) {
@@ -347,7 +344,6 @@ export default class TurnExecutor {
 
 		// Step 1: Action tools
 		for (const cmd of actionCalls) {
-			// keys flag — preview matches, no state change
 			if (cmd.preview && cmd.path) {
 				await this.#storeToolResult(currentRunId, turn, cmd, null, true);
 				continue;
@@ -358,16 +354,16 @@ export default class TurnExecutor {
 				if (/^https?:\/\//.test(cmd.path)) {
 					await this.#fetchUrl(currentRunId, turn, cmd.path);
 				}
-				const isPattern = cmd.value || cmd.path.includes("*");
+				const isPattern = cmd.body || cmd.path.includes("*");
 				const matches = await this.#knownStore.getEntriesByPattern(
 					currentRunId,
 					cmd.path,
-					cmd.value,
+					cmd.body,
 				);
 				await this.#knownStore.promoteByPattern(
 					currentRunId,
 					cmd.path,
-					cmd.value,
+					cmd.body,
 					turn,
 				);
 				if (isPattern) {
@@ -376,7 +372,7 @@ export default class TurnExecutor {
 					const total = matches.reduce((s, m) => s + m.tokens_full, 0);
 					const slug = `read://${cmd.path}`;
 					const paths = matches.map((m) => m.path).join(", ");
-					const content =
+					const body =
 						matches.length > 0
 							? `${paths} loaded in context (${total} tokens)`
 							: `${cmd.path} not found`;
@@ -384,7 +380,7 @@ export default class TurnExecutor {
 						currentRunId,
 						turn,
 						slug,
-						content,
+						body,
 						"read",
 					);
 				}
@@ -397,23 +393,23 @@ export default class TurnExecutor {
 			}
 			if (cmd.name === "store") {
 				if (!cmd.path) continue;
-				const isPattern = cmd.value || cmd.path.includes("*");
+				const isPattern = cmd.body || cmd.path.includes("*");
 				const matches = await this.#knownStore.getEntriesByPattern(
 					currentRunId,
 					cmd.path,
-					cmd.value,
+					cmd.body,
 				);
 				await this.#knownStore.demoteByPattern(
 					currentRunId,
 					cmd.path,
-					cmd.value,
+					cmd.body,
 				);
 				if (isPattern) {
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				} else {
 					const slug = `store://${cmd.path}`;
 					const paths = matches.map((m) => m.path).join(", ");
-					const content =
+					const body =
 						matches.length > 0
 							? `${paths} removed from context. Use <read> to restore.`
 							: `${cmd.path} not found`;
@@ -421,7 +417,7 @@ export default class TurnExecutor {
 						currentRunId,
 						turn,
 						slug,
-						content,
+						body,
 						"stored",
 					);
 				}
@@ -450,17 +446,17 @@ export default class TurnExecutor {
 				cmd.command || cmd.path || cmd.question || "",
 			);
 			cmd.resultPath = resultPath;
-			const resultValue = cmd.command
+			const resultBody = cmd.command
 				? `<${cmd.name}>${cmd.command}</${cmd.name}>`
 				: "";
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
 				resultPath,
-				resultValue,
+				resultBody,
 				cmd.name === "env" ? "pass" : "proposed",
 				{
-					meta: {
+					attributes: {
 						command: cmd.command,
 						path: cmd.path,
 						question: cmd.question,
@@ -485,7 +481,7 @@ export default class TurnExecutor {
 				askUserCmd.question || "",
 				"proposed",
 				{
-					meta: { question: askUserCmd.question, options: askUserCmd.options },
+					attributes: { question: askUserCmd.question, options: askUserCmd.options },
 				},
 			);
 		}
@@ -495,17 +491,17 @@ export default class TurnExecutor {
 			const existingValues =
 				await this.#knownStore.getUnknownValues(currentRunId);
 			for (const cmd of unknownCalls) {
-				if (existingValues.has(cmd.value)) continue;
+				if (existingValues.has(cmd.body)) continue;
 				const unknownPath = await this.#knownStore.slugPath(
 					currentRunId,
 					"unknown",
-					cmd.value,
+					cmd.body,
 				);
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					unknownPath,
-					cmd.value,
+					cmd.body,
 					"full",
 				);
 			}
@@ -513,36 +509,34 @@ export default class TurnExecutor {
 
 		// Step 3: Write entries (plain upsert or bulk update)
 		for (const cmd of writeCalls) {
-			// Naked write — no path, generate known:// slug from content
+			// Naked write — no path, generate known:// slug from body
 			if (!cmd.path) {
-				if (!cmd.value) continue;
+				if (!cmd.body) continue;
 				const sluggedPath = await this.#knownStore.slugPath(
 					currentRunId,
 					"known",
-					cmd.value,
+					cmd.body,
 				);
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					sluggedPath,
-					cmd.value,
+					cmd.body,
 					"full",
 				);
 				continue;
 			}
 
-			// keys flag — preview matches
 			if (cmd.preview) {
 				await this.#storeToolResult(currentRunId, turn, cmd, null, true);
 				continue;
 			}
 
-			// Write to path — hedberg handles both literal and pattern paths
 			const scheme = KnownStore.scheme(cmd.path);
 			if (scheme === null) {
 				// Bare file path → proposed for client review
 				const resultPath = `write://${cmd.path}`;
-				const tokenEst = ((cmd.value?.length || 0) / 4) | 0;
+				const tokenEst = ((cmd.body?.length || 0) / 4) | 0;
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
@@ -550,30 +544,28 @@ export default class TurnExecutor {
 					`${cmd.path} (new file, ${tokenEst} tokens)`,
 					"proposed",
 					{
-						meta: { file: cmd.path, content: cmd.value },
+						attributes: { file: cmd.path, content: cmd.body },
 					},
 				);
 			} else if (cmd.filter || cmd.path.includes("*")) {
-				// Pattern with wildcards → bulk update via hedberg
 				const matches = await this.#knownStore.getEntriesByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.filter,
 				);
-				await this.#knownStore.updateValueByPattern(
+				await this.#knownStore.updateBodyByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.filter || null,
-					cmd.value,
+					cmd.body,
 				);
 				await this.#storeToolResult(currentRunId, turn, cmd, matches);
 			} else {
-				// Literal K/V path → immediate upsert
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					cmd.path,
-					cmd.value,
+					cmd.body,
 					"full",
 				);
 			}
@@ -633,25 +625,25 @@ export default class TurnExecutor {
 		matches ??= await this.#knownStore.getEntriesByPattern(
 			runId,
 			cmd.path,
-			cmd.value,
+			cmd.body,
 		);
 		const scheme = cmd.name || "write";
 		const slug = await this.#knownStore.slugPath(runId, scheme, cmd.path);
-		const filter = cmd.value ? ` value="${cmd.value}"` : "";
+		const filter = cmd.body ? ` body="${cmd.body}"` : "";
 		const total = matches.reduce((s, m) => s + m.tokens_full, 0);
 		const listing = matches
 			.map((m) => `${m.path} (${m.tokens_full})`)
 			.join("\n");
 		const prefix = preview ? "PREVIEW " : "";
-		const content = `${prefix}${cmd.name} path="${cmd.path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
-		await this.#knownStore.upsert(runId, turn, slug, content, "pattern");
+		const body = `${prefix}${cmd.name} path="${cmd.path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
+		await this.#knownStore.upsert(runId, turn, slug, body, "pattern");
 	}
 
 	async #processEdit(runId, turn, cmd) {
 		const matches = await this.#knownStore.getEntriesByPattern(
 			runId,
 			cmd.path,
-			cmd.value,
+			cmd.body,
 		);
 
 		if (matches.length === 0) {
@@ -662,7 +654,7 @@ export default class TurnExecutor {
 				resultPath,
 				`${cmd.path} — not found in context. Use <read> to load it first.`,
 				"error",
-				{ meta: { file: cmd.path, error: "not found" } },
+				{ attributes: { file: cmd.path, error: "not found" } },
 			);
 			return;
 		}
@@ -676,32 +668,31 @@ export default class TurnExecutor {
 			let replaceText = null;
 
 			if (cmd.search != null) {
-				// Attribute mode: search + replace (literal)
 				searchText = cmd.search;
 				replaceText = cmd.replace ?? "";
 				const isRegex = /[+(){}|\\$^*?[\]]/.test(cmd.search);
 				if (isRegex) {
 					const re = new RegExp(cmd.search, "g");
-					if (re.test(entry.value)) {
-						patch = entry.value.replace(re, replaceText);
+					if (re.test(entry.body)) {
+						patch = entry.body.replace(re, replaceText);
 					} else {
 						error = `Search pattern not found in ${entry.path}`;
 					}
-				} else if (entry.value.includes(cmd.search)) {
-					patch = entry.value.replaceAll(cmd.search, replaceText);
+				} else if (entry.body.includes(cmd.search)) {
+					patch = entry.body.replaceAll(cmd.search, replaceText);
 				} else {
 					error = `"${cmd.search}" not found in ${entry.path}`;
 				}
 			} else if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
 				patch = cmd.blocks[0].replace;
 				replaceText = cmd.blocks[0].replace;
-			} else if (entry.value && cmd.blocks?.length > 0) {
+			} else if (entry.body && cmd.blocks?.length > 0) {
 				const block = cmd.blocks[0];
 				searchText = block.search;
 				replaceText = block.replace;
 				const matched = HeuristicMatcher.matchAndPatch(
 					entry.path,
-					entry.value,
+					entry.body,
 					block.search,
 					block.replace,
 				);
@@ -710,30 +701,28 @@ export default class TurnExecutor {
 				error = matched.error;
 			}
 
-			// Files → proposed (client reviews). Keys → pass (immediate).
 			const state = error
 				? "error"
 				: entry.scheme === null
 					? "proposed"
 					: "pass";
 
-			// Compose result content: token delta + SEARCH/REPLACE block
 			const beforeTokens = entry.tokens_full || 0;
 			const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
-			let content;
+			let body;
 			if (error) {
 				const block = searchText
 					? `\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
 					: "";
-				content = `${entry.path} — ${error}${block}`;
+				body = `${entry.path} — ${error}${block}`;
 			} else if (searchText) {
-				content = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`;
+				body = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`;
 			} else {
-				content = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)`;
+				body = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)`;
 			}
 
-			await this.#knownStore.upsert(runId, turn, resultPath, content, state, {
-				meta: {
+			await this.#knownStore.upsert(runId, turn, resultPath, body, state, {
+				attributes: {
 					file: entry.path,
 					search: cmd.search,
 					replace: cmd.replace,
@@ -744,7 +733,6 @@ export default class TurnExecutor {
 				},
 			});
 
-			// For non-file entries, apply the edit directly
 			if (state === "pass" && patch) {
 				await this.#knownStore.upsert(
 					runId,
@@ -761,35 +749,33 @@ export default class TurnExecutor {
 		const matches = await this.#knownStore.getEntriesByPattern(
 			runId,
 			cmd.path,
-			cmd.value,
+			cmd.body,
 		);
 
 		for (const entry of matches) {
 			const resultPath = `delete://${entry.path}`;
-			const content = `rm ${entry.path}`;
+			const body = `rm ${entry.path}`;
 			if (entry.scheme === null) {
-				// File → proposed (client confirms deletion)
 				await this.#knownStore.upsert(
 					runId,
 					turn,
 					resultPath,
-					content,
+					body,
 					"proposed",
 					{
-						meta: { path: entry.path },
+						attributes: { path: entry.path },
 					},
 				);
 			} else {
-				// K/V → immediate remove
 				await this.#knownStore.remove(runId, entry.path);
 				await this.#knownStore.upsert(
 					runId,
 					turn,
 					resultPath,
-					content,
+					body,
 					"pass",
 					{
-						meta: { path: entry.path },
+						attributes: { path: entry.path },
 					},
 				);
 			}
@@ -799,35 +785,30 @@ export default class TurnExecutor {
 	async #processMoveCopy(runId, turn, cmd) {
 		if (!cmd.path || !cmd.to) return;
 
-		const source = await this.#knownStore.getValue(runId, cmd.path);
+		const source = await this.#knownStore.getBody(runId, cmd.path);
 		if (source === null) return;
 
-		const _sourceScheme = KnownStore.scheme(cmd.path);
 		const destScheme = KnownStore.scheme(cmd.to);
 		const isMove = cmd.name === "move";
 
-		// Check for clobber on K/V targets
-		const existing = await this.#knownStore.getValue(runId, cmd.to);
+		const existing = await this.#knownStore.getBody(runId, cmd.to);
 		let warning = null;
 		if (existing !== null && destScheme !== null) {
 			warning = `Overwrote existing entry at ${cmd.to}`;
 		}
 
 		const resultPath = `${cmd.name}://${cmd.path}`;
-
-		// File destinations → proposed (client writes to disk)
-		// K/V destinations → pass (immediate)
 		const verb = isMove ? "mv" : "cp";
-		const content = `${verb} ${cmd.path} ${cmd.to}`;
+		const body = `${verb} ${cmd.path} ${cmd.to}`;
 		if (destScheme === null) {
 			await this.#knownStore.upsert(
 				runId,
 				turn,
 				resultPath,
-				content,
+				body,
 				"proposed",
 				{
-					meta: { from: cmd.path, to: cmd.to, isMove, warning },
+					attributes: { from: cmd.path, to: cmd.to, isMove, warning },
 				},
 			);
 		} else {
@@ -835,15 +816,15 @@ export default class TurnExecutor {
 			if (isMove) {
 				await this.#knownStore.remove(runId, cmd.path);
 			}
-			await this.#knownStore.upsert(runId, turn, resultPath, content, "pass", {
-				meta: { from: cmd.path, to: cmd.to, isMove, warning },
+			await this.#knownStore.upsert(runId, turn, resultPath, body, "pass", {
+				attributes: { from: cmd.path, to: cmd.to, isMove, warning },
 			});
 		}
 	}
 
 	async #fetchUrl(runId, turn, rawUrl) {
 		const url = rawUrl.replace(/[?#].*$/, "").replace(/\/$/, "");
-		const existing = await this.#knownStore.getValue(runId, url);
+		const existing = await this.#knownStore.getBody(runId, url);
 		if (existing !== null) return;
 
 		const result = await this.#hooks.action.fetch.filter(null, { url });
@@ -853,10 +834,10 @@ export default class TurnExecutor {
 			runId,
 			turn,
 			result.url,
-			result.value,
+			result.body,
 			"full",
 			{
-				meta: result.meta,
+				attributes: result.attributes,
 			},
 		);
 	}

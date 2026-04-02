@@ -4,7 +4,7 @@ WHERE run_id = :run_id AND turn = :turn;
 
 -- PREP: materialize_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, content, tokens, meta, category
+	run_id, turn, ordinal, path, fidelity, body, tokens, attributes, category
 )
 SELECT
 	run_id
@@ -12,23 +12,23 @@ SELECT
 	, ordinal
 	, path
 	, fidelity
-	, content
+	, body
 	, tokens
-	, meta
+	, attributes
 	, category
 FROM v_model_context
 WHERE run_id = :run_id;
 
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, content, tokens, meta, category
+	run_id, turn, ordinal, path, fidelity, body, tokens, attributes, category
 )
 VALUES (
-	:run_id, :turn, :ordinal, :path, :fidelity, :content, :tokens, :meta, :category
+	:run_id, :turn, :ordinal, :path, :fidelity, :body, :tokens, :attributes, :category
 );
 
 -- PREP: get_turn_context
-SELECT ordinal, path, scheme, fidelity, content, tokens, meta, category
+SELECT ordinal, path, scheme, fidelity, body, tokens, attributes, category
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn
 ORDER BY ordinal;
