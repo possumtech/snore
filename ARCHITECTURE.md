@@ -158,7 +158,7 @@ Both are hidden from the model but available for audit and client display.
 
 ### 2.1 Tool Inventory
 
-The sacred prompts (`prompt.ask.md`, `prompt.act.md`) are the authoritative
+The sacred prompt (`prompt.md`) is the authoritative
 tool reference. This section documents server behavior for each tool.
 
 | Tool | ask | act | Body content | Scheme | States |
