@@ -8,7 +8,6 @@ import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
 import XmlParser from "../../src/agent/XmlParser.js";
-import HookRegistry from "../../src/hooks/HookRegistry.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
@@ -18,7 +17,7 @@ describe("Mode enforcement in ask mode", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db, new HookRegistry());
+		store = new KnownStore(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { after, before, beforeEach, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
-import HookRegistry from "../../src/hooks/HookRegistry.js";
+import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import Engine from "../../src/plugins/engine/engine.js";
 import TestDb from "../helpers/TestDb.js";
@@ -55,7 +55,7 @@ describe("Engine integration", () => {
 
 	beforeEach(async () => {
 		await store.deleteByPattern(RUN_ID, "*", null);
-		hooks = new HookRegistry();
+		hooks = createHooks();
 		Engine.register(hooks);
 	});
 
@@ -391,7 +391,7 @@ describe("Engine integration", () => {
 				attributes: { symbols: "function foo()" },
 			});
 
-			const hooks2 = new HookRegistry();
+			const hooks2 = createHooks();
 			Engine.register(hooks2);
 			const rummy = makeRummy(tdb.db, store, {
 				sequence: 1,
@@ -417,7 +417,7 @@ describe("Engine integration", () => {
 				attributes: { symbols: "function bar()" },
 			});
 
-			const hooks2 = new HookRegistry();
+			const hooks2 = createHooks();
 			Engine.register(hooks2);
 			const rummy = makeRummy(tdb.db, store, {
 				sequence: 4,

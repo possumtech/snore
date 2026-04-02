@@ -1,0 +1,390 @@
+/**
+ * Handler dispatch integration test.
+ *
+ * Proves the record→dispatch→state-change loop:
+ * 1. XmlParser produces commands
+ * 2. Commands recorded as entries at "full" state
+ * 3. Handlers dispatched via ToolRegistry
+ * 4. Handlers update entry state (proposed, pass, read, etc.)
+ * 5. Multiple handlers per scheme run in priority order
+ */
+import assert from "node:assert";
+import { after, before, describe, it } from "node:test";
+import KnownStore from "../../src/agent/KnownStore.js";
+import createHooks from "../../src/hooks/Hooks.js";
+import RummyContext from "../../src/hooks/RummyContext.js";
+import Engine from "../../src/plugins/engine/engine.js";
+import CoreToolsPlugin from "../../src/plugins/tools/tools.js";
+import TestDb from "../helpers/TestDb.js";
+
+let RUN_ID;
+let PROJECT;
+
+function makeRummy(
+	hooks,
+	db,
+	store,
+	{ sequence = 1, contextSize = 50000 } = {},
+) {
+	const hookRoot = {
+		tag: "turn",
+		attrs: {},
+		content: null,
+		children: [
+			{ tag: "system", attrs: {}, content: null, children: [] },
+			{ tag: "context", attrs: {}, content: null, children: [] },
+			{ tag: "user", attrs: {}, content: null, children: [] },
+			{ tag: "assistant", attrs: {}, content: null, children: [] },
+		],
+	};
+	return new RummyContext(hookRoot, {
+		hooks,
+		db,
+		store,
+		project: PROJECT,
+		type: "act",
+		sequence,
+		runId: RUN_ID,
+		turnId: 1,
+		noContext: false,
+		contextSize,
+		systemPrompt: "test",
+		loopPrompt: "",
+	});
+}
+
+describe("Handler dispatch", () => {
+	let tdb, store, hooks;
+
+	before(async () => {
+		tdb = await TestDb.create();
+		store = new KnownStore(tdb.db);
+		const seed = await tdb.seedRun({ alias: "dispatch_1" });
+		RUN_ID = seed.runId;
+		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
+
+		hooks = createHooks();
+		CoreToolsPlugin.register(hooks);
+		Engine.register(hooks);
+	});
+
+	after(async () => {
+		await tdb.cleanup();
+	});
+
+	describe("read handler", () => {
+		it("promotes target and writes confirmation", async () => {
+			await store.upsert(RUN_ID, 0, "src/target.js", "const x = 1;", "index");
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "read",
+				path: "read://src%2Ftarget.js",
+				body: "",
+				attributes: { path: "src/target.js" },
+				state: "full",
+				resultPath: "read://src%2Ftarget.js",
+			};
+
+			await hooks.tools.dispatch("read", entry, rummy);
+
+			const state = await tdb.db.get_entry_state.get({
+				run_id: RUN_ID,
+				path: "src/target.js",
+			});
+			assert.strictEqual(state.state, "full", "target promoted to full");
+
+			const result = await store.getBody(RUN_ID, entry.resultPath);
+			assert.ok(result.includes("loaded in context"), "confirmation written");
+		});
+	});
+
+	describe("write handler — edit mode", () => {
+		it("applies patch and sets proposed for files", async () => {
+			await store.upsert(
+				RUN_ID,
+				1,
+				"src/edit_me.js",
+				"const port = 3000;",
+				"full",
+			);
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "write",
+				path: "write://src%2Fedit_me.js",
+				body: "",
+				attributes: {
+					path: "src/edit_me.js",
+					blocks: [
+						{ search: "const port = 3000;", replace: "const port = 8080;" },
+					],
+				},
+				state: "full",
+				resultPath: "write://src%2Fedit_me.js",
+			};
+
+			await hooks.tools.dispatch("write", entry, rummy);
+
+			const resultBody = await store.getBody(RUN_ID, "write://src/edit_me.js");
+			assert.ok(
+				resultBody.includes("SEARCH"),
+				"result has SEARCH/REPLACE block",
+			);
+			assert.ok(resultBody.includes("8080"), "result shows new content");
+
+			// File entries → proposed
+			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const writeResult = entries.find(
+				(e) => e.path === "write://src/edit_me.js",
+			);
+			assert.strictEqual(
+				writeResult.state,
+				"proposed",
+				"file edit is proposed",
+			);
+		});
+
+		it("applies patch immediately for known:// entries", async () => {
+			await store.upsert(RUN_ID, 1, "known://config", "port=3000", "full");
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "write",
+				path: "write://known%3A%2F%2Fconfig",
+				body: "",
+				attributes: {
+					path: "known://config",
+					search: "3000",
+					replace: "8080",
+				},
+				state: "full",
+				resultPath: "write://known%3A%2F%2Fconfig",
+			};
+
+			await hooks.tools.dispatch("write", entry, rummy);
+
+			const updated = await store.getBody(RUN_ID, "known://config");
+			assert.strictEqual(
+				updated,
+				"port=8080",
+				"known entry patched immediately",
+			);
+		});
+	});
+
+	describe("run handler", () => {
+		it("sets entry to proposed", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const resultPath = await store.slugPath(RUN_ID, "run", "npm test");
+			await store.upsert(RUN_ID, 1, resultPath, "npm test", "full", {
+				attributes: { command: "npm test" },
+			});
+
+			const entry = {
+				scheme: "run",
+				path: resultPath,
+				body: "npm test",
+				attributes: { command: "npm test" },
+				state: "full",
+				resultPath,
+			};
+
+			await hooks.tools.dispatch("run", entry, rummy);
+
+			const row = await tdb.db.get_entry_state.get({
+				run_id: RUN_ID,
+				path: resultPath,
+			});
+			assert.strictEqual(row.state, "proposed", "run entry set to proposed");
+		});
+	});
+
+	describe("env handler", () => {
+		it("sets entry to pass", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const resultPath = await store.slugPath(RUN_ID, "env", "node --version");
+			await store.upsert(RUN_ID, 1, resultPath, "node --version", "full", {
+				attributes: { command: "node --version" },
+			});
+
+			const entry = {
+				scheme: "env",
+				path: resultPath,
+				body: "node --version",
+				attributes: { command: "node --version" },
+				state: "full",
+				resultPath,
+			};
+
+			await hooks.tools.dispatch("env", entry, rummy);
+
+			const row = await tdb.db.get_entry_state.get({
+				run_id: RUN_ID,
+				path: resultPath,
+			});
+			assert.strictEqual(row.state, "pass", "env entry set to pass");
+		});
+	});
+
+	describe("store handler", () => {
+		it("demotes target and writes confirmation", async () => {
+			await store.upsert(RUN_ID, 1, "known://demote_me", "some data", "full");
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "store",
+				path: "store://known%3A%2F%2Fdemote_me",
+				body: "",
+				attributes: { path: "known://demote_me" },
+				state: "full",
+				resultPath: "store://known%3A%2F%2Fdemote_me",
+			};
+
+			await hooks.tools.dispatch("store", entry, rummy);
+
+			const state = await tdb.db.get_entry_state.get({
+				run_id: RUN_ID,
+				path: "known://demote_me",
+			});
+			assert.strictEqual(state.state, "stored", "target demoted");
+		});
+	});
+
+	describe("delete handler", () => {
+		it("proposes deletion for files", async () => {
+			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "full");
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "delete",
+				path: "delete://src%2Fdoomed.js",
+				body: "",
+				attributes: { path: "src/doomed.js" },
+				state: "full",
+				resultPath: "delete://src%2Fdoomed.js",
+			};
+
+			await hooks.tools.dispatch("delete", entry, rummy);
+
+			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const result = entries.find((e) => e.path === "delete://src/doomed.js");
+			assert.strictEqual(result.state, "proposed", "file delete is proposed");
+		});
+
+		it("immediately removes known:// entries", async () => {
+			await store.upsert(RUN_ID, 1, "known://ephemeral", "temp", "full");
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "delete",
+				path: "delete://known%3A%2F%2Fephemeral",
+				body: "",
+				attributes: { path: "known://ephemeral" },
+				state: "full",
+				resultPath: "delete://known%3A%2F%2Fephemeral",
+			};
+
+			await hooks.tools.dispatch("delete", entry, rummy);
+
+			const gone = await store.getBody(RUN_ID, "known://ephemeral");
+			assert.strictEqual(gone, null, "known entry removed immediately");
+		});
+	});
+
+	describe("priority ordering", () => {
+		it("lower priority handlers run first", async () => {
+			const order = [];
+
+			hooks.tools.onHandle(
+				"read",
+				async () => {
+					order.push("plugin-at-5");
+				},
+				5,
+			);
+
+			// Core read handler is already at priority 10
+			// We just need to verify our priority-5 handler ran first
+			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", "index");
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "read",
+				path: "read://priority_test",
+				body: "",
+				attributes: { path: "src/priority_test.js" },
+				state: "full",
+				resultPath: "read://priority_test",
+			};
+
+			await hooks.tools.dispatch("read", entry, rummy);
+			assert.strictEqual(order[0], "plugin-at-5", "priority 5 ran first");
+		});
+
+		it("handler returning false stops the chain", async () => {
+			const testHooks = createHooks();
+			const order = [];
+
+			testHooks.tools.register("test_tool", {
+				modes: new Set(["ask"]),
+				category: "ask",
+			});
+
+			testHooks.tools.onHandle(
+				"test_tool",
+				async () => {
+					order.push("first");
+					return false;
+				},
+				1,
+			);
+
+			testHooks.tools.onHandle(
+				"test_tool",
+				async () => {
+					order.push("second");
+				},
+				10,
+			);
+
+			const rummy = makeRummy(testHooks, tdb.db, store, { sequence: 1 });
+			await testHooks.tools.dispatch("test_tool", {}, rummy);
+
+			assert.deepStrictEqual(order, ["first"], "chain stopped after false");
+		});
+	});
+
+	describe("tool:// materialization", () => {
+		it("creates tool:// entries from registry", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 2 });
+			await hooks.processTurn(rummy);
+
+			const readTool = await store.getBody(RUN_ID, "tool://read");
+			assert.ok(readTool !== null, "tool://read exists");
+
+			const readAttrs = await store.getAttributes(RUN_ID, "tool://read");
+			assert.ok(readAttrs.modes.includes("ask"), "read has ask mode");
+			assert.ok(readAttrs.modes.includes("act"), "read has act mode");
+			assert.strictEqual(readAttrs.category, "ask", "read category is ask");
+
+			const writeTool = await store.getBody(RUN_ID, "tool://write");
+			assert.ok(writeTool !== null, "tool://write exists");
+
+			const writeAttrs = await store.getAttributes(RUN_ID, "tool://write");
+			assert.strictEqual(writeAttrs.category, "act", "write category is act");
+		});
+
+		it("is idempotent across turns", async () => {
+			const rummy1 = makeRummy(hooks, tdb.db, store, { sequence: 3 });
+			await hooks.processTurn(rummy1);
+
+			const rummy2 = makeRummy(hooks, tdb.db, store, { sequence: 4 });
+			await hooks.processTurn(rummy2);
+
+			const entries = await store.getEntriesByPattern(RUN_ID, "tool://*", null);
+			const readEntries = entries.filter((e) => e.path === "tool://read");
+			assert.strictEqual(readEntries.length, 1, "no duplicate tool:// entries");
+		});
+	});
+});

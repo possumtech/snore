@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
-import HookRegistry from "../../src/hooks/HookRegistry.js";
+import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import Engine from "../../src/plugins/engine/engine.js";
 import TestDb from "../helpers/TestDb.js";
@@ -59,7 +59,7 @@ describe("turn_context distribution bucket correctness", () => {
 		await store.upsert(RUN_ID, 1, "ask://1", "test question", "info");
 
 		// Materialize turn_context via engine
-		hooks = new HookRegistry();
+		hooks = createHooks();
 		Engine.register(hooks);
 		const rummy = makeRummy(tdb.db, store);
 		await hooks.processTurn(rummy);

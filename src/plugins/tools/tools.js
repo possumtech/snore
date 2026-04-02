@@ -81,7 +81,15 @@ async function handleRead(entry, rummy) {
 	await store.promoteByPattern(runId, target, bodyFilter, turn);
 
 	if (isPattern) {
-		await storePatternResult(store, runId, turn, "read", target, bodyFilter, matches);
+		await storePatternResult(
+			store,
+			runId,
+			turn,
+			"read",
+			target,
+			bodyFilter,
+			matches,
+		);
 	} else {
 		const total = matches.reduce((s, m) => s + m.tokens_full, 0);
 		const paths = matches.map((m) => m.path).join(", ");
@@ -105,7 +113,15 @@ async function handleStore(entry, rummy) {
 	await store.demoteByPattern(runId, target, bodyFilter);
 
 	if (isPattern) {
-		await storePatternResult(store, runId, turn, "store", target, bodyFilter, matches);
+		await storePatternResult(
+			store,
+			runId,
+			turn,
+			"store",
+			target,
+			bodyFilter,
+			matches,
+		);
 	} else {
 		const paths = matches.map((m) => m.path).join(", ");
 		const body =
@@ -128,8 +144,21 @@ async function handleWrite(entry, rummy) {
 
 	// Preview mode
 	if (attrs.preview && attrs.path) {
-		const matches = await store.getEntriesByPattern(runId, attrs.path, attrs.body);
-		await storePatternResult(store, runId, turn, "write", attrs.path, attrs.body, matches, true);
+		const matches = await store.getEntriesByPattern(
+			runId,
+			attrs.path,
+			attrs.body,
+		);
+		await storePatternResult(
+			store,
+			runId,
+			turn,
+			"write",
+			attrs.path,
+			attrs.body,
+			matches,
+			true,
+		);
 		return;
 	}
 
@@ -153,9 +182,26 @@ async function handleWrite(entry, rummy) {
 		);
 	} else if (attrs.filter || target.includes("*")) {
 		// Pattern bulk update
-		const matches = await store.getEntriesByPattern(runId, target, attrs.filter);
-		await store.updateBodyByPattern(runId, target, attrs.filter || null, entry.body);
-		await storePatternResult(store, runId, turn, "write", target, attrs.filter, matches);
+		const matches = await store.getEntriesByPattern(
+			runId,
+			target,
+			attrs.filter,
+		);
+		await store.updateBodyByPattern(
+			runId,
+			target,
+			attrs.filter || null,
+			entry.body,
+		);
+		await storePatternResult(
+			store,
+			runId,
+			turn,
+			"write",
+			target,
+			attrs.filter,
+			matches,
+		);
 	} else {
 		// Literal K/V path → immediate upsert
 		await store.upsert(runId, turn, target, entry.body, "full");
@@ -220,11 +266,7 @@ async function processEdit(store, runId, turn, entry, attrs) {
 			error = matched.error;
 		}
 
-		const state = error
-			? "error"
-			: match.scheme === null
-				? "proposed"
-				: "pass";
+		const state = error ? "error" : match.scheme === null ? "proposed" : "pass";
 
 		const beforeTokens = match.tokens_full || 0;
 		const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
@@ -342,7 +384,16 @@ async function handleAskUser(entry, rummy) {
 
 // --- Shared helpers ---
 
-async function storePatternResult(store, runId, turn, scheme, path, bodyFilter, matches, preview = false) {
+async function storePatternResult(
+	store,
+	runId,
+	turn,
+	scheme,
+	path,
+	bodyFilter,
+	matches,
+	preview = false,
+) {
 	const slug = await store.slugPath(runId, scheme, path);
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
 	const total = matches.reduce((s, m) => s + m.tokens_full, 0);

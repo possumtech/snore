@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import ContextAssembler from "../../src/agent/ContextAssembler.js";
 import KnownStore from "../../src/agent/KnownStore.js";
-import HookRegistry from "../../src/hooks/HookRegistry.js";
+import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import Engine from "../../src/plugins/engine/engine.js";
 import TestDb from "../helpers/TestDb.js";
@@ -46,7 +46,7 @@ function makeRummy(db, store, { sequence = TURN, contextSize = 50000 } = {}) {
 }
 
 async function assembleMessages(tdb, store) {
-	const hooks = new HookRegistry();
+	const hooks = createHooks();
 	Engine.register(hooks);
 	const rummy = makeRummy(tdb.db, store);
 	await hooks.processTurn(rummy);
@@ -66,7 +66,7 @@ describe("Message assembly", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db, new HookRegistry());
+		store = new KnownStore(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 		PROJECT = { id: seed.projectId, path: "/tmp/test" };
@@ -93,7 +93,7 @@ describe("Message assembly", () => {
 
 	it("act prompt renders as <act> tag with run tool", async () => {
 		await store.upsert(RUN_ID, TURN, "act://1", "Refactor the code", "info");
-		const hooks = new HookRegistry();
+		const hooks = createHooks();
 		Engine.register(hooks);
 		const hookRoot = {
 			tag: "turn",

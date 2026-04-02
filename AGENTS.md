@@ -2,258 +2,233 @@
 
 ## Current State
 
-Unified `prompt.md` sacred prompt with `[%TOOLS%]` placeholder — tools
-registered dynamically from ToolRegistry. Mode (ask/act) per-prompt, not
-per-run. `<ask warn="...">` carries restrictions; `<act>` has none.
-Search is a plugin tool (web plugin), not core.
+### Core Architecture: Entry-Driven Dispatch
 
-URI-based K/V store (`known://`, `summary://`, bare paths for files).
-Scheme registry: `prompt://` (loop identity), `ask://`, `act://`, `progress://`.
-Pattern operations produce `pattern` state result entries.
-`preview` attribute for dry-run pattern operations.
+Every interaction with the store follows one contract:
 
-Termination: `<update/>` continues, `<summary/>` terminates, plain text → summary.
-Loop defense: repetition detector + stall counter + `RUMMY_MAX_TURNS`.
-Tool result content composed at write time.
-RPC audit log + model response diagnostics + error logging.
-AbortSignal threaded through full call chain.
-Prompt queue (persistent `prompt_queue` table, FIFO per run).
-Run state machine v2 (all terminal states restartable).
+```
+path (scheme://target)  |  body (tag body)  |  attributes (tag attrs JSON)  |  state
+```
 
-### Testing
+The model emits XML tags. The parser produces commands. Every command becomes
+a `known_entries` row at `full` state. Registered handlers dispatch against the
+scheme and modify the entry (change state, create related entries, perform side
+effects). The handler chain is priority-ordered — multiple plugins can hook the
+same scheme.
 
-158 unit + 97 integration + 9 autonomous E2E stories + 3 live protocol tests.
-`--test-force-exit` prevents hanging. Catalog fetch eliminated from test setup.
+```
+Model emits <read path="src/app.js"/>
+  → XmlParser produces { name: "read", path: "src/app.js" }
+  → TurnExecutor records read://src%2Fapp.js | full | {"path":"src/app.js"} | ""
+  → handlers dispatch:
+      priority 5: WebPlugin (checks if http URL — no, passes through)
+      priority 10: CoreToolsPlugin (promotes file, writes confirmation)
+  → entry.created event fires
+```
 
----
+### Columns
 
-## Todo: State Simplification (state IS fidelity)
+| Column | What it holds |
+|--------|--------------|
+| `path` | `scheme://target` or bare file path |
+| `body` | Tag body text. File content for files, tool output for results. |
+| `attributes` | Tag attributes as JSON. Handler-private workspace. System never queries into this except via `json_extract` in views. |
+| `state` | Lifecycle stage. Determines model visibility. |
+| `scheme` | Generated from path. Drives handler dispatch and view routing. |
 
-### Problem
-
-State and fidelity overlap. The `v_model_context` VIEW computes fidelity from
-`state + turn + scheme` via a complex CASE expression. The turn field gates
-visibility (turn 0 = invisible) instead of just tracking freshness. Three
-concepts (state, turn, fidelity) determine one thing: what the model sees.
-
-### Design
-
-State IS what the model sees. No separate fidelity computation.
+### States
 
 | State | Model sees | How you get there |
 |-------|-----------|-------------------|
-| `full` | Complete content | `<read>`, client activate, engine promote |
-| `summary` | Symbols (files) or snippets (URLs) | Symbol extraction, search results, engine demote |
-| `index` | Path listed, no content | Default for all new files |
-| `stored` | Nothing (retrievable via `<read>`) | `<store>`, known entries demoted below index |
+| `full` | Complete body | Initial recording, `<read>`, client activate |
+| `summary` | Symbols or snippets | Symbol extraction, search results, engine demote |
+| `index` | Path listed, no content | Default for new files |
+| `stored` | Nothing (retrievable) | `<store>`, engine demote |
+| `proposed` | Nothing (pending client) | File writes, `<run>`, `<ask_user>` |
+| `pass` | Tool result | Accepted proposal, immediate K/V operations |
+| `warn` | Rejection marker | Client rejection |
+| `error` | Error detail | Failed operation |
+| `info` | Informational | Audit entries, search confirmations, updates |
+| `pattern` | Pattern match listing | Glob/regex operations |
+| `read` | Read confirmation | Successful `<read>` |
 
-The `turn` field becomes purely a freshness signal — when was this entry last
-touched? The relevance engine uses turn for staleness. Visibility is determined
-by state alone.
+### Tool Registration
 
-### File lifecycle
+```js
+hooks.tools.register("search", {
+    modes: new Set(["ask", "act"]),
+    category: "ask",
+    docs: "## <search>...</search>\nSearch the web.",
+});
 
-```
-disk scan → state: index (path only)
-             ↓ client activate or <read>
-           state: full (complete content visible)
-             ↓ <store>
-           state: stored (invisible, retrievable via <read>)
-```
-
-Default for every file on first scan: `index`. Only client-activated files
-start at `full`. No root file exception. No `summary` state on initial scan —
-`summary` is introduced later by the relevance engine's symbol extraction.
-
-`<store>` always demotes to `stored`. `<read>` always promotes to `full`.
-The cascade is: `full` → `stored` → (read) → `full`. Engine demotion
-(future) adds intermediate states: `full` → `summary` → `index` → `stored`.
-
-### URL / search result lifecycle
-
-```
-<search> → search://slug at state: pass (confirmation: "12 results")
-         → creates https:// entries at state: summary (snippet as content)
-             ↓ <read>
-           state: full (fetched page content via Playwright)
-             ↓ <store>
-           state: stored (invisible, retrievable)
+hooks.tools.onHandle("search", async (entry, rummy) => {
+    // entry = { scheme, path, body, attributes, state, resultPath }
+    // rummy = RummyContext (store, hooks, runId, sequence, etc.)
+}, priority);
 ```
 
-Search results are first-class `https://` entries, not dumped into a
-`search://` content body. The `search://` entry is just a confirmation:
-"12 results for query". Each result URL is a separate `https://` entry at
-`summary` state with the snippet as content. The model can `<read>` any
-URL to fetch the full page, `<store>` irrelevant results, `<delete>` noise.
+Tools register metadata (modes, category, docs) and handlers separately.
+Multiple handlers per scheme, priority-ordered (lower = first). Return
+`false` to stop the chain.
 
-### v_model_context VIEW simplification
+### tool:// Entries
 
-Before (fidelity computed from state + turn + scheme):
-```sql
-CASE
-  WHEN s.fidelity = 'turn' AND ke.state = 'summary' AND ke.turn > 0 THEN 'summary'
-  WHEN s.fidelity = 'turn' AND ke.turn > 0 THEN 'full'
-  WHEN s.fidelity = 'turn' AND ke.turn = 0 THEN 'index'
-  ...
-END AS fidelity
-```
+Every registered tool materializes as a `tool://name` entry:
+- `body` = tool documentation (rendered into system message)
+- `attributes` = `{ modes: [...], category: "ask"|"act"|"structural" }`
+- Plugins can append docs to other tools' entries (web plugin adds fetch
+  docs to `tool://read`)
+- Clients discover tools via `<read path="tool://*"/>`
 
-After (state IS fidelity):
-```sql
-CASE
-  WHEN ke.state IN ('full', 'summary', 'index') THEN ke.state
-  WHEN ke.state = 'stored' THEN NULL  -- not visible
-  ...
-END AS fidelity
-```
+### schemes Table
 
-### Category mapping
+Bootstrap registry. 29 rows of static config that triggers and views need
+at INSERT time. Cannot live in known_entries due to circular dependency
+(state validation trigger queries schemes during INSERT). Invisible to
+plugins — they interact through `tools.register()` and `tool://` entries.
 
-| State | Category (for assembler routing) |
-|-------|--------------------------------|
-| `full` (file/http/https) | `file` |
-| `summary` (file/http/https) | `file_summary` |
-| `index` (file/http/https) | `file_index` |
-| `full` (known) | `known` |
-| `stored` (known) | `known_index` |
-| `full` (unknown) | `unknown` |
-| result states | `result` |
-| structural states | `structural` |
-
-### Assembler rendering
-
-| Category | Renders as |
-|----------|-----------|
-| `file` | Code-fenced file content with language tag |
-| `file_summary` | Symbol signatures or URL snippets |
-| `file_index` | Comma-separated path listing |
-| `known` | Bullet list: `* path — value` |
-| `known_index` | Comma-separated path listing |
-| `unknown` | Bullet list: `* value` |
-| `result` | Tool result with status symbol |
-| `structural` | Summary/update in chronological messages |
-
-### Rename: `<summary>` → `<summarize>`
-
-The `<summary>` tool collides with the `summary` fidelity state. Rename the
-tool to `<summarize>` (verb — tells the model what to do). The `summary`
-state (noun) describes fidelity. The `summary://` scheme stays.
-
-- `<summarize>Run completed</summarize>` → creates `summary://slug | summary`
-- `src/app.js | summary` → file at summary fidelity (symbols visible)
-- No ambiguity between tool and state.
-
-### Implementation
-
-#### Phase 1: State simplification (immediate)
-
-- [ ] **Rename `symbols` → `summary`** — file state, schema, SQL, JS
-- [ ] **Rename `<summary>` → `<summarize>`** — parser, prompt, tool registration,
-      healer, tests
-- [ ] **Add `index` and `stored` to file valid_states** — `["full", "summary", "index", "stored"]`
-- [ ] **Add `summary` and `stored` to http/https valid_states** — `["full", "summary", "stored"]`
-- [ ] **File scanner** — all new files default to `index`. Only `active`
-      constraint promotes to `full`. Symbol extraction deferred to relevance engine.
-- [ ] **v_model_context VIEW** — simplify: state determines fidelity directly,
-      turn is freshness only, no computed fidelity CASE
-- [ ] **`<read>` promotion** — changes state to `full`
-- [ ] **`<store>` demotion** — always changes state to `stored`
-- [ ] **ContextAssembler** — route by state-derived category
-- [ ] **Update all tests**
-
-#### Phase 2: Search restructuring
-
-- [ ] **Search results as `https://` entries** — web plugin creates per-URL
-      entries at `summary` state with snippet as content
-- [ ] **`search://` confirmation only** — "12 results for query" at `pass` state
-- [ ] **Update web plugin and TurnExecutor**
-- [ ] **Update E2E tests**
-
-#### Phase 3: Engine demotion (future, with relevance engine)
-
-- [ ] **Symbol extraction sets `summary` state** — ctags/antlrmap results
-      promote files from `index` to `summary`
-- [ ] **Engine demotion cascade** — `full` → `summary` → `index` → `stored`
-- [ ] **Decay by turn staleness** — turn field drives demotion decisions
-
-### Trade-offs
-
-**Pro:** One concept (state) determines visibility. No computed fidelity.
-Simpler view. The relevance engine operates on state transitions, not
-turn manipulation. Search results are first-class entries. `<summarize>`
-and `summary` are unambiguous.
-
-**Risk:** Every `WHERE turn > 0` check must change to `WHERE state IN (...)`.
-If any are missed, entries appear or disappear incorrectly.
-
-**Decisions made:**
-- `<store>` always demotes to `stored` (invisible). Consistent for all entry types.
-- All files enter DB with full content regardless of state. State controls
-  what the model sees, not what's stored. No premature optimization.
-- Symbol extraction is deferred to the relevance engine. No `summary` state
-  on files until the engine exists. Files are `full` or `index` for now.
-- No root file exception. Only client-activated files get `full`.
+All result schemes include `full` in valid_states so entries can start at
+`full` before handlers set the final state.
 
 ---
 
-## Todo: Plugin Tool Architecture
+## Done
 
-### Vision
+### Column Rename ✓
 
-Every tool is a handler. Core tools ship as built-in handlers. Plugins
-register their own. TurnExecutor becomes a dispatcher, not an implementer.
+`value` → `body`, `meta` → `attributes` across all SQL, views, queries, JS.
+`attributes` has `CHECK (json_valid)` constraint on both tables.
+
+### Recorder/Dispatcher ✓
+
+TurnExecutor is two phases:
+1. **Record** — every command → `scheme://slug | full | attributes | body`
+2. **Dispatch** — `hooks.tools.dispatch(scheme, entry, rummy)` for each
+
+No tool-specific code in TurnExecutor. All execution logic lives in
+handler functions registered by plugins.
+
+### Core Tools as Plugin ✓
+
+`src/plugins/tools/tools.js` registers handlers for all core tools:
+`read`, `write`, `store`, `delete`, `move`, `copy`, `run`, `env`, `ask_user`.
+Same registration interface as third-party plugins.
+
+### Handler Priority Chain ✓
+
+`hooks.tools.onHandle(scheme, handler, priority)`. Web plugin hooks `read`
+at priority 5 to intercept http URLs before core's priority 10 handler.
+`return false` stops the chain.
+
+### tool:// Materialization ✓
+
+Engine plugin materializes tool:// entries from ToolRegistry on each turn
+(idempotent). Plugin tool docs flow through the store — no special
+`prompt.tools` filter.
+
+### Dead Hook Cleanup ✓
+
+Removed: `hooks.action.search`, `hooks.action.fetch`, `hooks.prompt.tools`.
+Everything flows through scheme handlers.
+
+### Entry Events ✓
+
+`hooks.entry.created` fires after each command is dispatched. Plugins and
+RPC/WS subscribe to the same event.
+
+### Resolution Logic ✓
+
+| Resolution | Model signal | Run outcome |
+|-----------|-------------|-------------|
+| reject | any | `completed` — rejection stops the bus |
+| accept | `<update>` | `running` — model has more work |
+| accept | `<summarize>` | `completed` — done |
+| accept | neither | `running` — healer decides |
+| error | any | `running` ��� fail clock starts |
+
+---
+
+## Todo: Fidelity Projection Hooks
+
+### Problem
+
+The `v_model_context` VIEW hardcodes how entries project at each fidelity
+level:
+
+```sql
+WHEN fidelity = 'full' THEN body
+WHEN fidelity = 'summary' THEN COALESCE(json_extract(attributes, '$.symbols'), body)
+```
+
+This means the system decides what `summary` looks like for every entry type.
+A file at `summary` shows symbols from attributes. An `https://` entry at
+`summary` shows the snippet body. But what about a plugin's custom scheme?
+The VIEW has no way to know what `summary` means for `jira://PROJ-123` or
+`slack://channel`.
+
+More fundamentally: `attributes` is the handler's workspace. The system
+reaching into attributes with `json_extract(attributes, '$.symbols')` to
+build the model's view is the system trespassing on plugin-private data.
+
+### Design
+
+Plugins define projection functions for their schemes:
 
 ```js
-tools.register("search", {
-    modes: new Set(["ask", "act"]),
-    category: "ask",
-    handler: async (cmd, rummy) => {
-        const results = await fetchResults(cmd.path);
-        for (const r of results) {
-            rummy.write({ path: r.url, value: r.snippet, state: "summary" });
-        }
-        rummy.write({ value: `${results.length} results for "${cmd.path}"` });
-    },
+hooks.tools.onProject("myscheme", {
+    full: (entry) => entry.body,
+    summary: (entry) => entry.attributes?.excerpt || entry.body.slice(0, 200),
+    index: (entry) => "",  // path only
 });
 ```
 
-### RummyContext tool methods (model-level)
+Core schemes register projections the same way. The file scheme's `summary`
+projection reads `attributes.symbols`. The https scheme's `summary`
+projection returns the snippet body. No hardcoded `json_extract` in the VIEW.
 
-Plugins call the same operations the model calls, scoped to the current
-run and turn:
+### Implementation Options
 
-| Method | What it does |
-|--------|-------------|
-| `rummy.write({ path, value, state })` | Create or update an entry |
-| `rummy.read(path)` | Promote entry to `full` state |
-| `rummy.store(path)` | Demote entry to `stored` state |
-| `rummy.delete(path)` | Remove entry permanently |
-| `rummy.move(from, to)` | Move entry |
-| `rummy.copy(from, to)` | Copy entry |
+**Option A: SQL function**
+Register a `project(scheme, fidelity, body, attributes)` SQLite function
+that dispatches to JS projection callbacks. The VIEW calls it instead of
+the hardcoded CASE. Clean SQL, but ties SQLite function registry to
+ToolRegistry.
 
-### RummyContext plugin methods (superset)
+**Option B: Materialization-time projection**
+The engine's `materialize_turn_context` step calls projection functions
+in JS before INSERT. The VIEW just stores the pre-projected body. Simpler
+SQL, projection logic stays in JS, but adds a JS loop to materialization.
 
-Additional capabilities beyond what the model can do:
+**Option C: Two-column projection**
+`known_entries` gains a `projected` column (or `body_summary`) that plugins
+populate when they write entries. The VIEW reads the appropriate column
+per fidelity level. No function dispatch, but more storage.
 
-| Method | What it does |
-|--------|-------------|
-| `rummy.emit(event, payload)` | Fire hook events (notifications, UI) |
-| `rummy.query(preparedName, params)` | Read-only DB access |
-| `rummy.getMeta(path)` | Read entry metadata |
-| `rummy.getEntries(pattern)` | Pattern match without promotion |
-| `rummy.log(message)` | Structured logging to audit trail |
+### Recommendation
 
-Model tools go through validation and mode enforcement. Plugin tools
-bypass mode enforcement but still validate schemes.
+Option B. The engine already loops through entries for budget enforcement.
+Adding projection during materialization keeps the logic in JS where
+plugins live, and the VIEW stays a simple SELECT. The `attributes` column
+remains handler-private — the projection function is the contract between
+the plugin and the model's view.
 
-### Unified RPC Interface (future)
+### Dependency
+
+This blocks full use of the `attributes` column for plugin-private data.
+Without projection hooks, any data a plugin stores in attributes that the
+model should see at `summary` fidelity requires a hardcoded `json_extract`
+in the VIEW — which defeats the plugin architecture.
+
+---
+
+## Todo: Unified RPC Interface
 
 The client RPC interface should share the same verbs and semantics as
-the model and plugin tool interface. One vocabulary across the entire system.
+the model and plugin tool interface.
 
 ```
 Client:  { method: "read", params: { path: "src/app.js", persist: true } }
-Plugin:  rummy.read("src/app.js", { persist: true })
+Plugin:  rummy.read("src/app.js")
 Model:   <read>src/app.js</read>
 ```
 
@@ -263,146 +238,57 @@ Model:   <read>src/app.js</read>
 | `readOnly` | `read` | `{ persist: true, readonly: true }` |
 | `ignore` | `store` | `{ persist: true, ignore: true }` |
 | `drop` | `store` | `{ persist: true, clear: true }` |
-| `run/inject` | `write` | to `prompt://` scheme |
-| `fileStatus` | `getEntries` | with pattern |
-| `getFiles` | `getEntries` | all files |
-
-Non-tool RPCs stay as-is: `ask`, `act`, `resolve`, `abort`, `getRun`,
-`getRuns`, `getModels`, `discover`, `ping`, session config methods.
 
 The `persist` option sets a file constraint that survives across turns.
-Without it, the operation applies to the current turn only. This unifies
-the constraint system with the tool system — `activate` IS `read` with
-persistence.
-
-**Breaking client change.** The neovim client updates from `activate`/`ignore`
-to `read`/`store` with options. One migration, then the client speaks the
-same language as the model and plugins.
-
-### In-process vs out-of-process plugins
-
-Two plugin tiers, same interface, different transport:
-
-**In-process** — lightweight, no external deps, direct `rummy.*` calls:
-- Core tools, engine, telemetry, symbol extraction
-- Fast: direct function calls, zero serialization
-
-**Out-of-process** — heavy subsystems as separate services via RPC:
-- Web (Playwright, SearXNG) → `rummy.web` repo
-- Future: code sandbox, external API integrations
-- Registers tools at startup via handshake
-- Receives commands via RPC, responds with `write`/`read`/`store` calls back
-- Crash isolation: core keeps running if plugin service dies
-- Zero-dep deployment: don't need Playwright if you don't run `rummy.web`
-
-The native `rummy.*` interface is for in-process plugins. The RPC interface
-serves both human clients AND out-of-process plugin services. Same contract,
-same method names, two transports. When we split a plugin into its own repo,
-the only change is transport — the interface stays identical.
-
-### TurnExecutor dispatch
-
-The command dispatch becomes registry-driven:
-
-```js
-const tool = this.#hooks.tools.get(cmd.name);
-if (tool?.handler) {
-    await tool.handler(cmd, rummy);
-} else {
-    // structural tools (update, summarize, unknown)
-}
-```
-
-The giant if/else chain in TurnExecutor is replaced by handler lookups.
-Each tool owns its entire operation — parse, validate, store, confirm.
-
-### Implementation phases
-
-#### Phase 1: Search as proof-of-concept
-
-- [x] **Web plugin registers `search` tool** — ToolRegistry
-- [x] **Web plugin injects tool docs** — hooks.prompt.tools filter
-- [x] **Search results as `https://` entries** — at `summary` state
-- [x] **`results` attribute** — default 12
-- [x] **URL fetch via `<read>`** — web plugin handles http/https
-- [ ] **RummyContext tool methods** — add write/read/store/delete to RummyContext
-- [ ] **Thread RummyContext through action filters** — all hooks see the same context
-- [ ] **Move search storage into web plugin** — plugin uses `rummy.write()`,
-      TurnExecutor's `#processSearch` becomes a one-line dispatch
-- [ ] **Tool handler registration** — `handler` field on tool definition
-- [ ] **TurnExecutor dispatches to handler** — for search only initially
-
-#### Phase 2: Migrate core tools to handlers
-
-- [ ] **read handler** — move `<read>` logic from TurnExecutor if/else to handler
-- [ ] **store handler** — same
-- [ ] **write handler** — move `#processEdit` to handler
-- [ ] **delete handler** — move `#processDelete` to handler
-- [ ] **move/copy handler** — move `#processMoveCopy` to handler
-- [ ] **env/run handler** — move proposed entry creation to handler
-- [ ] **TurnExecutor becomes pure dispatcher** — no tool-specific code
-
-#### Phase 3: Plugin ecosystem
-
-- [ ] **Plugin README.md per folder** — developer documentation
-- [ ] **Example plugin template** — minimal tool registration + handler
-- [ ] **Handler contract documentation** — what a handler receives, what it can do
-
----
-
-## Done: Resolution Logic ✓
-
-| Resolution | Model signal | Run outcome |
-|-----------|-------------|-------------|
-| reject | any | `completed` — client rejection stops the bus |
-| accept | `<update>` | `running` — model said it has more work |
-| accept | `<summarize>` | `completed` — happy ending |
-| accept | neither | `running` — continue, healer decides |
-| error | any | `running` — give the model a chance to heal, fail clock starts |
-
-Mixed resolutions: any rejection stops the run. Accepted edits are applied,
-the rejection is visible in history, run completes. Client sends a new
-prompt to address the rejection.
-
-The fail clock is the existing stall counter (`RUMMY_MAX_STALLS`) and
-repetition detector (`RUMMY_MAX_REPETITIONS`). Server errors produce
-`error` state entries visible to the model. Repeated failing edits are
-caught by the repetition detector.
-
-Client modifications (accept with changes) are treated as acceptance —
-the run continues if the model signaled more work.
+Breaking client change — neovim client migrates once.
 
 ---
 
 ## Todo: File Constraint Security
 
-Blocked on tool/plugin/RPC unification — implement constraints through
-the unified interface, not a parallel code path.
+Blocked on RPC unification — constraints through the unified interface.
 
-| Constraint | Behavior | Current |
-|-----------|----------|---------|
+| Constraint | Behavior | Status |
+|-----------|----------|--------|
 | `active` | Full fidelity, included even if not in git | ✓ working |
 | `readonly` | Full fidelity, writes rejected | ⚠ not enforced |
 | `ignore` | Excluded from scan, `<read>` blocked | ⚠ scan works, read not blocked |
 
-- [ ] **ReadOnly enforcement** — reject writes via tool interface
-- [ ] **Ignore enforcement** — `<read>` on ignored file returns error
-- [ ] **Active outside project root** — path boundary enforcement
+---
+
+## Todo: Out-of-Process Plugins
+
+Heavy subsystems as separate services via RPC:
+- Web (Playwright, SearXNG) → `rummy.web` repo
+- Registers tools at startup via handshake
+- Receives commands via RPC, responds with write/read/store calls back
+- Same `tools.register()` / `tools.onHandle()` contract, different transport
 
 ---
 
 ## Todo: Remaining Cleanup
 
-- [ ] **Delete prompt.ask.md, prompt.act.md** — replaced by prompt.md
-- [ ] **Prompt carries model** — `prompt://` meta records model used
-- [ ] **Non-git file scanner** — fallback for non-git projects
+- [ ] Delete `prompt.ask.md`, `prompt.act.md` — replaced by `prompt.md`
+- [ ] Prompt carries model — `prompt://` attributes records model used
+- [ ] Non-git file scanner fallback
+- [ ] ARCHITECTURE.md update for new column names and dispatch architecture
+- [ ] E2E tests against real model with new dispatch loop
 
 ---
 
-## Todo: Relevance Engine (deferred)
+## Todo: Relevance Engine (deferred, separate project)
 
+- [ ] Fidelity projection hooks (prerequisite — see above)
 - [ ] Metrics plugin, separate DB, turn-level telemetry
-- [ ] Symbol extraction sets `summary` state (introduces file summaries)
+- [ ] Symbol extraction sets `summary` state
 - [ ] Engine demotion cascade: `full` → `summary` → `index` → `stored`
 - [ ] Cross-reference counting, auto-promote imports
 - [ ] Turn-based decay via state transitions
+
+---
+
+## Testing
+
+263 unit + integration tests, 0 failures.
+Handler dispatch, priority ordering, tool:// materialization all covered.
+E2E against real model pending.

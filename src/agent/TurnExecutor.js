@@ -326,10 +326,24 @@ export default class TurnExecutor {
 		// --- Classify for return value ---
 
 		const actionCalls = recorded.filter((e) =>
-			["read", "store", "write", "delete", "move", "copy", "run", "env", "search"].includes(e.scheme),
+			[
+				"read",
+				"store",
+				"write",
+				"delete",
+				"move",
+				"copy",
+				"run",
+				"env",
+				"search",
+			].includes(e.scheme),
 		);
 		const writeCalls = recorded.filter(
-			(e) => e.scheme === "known" || (e.scheme === "write" && !e.attributes?.blocks && !e.attributes?.search),
+			(e) =>
+				e.scheme === "known" ||
+				(e.scheme === "write" &&
+					!e.attributes?.blocks &&
+					!e.attributes?.search),
 		);
 		const unknownCalls = recorded.filter((e) => e.scheme === "unknown");
 
@@ -379,21 +393,27 @@ export default class TurnExecutor {
 			if (cmd.name === "write" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(`[RUMMY] Rejected file write to ${cmd.path} in ask mode`);
+					console.warn(
+						`[RUMMY] Rejected file write to ${cmd.path} in ask mode`,
+					);
 					return null;
 				}
 			}
 			if (cmd.name === "delete" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(`[RUMMY] Rejected file delete of ${cmd.path} in ask mode`);
+					console.warn(
+						`[RUMMY] Rejected file delete of ${cmd.path} in ask mode`,
+					);
 					return null;
 				}
 			}
 			if ((cmd.name === "move" || cmd.name === "copy") && cmd.to) {
 				const destScheme = KnownStore.scheme(cmd.to);
 				if (destScheme === null) {
-					console.warn(`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`);
+					console.warn(
+						`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`,
+					);
 					return null;
 				}
 			}
@@ -410,9 +430,19 @@ export default class TurnExecutor {
 		if (scheme === "unknown") {
 			const existingValues = await this.#knownStore.getUnknownValues(runId);
 			if (existingValues.has(cmd.body)) return null;
-			const unknownPath = await this.#knownStore.slugPath(runId, "unknown", cmd.body);
+			const unknownPath = await this.#knownStore.slugPath(
+				runId,
+				"unknown",
+				cmd.body,
+			);
 			await this.#knownStore.upsert(runId, turn, unknownPath, cmd.body, "full");
-			return { scheme, path: unknownPath, body: cmd.body, resultPath: unknownPath, attributes: null };
+			return {
+				scheme,
+				path: unknownPath,
+				body: cmd.body,
+				resultPath: unknownPath,
+				attributes: null,
+			};
 		}
 
 		// Build the result path (where the tool result entry goes)
@@ -437,9 +467,19 @@ export default class TurnExecutor {
 		// Naked write (no path) → known:// slug from body
 		if (scheme === "write" && !cmd.path) {
 			if (!cmd.body) return null;
-			const knownPath = await this.#knownStore.slugPath(runId, "known", cmd.body);
+			const knownPath = await this.#knownStore.slugPath(
+				runId,
+				"known",
+				cmd.body,
+			);
 			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, "full");
-			return { scheme: "known", path: knownPath, body: cmd.body, resultPath: knownPath, attributes };
+			return {
+				scheme: "known",
+				path: knownPath,
+				body: cmd.body,
+				resultPath: knownPath,
+				attributes,
+			};
 		}
 
 		// Record the entry

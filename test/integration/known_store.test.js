@@ -110,7 +110,10 @@ describe("KnownStore integration", () => {
 			await store.upsert(RUN_ID, 0, "search://1", "updated", "info");
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.path === "search://1");
-			assert.ok(entry.attributes, "attributes should be preserved from first write");
+			assert.ok(
+				entry.attributes,
+				"attributes should be preserved from first write",
+			);
 		});
 	});
 
@@ -313,7 +316,7 @@ describe("KnownStore integration", () => {
 
 		it("rejects invalid edit state", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "write://999", "", "full"),
+				() => store.upsert(RUN_ID, 0, "write://999", "", "index"),
 				/invalid state for scheme/,
 			);
 		});

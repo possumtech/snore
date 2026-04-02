@@ -59,39 +59,43 @@ export default class WebPlugin {
 		});
 
 		// Handle read:// entries with http(s) URLs — priority 5 (before core read at 10)
-		hooks.tools.onHandle("read", async (entry, rummy) => {
-			const attrs = entry.attributes || {};
-			const target = attrs.path;
-			if (!target || !/^https?:\/\//.test(target)) return;
+		hooks.tools.onHandle(
+			"read",
+			async (entry, rummy) => {
+				const attrs = entry.attributes || {};
+				const target = attrs.path;
+				if (!target || !/^https?:\/\//.test(target)) return;
 
-			const { store, sequence: turn, runId } = rummy;
-			const existing = await store.getBody(runId, target);
-			if (existing !== null) return;
+				const { store, sequence: turn, runId } = rummy;
+				const existing = await store.getBody(runId, target);
+				if (existing !== null) return;
 
-			const clean = WebFetcher.cleanUrl(target);
-			const fetched = await getFetcher().fetch(clean);
-			if (fetched.error) {
-				console.warn(`[RUMMY] Fetch failed: ${clean} — ${fetched.error}`);
-				return;
-			}
+				const clean = WebFetcher.cleanUrl(target);
+				const fetched = await getFetcher().fetch(clean);
+				if (fetched.error) {
+					console.warn(`[RUMMY] Fetch failed: ${clean} — ${fetched.error}`);
+					return;
+				}
 
-			const header = fetched.title ? `# ${fetched.title}\n\n` : "";
-			await store.upsert(
-				runId,
-				turn,
-				clean,
-				header + (fetched.content || ""),
-				"full",
-				{
-					attributes: {
-						title: fetched.title,
-						excerpt: fetched.excerpt,
-						byline: fetched.byline,
-						siteName: fetched.siteName,
+				const header = fetched.title ? `# ${fetched.title}\n\n` : "";
+				await store.upsert(
+					runId,
+					turn,
+					clean,
+					header + (fetched.content || ""),
+					"full",
+					{
+						attributes: {
+							title: fetched.title,
+							excerpt: fetched.excerpt,
+							byline: fetched.byline,
+							siteName: fetched.siteName,
+						},
 					},
-				},
-			);
-		}, 5);
+				);
+			},
+			5,
+		);
 
 		// Append fetch docs to the read tool's tool:// entry
 		// (read is registered by core, we add our docs to it)
@@ -99,7 +103,7 @@ export default class WebPlugin {
 			const { store, runId, sequence } = rummy;
 			const readPath = "tool://read";
 			const existing = await store.getBody(runId, readPath);
-			if (existing !== null && existing.includes("Fetch a web page")) return;
+			if (existing?.includes("Fetch a web page")) return;
 			const body = existing ? `${existing}\n\n${FETCH_DOCS}` : FETCH_DOCS;
 			await store.upsert(runId, sequence, readPath, body, "full");
 		}, 15);
