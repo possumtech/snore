@@ -16,7 +16,7 @@ classified AS (
 			WHEN ke.state = 'proposed' THEN NULL
 			WHEN s.fidelity = 'null' THEN NULL
 			WHEN s.fidelity = 'full' THEN 'full'
-			WHEN s.fidelity = 'turn' AND ke.scheme IS NULL AND ke.state = 'symbols' AND ke.turn > 0
+			WHEN s.fidelity = 'turn' AND ke.scheme IS NULL AND ke.state = 'summary' AND ke.turn > 0
 				THEN 'summary'
 			WHEN s.fidelity = 'turn' AND ke.turn > 0 THEN 'full'
 			WHEN s.fidelity = 'turn' AND ke.turn = 0 THEN 'index'
@@ -85,7 +85,7 @@ projected AS (
 		END AS meta
 		, CASE
 			WHEN scheme IS NULL AND fidelity = 'full' THEN 'file'
-			WHEN scheme IS NULL AND fidelity = 'summary' THEN 'file_symbols'
+			WHEN scheme IS NULL AND fidelity = 'summary' THEN 'file_summary'
 			WHEN scheme IS NULL THEN 'file_index'
 			WHEN scheme IN ('http', 'https') AND fidelity = 'full' THEN 'file'
 			WHEN scheme IN ('http', 'https') THEN 'file_index'
@@ -113,7 +113,7 @@ SELECT
 				WHEN 'known' THEN 1
 				WHEN 'known_index' THEN 2
 				WHEN 'file_index' THEN 3
-				WHEN 'file_symbols' THEN 4
+				WHEN 'file_summary' THEN 4
 				WHEN 'file' THEN 5
 				WHEN 'result' THEN 6
 				WHEN 'unknown' THEN 7

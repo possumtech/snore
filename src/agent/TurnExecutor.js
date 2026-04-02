@@ -396,7 +396,7 @@ export default class TurnExecutor {
 			}
 			if (cmd.name === "search") {
 				if (!cmd.path) continue;
-				await this.#processSearch(currentRunId, turn, cmd.path);
+				await this.#processSearch(currentRunId, turn, cmd.path, cmd.results);
 				continue;
 			}
 			if (cmd.name === "store") {
@@ -857,16 +857,27 @@ export default class TurnExecutor {
 		);
 	}
 
-	async #processSearch(runId, turn, query) {
-		const result = await this.#hooks.action.search.filter(null, { query });
+	async #processSearch(runId, turn, query, maxResults) {
+		const limit = maxResults || 12;
+		const result = await this.#hooks.action.search.filter(null, { query, limit });
 		if (!result) return;
+
+		// Limit results if requested
+		let { value } = result;
+		if (result.meta?.results && limit < result.meta.results.length) {
+			const limited = result.meta.results.slice(0, limit);
+			const listing = limited
+				.map((r) => `${r.title}\n  ${r.url}\n  ${r.snippet}`)
+				.join("\n\n");
+			value = `${limited.length} results for "${query}"\n\n${listing}`;
+		}
 
 		const resultPath = await this.#knownStore.slugPath(runId, "search", query);
 		await this.#knownStore.upsert(
 			runId,
 			turn,
 			resultPath,
-			result.value,
+			value,
 			"info",
 			{
 				meta: result.meta,

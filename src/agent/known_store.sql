@@ -53,7 +53,7 @@ UPDATE known_entries
 SET
 	state = :state
 	, tokens = CASE
-		WHEN :state = 'symbols'
+		WHEN :state = 'summary'
 			THEN CASE
 				WHEN
 					json_valid(meta)

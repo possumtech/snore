@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS schemes (
 );
 
 INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier, category) VALUES
-('file', 'turn', 1, '["full","symbols"]', 1, 'file'),
+('file', 'turn', 1, '["full","summary"]', 1, 'file'),
 ('known', 'turn', 1, '["full","stored"]', 2, 'knowledge'),
 ('unknown', 'full', 1, '["full","stored"]', 4, 'knowledge'),
 ('write', 'full', 1, '["proposed","pass","warn","error","pattern"]', 0, 'result'),
@@ -43,8 +43,8 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('user', 'null', 0, '["info"]', 0, 'audit'),
 ('assistant', 'null', 0, '["info"]', 0, 'audit'),
 ('content', 'null', 0, '["info"]', 0, 'audit'),
-('http', 'turn', 1, '["full"]', 1, 'file'),
-('https', 'turn', 1, '["full"]', 1, 'file');
+('http', 'turn', 1, '["full","summary"]', 1, 'file'),
+('https', 'turn', 1, '["full","summary"]', 1, 'file');
 
 CREATE TABLE IF NOT EXISTS projects (
 	id INTEGER PRIMARY KEY AUTOINCREMENT

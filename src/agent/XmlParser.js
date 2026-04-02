@@ -123,7 +123,8 @@ function resolveCommand(name, attrs, body) {
 	if (name === "search") {
 		// Canonical: path (query) in attr. Alt: query in body.
 		const path = a.path || trimmed || null;
-		return { name, path };
+		const results = a.results ? Number(a.results) : null;
+		return { name, path, results };
 	}
 
 	if (name === "move" || name === "copy") {

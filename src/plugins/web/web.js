@@ -3,16 +3,14 @@ import WebFetcher from "./WebFetcher.js";
 const TOOL_DOCS = `# Web Tools
 
 ## <search>[query]</search> - Search the web
+Example: <search>node.js streams backpressure</search>
+Example: <search results="5">SQLite WAL mode</search> (limit results)
+* Optional \`results\` attribute limits the number of results (default: 12)
+* Results appear in context next turn.
+* Use \`<read>\` on a URL from results to fetch full content as markdown.
 
-* Example: <search>node.js streams backpressure</search>
-* Example: <search>SQLite WAL mode performance</search>
-* Results appear in context next turn. Use \`<read>\` to fetch full content.
-
-## URL Fetch
-
-URLs are fetched and converted to markdown when read:
-
-* Example: <read>https://docs.example.com/api</read>
+## <read>[url]</read> - Fetch a web page
+Example: <read>https://docs.example.com/api</read>
 * Content is extracted, cleaned, and stored as markdown.`;
 
 export default class WebPlugin {
@@ -37,8 +35,8 @@ export default class WebPlugin {
 		});
 
 		// Handle search commands
-		hooks.action.search.addFilter(async (_result, { query }) => {
-			const results = await getFetcher().search(query);
+		hooks.action.search.addFilter(async (_result, { query, limit }) => {
+			const results = await getFetcher().search(query, { limit: limit || 12 });
 			const listing = results
 				.map(
 					(r) => `${r.title}\n  ${WebFetcher.cleanUrl(r.url)}\n  ${r.snippet}`,

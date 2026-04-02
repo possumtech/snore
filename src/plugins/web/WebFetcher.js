@@ -72,13 +72,14 @@ export default class WebFetcher {
 	/**
 	 * Search via SearXNG. Returns array of result objects.
 	 */
-	async search(query) {
+	async search(query, { limit = 12, language = "en" } = {}) {
 		const base = process.env.RUMMY_SEARXNG_URL;
 		if (!base) throw new Error("RUMMY_SEARXNG_URL not configured");
 
 		const url = new URL("/search", base);
 		url.searchParams.set("q", query);
 		url.searchParams.set("format", "json");
+		url.searchParams.set("language", language);
 
 		const response = await fetch(url, {
 			signal: AbortSignal.timeout(FETCH_TIMEOUT),
@@ -87,7 +88,7 @@ export default class WebFetcher {
 			throw new Error(`SearXNG ${response.status}: ${response.statusText}`);
 		}
 		const data = await response.json();
-		return (data.results || []).map((r) => ({
+		return (data.results || []).slice(0, limit).map((r) => ({
 			title: r.title,
 			url: r.url,
 			snippet: r.content || "",
