@@ -11,6 +11,10 @@ export default class RummyContext {
 		this.#context = context;
 	}
 
+	get hooks() {
+		return this.#context.hooks || null;
+	}
+
 	get db() {
 		return this.#context.db;
 	}

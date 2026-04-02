@@ -2,7 +2,6 @@ import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
-import HeuristicMatcher from "./HeuristicMatcher.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
@@ -59,7 +58,6 @@ export default class TurnExecutor {
 		}
 
 		// Store prompt entries BEFORE context materialization
-		// so v_model_context includes the current prompt
 		if (loopPrompt && !options?.isContinuation) {
 			await this.#knownStore.upsert(
 				currentRunId,
@@ -106,6 +104,7 @@ export default class TurnExecutor {
 			],
 		};
 		const rummy = new RummyContext(hookRoot, {
+			hooks: this.#hooks,
 			db: this.#db,
 			store: this.#knownStore,
 			project,
@@ -144,7 +143,7 @@ export default class TurnExecutor {
 			runId: currentRunId,
 		});
 
-		// Store actual assembled messages as audit (full messages sent to model)
+		// Store assembled messages as audit
 		const systemMsg = filteredMessages.find((m) => m.role === "system");
 		const userMsg = filteredMessages.find((m) => m.role === "user");
 		await this.#knownStore.upsert(
@@ -229,7 +228,6 @@ export default class TurnExecutor {
 			"info",
 		);
 
-		// Store reasoning (model thinking)
 		if (responseMessage?.reasoning_content) {
 			await this.#knownStore.upsert(
 				currentRunId,
@@ -240,7 +238,6 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Store content (unparsed assistant text)
 		if (unparsed) {
 			await this.#knownStore.upsert(
 				currentRunId,
@@ -249,46 +246,6 @@ export default class TurnExecutor {
 				unparsed,
 				"info",
 			);
-		}
-
-		// Categorize commands
-		let actionCalls = [];
-		let writeCalls = [];
-		const unknownCalls = [];
-		let summaryText = null;
-		let updateText = null;
-		let askUserCmd = null;
-
-		for (const cmd of commands) {
-			if (cmd.name === "summarize") summaryText = cmd.body;
-			else if (cmd.name === "update") updateText = cmd.body;
-			else if (cmd.name === "write" && (cmd.blocks || cmd.search))
-				actionCalls.push(cmd);
-			else if (cmd.name === "write") writeCalls.push(cmd);
-			else if (cmd.name === "unknown") unknownCalls.push(cmd);
-			else if (cmd.name === "ask_user") askUserCmd = cmd;
-			else actionCalls.push(cmd);
-		}
-
-		const hasAct = actionCalls.some((c) =>
-			["write", "delete", "run", "move", "copy"].includes(c.name),
-		);
-		const hasReads = actionCalls.some((c) =>
-			["read", "env", "search"].includes(c.name),
-		);
-		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
-		const flags = { hasAct, hasReads, hasWrites };
-
-		// If model sent both, summary wins (terminates)
-		if (summaryText && updateText) updateText = null;
-
-		// If model sent neither, heal from content
-		let statusHealed = false;
-		if (!summaryText && !updateText) {
-			const healed = ResponseHealer.healStatus(content, commands);
-			summaryText = healed.summaryText;
-			updateText = healed.updateText;
-			statusHealed = true;
 		}
 
 		// Commit usage
@@ -301,274 +258,35 @@ export default class TurnExecutor {
 			cost: Number(usage.cost || 0),
 		});
 
-		// --- SERVER EXECUTION ORDER ---
+		// --- PHASE 1: RECORD ---
+		// Every command becomes an entry. No execution yet.
 
-		// Step 0: Mode enforcement — reject prohibited commands in ask mode
-		if (mode === "ask") {
-			for (const cmd of [...actionCalls, ...writeCalls]) {
-				if (cmd.name === "run") {
-					console.warn(`[RUMMY] Rejected <run> in ask mode`);
-					continue;
-				}
-				if (cmd.name === "write" && cmd.path) {
-					const scheme = KnownStore.scheme(cmd.path);
-					if (scheme === null) {
-						console.warn(
-							`[RUMMY] Rejected file write to ${cmd.path} in ask mode`,
-						);
-						cmd._rejected = true;
-					}
-				}
-				if (cmd.name === "delete" && cmd.path) {
-					const scheme = KnownStore.scheme(cmd.path);
-					if (scheme === null) {
-						console.warn(
-							`[RUMMY] Rejected file delete of ${cmd.path} in ask mode`,
-						);
-						cmd._rejected = true;
-					}
-				}
-				if ((cmd.name === "move" || cmd.name === "copy") && cmd.to) {
-					const destScheme = KnownStore.scheme(cmd.to);
-					if (destScheme === null) {
-						console.warn(
-							`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`,
-						);
-						cmd._rejected = true;
-					}
-				}
-			}
-			actionCalls = actionCalls.filter((c) => c.name !== "run" && !c._rejected);
-			writeCalls = writeCalls.filter((c) => !c._rejected);
+		const recorded = [];
+		let summaryText = null;
+		let updateText = null;
+
+		for (const cmd of commands) {
+			const entry = await this.#record(currentRunId, turn, mode, cmd);
+			if (!entry) continue;
+
+			if (entry.scheme === "summarize") summaryText = entry.body;
+			else if (entry.scheme === "update") updateText = entry.body;
+			else recorded.push(entry);
 		}
 
-		// Step 1: Action tools
-		for (const cmd of actionCalls) {
-			if (cmd.preview && cmd.path) {
-				await this.#storeToolResult(currentRunId, turn, cmd, null, true);
-				continue;
-			}
+		// If model sent both, summary wins
+		if (summaryText && updateText) updateText = null;
 
-			if (cmd.name === "read") {
-				if (!cmd.path) continue;
-				if (/^https?:\/\//.test(cmd.path)) {
-					await this.#fetchUrl(currentRunId, turn, cmd.path);
-				}
-				const isPattern = cmd.body || cmd.path.includes("*");
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.body,
-				);
-				await this.#knownStore.promoteByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.body,
-					turn,
-				);
-				if (isPattern) {
-					await this.#storeToolResult(currentRunId, turn, cmd, matches);
-				} else {
-					const total = matches.reduce((s, m) => s + m.tokens_full, 0);
-					const slug = `read://${cmd.path}`;
-					const paths = matches.map((m) => m.path).join(", ");
-					const body =
-						matches.length > 0
-							? `${paths} loaded in context (${total} tokens)`
-							: `${cmd.path} not found`;
-					await this.#knownStore.upsert(currentRunId, turn, slug, body, "read");
-				}
-				continue;
-			}
-			if (cmd.name === "search") {
-				if (!cmd.path) continue;
-				await this.#processSearch(rummy, cmd.path, cmd.results);
-				continue;
-			}
-			if (cmd.name === "store") {
-				if (!cmd.path) continue;
-				const isPattern = cmd.body || cmd.path.includes("*");
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.body,
-				);
-				await this.#knownStore.demoteByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.body,
-				);
-				if (isPattern) {
-					await this.#storeToolResult(currentRunId, turn, cmd, matches);
-				} else {
-					const slug = `store://${cmd.path}`;
-					const paths = matches.map((m) => m.path).join(", ");
-					const body =
-						matches.length > 0
-							? `${paths} removed from context. Use <read> to restore.`
-							: `${cmd.path} not found`;
-					await this.#knownStore.upsert(
-						currentRunId,
-						turn,
-						slug,
-						body,
-						"stored",
-					);
-				}
-				continue;
-			}
-
-			if (cmd.name === "write") {
-				await this.#processEdit(currentRunId, turn, cmd);
-				continue;
-			}
-
-			if (cmd.name === "delete") {
-				await this.#processDelete(currentRunId, turn, cmd);
-				continue;
-			}
-
-			if (cmd.name === "move" || cmd.name === "copy") {
-				await this.#processMoveCopy(currentRunId, turn, cmd);
-				continue;
-			}
-
-			// run, env, ask_user — single proposed/pass entry
-			const resultPath = await this.#knownStore.slugPath(
-				currentRunId,
-				cmd.name,
-				cmd.command || cmd.path || cmd.question || "",
-			);
-			cmd.resultPath = resultPath;
-			const resultBody = cmd.command
-				? `<${cmd.name}>${cmd.command}</${cmd.name}>`
-				: "";
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				resultPath,
-				resultBody,
-				cmd.name === "env" ? "pass" : "proposed",
-				{
-					attributes: {
-						command: cmd.command,
-						path: cmd.path,
-						question: cmd.question,
-						options: cmd.options,
-					},
-				},
-			);
+		// If model sent neither, heal from content
+		let statusHealed = false;
+		if (!summaryText && !updateText) {
+			const healed = ResponseHealer.healStatus(content, commands);
+			summaryText = healed.summaryText;
+			updateText = healed.updateText;
+			statusHealed = true;
 		}
 
-		// Step 1b: ask_user
-		if (askUserCmd) {
-			const resultPath = await this.#knownStore.slugPath(
-				currentRunId,
-				"ask_user",
-				askUserCmd.question || "",
-			);
-			askUserCmd.resultPath = resultPath;
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				resultPath,
-				askUserCmd.question || "",
-				"proposed",
-				{
-					attributes: {
-						question: askUserCmd.question,
-						options: askUserCmd.options,
-					},
-				},
-			);
-		}
-
-		// Step 2: Unknowns — sticky, deduplicated
-		if (unknownCalls.length > 0) {
-			const existingValues =
-				await this.#knownStore.getUnknownValues(currentRunId);
-			for (const cmd of unknownCalls) {
-				if (existingValues.has(cmd.body)) continue;
-				const unknownPath = await this.#knownStore.slugPath(
-					currentRunId,
-					"unknown",
-					cmd.body,
-				);
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					unknownPath,
-					cmd.body,
-					"full",
-				);
-			}
-		}
-
-		// Step 3: Write entries (plain upsert or bulk update)
-		for (const cmd of writeCalls) {
-			// Naked write — no path, generate known:// slug from body
-			if (!cmd.path) {
-				if (!cmd.body) continue;
-				const sluggedPath = await this.#knownStore.slugPath(
-					currentRunId,
-					"known",
-					cmd.body,
-				);
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					sluggedPath,
-					cmd.body,
-					"full",
-				);
-				continue;
-			}
-
-			if (cmd.preview) {
-				await this.#storeToolResult(currentRunId, turn, cmd, null, true);
-				continue;
-			}
-
-			const scheme = KnownStore.scheme(cmd.path);
-			if (scheme === null) {
-				// Bare file path → proposed for client review
-				const resultPath = `write://${cmd.path}`;
-				const tokenEst = ((cmd.body?.length || 0) / 4) | 0;
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					resultPath,
-					`${cmd.path} (new file, ${tokenEst} tokens)`,
-					"proposed",
-					{
-						attributes: { file: cmd.path, content: cmd.body },
-					},
-				);
-			} else if (cmd.filter || cmd.path.includes("*")) {
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.filter,
-				);
-				await this.#knownStore.updateBodyByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.filter || null,
-					cmd.body,
-				);
-				await this.#storeToolResult(currentRunId, turn, cmd, matches);
-			} else {
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					cmd.path,
-					cmd.body,
-					"full",
-				);
-			}
-		}
-
-		// Step 4: Status (summary terminates, update continues)
+		// Record healed status
 		if (summaryText) {
 			const summaryPath = await this.#knownStore.slugPath(
 				currentRunId,
@@ -597,6 +315,38 @@ export default class TurnExecutor {
 			);
 		}
 
+		// --- PHASE 2: DISPATCH ---
+		// Handlers perform side effects: promote, demote, patch, propose.
+
+		for (const entry of recorded) {
+			const handler = this.#hooks.tools.handler(entry.scheme);
+			if (handler) {
+				await handler(entry, rummy);
+			}
+			await this.#hooks.entry.created.emit(entry);
+		}
+
+		// --- Classify for return value ---
+
+		const actionCalls = recorded.filter((e) =>
+			["read", "store", "write", "delete", "move", "copy", "run", "env", "search"].includes(e.scheme),
+		);
+		const writeCalls = recorded.filter(
+			(e) => e.scheme === "known" || (e.scheme === "write" && !e.attributes?.blocks && !e.attributes?.search),
+		);
+		const unknownCalls = recorded.filter((e) => e.scheme === "unknown");
+
+		const hasAct = actionCalls.some((c) =>
+			["write", "delete", "run", "move", "copy"].includes(c.scheme),
+		);
+		const hasReads = actionCalls.some((c) =>
+			["read", "env", "search"].includes(c.scheme),
+		);
+		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
+		const flags = { hasAct, hasReads, hasWrites };
+
+		const askUserEntry = recorded.find((e) => e.scheme === "ask_user");
+
 		return {
 			turn,
 			turnId: turnRow.id,
@@ -606,7 +356,7 @@ export default class TurnExecutor {
 			summaryText,
 			updateText,
 			statusHealed,
-			askUserCmd,
+			askUserCmd: askUserEntry || null,
 			flags,
 			model: result.model || requestedModel,
 			modelAlias: requestedModel,
@@ -618,218 +368,105 @@ export default class TurnExecutor {
 		};
 	}
 
-	async #storeToolResult(runId, turn, cmd, matches, preview = false) {
-		matches ??= await this.#knownStore.getEntriesByPattern(
-			runId,
-			cmd.path,
-			cmd.body,
-		);
-		const scheme = cmd.name || "write";
-		const slug = await this.#knownStore.slugPath(runId, scheme, cmd.path);
-		const filter = cmd.body ? ` body="${cmd.body}"` : "";
-		const total = matches.reduce((s, m) => s + m.tokens_full, 0);
-		const listing = matches
-			.map((m) => `${m.path} (${m.tokens_full})`)
-			.join("\n");
-		const prefix = preview ? "PREVIEW " : "";
-		const body = `${prefix}${cmd.name} path="${cmd.path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
-		await this.#knownStore.upsert(runId, turn, slug, body, "pattern");
-	}
-
-	async #processEdit(runId, turn, cmd) {
-		const matches = await this.#knownStore.getEntriesByPattern(
-			runId,
-			cmd.path,
-			cmd.body,
-		);
-
-		if (matches.length === 0) {
-			const resultPath = `write://${cmd.path}`;
-			await this.#knownStore.upsert(
-				runId,
-				turn,
-				resultPath,
-				`${cmd.path} — not found in context. Use <read> to load it first.`,
-				"error",
-				{ attributes: { file: cmd.path, error: "not found" } },
-			);
-			return;
-		}
-
-		for (const entry of matches) {
-			const resultPath = `write://${entry.path}`;
-			let patch = null;
-			let warning = null;
-			let error = null;
-			let searchText = null;
-			let replaceText = null;
-
-			if (cmd.search != null) {
-				searchText = cmd.search;
-				replaceText = cmd.replace ?? "";
-				const isRegex = /[+(){}|\\$^*?[\]]/.test(cmd.search);
-				if (isRegex) {
-					const re = new RegExp(cmd.search, "g");
-					if (re.test(entry.body)) {
-						patch = entry.body.replace(re, replaceText);
-					} else {
-						error = `Search pattern not found in ${entry.path}`;
-					}
-				} else if (entry.body.includes(cmd.search)) {
-					patch = entry.body.replaceAll(cmd.search, replaceText);
-				} else {
-					error = `"${cmd.search}" not found in ${entry.path}`;
+	/**
+	 * Record a parsed command as a known_entries row.
+	 * Returns the recorded entry descriptor, or null if rejected/skipped.
+	 */
+	async #record(runId, turn, mode, cmd) {
+		// Mode enforcement — reject prohibited commands in ask mode
+		if (mode === "ask") {
+			if (cmd.name === "run") {
+				console.warn("[RUMMY] Rejected <run> in ask mode");
+				return null;
+			}
+			if (cmd.name === "write" && cmd.path) {
+				const scheme = KnownStore.scheme(cmd.path);
+				if (scheme === null) {
+					console.warn(`[RUMMY] Rejected file write to ${cmd.path} in ask mode`);
+					return null;
 				}
-			} else if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
-				patch = cmd.blocks[0].replace;
-				replaceText = cmd.blocks[0].replace;
-			} else if (entry.body && cmd.blocks?.length > 0) {
-				const block = cmd.blocks[0];
-				searchText = block.search;
-				replaceText = block.replace;
-				const matched = HeuristicMatcher.matchAndPatch(
-					entry.path,
-					entry.body,
-					block.search,
-					block.replace,
-				);
-				patch = matched.patch;
-				warning = matched.warning;
-				error = matched.error;
 			}
-
-			const state = error
-				? "error"
-				: entry.scheme === null
-					? "proposed"
-					: "pass";
-
-			const beforeTokens = entry.tokens_full || 0;
-			const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
-			let body;
-			if (error) {
-				const block = searchText
-					? `\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
-					: "";
-				body = `${entry.path} — ${error}${block}`;
-			} else if (searchText) {
-				body = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`;
-			} else {
-				body = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)`;
+			if (cmd.name === "delete" && cmd.path) {
+				const scheme = KnownStore.scheme(cmd.path);
+				if (scheme === null) {
+					console.warn(`[RUMMY] Rejected file delete of ${cmd.path} in ask mode`);
+					return null;
+				}
 			}
-
-			await this.#knownStore.upsert(runId, turn, resultPath, body, state, {
-				attributes: {
-					file: entry.path,
-					search: cmd.search,
-					replace: cmd.replace,
-					blocks: cmd.blocks,
-					patch,
-					warning,
-					error,
-				},
-			});
-
-			if (state === "pass" && patch) {
-				await this.#knownStore.upsert(
-					runId,
-					turn,
-					entry.path,
-					patch,
-					entry.state,
-				);
+			if ((cmd.name === "move" || cmd.name === "copy") && cmd.to) {
+				const destScheme = KnownStore.scheme(cmd.to);
+				if (destScheme === null) {
+					console.warn(`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`);
+					return null;
+				}
 			}
 		}
-	}
 
-	async #processDelete(runId, turn, cmd) {
-		const matches = await this.#knownStore.getEntriesByPattern(
-			runId,
-			cmd.path,
-			cmd.body,
-		);
+		const scheme = cmd.name;
 
-		for (const entry of matches) {
-			const resultPath = `delete://${entry.path}`;
-			const body = `rm ${entry.path}`;
-			if (entry.scheme === null) {
-				await this.#knownStore.upsert(
-					runId,
-					turn,
-					resultPath,
-					body,
-					"proposed",
-					{
-						attributes: { path: entry.path },
-					},
-				);
-			} else {
-				await this.#knownStore.remove(runId, entry.path);
-				await this.#knownStore.upsert(runId, turn, resultPath, body, "pass", {
-					attributes: { path: entry.path },
-				});
-			}
-		}
-	}
-
-	async #processMoveCopy(runId, turn, cmd) {
-		if (!cmd.path || !cmd.to) return;
-
-		const source = await this.#knownStore.getBody(runId, cmd.path);
-		if (source === null) return;
-
-		const destScheme = KnownStore.scheme(cmd.to);
-		const isMove = cmd.name === "move";
-
-		const existing = await this.#knownStore.getBody(runId, cmd.to);
-		let warning = null;
-		if (existing !== null && destScheme !== null) {
-			warning = `Overwrote existing entry at ${cmd.to}`;
+		// Structural tags — record and return (no handler dispatch)
+		if (scheme === "summarize" || scheme === "update") {
+			return { scheme, body: cmd.body, resultPath: null, attributes: null };
 		}
 
-		const resultPath = `${cmd.name}://${cmd.path}`;
-		const verb = isMove ? "mv" : "cp";
-		const body = `${verb} ${cmd.path} ${cmd.to}`;
-		if (destScheme === null) {
-			await this.#knownStore.upsert(runId, turn, resultPath, body, "proposed", {
-				attributes: { from: cmd.path, to: cmd.to, isMove, warning },
-			});
-		} else {
-			await this.#knownStore.upsert(runId, turn, cmd.to, source, "full");
-			if (isMove) {
-				await this.#knownStore.remove(runId, cmd.path);
-			}
-			await this.#knownStore.upsert(runId, turn, resultPath, body, "pass", {
-				attributes: { from: cmd.path, to: cmd.to, isMove, warning },
-			});
+		// Unknown — deduplicated, sticky
+		if (scheme === "unknown") {
+			const existingValues = await this.#knownStore.getUnknownValues(runId);
+			if (existingValues.has(cmd.body)) return null;
+			const unknownPath = await this.#knownStore.slugPath(runId, "unknown", cmd.body);
+			await this.#knownStore.upsert(runId, turn, unknownPath, cmd.body, "full");
+			return { scheme, path: unknownPath, body: cmd.body, resultPath: unknownPath, attributes: null };
 		}
-	}
 
-	async #fetchUrl(runId, turn, rawUrl) {
-		const url = rawUrl.replace(/[?#].*$/, "").replace(/\/$/, "");
-		const existing = await this.#knownStore.getBody(runId, url);
-		if (existing !== null) return;
+		// Build the result path (where the tool result entry goes)
+		const target = cmd.path || cmd.command || cmd.question || "";
+		const resultPath = await this.#knownStore.slugPath(runId, scheme, target);
 
-		const result = await this.#hooks.action.fetch.filter(null, { url });
-		if (!result) return;
+		// Build attributes from the command's parsed fields
+		const attributes = {};
+		if (cmd.path) attributes.path = cmd.path;
+		if (cmd.body !== undefined && cmd.body !== "") attributes.body = cmd.body;
+		if (cmd.command) attributes.command = cmd.command;
+		if (cmd.question) attributes.question = cmd.question;
+		if (cmd.options) attributes.options = cmd.options;
+		if (cmd.to) attributes.to = cmd.to;
+		if (cmd.search != null) attributes.search = cmd.search;
+		if (cmd.replace != null) attributes.replace = cmd.replace;
+		if (cmd.blocks) attributes.blocks = cmd.blocks;
+		if (cmd.filter) attributes.filter = cmd.filter;
+		if (cmd.preview) attributes.preview = cmd.preview;
+		if (cmd.results) attributes.results = cmd.results;
 
-		await this.#knownStore.upsert(
-			runId,
-			turn,
-			result.url,
-			result.body,
-			"full",
-			{
-				attributes: result.attributes,
-			},
-		);
-	}
+		// Naked write (no path) → known:// slug from body
+		if (scheme === "write" && !cmd.path) {
+			if (!cmd.body) return null;
+			const knownPath = await this.#knownStore.slugPath(runId, "known", cmd.body);
+			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, "full");
+			return { scheme: "known", path: knownPath, body: cmd.body, resultPath: knownPath, attributes };
+		}
 
-	async #processSearch(rummy, query, maxResults) {
-		await this.#hooks.action.search.filter(null, {
-			query,
-			limit: maxResults || 12,
-			rummy,
+		// Record the entry
+		const body = cmd.body || cmd.command || cmd.question || "";
+		const state = this.#initialState(scheme);
+		await this.#knownStore.upsert(runId, turn, resultPath, body, state, {
+			attributes,
 		});
+
+		return {
+			scheme,
+			path: resultPath,
+			body,
+			attributes,
+			state,
+			resultPath,
+		};
+	}
+
+	/**
+	 * Initial state for a recorded command entry.
+	 * All entries start at "full". Handlers change state during dispatch.
+	 */
+	#initialState(_scheme) {
+		return "full";
 	}
 }

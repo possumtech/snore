@@ -15,10 +15,11 @@ Example: <read>https://docs.example.com/api</read>
 
 export default class WebPlugin {
 	static register(hooks) {
-		// Register search as a plugin tool
+		// Register search as a plugin tool with handler
 		hooks.tools.register("search", {
 			modes: new Set(["ask", "act"]),
 			category: "ask",
+			handler: handleSearch,
 		});
 
 		let fetcher = null;
@@ -34,36 +35,7 @@ export default class WebPlugin {
 			return sections;
 		});
 
-		// Handle search commands — plugin owns the entire operation
-		hooks.action.search.addFilter(async (_result, { query, limit, rummy }) => {
-			const results = await getFetcher().search(query, { limit: limit || 12 });
-
-			// Create https:// entries at summary state (context-domain)
-			const urls = [];
-			for (const r of results) {
-				const url = WebFetcher.cleanUrl(r.url);
-				urls.push(url);
-				await rummy.write({
-					path: url,
-					body: `${r.title}\n${r.snippet}`,
-					state: "summary",
-					attributes: { query, engine: r.engine },
-				});
-			}
-
-			// Confirmation with URL listing (result-domain, appears in messages)
-			const slugify = (await import("../../sql/functions/slugify.js")).default;
-			const listing = urls.join("\n");
-			await rummy.write({
-				path: `search://${slugify(query)}`,
-				body: `${results.length} results for "${query}"\n${listing}`,
-				state: "info",
-			});
-
-			return null;
-		});
-
-		// Handle URL fetch for read commands
+		// Handle URL fetch for <read> commands on http(s) URLs
 		hooks.action.fetch.addFilter(async (_result, { url }) => {
 			const clean = WebFetcher.cleanUrl(url);
 			const fetched = await getFetcher().fetch(clean);
@@ -83,5 +55,37 @@ export default class WebPlugin {
 				},
 			};
 		});
+
+		// Search handler — called by ToolRegistry dispatch
+		async function handleSearch(entry, rummy) {
+			const attrs = entry.attributes || {};
+			const query = attrs.path || entry.body;
+			if (!query) return;
+
+			const limit = attrs.results || 12;
+			const results = await getFetcher().search(query, { limit });
+
+			const urls = [];
+			for (const r of results) {
+				const url = WebFetcher.cleanUrl(r.url);
+				urls.push(url);
+				await rummy.write({
+					path: url,
+					body: `${r.title}\n${r.snippet}`,
+					state: "summary",
+					attributes: { query, engine: r.engine },
+				});
+			}
+
+			const slugify = (await import("../../sql/functions/slugify.js")).default;
+			const listing = urls.join("\n");
+			await rummy.store.upsert(
+				rummy.runId,
+				rummy.sequence,
+				entry.resultPath,
+				`${results.length} results for "${query}"\n${listing}`,
+				"info",
+			);
+		}
 	}
 }
