@@ -2,11 +2,9 @@ import msg from "../agent/messages.js";
 
 export default class OllamaClient {
 	#baseUrl;
-	#hooks;
 
-	constructor(baseUrl, hooks) {
+	constructor(baseUrl) {
 		this.#baseUrl = baseUrl;
-		this.#hooks = hooks;
 	}
 
 	async completion(messages, model, options = {}) {

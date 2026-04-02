@@ -238,27 +238,3 @@ CREATE TABLE IF NOT EXISTS rpc_log (
 CREATE INDEX IF NOT EXISTS idx_rpc_log_session ON rpc_log (session_id);
 CREATE INDEX IF NOT EXISTS idx_rpc_log_method ON rpc_log (method);
 
--- Provider model catalog (cached from OpenRouter /models, etc.)
-CREATE TABLE IF NOT EXISTS provider_models (
-	id TEXT PRIMARY KEY
-	, canonical_slug TEXT
-	, name TEXT
-	, description TEXT
-	, context_length INTEGER
-	, modality TEXT
-	, tokenizer TEXT
-	, instruct_type TEXT
-	, input_modalities JSON
-	, output_modalities JSON
-	, pricing_prompt REAL
-	, pricing_completion REAL
-	, pricing_input_cache_read REAL
-	, max_completion_tokens INTEGER
-	, is_moderated BOOLEAN
-	, supported_parameters JSON
-	, default_parameters JSON
-	, knowledge_cutoff TEXT
-	, expiration_date TEXT
-	, created INTEGER
-	, fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);

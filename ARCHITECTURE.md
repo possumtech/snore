@@ -1,7 +1,7 @@
 # RUMMY: Architecture Specification
 
 This document is the authoritative reference for Rummy's design. The system prompt
-files (`prompt.ask.md`, `prompt.act.md`) define model-facing behavior. This document
+file (`prompt.md`) defines model-facing behavior. This document
 defines everything else: data model, protocol, context management, plugins, and testing.
 
 ---

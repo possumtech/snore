@@ -16,9 +16,7 @@ export default class ProjectAgent {
 		this.#hooks = hooks;
 		this.#sessionManager = new SessionManager(db, hooks);
 
-		this.#llm = new LlmProvider(hooks, db);
-		const llm = this.#llm;
-		hooks.models = llm.capabilities;
+		this.#llm = new LlmProvider();
 		const knownStore = new KnownStore(db);
 
 		const turnExecutor = new TurnExecutor(db, llm, hooks, knownStore);
@@ -116,27 +114,19 @@ export default class ProjectAgent {
 
 	async getModelInfo(sessionId, alias) {
 		const resolved = LlmProvider.resolve(alias);
-		let contextSize = null;
-		try {
-			contextSize = await this.#llm.getContextSize(alias);
-		} catch {}
+		const contextSize = await this.#llm.getContextSize(alias);
 		const limit = sessionId
 			? await this.#sessionManager.getContextLimit(sessionId)
 			: null;
 		const effective = limit
 			? Math.min(limit, contextSize || limit)
 			: contextSize;
-		const row = await this.#db.get_provider_model
-			.get({ id: resolved })
-			.catch(() => null);
 		return {
 			alias,
 			model: resolved,
 			context_length: contextSize,
 			limit,
 			effective,
-			name: row?.name || null,
-			max_completion_tokens: row?.max_completion_tokens || null,
 		};
 	}
 

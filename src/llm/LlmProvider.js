@@ -1,5 +1,4 @@
 import msg from "../agent/messages.js";
-import ModelCapabilities from "./ModelCapabilities.js";
 import OllamaClient from "./OllamaClient.js";
 import OpenAiClient from "./OpenAiClient.js";
 import OpenRouterClient from "./OpenRouterClient.js";
@@ -8,28 +7,14 @@ export default class LlmProvider {
 	#openRouter;
 	#ollama;
 	#openAi;
-	#capabilities;
-	#hooks;
-	#db;
-
-	constructor(hooks, db) {
-		this.#hooks = hooks;
-		this.#db = db;
-		this.#capabilities = new ModelCapabilities();
-	}
 
 	#getOpenRouter() {
-		this.#openRouter ??= new OpenRouterClient(
-			process.env.OPENROUTER_API_KEY,
-			this.#hooks,
-			this.#capabilities,
-			this.#db,
-		);
+		this.#openRouter ??= new OpenRouterClient(process.env.OPENROUTER_API_KEY);
 		return this.#openRouter;
 	}
 
 	#getOllama() {
-		this.#ollama ??= new OllamaClient(process.env.OLLAMA_BASE_URL, this.#hooks);
+		this.#ollama ??= new OllamaClient(process.env.OLLAMA_BASE_URL);
 		return this.#ollama;
 	}
 
@@ -41,10 +26,6 @@ export default class LlmProvider {
 			this.#openAi = new OpenAiClient(baseUrl, process.env.OPENAI_API_KEY);
 		}
 		return this.#openAi;
-	}
-
-	get capabilities() {
-		return this.#capabilities;
 	}
 
 	static resolve(alias) {

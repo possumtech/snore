@@ -22,7 +22,7 @@ export default class ClientConnection {
 		this.#hooks = hooks;
 		this.#rpcRegistry = hooks.rpc.registry;
 		this.#projectAgent = new ProjectAgent(db, hooks);
-		this.#modelAgent = new ModelAgent(db, hooks);
+		this.#modelAgent = new ModelAgent();
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
 
