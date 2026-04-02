@@ -657,7 +657,9 @@ export default class TurnExecutor {
 		if (matches.length === 0) {
 			const resultPath = `write://${cmd.path}`;
 			await this.#knownStore.upsert(
-				runId, turn, resultPath,
+				runId,
+				turn,
+				resultPath,
 				`${cmd.path} — not found in context. Use <read> to load it first.`,
 				"error",
 				{ meta: { file: cmd.path, error: "not found" } },
@@ -867,19 +869,26 @@ export default class TurnExecutor {
 		});
 		if (!result) return;
 
-		// Limit results if requested
-		let { value } = result;
-		if (result.meta?.results && limit < result.meta.results.length) {
-			const limited = result.meta.results.slice(0, limit);
-			const listing = limited
-				.map((r) => `${r.title}\n  ${r.url}\n  ${r.snippet}`)
-				.join("\n\n");
-			value = `${limited.length} results for "${query}"\n\n${listing}`;
+		const results = result.meta?.results || [];
+
+		// Create https:// entries at summary state for each result
+		for (const r of results) {
+			const url = r.url.replace(/[?#].*$/, "").replace(/\/$/, "");
+			const snippet = `${r.title}\n${r.snippet}`;
+			await this.#knownStore.upsert(runId, turn, url, snippet, "summary", {
+				meta: { query, engine: r.engine },
+			});
 		}
 
-		const resultPath = await this.#knownStore.slugPath(runId, "search", query);
-		await this.#knownStore.upsert(runId, turn, resultPath, value, "info", {
-			meta: result.meta,
-		});
+		// Confirmation entry
+		const confirmPath = await this.#knownStore.slugPath(runId, "search", query);
+		await this.#knownStore.upsert(
+			runId,
+			turn,
+			confirmPath,
+			`${results.length} results for "${query}"`,
+			"info",
+			{ meta: { query, count: results.length } },
+		);
 	}
 }

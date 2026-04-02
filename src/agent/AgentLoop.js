@@ -487,7 +487,12 @@ export default class AgentLoop {
 
 		if (action === "accept") {
 			const meta = await this.#knownStore.getMeta(runId, path);
-			const resolvedValue = await this.#composeResolvedContent(runId, path, meta, output);
+			const resolvedValue = await this.#composeResolvedContent(
+				runId,
+				path,
+				meta,
+				output,
+			);
 			await this.#knownStore.resolve(runId, path, "pass", resolvedValue);
 
 			// If accepting a delete, erase the target path

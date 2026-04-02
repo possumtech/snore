@@ -43,8 +43,17 @@ function parseEditContent(content) {
  * key="" → path="", file="" → path="". Silent, no warnings.
  */
 const KNOWN_ATTRS = new Set([
-	"path", "value", "preview", "question", "options", "search", "replace",
-	"to", "results", "command", "warn",
+	"path",
+	"value",
+	"preview",
+	"question",
+	"options",
+	"search",
+	"replace",
+	"to",
+	"results",
+	"command",
+	"warn",
 ]);
 
 function normalizeAttrs(attrs) {
