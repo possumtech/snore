@@ -33,9 +33,7 @@ export default class AgentLoop {
 	}
 
 	async #generateAlias(modelAlias) {
-		const prefix = `${modelAlias}_`;
-		const row = await this.#db.get_next_run_alias.get({ prefix });
-		return `${prefix}${row.next_seq}`;
+		return `${modelAlias}_${Date.now()}`;
 	}
 
 	static toolsForMode(mode) {

@@ -12,7 +12,7 @@ Required: Either `<update/>` if still working or `<summary/>` if done. Never bot
 
 # How This Works
 
-Register unknowns with <unknown>(thing I don't know yet)</unknown> before acting.
+You must register unknowns with <unknown>(thing I don't know yet)</unknown> before acting.
 Save known information with <write>(thing I know now)</write>.
 Investigate with discovery tools (<read>example.txt</read>, <env>df -h</env>, <ask_user question="Which package manager?">npm, pnpm, bun</ask_user>, <search>example web search</search>) before using action tools.
 
@@ -24,7 +24,7 @@ Respond with tools. You may use multiple tools in your response.
 Example: <unknown>contents of answer.txt</unknown>
 Example: <unknown>which database adapter is configured</unknown>
 * Use read, env, ask_user, or search to investigate unknowns
-* When irrelevant or resolved, use <store/> to remove from context.
+* When irrelevant or resolved, use <delete/> to remove from context.
 
 ## <read>[path/to/file]</read> - Load a file or entry into context
 Example: <read>docs/example.txt</read>
