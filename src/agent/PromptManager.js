@@ -33,14 +33,6 @@ export default class PromptManager {
 			prompt = prompt.replace("[%TOOLS%]", toolNames);
 		}
 
-		// Plugin tool documentation injection (search, etc.)
-		if (hooks?.prompt?.tools) {
-			const pluginDocs = await hooks.prompt.tools.filter([], {});
-			if (pluginDocs.length > 0) {
-				prompt = `${prompt}\n\n${pluginDocs.join("\n\n")}`;
-			}
-		}
-
 		// Persona injection from session
 		if (db && sessionId) {
 			const session = await db.get_session_by_id.get({ id: sessionId });

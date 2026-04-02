@@ -44,6 +44,25 @@ export default class ToolRegistry {
 		}
 	}
 
+	/**
+	 * Materialize tool:// entries into the store for a run.
+	 * Called once per run (engine checks existence before writing).
+	 */
+	async materialize(store, runId, turn) {
+		for (const [name, def] of this.#tools) {
+			const path = `tool://${name}`;
+			const existing = await store.getBody(runId, path);
+			if (existing !== null) continue;
+
+			await store.upsert(runId, turn, path, def.docs || "", "full", {
+				attributes: {
+					modes: [...(def.modes || [])],
+					category: def.category || null,
+				},
+			});
+		}
+	}
+
 	get actTools() {
 		return new Set(
 			[...this.#tools.entries()]

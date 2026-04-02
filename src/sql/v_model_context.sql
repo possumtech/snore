@@ -94,6 +94,7 @@ projected AS (
 			WHEN scheme IN ('ask', 'act', 'progress') THEN 'prompt'
 			WHEN scheme = 'summarize' THEN 'structural'
 			WHEN scheme = 'update' THEN 'structural'
+			WHEN scheme = 'tool' THEN 'tool'
 			ELSE 'result'
 		END AS category
 	FROM classified
@@ -111,15 +112,16 @@ SELECT
 		PARTITION BY run_id
 		ORDER BY
 			CASE category
-				WHEN 'known' THEN 1
-				WHEN 'known_index' THEN 2
-				WHEN 'file_index' THEN 3
-				WHEN 'file_summary' THEN 4
-				WHEN 'file' THEN 5
-				WHEN 'result' THEN 6
-				WHEN 'structural' THEN 7
-				WHEN 'unknown' THEN 8
-				WHEN 'prompt' THEN 9
+				WHEN 'tool' THEN 1
+				WHEN 'known' THEN 2
+				WHEN 'known_index' THEN 3
+				WHEN 'file_index' THEN 4
+				WHEN 'file_summary' THEN 5
+				WHEN 'file' THEN 6
+				WHEN 'result' THEN 7
+				WHEN 'structural' THEN 8
+				WHEN 'unknown' THEN 9
+				WHEN 'prompt' THEN 10
 				ELSE 10
 			END
 			, id

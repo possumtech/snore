@@ -3,9 +3,12 @@ import { countTokens } from "../../agent/tokens.js";
 export default class Engine {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
-			if (!rummy.contextSize) return;
-
 			const { runId, sequence, store, db } = rummy;
+
+			// Materialize tool:// entries on first turn
+			await hooks.tools.materialize(store, runId, sequence);
+
+			if (!rummy.contextSize) return;
 
 			// Budget enforcement (skip in lite mode — no files to demote)
 			if (!rummy.noContext) {
