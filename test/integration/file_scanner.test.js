@@ -142,8 +142,16 @@ describe("FileScanner integration", () => {
 		const root = all.find((e) => e.path === "root.js");
 		const nested = all.find((e) => e.path === "src/nested.js");
 		const active = all.find((e) => e.path === "active.js");
-		assert.strictEqual(root.turn, 0, "root file gets turn 0 (no special treatment)");
+		assert.strictEqual(
+			root.turn,
+			0,
+			"root file gets turn 0 (no special treatment)",
+		);
 		assert.strictEqual(nested.turn, 0, "nested file gets turn 0");
-		assert.strictEqual(active.turn, 7, "active-constrained file gets current turn");
+		assert.strictEqual(
+			active.turn,
+			7,
+			"active-constrained file gets current turn",
+		);
 	});
 });

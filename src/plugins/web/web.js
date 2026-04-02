@@ -17,6 +17,12 @@ URLs are fetched and converted to markdown when read:
 
 export default class WebPlugin {
 	static register(hooks) {
+		// Register search as a plugin tool
+		hooks.tools.register("search", {
+			modes: new Set(["ask", "act"]),
+			category: "ask",
+		});
+
 		let fetcher = null;
 
 		const getFetcher = () => {

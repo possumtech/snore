@@ -14,7 +14,6 @@ export default class CoreToolsPlugin {
 		tools.register("read", { modes: BOTH, category: "ask" });
 		tools.register("store", { modes: BOTH, category: "ask" });
 		tools.register("env", { modes: BOTH, category: "ask" });
-		tools.register("search", { modes: BOTH, category: "ask" });
 
 		// Mutation (proposed for client resolution)
 		tools.register("write", { modes: BOTH, category: "act" });

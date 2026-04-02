@@ -134,8 +134,10 @@ export default class TurnExecutor {
 			run_id: currentRunId,
 			turn,
 		});
+		const toolNames = this.#hooks.tools.namesForMode(mode).join(" ");
 		const messages = ContextAssembler.assembleFromTurnContext(rows, {
 			type: mode,
+			tools: toolNames,
 		});
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
@@ -372,12 +374,23 @@ export default class TurnExecutor {
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				} else {
 					const total = matches.reduce((s, m) => s + m.tokens_full, 0);
-					const slug = await this.#knownStore.slugPath(currentRunId, "read", cmd.path);
+					const slug = await this.#knownStore.slugPath(
+						currentRunId,
+						"read",
+						cmd.path,
+					);
 					const paths = matches.map((m) => m.path).join(", ");
-					const content = matches.length > 0
-						? `${paths} loaded in context (${total} tokens)`
-						: `${cmd.path} not found`;
-					await this.#knownStore.upsert(currentRunId, turn, slug, content, "read");
+					const content =
+						matches.length > 0
+							? `${paths} loaded in context (${total} tokens)`
+							: `${cmd.path} not found`;
+					await this.#knownStore.upsert(
+						currentRunId,
+						turn,
+						slug,
+						content,
+						"read",
+					);
 				}
 				continue;
 			}
@@ -402,12 +415,23 @@ export default class TurnExecutor {
 				if (isPattern) {
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				} else {
-					const slug = await this.#knownStore.slugPath(currentRunId, "store", cmd.path);
+					const slug = await this.#knownStore.slugPath(
+						currentRunId,
+						"store",
+						cmd.path,
+					);
 					const paths = matches.map((m) => m.path).join(", ");
-					const content = matches.length > 0
-						? `${paths} removed from context. Use <read> to restore.`
-						: `${cmd.path} not found`;
-					await this.#knownStore.upsert(currentRunId, turn, slug, content, "stored");
+					const content =
+						matches.length > 0
+							? `${paths} removed from context. Use <read> to restore.`
+							: `${cmd.path} not found`;
+					await this.#knownStore.upsert(
+						currentRunId,
+						turn,
+						slug,
+						content,
+						"stored",
+					);
 				}
 				continue;
 			}

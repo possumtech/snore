@@ -56,6 +56,12 @@ Example: <delete path="src/config.js"/>
 Example: <delete path="unknown://42"/>
 * <delete/> removes the file or entry from context and deletes it PERMANENTLY
 
+## <copy path="[path/to/origin"]>[path/to/destination]</copy> - Copy a file or entry
+Example: <copy path="docs/example.txt">docs/example_copy.txt</copy>
+
+## <move path="[path/to/origin"]>[path/to/destination]</copy> - Move a file or entry
+Example: <move path="known://active_user">known://inactive_user</move>
+
 ## <run>[command]</run> - Run a shell command with side effects
 Example: <run>npm install</run>
 
@@ -70,14 +76,10 @@ Example: <run>npm install</run>
 * Keep brief (<= 80 characters)
 
 # OPTIONAL: Advanced Tool Command Patterns
-Example: <read>https://en.wikipedia.org/wiki/Donald_Rumsfeld</read> (read web pages)
-Example: <copy path="docs/example.txt">docs/example_copy.txt</copy> (copy files and entries)
-Example: <move path="known://active_user">known://inactive_user</move> (move files and entries)
-
 * Every path and value attribute can accept a pattern
 * Value attributes can filter by content
 * Patterns can be jsonpath, xpath, regex, or globs
-* You can use patterns and paths with <store /> and <read /> to offload and restore unlimited
+* You can use patterns and paths with <store /> and <read /> to offload and restore unlimited files and entries.
 * Adding `preview` attribute will only show matching paths with token counts without making changes
 Example: <read path="src/**/*.js" value=".*\bconst\b.*" preview/> (list js files with const declarations)
 Example: <write path="known://api_*" value="v1">v2</write> (update all api entries to v2 in known)

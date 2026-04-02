@@ -54,7 +54,10 @@ async function assembleMessages(tdb, store) {
 		run_id: RUN_ID,
 		turn: TURN,
 	});
-	return ContextAssembler.assembleFromTurnContext(rows, { type: "ask" });
+	return ContextAssembler.assembleFromTurnContext(rows, {
+		type: "ask",
+		tools: "unknown read env ask_user write move copy store delete update summary",
+	});
 }
 
 describe("Message assembly", () => {
@@ -122,6 +125,7 @@ describe("Message assembly", () => {
 		});
 		const messages = ContextAssembler.assembleFromTurnContext(rows, {
 			type: "act",
+			tools: "unknown read env ask_user write move copy store delete run update summary",
 		});
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("<act tools="), "should have <act> tag");

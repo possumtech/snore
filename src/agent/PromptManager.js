@@ -23,12 +23,21 @@ export default class PromptManager {
 			promptCache.set("system", base);
 		}
 
-		// Plugin tool documentation injection
 		let prompt = base;
+
+		// Replace [%TOOLS%] with registered tool names
+		if (hooks?.tools) {
+			const toolNames = [...hooks.tools.names]
+				.map((t) => `\`<${t}/>\``)
+				.join(" ");
+			prompt = prompt.replace("[%TOOLS%]", toolNames);
+		}
+
+		// Plugin tool documentation injection (search, etc.)
 		if (hooks?.prompt?.tools) {
-			const pluginTools = await hooks.prompt.tools.filter([], {});
-			if (pluginTools.length > 0) {
-				prompt = `${prompt}\n\n${pluginTools.join("\n\n")}`;
+			const pluginDocs = await hooks.prompt.tools.filter([], {});
+			if (pluginDocs.length > 0) {
+				prompt = `${prompt}\n\n${pluginDocs.join("\n\n")}`;
 			}
 		}
 

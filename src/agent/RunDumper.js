@@ -8,10 +8,14 @@ export default class RunDumper {
 		if (!run) return;
 
 		const entries = await db.get_known_entries.all({ run_id: runId });
-		const turns = [...new Set(entries.filter((e) => e.turn > 0).map((e) => e.turn))].sort((a, b) => a - b);
+		const turns = [
+			...new Set(entries.filter((e) => e.turn > 0).map((e) => e.turn)),
+		].sort((a, b) => a - b);
 
 		const lines = [];
-		lines.push(`=== RUN: ${run.alias} | status: ${run.status} | turns: ${run.next_turn - 1} ===`);
+		lines.push(
+			`=== RUN: ${run.alias} | status: ${run.status} | turns: ${run.next_turn - 1} ===`,
+		);
 		lines.push("");
 
 		for (const turn of turns) {
@@ -44,7 +48,9 @@ export default class RunDumper {
 				try {
 					const data = JSON.parse(model.value);
 					const usage = data.usage || {};
-					lines.push(`[model] ${usage.prompt_tokens || 0} prompt / ${usage.completion_tokens || 0} completion tokens`);
+					lines.push(
+						`[model] ${usage.prompt_tokens || 0} prompt / ${usage.completion_tokens || 0} completion tokens`,
+					);
 					if (data.reasoning_content) {
 						lines.push(`[reasoning]`);
 						lines.push(data.reasoning_content);
@@ -54,7 +60,17 @@ export default class RunDumper {
 
 			// Tool results and other entries
 			const others = turnEntries.filter(
-				(e) => !["system", "user", "assistant", "model", "prompt", "act", "ask", "progress"].includes(e.scheme),
+				(e) =>
+					![
+						"system",
+						"user",
+						"assistant",
+						"model",
+						"prompt",
+						"act",
+						"ask",
+						"progress",
+					].includes(e.scheme),
 			);
 			for (const e of others) {
 				const val = e.value ? ` ${e.value.slice(0, 200)}` : "";

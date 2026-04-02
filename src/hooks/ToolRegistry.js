@@ -27,6 +27,12 @@ export default class ToolRegistry {
 		return [...this.#tools.keys()];
 	}
 
+	namesForMode(mode) {
+		return [...this.#tools.entries()]
+			.filter(([, def]) => def.modes.has(mode))
+			.map(([name]) => name);
+	}
+
 	entries() {
 		return this.#tools.entries();
 	}

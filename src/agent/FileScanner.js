@@ -156,14 +156,9 @@ export default class FileScanner {
 				if (current !== null) {
 					const constraint = constraints.get(relPath) || null;
 					const turn = constraint === "active" ? currentTurn : entry?.turn || 0;
-					await this.#knownStore.upsert(
-						runId,
-						turn,
-						relPath,
-						current,
-						"full",
-						{ meta: { symbols: symbolText, constraint } },
-					);
+					await this.#knownStore.upsert(runId, turn, relPath, current, "full", {
+						meta: { symbols: symbolText, constraint },
+					});
 				}
 			}
 		}

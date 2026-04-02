@@ -1,5 +1,4 @@
 import { extname } from "node:path";
-import AgentLoop from "./AgentLoop.js";
 
 const EXT_LANG = {
 	".js": "js",
@@ -186,7 +185,7 @@ export default class ContextAssembler {
 		return messages;
 	}
 
-	static assembleFromTurnContext(rows, { type = "ask" } = {}) {
+	static assembleFromTurnContext(rows, { type = "ask", tools = "" } = {}) {
 		let instructions = "";
 		let continuation = null;
 
@@ -255,8 +254,9 @@ export default class ContextAssembler {
 						prompt = row.content;
 						promptMode = row.scheme;
 						promptOrdinal = row.ordinal;
-					}
-					if (row.scheme !== "prompt") {
+						// Current prompt renders as <ask>/<act> tag, not in messages
+					} else if (row.scheme === "progress") {
+						// Progress entries go in messages as history
 						messageEntries.push({
 							path: row.path,
 							scheme: row.scheme,
@@ -358,10 +358,10 @@ export default class ContextAssembler {
 		}
 
 		const effectiveMode = promptMode || type;
-		const tools = AgentLoop.toolsForMode(effectiveMode);
-		const warn = effectiveMode === "ask"
-			? ' warn="File and system modification prohibited on this turn."'
-			: "";
+		const warn =
+			effectiveMode === "ask"
+				? ' warn="File and system modification prohibited on this turn."'
+				: "";
 		const injected =
 			prompt && continuation && promptOrdinal > continuationOrdinal;
 		if (injected) {
@@ -371,7 +371,9 @@ export default class ContextAssembler {
 			);
 		} else if (continuation) {
 			// Continuation turn: progress
-			userParts.push(`<progress tools="${tools}"${warn}>${continuation}</progress>`);
+			userParts.push(
+				`<progress tools="${tools}"${warn}>${continuation}</progress>`,
+			);
 		} else if (prompt && promptMode) {
 			// First turn: human prompt
 			userParts.push(

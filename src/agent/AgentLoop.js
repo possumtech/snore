@@ -38,12 +38,6 @@ export default class AgentLoop {
 		return `${modelAlias}_${Date.now()}`;
 	}
 
-	static toolsForMode(mode) {
-		return mode === "act"
-			? "unknown read env ask_user search write move copy store delete run update summary"
-			: "unknown read env ask_user search write move copy drop delete update summary";
-	}
-
 	#buildContinuationPrompt(_type, turn, maxTurns, contextSize, report) {
 		const parts = [];
 
@@ -453,7 +447,8 @@ export default class AgentLoop {
 			// Log the error to known_entries so it's queryable
 			try {
 				await this.#knownStore.upsert(
-					currentRunId, loopIteration,
+					currentRunId,
+					loopIteration,
 					`error://${loopIteration}`,
 					`${err.message}\n${err.stack}`,
 					"info",
