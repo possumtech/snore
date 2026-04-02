@@ -196,18 +196,103 @@ If any are missed, entries appear or disappear incorrectly.
 
 ---
 
-## Todo: Search as Plugin Model
+## Todo: Plugin Tool Architecture
 
-Search demonstrates the plugin architecture for tool registration,
-documentation injection, and scheme handling.
+### Vision
 
-- [ ] **Web plugin registers `search` tool** — �� done
-- [ ] **Web plugin injects tool docs** — ✓ done
-- [ ] **Search results as `https://` entries** — part of state simplification
-- [ ] **`results` attribute** — ✓ done (default 12, model can request fewer)
-- [ ] **URL fetch via `<read>`** — ✓ done (web plugin handles http/https reads)
-- [ ] **Plugin creates new schemes** — search:// confirmation entry
-- [ ] **Plugin extends `<read>` behavior** — URL detection routes to WebFetcher
+Every tool is a handler. Core tools ship as built-in handlers. Plugins
+register their own. TurnExecutor becomes a dispatcher, not an implementer.
+
+```js
+tools.register("search", {
+    modes: new Set(["ask", "act"]),
+    category: "ask",
+    handler: async (cmd, rummy) => {
+        const results = await fetchResults(cmd.path);
+        for (const r of results) {
+            rummy.write({ path: r.url, value: r.snippet, state: "summary" });
+        }
+        rummy.write({ value: `${results.length} results for "${cmd.path}"` });
+    },
+});
+```
+
+### RummyContext tool methods (model-level)
+
+Plugins call the same operations the model calls, scoped to the current
+run and turn:
+
+| Method | What it does |
+|--------|-------------|
+| `rummy.write({ path, value, state })` | Create or update an entry |
+| `rummy.read(path)` | Promote entry to `full` state |
+| `rummy.store(path)` | Demote entry to `stored` state |
+| `rummy.delete(path)` | Remove entry permanently |
+| `rummy.move(from, to)` | Move entry |
+| `rummy.copy(from, to)` | Copy entry |
+
+### RummyContext plugin methods (superset)
+
+Additional capabilities beyond what the model can do:
+
+| Method | What it does |
+|--------|-------------|
+| `rummy.emit(event, payload)` | Fire hook events (notifications, UI) |
+| `rummy.query(preparedName, params)` | Read-only DB access |
+| `rummy.getMeta(path)` | Read entry metadata |
+| `rummy.getEntries(pattern)` | Pattern match without promotion |
+| `rummy.log(message)` | Structured logging to audit trail |
+
+Model tools go through validation and mode enforcement. Plugin tools
+bypass mode enforcement but still validate schemes.
+
+### TurnExecutor dispatch
+
+The command dispatch becomes registry-driven:
+
+```js
+const tool = this.#hooks.tools.get(cmd.name);
+if (tool?.handler) {
+    await tool.handler(cmd, rummy);
+} else {
+    // structural tools (update, summarize, unknown)
+}
+```
+
+The giant if/else chain in TurnExecutor is replaced by handler lookups.
+Each tool owns its entire operation — parse, validate, store, confirm.
+
+### Implementation phases
+
+#### Phase 1: Search as proof-of-concept
+
+- [x] **Web plugin registers `search` tool** — ToolRegistry
+- [x] **Web plugin injects tool docs** — hooks.prompt.tools filter
+- [x] **Search results as `https://` entries** — at `summary` state
+- [x] **`results` attribute** — default 12
+- [x] **URL fetch via `<read>`** — web plugin handles http/https
+- [ ] **RummyContext tool methods** — add write/read/store/delete to RummyContext
+- [ ] **Thread RummyContext through action filters** — all hooks see the same context
+- [ ] **Move search storage into web plugin** — plugin uses `rummy.write()`,
+      TurnExecutor's `#processSearch` becomes a one-line dispatch
+- [ ] **Tool handler registration** — `handler` field on tool definition
+- [ ] **TurnExecutor dispatches to handler** — for search only initially
+
+#### Phase 2: Migrate core tools to handlers
+
+- [ ] **read handler** — move `<read>` logic from TurnExecutor if/else to handler
+- [ ] **store handler** — same
+- [ ] **write handler** — move `#processEdit` to handler
+- [ ] **delete handler** — move `#processDelete` to handler
+- [ ] **move/copy handler** — move `#processMoveCopy` to handler
+- [ ] **env/run handler** — move proposed entry creation to handler
+- [ ] **TurnExecutor becomes pure dispatcher** — no tool-specific code
+
+#### Phase 3: Plugin ecosystem
+
+- [ ] **Plugin README.md per folder** — developer documentation
+- [ ] **Example plugin template** — minimal tool registration + handler
+- [ ] **Handler contract documentation** — what a handler receives, what it can do
 
 ---
 

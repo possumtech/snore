@@ -772,23 +772,42 @@ Test files are skipped. Plugins are loaded in directory order, then alphabetical
 
 #### Tool Registry (`hooks.tools`)
 
-Register XML tool commands the model can invoke:
+Register XML tool commands the model can invoke. Tools with handlers own
+their entire operation — TurnExecutor dispatches to the handler instead of
+using hardcoded logic.
 
 ```js
-hooks.tools.register("weather", {
+hooks.tools.register("search", {
     modes: new Set(["ask", "act"]),
-    category: "act",
+    category: "ask",
+    handler: async (cmd, rummy) => {
+        const results = await fetchResults(cmd.path, cmd.results);
+        for (const r of results) {
+            rummy.write({ path: r.url, value: `${r.title}\n${r.snippet}`, state: "summary" });
+        }
+        rummy.write({ value: `${results.length} results for "${cmd.path}"` });
+    },
 });
 ```
 
-The model writes `<weather city="London"/>` in its response. The server parses
-the tag, creates a `weather://N` known entry as `proposed`, and the client
-resolves it.
-
-- `modes` — which modes this tool is available in (per-prompt via `prompt://` entry's `meta.mode`).
+- `modes` — which modes this tool is available in.
 - `category` — `"ask"` (direct execution), `"act"` (proposed for client), `"structural"` (metadata).
+- `handler` — async function receiving the parsed command and RummyContext. If present, TurnExecutor dispatches to it. If absent, TurnExecutor uses built-in logic.
 
-**Methods**: `get(name)`, `has(name)`, `actTools` (getter), `names` (getter), `entries()`.
+Plugins call the same operations the model calls via RummyContext:
+
+| Model tool | Plugin method | Effect |
+|-----------|--------------|--------|
+| `<write>` | `rummy.write({ path, value, state })` | Create/update entry |
+| `<read>` | `rummy.read(path)` | Promote to `full` |
+| `<store>` | `rummy.store(path)` | Demote to `stored` |
+| `<delete>` | `rummy.delete(path)` | Remove permanently |
+
+Plugin-only methods (superset): `rummy.emit()`, `rummy.query()`,
+`rummy.getMeta()`, `rummy.getEntries()`, `rummy.log()`.
+
+**Methods**: `get(name)`, `has(name)`, `actTools` (getter), `names` (getter),
+`namesForMode(mode)`, `entries()`.
 
 #### RPC Registry (`hooks.rpc.registry`)
 
