@@ -374,11 +374,7 @@ export default class TurnExecutor {
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				} else {
 					const total = matches.reduce((s, m) => s + m.tokens_full, 0);
-					const slug = await this.#knownStore.slugPath(
-						currentRunId,
-						"read",
-						cmd.path,
-					);
+					const slug = `read://${cmd.path}`;
 					const paths = matches.map((m) => m.path).join(", ");
 					const content =
 						matches.length > 0
@@ -415,11 +411,7 @@ export default class TurnExecutor {
 				if (isPattern) {
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				} else {
-					const slug = await this.#knownStore.slugPath(
-						currentRunId,
-						"store",
-						cmd.path,
-					);
+					const slug = `store://${cmd.path}`;
 					const paths = matches.map((m) => m.path).join(", ");
 					const content =
 						matches.length > 0
@@ -549,19 +541,16 @@ export default class TurnExecutor {
 			const scheme = KnownStore.scheme(cmd.path);
 			if (scheme === null) {
 				// Bare file path → proposed for client review
-				const resultPath = await this.#knownStore.slugPath(
-					currentRunId,
-					"write",
-					cmd.path,
-				);
+				const resultPath = `write://${cmd.path}`;
+				const tokenEst = ((cmd.value?.length || 0) / 4) | 0;
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					resultPath,
-					cmd.value,
+					`${cmd.path} (new file, ${tokenEst} tokens)`,
 					"proposed",
 					{
-						meta: { file: cmd.path },
+						meta: { file: cmd.path, content: cmd.value },
 					},
 				);
 			} else if (cmd.filter || cmd.path.includes("*")) {
@@ -666,34 +655,37 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.slugPath(
-				runId,
-				"write",
-				entry.path,
-			);
+			const resultPath = `write://${entry.path}`;
 			let patch = null;
 			let warning = null;
 			let error = null;
+			let searchText = null;
+			let replaceText = null;
 
 			if (cmd.search != null) {
 				// Attribute mode: search + replace (literal)
+				searchText = cmd.search;
+				replaceText = cmd.replace ?? "";
 				const isRegex = /[+(){}|\\$^*?[\]]/.test(cmd.search);
 				if (isRegex) {
 					const re = new RegExp(cmd.search, "g");
 					if (re.test(entry.value)) {
-						patch = entry.value.replace(re, cmd.replace ?? "");
+						patch = entry.value.replace(re, replaceText);
 					} else {
 						error = `Search pattern not found in ${entry.path}`;
 					}
 				} else if (entry.value.includes(cmd.search)) {
-					patch = entry.value.replaceAll(cmd.search, cmd.replace ?? "");
+					patch = entry.value.replaceAll(cmd.search, replaceText);
 				} else {
 					error = `"${cmd.search}" not found in ${entry.path}`;
 				}
 			} else if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
 				patch = cmd.blocks[0].replace;
+				replaceText = cmd.blocks[0].replace;
 			} else if (entry.value && cmd.blocks?.length > 0) {
 				const block = cmd.blocks[0];
+				searchText = block.search;
+				replaceText = block.replace;
 				const matched = HeuristicMatcher.matchAndPatch(
 					entry.path,
 					entry.value,
@@ -712,24 +704,32 @@ export default class TurnExecutor {
 					? "proposed"
 					: "pass";
 
-			await this.#knownStore.upsert(
-				runId,
-				turn,
-				resultPath,
-				patch || "",
-				state,
-				{
-					meta: {
-						file: entry.path,
-						search: cmd.search,
-						replace: cmd.replace,
-						blocks: cmd.blocks,
-						patch,
-						warning,
-						error,
-					},
+			// Compose result content: token delta + SEARCH/REPLACE block
+			const beforeTokens = entry.tokens_full || 0;
+			const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
+			let content;
+			if (error) {
+				const block = searchText
+					? `\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
+					: "";
+				content = `${entry.path} — ${error}${block}`;
+			} else if (searchText) {
+				content = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`;
+			} else {
+				content = `${entry.path} (${beforeTokens} → ${afterTokens} tokens)`;
+			}
+
+			await this.#knownStore.upsert(runId, turn, resultPath, content, state, {
+				meta: {
+					file: entry.path,
+					search: cmd.search,
+					replace: cmd.replace,
+					blocks: cmd.blocks,
+					patch,
+					warning,
+					error,
 				},
-			);
+			});
 
 			// For non-file entries, apply the edit directly
 			if (state === "pass" && patch) {
@@ -752,12 +752,7 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.slugPath(
-				runId,
-				"delete",
-				entry.path,
-			);
-
+			const resultPath = `delete://${entry.path}`;
 			const content = `rm ${entry.path}`;
 			if (entry.scheme === null) {
 				// File → proposed (client confirms deletion)
@@ -805,11 +800,7 @@ export default class TurnExecutor {
 			warning = `Overwrote existing entry at ${cmd.to}`;
 		}
 
-		const resultPath = await this.#knownStore.slugPath(
-			runId,
-			cmd.name,
-			cmd.path,
-		);
+		const resultPath = `${cmd.name}://${cmd.path}`;
 
 		// File destinations → proposed (client writes to disk)
 		// K/V destinations → pass (immediate)

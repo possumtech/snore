@@ -81,6 +81,20 @@ function resolveCommand(name, attrs, body) {
 				};
 			}
 		}
+		// JSON { search, replace } healing — models sometimes produce this
+		if (trimmed.startsWith("{") && trimmed.includes('"search"')) {
+			try {
+				const json = JSON.parse(trimmed);
+				if (json.search != null) {
+					return {
+						name,
+						path: a.path,
+						search: json.search,
+						replace: json.replace ?? "",
+					};
+				}
+			} catch {}
+		}
 		// search+replace attrs → attribute edit mode
 		if (a.search) {
 			const replace = a.replace ?? trimmed;

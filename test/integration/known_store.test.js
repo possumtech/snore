@@ -188,18 +188,18 @@ describe("KnownStore integration", () => {
 	});
 
 	describe("slug path generation", () => {
-		it("generates content-derived slugs", async () => {
-			const key1 = await store.slugPath(RUN_ID, "search", "src/app.js");
-			assert.strictEqual(key1, "search://srcappjs");
+		it("generates URI-encoded slugs", async () => {
+			const key1 = await store.slugPath(RUN_ID, "search", "Tom Petty death");
+			assert.strictEqual(key1, "search://Tom%20Petty%20death");
 		});
 
-		it("handles collisions with integer suffix", async () => {
-			await store.upsert(RUN_ID, 1, "search://srcappjs", "", "info");
-			const key2 = await store.slugPath(RUN_ID, "search", "src/app.js");
-			assert.strictEqual(key2, "search://srcappjs2");
+		it("handles collisions with timestamp suffix", async () => {
+			await store.upsert(RUN_ID, 1, "search://Tom%20Petty%20death", "", "info");
+			const key2 = await store.slugPath(RUN_ID, "search", "Tom Petty death");
+			assert.match(key2, /^search:\/\/Tom%20Petty%20death_\d+$/);
 		});
 
-		it("falls back to sequential for empty content", async () => {
+		it("uses timestamp for empty content", async () => {
 			const key1 = await store.slugPath(RUN_ID, "env", "");
 			assert.match(key1, /^env:\/\/\d+$/);
 		});
