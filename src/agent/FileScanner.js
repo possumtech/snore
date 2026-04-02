@@ -143,7 +143,7 @@ export default class FileScanner {
 				state,
 				{
 					hash,
-					meta: { constraint },
+					attributes: { constraint },
 					updatedAt: new Date(mtime).toISOString(),
 				},
 			);
@@ -159,7 +159,7 @@ export default class FileScanner {
 				const symbolText = formatSymbols(symbols);
 				if (!symbolText) continue;
 				const _entry = existing.find((e) => e.path === relPath);
-				const current = await this.#knownStore.getValue(runId, relPath);
+				const current = await this.#knownStore.getBody(runId, relPath);
 				if (current !== null) {
 					const constraint = constraints.get(relPath) || null;
 					const row = await this.#db.get_entry_state.get({
@@ -175,7 +175,7 @@ export default class FileScanner {
 						current,
 						state,
 						{
-							meta: { symbols: symbolText, constraint },
+							attributes: { symbols: symbolText, constraint },
 						},
 					);
 				}
@@ -208,7 +208,7 @@ export default class FileScanner {
 				constraint === "active" ? "full" : "index",
 				{
 					hash: hashContent(content),
-					meta: { constraint },
+					attributes: { constraint },
 					updatedAt: new Date(mtime).toISOString(),
 				},
 			);

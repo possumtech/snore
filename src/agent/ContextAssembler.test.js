@@ -28,7 +28,7 @@ describe("ContextAssembler", () => {
 		it("omits user message when prompt exists in context", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
-				context: [{ path: "/:prompt:1", state: "prompt", value: "task" }],
+				context: [{ path: "/:prompt:1", state: "prompt", body: "task" }],
 				userMessage: "hello",
 			});
 			assert.equal(messages.length, 1);
@@ -43,7 +43,7 @@ describe("ContextAssembler", () => {
 					{
 						path: "src/app.js",
 						state: "file",
-						value: "const x = 1;",
+						body: "const x = 1;",
 						tokens: 5,
 					},
 				],
@@ -57,9 +57,7 @@ describe("ContextAssembler", () => {
 		it("renders active known as bullet list", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
-				context: [
-					{ path: "/:known:auth", state: "full", value: "OAuth2 PKCE" },
-				],
+				context: [{ path: "/:known:auth", state: "full", body: "OAuth2 PKCE" }],
 				userMessage: "",
 			});
 			assert.ok(messages[0].content.includes("* /:known:auth — OAuth2 PKCE"));
@@ -69,8 +67,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ path: "/:known:a", state: "stored", value: "" },
-					{ path: "/:known:b", state: "stored", value: "" },
+					{ path: "/:known:a", state: "stored", body: "" },
+					{ path: "/:known:b", state: "stored", body: "" },
 				],
 				userMessage: "",
 			});
@@ -81,8 +79,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ path: "src/a.js", state: "file:path", value: "" },
-					{ path: "src/b.js", state: "file:path", value: "" },
+					{ path: "src/a.js", state: "file:path", body: "" },
+					{ path: "src/b.js", state: "file:path", body: "" },
 				],
 				userMessage: "",
 			});
@@ -93,7 +91,7 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ path: "/:unknown:1", state: "unknown", value: "which db adapter?" },
+					{ path: "/:unknown:1", state: "unknown", body: "which db adapter?" },
 				],
 				userMessage: "",
 			});
@@ -107,14 +105,14 @@ describe("ContextAssembler", () => {
 					{
 						path: "/:read:1",
 						state: "pass",
-						value: "",
+						body: "",
 						tool: "read",
 						target: "src/a.js",
 					},
 					{
 						path: "/:summary:1",
 						state: "summary",
-						value: "Did stuff.",
+						body: "Did stuff.",
 						tool: "summary",
 						target: "",
 					},
@@ -133,7 +131,7 @@ describe("ContextAssembler", () => {
 					{
 						path: "src/utils.js",
 						state: "file:summary",
-						value: "foo(a, b)\nbar()",
+						body: "foo(a, b)\nbar()",
 					},
 				],
 				userMessage: "",
@@ -146,8 +144,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ path: "a.js", state: "file:readonly", value: "x", tokens: 1 },
-					{ path: "b.js", state: "file:active", value: "y", tokens: 1 },
+					{ path: "a.js", state: "file:readonly", body: "x", tokens: 1 },
+					{ path: "b.js", state: "file:active", body: "y", tokens: 1 },
 				],
 				userMessage: "",
 			});
@@ -160,8 +158,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ path: "/:known:x", state: "full", value: "v" },
-					{ path: "/:prompt:1", state: "prompt", value: "Do the thing" },
+					{ path: "/:known:x", state: "full", body: "v" },
+					{ path: "/:prompt:1", state: "prompt", body: "Do the thing" },
 				],
 				userMessage: "",
 			});
@@ -180,18 +178,18 @@ describe("ContextAssembler", () => {
 					path: "system://prompt",
 					scheme: "system",
 					fidelity: "full",
-					content: "You are helpful.",
+					body: "You are helpful.",
 					tokens: 5,
-					meta: null,
+					attributes: null,
 				},
 				{
 					ordinal: 1,
 					path: "known://auth",
 					scheme: "known",
 					fidelity: "full",
-					content: "JWT",
+					body: "JWT",
 					tokens: 1,
-					meta: null,
+					attributes: null,
 					category: "known",
 				},
 				{
@@ -199,9 +197,9 @@ describe("ContextAssembler", () => {
 					path: "src/app.js",
 					scheme: null,
 					fidelity: "full",
-					content: "const x = 1;",
+					body: "const x = 1;",
 					tokens: 5,
-					meta: null,
+					attributes: null,
 					category: "file",
 				},
 				{
@@ -209,9 +207,9 @@ describe("ContextAssembler", () => {
 					path: "progress://2",
 					scheme: "progress",
 					fidelity: "full",
-					content: "Turn 2/15",
+					body: "Turn 2/15",
 					tokens: 3,
-					meta: null,
+					attributes: null,
 					category: "prompt",
 				},
 			];
@@ -235,18 +233,18 @@ describe("ContextAssembler", () => {
 					path: "system://prompt",
 					scheme: "system",
 					fidelity: "full",
-					content: "sys",
+					body: "sys",
 					tokens: 1,
-					meta: null,
+					attributes: null,
 				},
 				{
 					ordinal: 1,
 					path: "ask://1",
 					scheme: "ask",
 					fidelity: "full",
-					content: "User prompt",
+					body: "User prompt",
 					tokens: 3,
-					meta: null,
+					attributes: null,
 					category: "prompt",
 				},
 			];
@@ -265,18 +263,18 @@ describe("ContextAssembler", () => {
 					path: "system://prompt",
 					scheme: "system",
 					fidelity: "full",
-					content: "sys",
+					body: "sys",
 					tokens: 1,
-					meta: null,
+					attributes: null,
 				},
 				{
 					ordinal: 1,
 					path: "edit://1",
 					scheme: "edit",
 					fidelity: "full",
-					content: "",
+					body: "",
 					tokens: 0,
-					meta: JSON.stringify({
+					attributes: JSON.stringify({
 						tool: "edit",
 						target: "app.js",
 						state: "pass",
@@ -288,9 +286,9 @@ describe("ContextAssembler", () => {
 					path: "summary://1",
 					scheme: "summary",
 					fidelity: "full",
-					content: "Fixed it",
+					body: "Fixed it",
 					tokens: 2,
-					meta: JSON.stringify({
+					attributes: JSON.stringify({
 						tool: "summary",
 						target: "",
 						state: "summary",
@@ -323,9 +321,9 @@ describe("ContextAssembler", () => {
 					path: "system://prompt",
 					scheme: "system",
 					fidelity: "full",
-					content: "sys",
+					body: "sys",
 					tokens: 1,
-					meta: null,
+					attributes: null,
 				},
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
@@ -342,18 +340,18 @@ describe("ContextAssembler", () => {
 					path: "system://prompt",
 					scheme: "system",
 					fidelity: "full",
-					content: "sys",
+					body: "sys",
 					tokens: 1,
-					meta: null,
+					attributes: null,
 				},
 				{
 					ordinal: 1,
 					path: "src/utils.js",
 					scheme: null,
 					fidelity: "index",
-					content: "",
+					body: "",
 					tokens: 0,
-					meta: null,
+					attributes: null,
 					category: "file_index",
 				},
 				{
@@ -361,9 +359,9 @@ describe("ContextAssembler", () => {
 					path: "known://old",
 					scheme: "known",
 					fidelity: "index",
-					content: "",
+					body: "",
 					tokens: 0,
-					meta: null,
+					attributes: null,
 					category: "known_index",
 				},
 			];

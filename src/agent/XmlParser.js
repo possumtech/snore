@@ -94,6 +94,11 @@ const KNOWN_ATTRS = new Set([
 
 function normalizeAttrs(attrs) {
 	const out = { ...attrs };
+	// Heal legacy attr names
+	if ("value" in out && !("body" in out)) {
+		out.body = out.value;
+		delete out.value;
+	}
 	// If no path, treat first unrecognized attribute value as path
 	if (!out.path) {
 		for (const [k, v] of Object.entries(out)) {
@@ -285,7 +290,9 @@ export default class XmlParser {
 		// Flush any unclosed tool tag
 		if (current) {
 			warnings.push(`Unclosed <${current.name}> tag — content captured anyway`);
-			commands.push(resolveCommand(current.name, current.attrs, current.rawBody));
+			commands.push(
+				resolveCommand(current.name, current.attrs, current.rawBody),
+			);
 			current = null;
 		}
 

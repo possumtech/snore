@@ -326,13 +326,13 @@ export default class AgentLoop {
 					run: currentAlias,
 					turn: result.turn,
 					status: unresolved.length > 0 ? "proposed" : "running",
-					summary: latestSummary?.value || "",
+					summary: latestSummary?.body || "",
 					history,
-					unknowns: unknowns.map((u) => ({ path: u.path, value: u.value })),
+					unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
 					proposed: unresolved.map((p) => ({
 						path: p.path,
 						type: KnownStore.toolFromPath(p.path) || "unknown",
-						meta: p.meta ? JSON.parse(p.meta) : null,
+						attributes: p.attributes ? JSON.parse(p.attributes) : null,
 					})),
 					telemetry: {
 						modelAlias: result.modelAlias,
@@ -374,7 +374,7 @@ export default class AgentLoop {
 				lastTurnReport = {
 					turn: result.turn,
 					flags: result.flags,
-					summary: latestSummary?.value || "",
+					summary: latestSummary?.body || "",
 					unknownCount: unknowns.length,
 					usage: runUsage,
 					contextDistribution: await this.#db.get_turn_distribution.all({
@@ -483,26 +483,26 @@ export default class AgentLoop {
 		const { path, action, output } = resolution;
 
 		if (action === "accept") {
-			const meta = await this.#knownStore.getMeta(runId, path);
-			const resolvedValue = await this.#composeResolvedContent(
+			const attrs = await this.#knownStore.getAttributes(runId, path);
+			const resolvedBody = await this.#composeResolvedContent(
 				runId,
 				path,
-				meta,
+				attrs,
 				output,
 			);
-			await this.#knownStore.resolve(runId, path, "pass", resolvedValue);
+			await this.#knownStore.resolve(runId, path, "pass", resolvedBody);
 
 			// If accepting a delete, erase the target path
 			if (path.startsWith("delete://")) {
-				if (meta?.path) {
-					await this.#knownStore.remove(runId, meta.path);
+				if (attrs?.path) {
+					await this.#knownStore.remove(runId, attrs.path);
 				}
 			}
 
 			// If accepting a move to file, remove the source entry
 			if (path.startsWith("move://")) {
-				if (meta?.isMove && meta?.from) {
-					await this.#knownStore.remove(runId, meta.from);
+				if (attrs?.isMove && attrs?.from) {
+					await this.#knownStore.remove(runId, attrs.from);
 				}
 			}
 		} else if (action === "reject") {
@@ -529,7 +529,7 @@ export default class AgentLoop {
 
 		// All accepted — check if model said it's done
 		const hasSummary = await this.#db.get_latest_summary.get({ run_id: runId });
-		if (hasSummary?.value) {
+		if (hasSummary?.body) {
 			await this.#db.update_run_status.run({ id: runId, status: "completed" });
 			return { run: runAlias, status: "completed" };
 		}
@@ -538,8 +538,8 @@ export default class AgentLoop {
 		const latestPrompt = await this.#db.get_latest_prompt.get({
 			run_id: runId,
 		});
-		const resumeMode = latestPrompt?.meta
-			? JSON.parse(latestPrompt.meta).mode
+		const resumeMode = latestPrompt?.attributes
+			? JSON.parse(latestPrompt.attributes).mode
 			: "ask";
 
 		const sessions = await this.#db.get_session_by_id.all({
@@ -559,18 +559,18 @@ export default class AgentLoop {
 		return this.#drainQueue(runId, runAlias, runRow.session_id, project, {});
 	}
 
-	async #composeResolvedContent(runId, path, meta, output) {
+	async #composeResolvedContent(runId, path, attrs, output) {
 		const scheme = path.split("://")[0];
 		switch (scheme) {
 			case "env":
-				return `<env>${meta?.command || ""}</env><output>${output || ""}</output>`;
+				return `<env>${attrs?.command || ""}</env><output>${output || ""}</output>`;
 			case "run":
-				return `<run>${meta?.command || ""}</run><output>${output || ""}</output>`;
+				return `<run>${attrs?.command || ""}</run><output>${output || ""}</output>`;
 			case "ask_user":
-				return `${meta?.question || ""} Answered: ${output || ""}`;
+				return `${attrs?.question || ""} Answered: ${output || ""}`;
 			case "write": {
 				// Preserve the SEARCH/REPLACE content from processEdit
-				const existing = await this.#knownStore.getValue(runId, path);
+				const existing = await this.#knownStore.getBody(runId, path);
 				return existing || output || "";
 			}
 			default:
@@ -592,7 +592,7 @@ export default class AgentLoop {
 			`prompt://${nextTurn}`,
 			"",
 			"info",
-			{ meta: { mode: "ask" } },
+			{ attributes: { mode: "ask" } },
 		);
 		await this.#knownStore.upsert(
 			runRow.id,

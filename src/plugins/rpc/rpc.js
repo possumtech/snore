@@ -302,13 +302,13 @@ export default class CoreRpcPlugin {
 					ctx.db.get_latest_prompt.get({ run_id: run.id }),
 				]);
 
-				const promptMeta = latestPrompt?.meta
-					? JSON.parse(latestPrompt.meta)
+				const promptAttrs = latestPrompt?.attributes
+					? JSON.parse(latestPrompt.attributes)
 					: null;
 				return {
 					run: run.alias,
 					turn: run.next_turn - 1,
-					mode: promptMeta?.mode || null,
+					mode: promptAttrs?.mode || null,
 					status: run.status,
 					context: {
 						telemetry: {
@@ -319,12 +319,12 @@ export default class CoreRpcPlugin {
 						},
 						reasoning: reasoning.map((r) => ({
 							path: r.path,
-							value: r.value,
+							body: r.body,
 							turn: r.turn,
 						})),
 						content: content.map((c) => ({
 							path: c.path,
-							value: c.value,
+							body: c.body,
 							turn: c.turn,
 						})),
 						history: history.map((h) => {
@@ -333,14 +333,14 @@ export default class CoreRpcPlugin {
 								scheme,
 								path: h.path,
 								status: h.status,
-								value: h.value,
-								meta: h.meta ? JSON.parse(h.meta) : null,
+								body: h.body,
+								attributes: h.attributes ? JSON.parse(h.attributes) : null,
 								turn: h.turn,
 							};
 						}),
 					},
-					last_user_prompt: promptRow?.value || "",
-					last_summary: summaryRow?.value || "",
+					last_user_prompt: promptRow?.body || "",
+					last_summary: summaryRow?.body || "",
 				};
 			},
 			description:

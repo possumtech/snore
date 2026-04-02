@@ -22,31 +22,27 @@ export default class RunDumper {
 			lines.push(`--- Turn ${turn} ---`);
 			const turnEntries = entries.filter((e) => e.turn === turn);
 
-			// System message size
 			const system = turnEntries.find((e) => e.scheme === "system");
 			if (system) {
-				lines.push(`[system] ${system.value.length} chars`);
+				lines.push(`[system] ${system.body.length} chars`);
 			}
 
-			// User message
 			const user = turnEntries.find((e) => e.scheme === "user");
 			if (user) {
 				lines.push(`[user]`);
-				lines.push(user.value);
+				lines.push(user.body);
 			}
 
-			// Assistant response
 			const assistant = turnEntries.find((e) => e.scheme === "assistant");
 			if (assistant) {
 				lines.push(`[assistant]`);
-				lines.push(assistant.value);
+				lines.push(assistant.body);
 			}
 
-			// Model diagnostics
 			const model = turnEntries.find((e) => e.scheme === "model");
 			if (model) {
 				try {
-					const data = JSON.parse(model.value);
+					const data = JSON.parse(model.body);
 					const usage = data.usage || {};
 					lines.push(
 						`[model] ${usage.prompt_tokens || 0} prompt / ${usage.completion_tokens || 0} completion tokens`,
@@ -58,7 +54,6 @@ export default class RunDumper {
 				} catch {}
 			}
 
-			// Tool results and other entries
 			const others = turnEntries.filter(
 				(e) =>
 					![
@@ -73,15 +68,14 @@ export default class RunDumper {
 					].includes(e.scheme),
 			);
 			for (const e of others) {
-				const val = e.value ? ` ${e.value.slice(0, 200)}` : "";
+				const val = e.body ? ` ${e.body.slice(0, 200)}` : "";
 				lines.push(`[${e.scheme}:${e.state}] ${e.path}${val}`);
 			}
 
-			// Error
 			const error = turnEntries.find((e) => e.scheme === "error");
 			if (error) {
 				lines.push(`[ERROR]`);
-				lines.push(error.value);
+				lines.push(error.body);
 			}
 
 			lines.push("");

@@ -10,7 +10,7 @@ describe("XmlParser", () => {
 			);
 			assert.strictEqual(commands.length, 1);
 			assert.strictEqual(commands[0].name, "summarize");
-			assert.strictEqual(commands[0].value, "The answer is 42.");
+			assert.strictEqual(commands[0].body, "The answer is 42.");
 		});
 
 		it("parses unknown", () => {
@@ -18,7 +18,7 @@ describe("XmlParser", () => {
 				"<unknown>which session store</unknown>",
 			);
 			assert.strictEqual(commands[0].name, "unknown");
-			assert.strictEqual(commands[0].value, "which session store");
+			assert.strictEqual(commands[0].body, "which session store");
 		});
 
 		it("parses write with path", () => {
@@ -27,7 +27,7 @@ describe("XmlParser", () => {
 			);
 			assert.strictEqual(commands[0].name, "write");
 			assert.strictEqual(commands[0].path, "/:known:auth");
-			assert.strictEqual(commands[0].value, "OAuth2 PKCE");
+			assert.strictEqual(commands[0].body, "OAuth2 PKCE");
 		});
 
 		it("parses self-closing read", () => {
@@ -126,10 +126,10 @@ export default {};
 			assert.strictEqual(commands[3].name, "summarize");
 		});
 
-		it("parses read with value filter", () => {
-			const { commands } = XmlParser.parse('<read path="*.js" value="TODO"/>');
+		it("parses read with body filter", () => {
+			const { commands } = XmlParser.parse('<read path="*.js" body="TODO"/>');
 			assert.strictEqual(commands[0].path, "*.js");
-			assert.strictEqual(commands[0].value, "TODO");
+			assert.strictEqual(commands[0].body, "TODO");
 		});
 
 		it("parses read with preview flag", () => {
@@ -221,26 +221,24 @@ export default {};
 			assert.strictEqual(commands[0].path, "src/old.js");
 		});
 
-		it("write: value in attr (self-closing)", () => {
+		it("write: body in attr (self-closing)", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="/:known:auth" value="OAuth2"/>',
+				'<write path="/:known:auth" body="OAuth2"/>',
 			);
 			assert.strictEqual(commands[0].path, "/:known:auth");
-			assert.strictEqual(commands[0].value, "OAuth2");
+			assert.strictEqual(commands[0].body, "OAuth2");
 		});
 
-		it("unknown: value in attr", () => {
+		it("unknown: body in attr", () => {
 			const { commands } = XmlParser.parse(
-				'<unknown value="what is the auth flow?"/>',
+				'<unknown body="what is the auth flow?"/>',
 			);
-			assert.strictEqual(commands[0].value, "what is the auth flow?");
+			assert.strictEqual(commands[0].body, "what is the auth flow?");
 		});
 
-		it("summary: value in attr", () => {
-			const { commands } = XmlParser.parse(
-				'<summarize value="did the thing"/>',
-			);
-			assert.strictEqual(commands[0].value, "did the thing");
+		it("summary: body in attr", () => {
+			const { commands } = XmlParser.parse('<summarize body="did the thing"/>');
+			assert.strictEqual(commands[0].body, "did the thing");
 		});
 
 		it("run: body as command", () => {
@@ -266,6 +264,11 @@ export default {};
 			assert.strictEqual(commands[0].path, "src/app.js");
 		});
 
+		it("legacy value attr healed to body", () => {
+			const { commands } = XmlParser.parse('<read path="*.js" value="TODO"/>');
+			assert.strictEqual(commands[0].body, "TODO");
+		});
+
 		it("legacy file attr resolves to path", () => {
 			const input = `<write file="src/config.js">
 <<<<<<< SEARCH
@@ -285,7 +288,7 @@ new
 				"<summarize>The answer is 42.",
 			);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].value, "The answer is 42.");
+			assert.strictEqual(commands[0].body, "The answer is 42.");
 			assert.ok(warnings.some((w) => w.includes("Unclosed")));
 		});
 
@@ -294,7 +297,7 @@ new
 				'<write path="/:known:x">some value',
 			);
 			assert.strictEqual(commands[0].path, "/:known:x");
-			assert.strictEqual(commands[0].value, "some value");
+			assert.strictEqual(commands[0].body, "some value");
 			assert.ok(warnings.length > 0);
 		});
 

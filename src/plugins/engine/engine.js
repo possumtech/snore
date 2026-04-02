@@ -46,9 +46,9 @@ export default class Engine {
 					ordinal: 0,
 					path: "system://prompt",
 					fidelity: "full",
-					content: rummy.systemPrompt,
+					body: rummy.systemPrompt,
 					tokens: countTokens(rummy.systemPrompt),
-					meta: null,
+					attributes: null,
 					category: "system",
 				});
 			}
@@ -79,8 +79,8 @@ async function enforce(store, runId, currentTurn, budget, total, entries) {
 		if (entry.tier === 1) {
 			const before = entry.tokens;
 			await store.setFileState(runId, entry.path, "summary");
-			const meta = await store.getMeta(runId, entry.path);
-			const symbolsTokens = ((meta?.symbols?.length ?? 0) / 4) | 0;
+			const attrs = await store.getAttributes(runId, entry.path);
+			const symbolsTokens = ((attrs?.symbols?.length ?? 0) / 4) | 0;
 			const saved = before - symbolsTokens;
 			remaining -= saved;
 			demoted.push({ path: entry.path, saved });

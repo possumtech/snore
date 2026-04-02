@@ -182,7 +182,10 @@ export default class KnownStore {
 	}
 
 	async getAttributes(runId, path) {
-		const row = await this.#db.get_entry_attributes.get({ run_id: runId, path });
+		const row = await this.#db.get_entry_attributes.get({
+			run_id: runId,
+			path,
+		});
 		return row?.attributes ? JSON.parse(row.attributes) : null;
 	}
 

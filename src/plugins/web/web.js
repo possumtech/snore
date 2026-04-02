@@ -45,9 +45,9 @@ export default class WebPlugin {
 				urls.push(url);
 				await rummy.write({
 					path: url,
-					value: `${r.title}\n${r.snippet}`,
+					body: `${r.title}\n${r.snippet}`,
 					state: "summary",
-					meta: { query, engine: r.engine },
+					attributes: { query, engine: r.engine },
 				});
 			}
 
@@ -56,7 +56,7 @@ export default class WebPlugin {
 			const listing = urls.join("\n");
 			await rummy.write({
 				path: `search://${slugify(query)}`,
-				value: `${results.length} results for "${query}"\n${listing}`,
+				body: `${results.length} results for "${query}"\n${listing}`,
 				state: "info",
 			});
 
@@ -74,8 +74,8 @@ export default class WebPlugin {
 			const header = fetched.title ? `# ${fetched.title}\n\n` : "";
 			return {
 				url: clean,
-				value: header + (fetched.content || ""),
-				meta: {
+				body: header + (fetched.content || ""),
+				attributes: {
 					title: fetched.title,
 					excerpt: fetched.excerpt,
 					byline: fetched.byline,

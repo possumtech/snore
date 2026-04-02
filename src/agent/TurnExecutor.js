@@ -376,13 +376,7 @@ export default class TurnExecutor {
 						matches.length > 0
 							? `${paths} loaded in context (${total} tokens)`
 							: `${cmd.path} not found`;
-					await this.#knownStore.upsert(
-						currentRunId,
-						turn,
-						slug,
-						body,
-						"read",
-					);
+					await this.#knownStore.upsert(currentRunId, turn, slug, body, "read");
 				}
 				continue;
 			}
@@ -481,7 +475,10 @@ export default class TurnExecutor {
 				askUserCmd.question || "",
 				"proposed",
 				{
-					attributes: { question: askUserCmd.question, options: askUserCmd.options },
+					attributes: {
+						question: askUserCmd.question,
+						options: askUserCmd.options,
+					},
 				},
 			);
 		}
@@ -768,16 +765,9 @@ export default class TurnExecutor {
 				);
 			} else {
 				await this.#knownStore.remove(runId, entry.path);
-				await this.#knownStore.upsert(
-					runId,
-					turn,
-					resultPath,
-					body,
-					"pass",
-					{
-						attributes: { path: entry.path },
-					},
-				);
+				await this.#knownStore.upsert(runId, turn, resultPath, body, "pass", {
+					attributes: { path: entry.path },
+				});
 			}
 		}
 	}
@@ -801,16 +791,9 @@ export default class TurnExecutor {
 		const verb = isMove ? "mv" : "cp";
 		const body = `${verb} ${cmd.path} ${cmd.to}`;
 		if (destScheme === null) {
-			await this.#knownStore.upsert(
-				runId,
-				turn,
-				resultPath,
-				body,
-				"proposed",
-				{
-					attributes: { from: cmd.path, to: cmd.to, isMove, warning },
-				},
-			);
+			await this.#knownStore.upsert(runId, turn, resultPath, body, "proposed", {
+				attributes: { from: cmd.path, to: cmd.to, isMove, warning },
+			});
 		} else {
 			await this.#knownStore.upsert(runId, turn, cmd.to, source, "full");
 			if (isMove) {
