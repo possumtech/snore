@@ -74,7 +74,7 @@ function renderContext(context) {
 			files.push(entry);
 			continue;
 		}
-		if (entry.state === "file:symbols") {
+		if (entry.state === "file:summary") {
 			symbolFiles.push(entry);
 			continue;
 		}
@@ -111,7 +111,7 @@ function renderContext(context) {
 	// Symbol files
 	if (symbolFiles.length > 0) {
 		const symBlocks = symbolFiles.map(
-			(f) => `#### ${f.path} (symbols)\n${f.value}`,
+			(f) => `#### ${f.path} (summary)\n${f.value}`,
 		);
 		parts.push(symBlocks.join("\n\n"));
 	}
@@ -233,7 +233,7 @@ export default class ContextAssembler {
 					});
 					break;
 				}
-				case "file_symbols":
+				case "file_summary":
 					symbolFiles.push({ path: row.path, value: row.content });
 					break;
 				case "file_index":
@@ -306,7 +306,7 @@ export default class ContextAssembler {
 
 		if (symbolFiles.length > 0) {
 			const symBlocks = symbolFiles.map(
-				(f) => `#### ${f.path} (symbols)\n${f.value}`,
+				(f) => `#### ${f.path} (summary)\n${f.value}`,
 			);
 			contextParts.push(symBlocks.join("\n\n"));
 		}

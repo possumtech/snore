@@ -13,13 +13,16 @@ classified AS (
 		, ke.meta
 		, ke.tokens AS tokens_full
 		, CASE
+			-- Proposed entries hidden until resolved
 			WHEN ke.state = 'proposed' THEN NULL
-			WHEN s.fidelity = 'null' THEN NULL
-			WHEN s.fidelity = 'full' THEN 'full'
-			WHEN s.fidelity = 'turn' AND ke.scheme IS NULL AND ke.state = 'summary' AND ke.turn > 0
-				THEN 'summary'
-			WHEN s.fidelity = 'turn' AND ke.turn > 0 THEN 'full'
-			WHEN s.fidelity = 'turn' AND ke.turn = 0 THEN 'index'
+			-- Audit schemes (model_visible = 0) hidden
+			WHEN s.model_visible = 0 THEN NULL
+			-- State IS fidelity for visible entries
+			WHEN ke.state IN ('full', 'summary', 'index') THEN ke.state
+			-- Stored entries hidden (retrievable via <read>)
+			WHEN ke.state = 'stored' THEN NULL
+			-- Result/structural states are visible at full fidelity
+			WHEN ke.state IN ('pass', 'error', 'warn', 'pattern', 'read', 'info', 'summary') THEN 'full'
 			ELSE NULL
 		END AS fidelity
 		, CASE
@@ -42,26 +45,20 @@ projected AS (
 		, scheme
 		, state
 		, fidelity
-		, CASE fidelity
-			WHEN 'full'
-				THEN CASE
-					WHEN scheme IS NULL THEN value
-					WHEN scheme = 'known' THEN value
-					WHEN scheme = 'unknown' THEN value
-					WHEN scheme IN ('ask', 'act', 'progress') THEN value
-					WHEN scheme IN ('http', 'https') THEN value
-					WHEN state = 'summary' THEN value
-					ELSE value
-				END
-			WHEN 'summary'
-				THEN COALESCE(json_extract(meta, '$.symbols'), '')
+		, CASE
+			WHEN fidelity = 'full' THEN value
+			WHEN fidelity = 'summary' THEN COALESCE(json_extract(meta, '$.symbols'), value)
 			ELSE ''
 		END AS content
 		, CASE
 			WHEN scheme IS NULL AND fidelity = 'full'
 				THEN json_object(
-					'constraint'
-					, json_extract(meta, '$.constraint')
+					'constraint', json_extract(meta, '$.constraint')
+					, 'tokens_full', tokens_full
+				)
+			WHEN scheme IN ('http', 'https') AND fidelity = 'full'
+				THEN json_object(
+					'constraint', json_extract(meta, '$.constraint')
 					, 'tokens_full', tokens_full
 				)
 			WHEN
@@ -84,15 +81,19 @@ projected AS (
 			ELSE NULL
 		END AS meta
 		, CASE
-			WHEN scheme IS NULL AND fidelity = 'full' THEN 'file'
-			WHEN scheme IS NULL AND fidelity = 'summary' THEN 'file_summary'
+			WHEN scheme IS NULL AND state = 'full' THEN 'file'
+			WHEN scheme IS NULL AND state = 'summary' THEN 'file_summary'
+			WHEN scheme IS NULL AND state = 'index' THEN 'file_index'
 			WHEN scheme IS NULL THEN 'file_index'
-			WHEN scheme IN ('http', 'https') AND fidelity = 'full' THEN 'file'
+			WHEN scheme IN ('http', 'https') AND state = 'full' THEN 'file'
+			WHEN scheme IN ('http', 'https') AND state = 'summary' THEN 'file_summary'
 			WHEN scheme IN ('http', 'https') THEN 'file_index'
-			WHEN scheme = 'known' AND fidelity = 'full' THEN 'known'
+			WHEN scheme = 'known' AND state = 'full' THEN 'known'
 			WHEN scheme = 'known' THEN 'known_index'
 			WHEN scheme = 'unknown' THEN 'unknown'
 			WHEN scheme IN ('ask', 'act', 'progress') THEN 'prompt'
+			WHEN scheme = 'summary' THEN 'structural'
+			WHEN scheme = 'update' THEN 'structural'
 			ELSE 'result'
 		END AS category
 	FROM classified
@@ -116,9 +117,10 @@ SELECT
 				WHEN 'file_summary' THEN 4
 				WHEN 'file' THEN 5
 				WHEN 'result' THEN 6
-				WHEN 'unknown' THEN 7
-				WHEN 'prompt' THEN 8
-				ELSE 9
+				WHEN 'structural' THEN 7
+				WHEN 'unknown' THEN 8
+				WHEN 'prompt' THEN 9
+				ELSE 10
 			END
 			, id
 	) AS ordinal

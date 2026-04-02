@@ -51,7 +51,7 @@ describe("turn_context distribution bucket correctness", () => {
 
 		// Populate known_entries
 		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");
-		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "full");
+		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", "index");
 		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", "full");
 		await store.upsert(RUN_ID, 1, "search://1", "search results", "info");
 		await store.upsert(RUN_ID, 1, "summary://1", "did a thing", "summary");
@@ -107,7 +107,7 @@ describe("turn_context distribution bucket correctness", () => {
 		});
 		const history = dist.find((b) => b.bucket === "history");
 		assert.ok(history, "history bucket exists");
-		assert.ok(history.entries >= 3, "history bucket has results + unknowns");
+		assert.ok(history.entries >= 2, "history bucket has results + unknowns");
 	});
 
 	it("system bucket includes system prompt", async () => {

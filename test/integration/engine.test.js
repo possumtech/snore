@@ -113,36 +113,40 @@ describe("Engine integration", () => {
 			assert.ok(total <= 500, `expected ≤500, got ${total}`);
 		});
 
-		it("demotes results before files", async () => {
-			await store.upsert(RUN_ID, 1, "src/keep.js", pad(200), "full");
-			await store.upsert(RUN_ID, 1, "write://1", pad(100), "pass");
-			await store.upsert(RUN_ID, 1, "run://1", pad(100), "pass");
+		it("demotes by tier order: files downgraded before known entries", async () => {
+			await store.upsert(RUN_ID, 1, "src/big_file.js", pad(300), "full", {
+				meta: { symbols: pad(10) },
+			});
+			await store.upsert(RUN_ID, 1, "known://keep_note", pad(50), "full");
 
 			const rummy = makeRummy(tdb.db, store, {
 				sequence: 2,
-				contextSize: 250,
+				contextSize: 200,
 			});
 			await hooks.processTurn(rummy);
 
 			const file = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
-				path: "src/keep.js",
+				path: "src/big_file.js",
 			});
-			assert.strictEqual(file.turn, 1, "file should still be promoted");
 			assert.strictEqual(
 				file.state,
-				"full",
-				"file should remain at full fidelity",
+				"summary",
+				"file should be downgraded to summary first (tier 1)",
 			);
 
-			const edit = await tdb.db.get_entry_state.get({
+			const note = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
-				path: "write://1",
+				path: "known://keep_note",
 			});
-			assert.strictEqual(edit.turn, 0, "result should be demoted");
+			assert.strictEqual(
+				note.state,
+				"full",
+				"known entry should survive if file downgrade freed enough",
+			);
 		});
 
-		it("downgrades files to symbols before demoting known entries", async () => {
+		it("downgrades files to summary before demoting known entries", async () => {
 			await store.upsert(RUN_ID, 1, "src/big.js", pad(400), "full", {
 				meta: { symbols: pad(20) },
 			});
@@ -165,8 +169,8 @@ describe("Engine integration", () => {
 
 			assert.strictEqual(
 				file.state,
-				"symbols",
-				"file should be downgraded to symbols",
+				"summary",
+				"file should be downgraded to summary",
 			);
 			assert.strictEqual(
 				known.turn > 0,
@@ -219,8 +223,8 @@ describe("Engine integration", () => {
 
 			assert.strictEqual(
 				old.state,
-				"symbols",
-				"old file should be downgraded to symbols",
+				"summary",
+				"old file should be downgraded to summary",
 			);
 			assert.strictEqual(fresh.turn, 5, "current-turn entry should survive");
 			assert.strictEqual(
@@ -285,7 +289,7 @@ describe("Engine integration", () => {
 
 			if (big.turn === 0 && small.turn > 0) {
 				assert.ok(true, "big entry demoted first");
-			} else if (big.state === "symbols" && small.turn > 0) {
+			} else if (big.state === "summary" && small.turn > 0) {
 				assert.ok(true, "big entry downgraded first");
 			} else {
 				assert.ok(
@@ -382,8 +386,8 @@ describe("Engine integration", () => {
 	});
 
 	describe("symbol file fidelity via VIEW", () => {
-		it("symbol files at turn 0 have index fidelity", async () => {
-			await store.upsert(RUN_ID, 0, "src/demoted.js", pad(100), "symbols", {
+		it("files at state index have index fidelity", async () => {
+			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), "index", {
 				meta: { symbols: "function foo()" },
 			});
 
@@ -400,16 +404,16 @@ describe("Engine integration", () => {
 				turn: 1,
 			});
 			const demoted = rows.find((r) => r.path === "src/demoted.js");
-			assert.ok(demoted, "demoted symbols file should appear in turn_context");
+			assert.ok(demoted, "index file should appear in turn_context");
 			assert.strictEqual(
 				demoted.fidelity,
 				"index",
-				"demoted symbols should have index fidelity",
+				"index state should have index fidelity",
 			);
 		});
 
 		it("symbol files at turn > 0 have summary fidelity", async () => {
-			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "symbols", {
+			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "summary", {
 				meta: { symbols: "function bar()" },
 			});
 
@@ -426,7 +430,7 @@ describe("Engine integration", () => {
 				turn: 4,
 			});
 			const active = rows.find((r) => r.path === "src/active.js");
-			assert.ok(active, "active symbols file should appear in turn_context");
+			assert.ok(active, "active summary file should appear in turn_context");
 			assert.strictEqual(
 				active.fidelity,
 				"summary",

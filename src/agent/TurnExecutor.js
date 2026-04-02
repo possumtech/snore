@@ -262,7 +262,7 @@ export default class TurnExecutor {
 		let askUserCmd = null;
 
 		for (const cmd of commands) {
-			if (cmd.name === "summary") summaryText = cmd.value;
+			if (cmd.name === "summarize") summaryText = cmd.value;
 			else if (cmd.name === "update") updateText = cmd.value;
 			else if (cmd.name === "write" && (cmd.blocks || cmd.search))
 				actionCalls.push(cmd);

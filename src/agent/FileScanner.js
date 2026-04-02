@@ -126,14 +126,14 @@ export default class FileScanner {
 			changedPaths.push(relPath);
 
 			const constraint = constraints.get(relPath) || null;
-			const turn = constraint === "active" ? currentTurn : entry?.turn || 0;
+			const state = constraint === "active" ? "full" : entry?.state || "index";
 
 			await this.#knownStore.upsert(
 				runId,
-				turn,
+				currentTurn,
 				relPath,
 				content,
-				entry?.state || "full",
+				state,
 				{
 					hash,
 					meta: { constraint },
@@ -183,10 +183,10 @@ export default class FileScanner {
 			const constraint = constraints.get(relPath) || null;
 			await this.#knownStore.upsert(
 				runId,
-				constraint === "active" ? currentTurn : 0,
+				currentTurn,
 				relPath,
 				content,
-				"full",
+				constraint === "active" ? "full" : "index",
 				{
 					hash: hashContent(content),
 					meta: { constraint },

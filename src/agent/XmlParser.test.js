@@ -6,10 +6,10 @@ describe("XmlParser", () => {
 	describe("well-formed", () => {
 		it("parses summary", () => {
 			const { commands } = XmlParser.parse(
-				"<summary>The answer is 42.</summary>",
+				"<summarize>The answer is 42.</summarize>",
 			);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].name, "summary");
+			assert.strictEqual(commands[0].name, "summarize");
 			assert.strictEqual(commands[0].value, "The answer is 42.");
 		});
 
@@ -117,13 +117,13 @@ export default {};
 			const input = `<read path="src/config.js"/>
 <unknown>which database adapter</unknown>
 <write path="/:known:framework">Express with passport</write>
-<summary>Reading config to check port.</summary>`;
+<summarize>Reading config to check port.</summarize>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 4);
 			assert.strictEqual(commands[0].name, "read");
 			assert.strictEqual(commands[1].name, "unknown");
 			assert.strictEqual(commands[2].name, "write");
-			assert.strictEqual(commands[3].name, "summary");
+			assert.strictEqual(commands[3].name, "summarize");
 		});
 
 		it("parses read with value filter", () => {
@@ -237,7 +237,9 @@ export default {};
 		});
 
 		it("summary: value in attr", () => {
-			const { commands } = XmlParser.parse('<summary value="did the thing"/>');
+			const { commands } = XmlParser.parse(
+				'<summarize value="did the thing"/>',
+			);
 			assert.strictEqual(commands[0].value, "did the thing");
 		});
 
@@ -280,7 +282,7 @@ new
 	describe("malformed", () => {
 		it("captures unclosed summary", () => {
 			const { commands, warnings } = XmlParser.parse(
-				"<summary>The answer is 42.",
+				"<summarize>The answer is 42.",
 			);
 			assert.strictEqual(commands.length, 1);
 			assert.strictEqual(commands[0].value, "The answer is 42.");
@@ -306,7 +308,7 @@ new
 			const input = `Let me think about this...
 <read path="src/config.js"/>
 I need to check the port.
-<summary>Checking config.</summary>`;
+<summarize>Checking config.</summarize>`;
 			const { commands, unparsed } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 2);
 			assert.ok(unparsed.includes("Let me think about this"));
@@ -315,10 +317,10 @@ I need to check the port.
 
 		it("ignores unknown tags", () => {
 			const input = `<thinking>internal thoughts</thinking>
-<summary>The answer.</summary>`;
+<summarize>The answer.</summarize>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].name, "summary");
+			assert.strictEqual(commands[0].name, "summarize");
 		});
 	});
 

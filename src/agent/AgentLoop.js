@@ -60,7 +60,7 @@ export default class AgentLoop {
 		}
 
 		parts.push(
-			"Required: <update/> if still working, <summary/> if done. Not both.",
+			"Required: <update/> if still working, <summarize/> if done. Not both.",
 		);
 		return parts.join("\n");
 	}

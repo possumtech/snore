@@ -132,13 +132,13 @@ describe("ContextAssembler", () => {
 				context: [
 					{
 						path: "src/utils.js",
-						state: "file:symbols",
+						state: "file:summary",
 						value: "foo(a, b)\nbar()",
 					},
 				],
 				userMessage: "",
 			});
-			assert.ok(messages[0].content.includes("(symbols)"));
+			assert.ok(messages[0].content.includes("(summary)"));
 			assert.ok(messages[0].content.includes("foo(a, b)"));
 		});
 

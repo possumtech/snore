@@ -14,7 +14,7 @@ const ALL_TOOLS = new Set([
 	"run",
 	"env",
 	"ask_user",
-	"summary",
+	"summarize",
 	"update",
 	"unknown",
 ]);
@@ -108,7 +108,7 @@ function resolveCommand(name, attrs, body) {
 		return { name, path: a.path, value, preview: a.preview };
 	}
 
-	if (name === "summary" || name === "update" || name === "unknown") {
+	if (name === "summarize" || name === "update" || name === "unknown") {
 		// Canonical: text in body. Alt: value in attr.
 		const value = trimmed || a.value || "";
 		return { name, value };

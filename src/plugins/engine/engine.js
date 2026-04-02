@@ -78,7 +78,7 @@ async function enforce(store, runId, currentTurn, budget, total, entries) {
 
 		if (entry.tier === 1) {
 			const before = entry.tokens;
-			await store.setFileState(runId, entry.path, "symbols");
+			await store.setFileState(runId, entry.path, "summary");
 			const meta = await store.getMeta(runId, entry.path);
 			const symbolsTokens = ((meta?.symbols?.length ?? 0) / 4) | 0;
 			const saved = before - symbolsTokens;

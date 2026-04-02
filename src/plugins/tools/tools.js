@@ -6,7 +6,7 @@ export default class CoreToolsPlugin {
 		const { tools } = hooks;
 
 		// Structural
-		tools.register("summary", { modes: BOTH, category: "structural" });
+		tools.register("summarize", { modes: BOTH, category: "structural" });
 		tools.register("update", { modes: BOTH, category: "structural" });
 		tools.register("unknown", { modes: BOTH, category: "structural" });
 

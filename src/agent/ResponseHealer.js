@@ -8,11 +8,11 @@ export default class ResponseHealer {
 
 	/**
 	 * Heal a missing status tag. Called when the model emits
-	 * neither <summary/> nor <update/>.
+	 * neither <summarize/> nor <update/>.
 	 */
 	/**
 	 * Heal a missing status tag. Called when the model emits
-	 * neither <summary/> nor <update/>.
+	 * neither <summarize/> nor <update/>.
 	 *
 	 * Plain text with no commands = the model answered. Treat as summary.
 	 * Commands with no status tag = the model is working. Treat as update.
@@ -26,7 +26,7 @@ export default class ResponseHealer {
 		}
 
 		console.warn(
-			`[RUMMY] Healed: missing <update>/<summary>. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
+			`[RUMMY] Healed: missing <update>/<summarize>. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
 		);
 		return { summaryText: null, updateText: "..." };
 	}
@@ -75,7 +75,7 @@ export default class ResponseHealer {
 	 * Returns { continue: boolean, reason?: string }
 	 *
 	 * Rules:
-	 *   <summary/> present → done (terminate)
+	 *   <summarize/> present → done (terminate)
 	 *   <update/> present  → continue (model says it's working)
 	 *   neither present    → warn, increment stall counter, continue
 	 *   stall counter hits MAX_STALLS → force-complete
@@ -95,13 +95,13 @@ export default class ResponseHealer {
 		this.#stallCount++;
 
 		if (this.#stallCount >= MAX_STALLS) {
-			const reason = `${this.#stallCount} turns with no <update/> or <summary/>`;
+			const reason = `${this.#stallCount} turns with no <update/> or <summarize/>`;
 			console.warn(`[RUMMY] Stalled: ${reason}. Force-completing.`);
 			return { continue: false, reason };
 		}
 
 		console.warn(
-			`[RUMMY] No <update/> or <summary/> (stall ${this.#stallCount}/${MAX_STALLS})`,
+			`[RUMMY] No <update/> or <summarize/> (stall ${this.#stallCount}/${MAX_STALLS})`,
 		);
 		return { continue: true };
 	}

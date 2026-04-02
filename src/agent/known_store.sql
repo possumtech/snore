@@ -69,7 +69,8 @@ WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL;
 -- PREP: promote_path
 UPDATE known_entries
 SET
-	turn = :turn
+	state = 'full'
+	, turn = :turn
 	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
@@ -77,8 +78,8 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: demote_path
 UPDATE known_entries
 SET
-	turn = 0
-	, tokens = countTokens(path)
+	state = 'stored'
+	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -106,7 +107,8 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: promote_by_pattern
 UPDATE known_entries
 SET
-	turn = :turn
+	state = 'full'
+	, turn = :turn
 	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
@@ -117,8 +119,8 @@ WHERE
 -- PREP: demote_by_pattern
 UPDATE known_entries
 SET
-	turn = 0
-	, tokens = countTokens(path)
+	state = 'stored'
+	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id

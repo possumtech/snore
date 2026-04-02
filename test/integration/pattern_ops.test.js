@@ -118,7 +118,7 @@ describe("Pattern operations integration", () => {
 				path: "src/app.js",
 			});
 			assert.strictEqual(utils.turn, 7);
-			assert.strictEqual(app.turn, 0);
+			assert.strictEqual(app.state, "stored");
 		});
 	});
 
@@ -132,7 +132,7 @@ describe("Pattern operations integration", () => {
 					run_id: RUN_ID,
 					path: m.path,
 				});
-				assert.strictEqual(row.turn, 0);
+				assert.strictEqual(row.state, "stored");
 			}
 		});
 	});

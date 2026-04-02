@@ -39,7 +39,7 @@ describe("FileScanner integration", () => {
 		const entries = await store.getFileEntries(RUN_ID);
 		const app = entries.find((e) => e.path === "app.js");
 		assert.ok(app, "app.js should be in store");
-		assert.strictEqual(app.state, "full");
+		assert.strictEqual(app.state, "index", "new files default to index");
 		assert.ok(app.hash, "should have hash");
 	});
 
@@ -118,7 +118,7 @@ describe("FileScanner integration", () => {
 		assert.ok(symbolCalls[0].includes("sym.js"), "hook received changed path");
 	});
 
-	it("only active-constrained files get current turn, all others get 0", async () => {
+	it("only active-constrained files get full state, all others get index", async () => {
 		await fs.mkdir(join(projectPath, "src"), { recursive: true });
 		await fs.writeFile(join(projectPath, "root.js"), "// root\n");
 		await fs.writeFile(join(projectPath, "src/nested.js"), "// nested\n");
@@ -142,16 +142,8 @@ describe("FileScanner integration", () => {
 		const root = all.find((e) => e.path === "root.js");
 		const nested = all.find((e) => e.path === "src/nested.js");
 		const active = all.find((e) => e.path === "active.js");
-		assert.strictEqual(
-			root.turn,
-			0,
-			"root file gets turn 0 (no special treatment)",
-		);
-		assert.strictEqual(nested.turn, 0, "nested file gets turn 0");
-		assert.strictEqual(
-			active.turn,
-			7,
-			"active-constrained file gets current turn",
-		);
+		assert.strictEqual(root.state, "index", "root file gets index state");
+		assert.strictEqual(nested.state, "index", "nested file gets index state");
+		assert.strictEqual(active.state, "full", "active file gets full state");
 	});
 });

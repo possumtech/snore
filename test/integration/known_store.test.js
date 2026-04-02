@@ -158,23 +158,24 @@ describe("KnownStore integration", () => {
 	});
 
 	describe("promote and demote", () => {
-		it("promote sets turn to current", async () => {
-			await store.upsert(RUN_ID, 0, "src/promoted.js", "content", "full");
+		it("promote sets state to full and updates turn", async () => {
+			await store.upsert(RUN_ID, 0, "src/promoted.js", "content", "index");
 			let row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
-			assert.strictEqual(row.turn, 0);
+			assert.strictEqual(row.state, "index");
 
 			await store.promote(RUN_ID, "src/promoted.js", 10);
 			row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
+			assert.strictEqual(row.state, "full");
 			assert.strictEqual(row.turn, 10);
 		});
 
-		it("demote sets turn to 0", async () => {
+		it("demote sets state to stored", async () => {
 			await store.upsert(RUN_ID, 10, "src/demoted.js", "content", "full");
 			await store.demote(RUN_ID, "src/demoted.js");
 
@@ -182,7 +183,7 @@ describe("KnownStore integration", () => {
 				run_id: RUN_ID,
 				path: "src/demoted.js",
 			});
-			assert.strictEqual(row.turn, 0);
+			assert.strictEqual(row.state, "stored");
 		});
 	});
 
