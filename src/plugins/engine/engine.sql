@@ -4,8 +4,8 @@ FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.run_id = :run_id
-	AND ke.turn > 0
-	AND ke.state NOT IN ('proposed', 'ignore', 'info', 'summary')
+	AND ke.state IN ('full', 'summary')
+	AND s.tier > 0
 	AND s.model_visible = 1
 ORDER BY s.tier, ke.turn, ke.refs, ke.tokens DESC;
 
@@ -15,6 +15,6 @@ FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.run_id = :run_id
-	AND ke.turn > 0
-	AND ke.state NOT IN ('proposed', 'ignore', 'info', 'summary')
+	AND ke.state IN ('full', 'summary')
+	AND s.tier > 0
 	AND s.model_visible = 1;
