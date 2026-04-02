@@ -57,11 +57,12 @@ uses `scheme://identifier`.
 
 **Files** (`scheme IS NULL`) — project files bootstrapped at run start:
 
-| State | Fidelity | Model sees |
-|-------|----------|------------|
-| `full` | full | `file` (with content) |
-| `symbols` | summary | `file:symbols` (signatures only) |
-| *(turn 0)* | index | path listed in File Index |
+| State | Model sees |
+|-------|------------|
+| `full` | `file` (with content) |
+| `summary` | `file:summary` (summary/symbols/snippet) — FUTURE |
+| `index` | path listed in File Index |
+| `stored` | invisible, retrievable via `<read>` |
 
 Client visibility constraints (`active`, `readonly`, `ignore`) are stored in the
 `file_constraints` table (project-scoped), not in `known_entries.state`. The
@@ -179,7 +180,7 @@ tool reference. This section documents server behavior for each tool.
 | `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn`, `pattern` |
 | `<run>` | no | yes | shell command | `run` | `proposed`, `pass`, `warn` |
 | `<update>` | yes | yes | brief status text | `update` | `info` |
-| `<summary>` | yes | yes | final answer/result | `summary` | `summary` |
+| `<summarize>` | yes | yes | final answer/result | `summary` | `summary` |
 
 ### 2.2 Unified Attribute System
 

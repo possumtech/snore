@@ -54,32 +54,37 @@ by state alone.
 ### File lifecycle
 
 ```
-disk scan → state: index (path only, symbols in meta)
+disk scan → state: index (path only)
              ↓ client activate or <read>
            state: full (complete content visible)
-             ↓ engine demote or <store>
-           state: summary (symbols visible, content stored)
-             ↓ further demote
-           state: index (path only)
+             ↓ <store>
+           state: stored (invisible, retrievable via <read>)
 ```
 
-Default for every file on first scan: `index`. If symbols extracted: `summary`.
-Only client-activated files start at `full`. No root file exception.
+Default for every file on first scan: `index`. Only client-activated files
+start at `full`. No root file exception. No `summary` state on initial scan —
+`summary` is introduced later by the relevance engine's symbol extraction.
+
+`<store>` always demotes to `stored`. `<read>` always promotes to `full`.
+The cascade is: `full` → `stored` → (read) → `full`. Engine demotion
+(future) adds intermediate states: `full` → `summary` → `index` → `stored`.
 
 ### URL / search result lifecycle
 
 ```
-<search> → creates https:// entries at state: summary (snippet as content)
+<search> → search://slug at state: pass (confirmation: "12 results")
+         → creates https:// entries at state: summary (snippet as content)
              ↓ <read>
-           state: full (fetched page content)
+           state: full (fetched page content via Playwright)
              ↓ <store>
-           state: index (URL listed)
+           state: stored (invisible, retrievable)
 ```
 
 Search results are first-class `https://` entries, not dumped into a
-`search://` content body. The `search://` entry itself is just a confirmation:
+`search://` content body. The `search://` entry is just a confirmation:
 "12 results for query". Each result URL is a separate `https://` entry at
-`summary` state with the snippet as content.
+`summary` state with the snippet as content. The model can `<read>` any
+URL to fetch the full page, `<store>` irrelevant results, `<delete>` noise.
 
 ### v_model_context VIEW simplification
 
@@ -128,39 +133,66 @@ END AS fidelity
 | `result` | Tool result with status symbol |
 | `structural` | Summary/update in chronological messages |
 
+### Rename: `<summary>` → `<summarize>`
+
+The `<summary>` tool collides with the `summary` fidelity state. Rename the
+tool to `<summarize>` (verb — tells the model what to do). The `summary`
+state (noun) describes fidelity. The `summary://` scheme stays.
+
+- `<summarize>Run completed</summarize>` → creates `summary://slug | summary`
+- `src/app.js | summary` → file at summary fidelity (symbols visible)
+- No ambiguity between tool and state.
+
 ### Implementation
 
-- [ ] **Rename `symbols` → `summary`** — schema, SQL, JS, tests
-- [ ] **Add `index` to file valid_states** — `["full", "summary", "index"]`
-- [ ] **Add `summary` to http/https valid_states** — `["full", "summary"]`
-- [ ] **File scanner** — new files default to `index`. Symbol extraction
-      promotes to `summary`. Only `active` constraint promotes to `full`.
+#### Phase 1: State simplification (immediate)
+
+- [ ] **Rename `symbols` → `summary`** — file state, schema, SQL, JS
+- [ ] **Rename `<summary>` → `<summarize>`** — parser, prompt, tool registration,
+      healer, tests
+- [ ] **Add `index` and `stored` to file valid_states** — `["full", "summary", "index", "stored"]`
+- [ ] **Add `summary` and `stored` to http/https valid_states** — `["full", "summary", "stored"]`
+- [ ] **File scanner** — all new files default to `index`. Only `active`
+      constraint promotes to `full`. Symbol extraction deferred to relevance engine.
 - [ ] **v_model_context VIEW** — simplify: state determines fidelity directly,
-      turn is freshness only
-- [ ] **Engine demotion** — `full` → `summary` → `index`. Clear cascade.
+      turn is freshness only, no computed fidelity CASE
 - [ ] **`<read>` promotion** — changes state to `full`
-- [ ] **`<store>` demotion** — changes state to `index` (files) or `stored` (known)
+- [ ] **`<store>` demotion** — always changes state to `stored`
 - [ ] **ContextAssembler** — route by state-derived category
-- [ ] **Search results as `https://` entries** — web plugin creates per-URL
-      entries at `summary` state. `search://` is just the confirmation.
 - [ ] **Update all tests**
+
+#### Phase 2: Search restructuring
+
+- [ ] **Search results as `https://` entries** — web plugin creates per-URL
+      entries at `summary` state with snippet as content
+- [ ] **`search://` confirmation only** — "12 results for query" at `pass` state
+- [ ] **Update web plugin and TurnExecutor**
+- [ ] **Update E2E tests**
+
+#### Phase 3: Engine demotion (future, with relevance engine)
+
+- [ ] **Symbol extraction sets `summary` state** — ctags/antlrmap results
+      promote files from `index` to `summary`
+- [ ] **Engine demotion cascade** — `full` → `summary` → `index` → `stored`
+- [ ] **Decay by turn staleness** — turn field drives demotion decisions
 
 ### Trade-offs
 
 **Pro:** One concept (state) determines visibility. No computed fidelity.
 Simpler view. The relevance engine operates on state transitions, not
-turn manipulation. Search results are first-class entries manageable with
-standard tools.
+turn manipulation. Search results are first-class entries. `<summarize>`
+and `summary` are unambiguous.
 
-**Risk:** The `turn` field loses its visibility role. Code that checks
-`turn > 0` for "is this visible?" must change to check `state`. The engine's
-budget enforcement currently sorts by turn for staleness — that still works,
-but demotion changes state instead of turn.
+**Risk:** Every `WHERE turn > 0` check must change to `WHERE state IN (...)`.
+If any are missed, entries appear or disappear incorrectly.
 
-**Open question:** Should `<store>` set state to `index` (still listed) or
-`stored` (invisible)? For files, `index` makes sense — the model should know
-the file exists. For known entries, `stored` makes sense — the key disappears
-from context entirely.
+**Decisions made:**
+- `<store>` always demotes to `stored` (invisible). Consistent for all entry types.
+- All files enter DB with full content regardless of state. State controls
+  what the model sees, not what's stored. No premature optimization.
+- Symbol extraction is deferred to the relevance engine. No `summary` state
+  on files until the engine exists. Files are `full` or `index` for now.
+- No root file exception. Only client-activated files get `full`.
 
 ---
 
