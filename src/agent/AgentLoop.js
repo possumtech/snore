@@ -524,42 +524,42 @@ export default class AgentLoop {
 			};
 		}
 
-		// All resolved — check for rejections
+		// Any rejection stops the bus
 		if (await this.#knownStore.hasRejections(runId)) {
-			await this.#db.update_run_status.run({ id: runId, status: "running" });
-			return { run: runAlias, status: "resolved" };
+			await this.#db.update_run_status.run({ id: runId, status: "completed" });
+			return { run: runAlias, status: "completed" };
 		}
 
-		// Auto-resume if any action was accepted — but not if the model already summarized
+		// All accepted — check if model said it's done
 		const hasSummary = await this.#db.get_latest_summary.get({ run_id: runId });
-		const hasAccepted = await this.#knownStore.hasAcceptedActions(runId);
-		if (hasAccepted && !hasSummary?.value) {
-			const latestPrompt = await this.#db.get_latest_prompt.get({
-				run_id: runId,
-			});
-			const resumeMode = latestPrompt?.meta
-				? JSON.parse(latestPrompt.meta).mode
-				: "ask";
-
-			const sessions = await this.#db.get_session_by_id.all({
-				id: runRow.session_id,
-			});
-			const projectId = sessions[0].project_id;
-			const project = await this.#db.get_project_by_id.get({ id: projectId });
-
-			await this.#db.enqueue_prompt.get({
-				run_id: runId,
-				session_id: runRow.session_id,
-				mode: resumeMode,
-				model: null,
-				prompt: "",
-				config: "{}",
-			});
-			return this.#drainQueue(runId, runAlias, runRow.session_id, project, {});
+		if (hasSummary?.value) {
+			await this.#db.update_run_status.run({ id: runId, status: "completed" });
+			return { run: runAlias, status: "completed" };
 		}
 
-		await this.#db.update_run_status.run({ id: runId, status: "completed" });
-		return { run: runAlias, status: "completed" };
+		// Model has more work — auto-resume
+		const latestPrompt = await this.#db.get_latest_prompt.get({
+			run_id: runId,
+		});
+		const resumeMode = latestPrompt?.meta
+			? JSON.parse(latestPrompt.meta).mode
+			: "ask";
+
+		const sessions = await this.#db.get_session_by_id.all({
+			id: runRow.session_id,
+		});
+		const projectId = sessions[0].project_id;
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+
+		await this.#db.enqueue_prompt.get({
+			run_id: runId,
+			session_id: runRow.session_id,
+			mode: resumeMode,
+			model: null,
+			prompt: "",
+			config: "{}",
+		});
+		return this.#drainQueue(runId, runAlias, runRow.session_id, project, {});
 	}
 
 	async #composeResolvedContent(runId, path, meta, output) {

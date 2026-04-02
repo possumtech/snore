@@ -350,6 +350,30 @@ Each tool owns its entire operation — parse, validate, store, confirm.
 
 ---
 
+## Done: Resolution Logic ✓
+
+| Resolution | Model signal | Run outcome |
+|-----------|-------------|-------------|
+| reject | any | `completed` — client rejection stops the bus |
+| accept | `<update>` | `running` — model said it has more work |
+| accept | `<summarize>` | `completed` — happy ending |
+| accept | neither | `running` — continue, healer decides |
+| error | any | `running` — give the model a chance to heal, fail clock starts |
+
+Mixed resolutions: any rejection stops the run. Accepted edits are applied,
+the rejection is visible in history, run completes. Client sends a new
+prompt to address the rejection.
+
+The fail clock is the existing stall counter (`RUMMY_MAX_STALLS`) and
+repetition detector (`RUMMY_MAX_REPETITIONS`). Server errors produce
+`error` state entries visible to the model. Repeated failing edits are
+caught by the repetition detector.
+
+Client modifications (accept with changes) are treated as acceptance —
+the run continues if the model signaled more work.
+
+---
+
 ## Todo: File Constraint Security
 
 Blocked on tool/plugin/RPC unification — implement constraints through

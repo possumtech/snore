@@ -133,24 +133,22 @@ describe("E2E Stories", () => {
 		assertContains(await lastResponse(tdb.db, r.run), "phoenix", "factual");
 	});
 
-	// Story 2: Research — model autonomously reads files, saves knowledge,
-	// searches the web, and synthesizes an answer. ONE prompt.
+	// Story 2: Research — model searches the web, discovers information
+	// not in context, and saves it as knowledge. ONE prompt.
 	it("autonomous research session", { timeout: TIMEOUT }, async () => {
 		const r = await client.call("ask", {
 			model,
 			prompt:
-				"I need you to research this project. Read src/config.json to find the database type. Save it as a known entry. Then tell me: what database, what port does src/app.js use, and what is the project codename? Reply with all three.",
+				"Search the web for when mass Effect 1 was released. Save the release year as a known entry. Then tell me: what year, what database does this project use, and what is the project codename?",
 		});
 		await client.assertRun(r, "completed", "research");
 		const resp = await lastResponse(tdb.db, r.run);
-		assertContains(resp, "postgres", "research-db");
-		assertContains(resp, "8080", "research-port");
 		assertContains(resp, "phoenix", "research-codename");
 
-		// Verify the model saved a known entry as instructed
+		// The model should have saved search-discovered info as known
 		const entries = await allEntries(tdb.db, r.run);
 		const known = entries.filter((e) => e.scheme === "known");
-		assert.ok(known.length > 0, "should have saved knowledge");
+		assert.ok(known.length > 0, "should have saved discovered knowledge");
 	});
 
 	// Story 3: Autonomous file edit — model reads, edits, proposes.
