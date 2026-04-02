@@ -179,14 +179,11 @@ export default class SessionManager {
 		});
 
 		const modelAlias = config.model || process.env.RUMMY_MODEL_DEFAULT;
-		const prefix = `${modelAlias}_`;
-		const row = await this.#db.get_next_run_alias.get({ prefix });
-		const alias = `${prefix}${row.next_seq}`;
+		const alias = `${modelAlias}_${Date.now()}`;
 
 		const runRow = await this.#db.create_run.get({
 			session_id: sessionId,
 			parent_run_id: config.parentRunId || null,
-			type: config.type,
 			config: JSON.stringify(config.config || {}),
 			alias,
 		});
