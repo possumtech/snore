@@ -352,25 +352,18 @@ Each tool owns its entire operation — parse, validate, store, confirm.
 
 ## Todo: File Constraint Security
 
-Client file constraints have security and trust implications. Three levels:
+Blocked on tool/plugin/RPC unification — implement constraints through
+the unified interface, not a parallel code path.
 
-| Constraint | Behavior | Enforcement |
-|-----------|----------|-------------|
-| `active` | Full fidelity, included even if not in git | ✓ scanner includes non-git files |
-| `readonly` | Full fidelity, model warned, writes rejected | ⚠ label rendered but writes NOT rejected |
-| `ignore` | Excluded from scan, invisible to model | ✓ scanner skips, but `<read>` not blocked |
+| Constraint | Behavior | Current |
+|-----------|----------|---------|
+| `active` | Full fidelity, included even if not in git | ✓ working |
+| `readonly` | Full fidelity, writes rejected | ⚠ not enforced |
+| `ignore` | Excluded from scan, `<read>` blocked | ⚠ scan works, read not blocked |
 
-### Implementation needed
-
-- [ ] **ReadOnly enforcement** — server rejects writes to readonly files in
-      TurnExecutor, same pattern as ask-mode enforcement. The `<act>` tag
-      or context label should warn the model not to attempt writes.
-- [ ] **Ignore enforcement** — `<read>` on an ignored file should fail or
-      return "file is ignored" rather than silently promoting it.
-- [ ] **Active outside project root** — paths like `../../config.txt` need
-      to resolve correctly relative to projectPath. Security: never allow
-      active constraint to escape a defined boundary.
-- [ ] **Plugin documentation split** — README.md per plugin folder
+- [ ] **ReadOnly enforcement** — reject writes via tool interface
+- [ ] **Ignore enforcement** — `<read>` on ignored file returns error
+- [ ] **Active outside project root** — path boundary enforcement
 
 ---
 
@@ -378,20 +371,14 @@ Client file constraints have security and trust implications. Three levels:
 
 - [ ] **Delete prompt.ask.md, prompt.act.md** — replaced by prompt.md
 - [ ] **Prompt carries model** — `prompt://` meta records model used
-- [ ] **ARCHITECTURE.md full pass** — align with state simplification
 - [ ] **Non-git file scanner** — fallback for non-git projects
 
 ---
 
 ## Todo: Relevance Engine (deferred)
 
-### Phase 2: Metrics
 - [ ] Metrics plugin, separate DB, turn-level telemetry
-
-### Phase 3: Ref Counting & Preheat
-- [ ] Cross-reference counting from `meta.symbols`
-- [ ] Auto-promote imports at summary state
-
-### Phase 4: Decay
-- [ ] Turn-based staleness demotion via state transitions
-- [ ] Configurable decay rate per scheme
+- [ ] Symbol extraction sets `summary` state (introduces file summaries)
+- [ ] Engine demotion cascade: `full` → `summary` → `index` → `stored`
+- [ ] Cross-reference counting, auto-promote imports
+- [ ] Turn-based decay via state transitions

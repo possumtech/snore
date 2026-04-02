@@ -404,27 +404,32 @@ last in user — the highest-attention position.
 
 ```
 system:
-  <instructions>prompt.md</instructions>
+  <instructions>prompt.md (with [%TOOLS%] replaced from registry)</instructions>
   <context>files, knowledge, unknowns (rendered from turn_context)</context>
 
 user:
-  <messages>chronological: prompts, tool results, updates, summaries</messages>
-  <prompt>user question</prompt>        ← on first turn or new user input
+  <messages>chronological: tool results, updates, summaries</messages>
+  <ask tools="..." warn="...">question</ask>    ← ask mode
+  <act tools="...">instruction</act>            ← act mode
   — OR —
-  <progress>turn N/M, allowed tools</progress>  ← on continuation turns
+  <progress tools="..." warn="...">Turn N/M</progress>  ← continuation turns
 ```
 
-**System** = instructions + context. Both are stable truth independent of the
-current task. Instructions define the model's role and tools. Context is the
-state of the world — files, knowledge, unknowns. Context is rendered from
-`turn_context` and ends with unknowns (the uncertainty boundary).
+**System** = instructions + context. Instructions come from `prompt.md` with
+`[%TOOLS%]` replaced by the registered tool list from ToolRegistry. Context
+is the state of the world — files, knowledge, unknowns. Context is rendered
+from `turn_context` and ends with unknowns (the uncertainty boundary).
 
-**User** = messages + prompt/progress. Messages are the chronological conversation
-log: previous user prompts, tool call results, updates, and summaries. The model
-sees a narrative of what happened. The final element is always the current task:
-either `<prompt>` (genuine user question) or `<progress>` (continuation status).
+**User** = messages + ask/act/progress. Messages are the chronological log
+of tool results, updates, and summaries. The final element is the current
+task: `<ask>` or `<act>` (human prompt) or `<progress>` (continuation).
 
-**Prompt** only appears when the user has asked something. It does not appear on
+The `tools` attribute lists available tools for this mode. The `warn`
+attribute appears only on `<ask>` and its `<progress>` continuations,
+carrying mode restrictions ("File and system modification prohibited").
+
+**`<ask>`/`<act>`** only appears on the first turn of a prompt loop or on
+injection. It does not appear on
 continuation turns.
 
 **Progress** is ephemeral — it conveys turn count, token budget, and allowed tools
@@ -1148,4 +1153,4 @@ RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
 | **Domain** | The entry's namespace: `file`, `known`, or `result`. |
 | **State** | The entry's status within its scheme. Server-internal; the model sees a projection. |
 | **Result Key** | A `[tool]://N` key generated for each tool command. Sequential per run. |
-| **Rumsfeld Loop** | The turn cycle: the model uses `<write>` to persist knowledge, `<unknown>` to declare uncertainty, `<update>` to signal continued work, and `<summary>` to terminate. Forces discovery before modification. |
+| **Rumsfeld Loop** | The turn cycle: the model uses `<write>` to persist knowledge, `<unknown>` to declare uncertainty, `<update>` to signal continued work, and `<summarize>` to terminate. Forces discovery before modification. |
