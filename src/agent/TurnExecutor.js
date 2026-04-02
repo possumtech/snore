@@ -859,7 +859,10 @@ export default class TurnExecutor {
 
 	async #processSearch(runId, turn, query, maxResults) {
 		const limit = maxResults || 12;
-		const result = await this.#hooks.action.search.filter(null, { query, limit });
+		const result = await this.#hooks.action.search.filter(null, {
+			query,
+			limit,
+		});
 		if (!result) return;
 
 		// Limit results if requested
@@ -873,15 +876,8 @@ export default class TurnExecutor {
 		}
 
 		const resultPath = await this.#knownStore.slugPath(runId, "search", query);
-		await this.#knownStore.upsert(
-			runId,
-			turn,
-			resultPath,
-			value,
-			"info",
-			{
-				meta: result.meta,
-			},
-		);
+		await this.#knownStore.upsert(runId, turn, resultPath, value, "info", {
+			meta: result.meta,
+		});
 	}
 }

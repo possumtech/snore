@@ -42,10 +42,10 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 **Columns:**
 - `path` — the entry's address. Bare file paths (`src/app.js`) or URIs (`known://auth`, `env://node_version`).
 - `scheme` — generated column: `schemeOf(path)`. Always correct by definition. Drives the CHECK constraint and indexed queries.
-- `turn` — integer sequence number. Heat signal for files, production turn for results.
+- `turn` — integer sequence number. Freshness signal — tracks when an entry was last touched. Used by the relevance engine for staleness calculations.
 - `hash` — SHA-256 content hash for file change detection.
-- `meta` — JSON metadata. Files store `{ symbols, constraint }`. Edits store `{ file, blocks, patch }`. Commands store `{ command }`.
-- `tokens` — context cost at current fidelity. Updated on every state change (promote, demote, setFileState).
+- `meta` — JSON metadata. Files store `{ constraint }`. Edits store `{ file, blocks, patch }`. Commands store `{ command }`.
+- `tokens` — context cost at current state. Updated on every state change (promote, demote).
 - `tokens_full` — cost of the raw value at full fidelity. Set on UPSERT, only changes when value changes.
 - `refs` — cross-reference count. Reserved for the relevance engine.
 - `write_count` — incremented on every UPSERT. Volatility tracking.
@@ -172,7 +172,7 @@ tool reference. This section documents server behavior for each tool.
 | `<read>` | yes | yes | path (simple), or use attrs | *(none — promotes target)* | — |
 | `<env>` | yes | yes | shell command | `env` | `proposed`, `pass`, `warn` |
 | `<ask_user>` | yes | yes | comma-separated options | `ask_user` | `proposed`, `pass`, `warn` |
-| `<search>` | yes | yes | search query | `search` | `info` |
+| `<search>` | yes | yes | search query | `search` + `https` | `pass`, `summary` |
 | `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error`, `pattern` |
 | `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn`, `pattern` |
 | `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn`, `pattern` |
@@ -213,12 +213,12 @@ entries in the context next turn. Pattern-based commands operate on all matches.
 **`<unknown>`** — creates a sticky `unknown://N` entry (state `full`).
 Persists across turns until explicitly stored. Server deduplicates on insert.
 
-**`<read>`** — promotes matching entries by setting `turn` to the current turn.
+**`<read>`** — promotes matching entries by changing state to `full`.
 Values already exist in the store (from file scanner or previous write).
 Promotion makes them visible in context next turn. With patterns, bulk-promotes.
 URLs (`http://`, `https://`) are fetched via WebFetcher.
 
-**`<store>`** — demotes matching entries by setting `turn` to 0. Values stay
+**`<store>`** — demotes matching entries by changing state to `stored`. Values stay
 in the store but disappear from context. A stored entry can be restored
 with `<read>`. With patterns, bulk-demotes.
 
@@ -234,7 +234,9 @@ and resolves with output. Act-only.
 **`<ask_user>`** — creates an `ask_user://N` entry, state `proposed`. The client
 shows the question with options and resolves with the selected answer.
 
-**`<search>`** — web search via SearXNG. Stores results as `search://N` info entry.
+**`<search>`** — web search via SearXNG. Creates a `search://N` confirmation at
+state `pass` plus individual `https://` entries at state `summary` with snippets.
+`<read>` on a URL promotes to `full` (fetches page).
 
 **`<move>`** — reads source, writes to destination, removes source. File
 destinations → proposed. K/V destinations → immediate.
@@ -245,7 +247,7 @@ split as move.
 **`<update>`** — stores as `update://N` info entry. Signals the model is still
 working. The run continues.
 
-**`<summary>`** — stores as `summary://N` summary entry. Signals the model is
+**`<summarize>`** — stores as `summary://N` summary entry. Signals the model is
 done. **The run terminates.**
 
 **`preview` flag** — any store-facing tool with `preview` resolves the pattern and stores
@@ -274,12 +276,12 @@ known://auth_flow (56)
 
 ### 2.4 Promotion Model
 
-`read` and `store` operate on the `turn` field, not on state:
+`read` and `store` operate on `state`:
 
 | Command | Effect |
 |---------|--------|
-| `<read>x</read>` | Set `turn` to current turn → value appears in context |
-| `<store path="x"/>` | Set `turn` to 0 → value hidden from context (stored) |
+| `<read>x</read>` | Set `state` to `full` → value appears in context |
+| `<store path="x"/>` | Set `state` to `stored` → value hidden from context |
 
 Both support patterns: `<read path="src/*.js"/>` promotes all matching files.
 `<store value="deprecated"/>` demotes all entries containing "deprecated".
@@ -288,24 +290,24 @@ All other action commands (`env`, `run`, `delete`, `write`, `ask_user`) create n
 result entries as `proposed`. The `delete` command for `known://*` or `[tool]://*`
 paths removes the entry from the store entirely.
 
-### 2.5 update/summary Termination Protocol
+### 2.5 update/summarize Termination Protocol
 
-The model declares its own state via `<update/>` or `<summary/>`:
+The model declares its own state via `<update/>` or `<summarize/>`:
 
 | Signal | Meaning | Run continues? |
 |--------|---------|----------------|
 | `<update>` only | Model is still working | Yes |
-| `<summary>` only | Model is done | **No — run terminates** |
-| Both present | Summary wins | **No — run terminates** |
+| `<summarize>` only | Model is done | **No — run terminates** |
+| Both present | Summarize wins | **No — run terminates** |
 | Neither present (with tools) | Healed to update, increment stall counter | Yes (up to `RUMMY_MAX_STALLS`) |
-| Neither present (plain text, no tools) | Healed to summary | **No — run terminates** |
+| Neither present (plain text, no tools) | Healed to summarize | **No — run terminates** |
 
 **Stall protection:** if the model emits tool commands without `<update>` or
-`<summary>` for `RUMMY_MAX_STALLS` consecutive turns (default 3), the run
+`<summarize>` for `RUMMY_MAX_STALLS` consecutive turns (default 3), the run
 force-completes. Healed updates (from tool-only responses) count as stalls.
 
 **Plain text healing:** if the model responds with plain text and zero tool
-commands, it answered the question. The text is treated as a summary and the
+commands, it answered the question. The text is healed to `<summarize>` and the
 run terminates. A model that's still working uses tools.
 
 **Repetition detection:** if the model emits the same tool commands
@@ -318,7 +320,7 @@ the run force-completes. Catches search loops and other retry patterns.
 2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML.
 3. **Syntax flexibility** — the parser accepts both attribute-style and body-style for every tool. Legacy attributes are silently remapped.
 4. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. The server never throws on model output.
-5. **Termination protocol** — `<summary>` terminates; `<update>` continues; plain text → summary; tools without status → stall counter; repeated commands → loop detection.
+5. **Termination protocol** — `<summarize>` terminates; `<update>` continues; plain text → summarize; tools without status → stall counter; repeated commands → loop detection.
 6. **Content capture** — free-form text between tags is captured as `content://N` (assistant text). Model thinking is `reasoning://N`. Raw API response diagnostics are `model://N`. All hidden from model.
 
 ### 2.7 Response Healing Philosophy
@@ -341,7 +343,7 @@ The server parses all XML commands from the response, then processes in strict o
 2. **Execute action commands** — `read` promotes, `store` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result entries.
 3. **Process unknowns** — create `unknown://N` entries, deduplicated.
 4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
-5. **Store status** — create `summary://N` or `update://N` entry.
+5. **Store status** — create `summary://N` (from `<summarize>`) or `update://N` entry.
 6. **Emit `run/state`** — send client notification with history, proposed, unknowns, and telemetry.
 
 ### 2.9 Tool Result Content Contract
@@ -381,8 +383,8 @@ custom explanation framework.
 
 #### Content projection in v_model_context
 
-The `v_model_context` VIEW projects `content` from `known_entries.value` for
-each scheme. **Every result scheme must be explicitly listed in the content
+The `v_model_context` VIEW projects `content` from `known_entries.value` based
+on `state`. **Every result scheme must be explicitly listed in the content
 projection CASE statement.** The default `ELSE value` passes content through
 for unlisted schemes. New schemes get their raw value by default — explicit
 CASE entries are only needed for schemes that compose content (e.g., wrapping
@@ -431,32 +433,34 @@ for the current continuation. Stored for audit but not part of the message histo
 ### 3.2 Context Materialization
 
 Each turn, the engine materializes `turn_context` from `known_entries` via the
-`v_model_context` VIEW. The VIEW joins the `schemes` table for fidelity rules
-and uses `countTokens()` for accurate token counts. Ordinal assignment uses
-`ROW_NUMBER()` to establish render order:
+`v_model_context` VIEW. State directly determines what the model sees — there
+is no separate fidelity computation. The VIEW uses `countTokens()` for accurate
+token counts. Ordinal assignment uses `ROW_NUMBER()` to establish render order:
 
-1. **Knowledge** — `known://*` at fidelity `full` (working memory)
-2. **Stored keys** — `known://*` at fidelity `index` (discoverable, key only)
-3. **File Index** — files at fidelity `index` (path listing)
-4. **Symbol files** — files at fidelity `summary` (signatures only)
-5. **Full files** — files at fidelity `full` (complete content)
+1. **Knowledge** — `known://*` at state `full` (working memory)
+2. **Stored keys** — `known://*` at state `stored` (discoverable, key only)
+3. **File Index** — files at state `index` (path listing)
+4. **Summary files** — files at state `summary` (summary/symbols/snippet — FUTURE)
+5. **Full files** — files at state `full` (complete content)
 6. **Unknowns** — `unknown://*` entries (uncertainty boundary, always last)
 
 Results, summaries, updates, and prompts are NOT in context — they are in
 messages (user message). The context is the model's world state; messages
 are the conversation.
 
-### 3.3 Fidelity
+### 3.3 State IS Fidelity
 
-Each entry in `turn_context` has a `fidelity` level:
+State directly determines what the model sees. There is no computed fidelity —
+the `state` column on `known_entries` is the fidelity level:
 
-- **`full`** — complete content in context (file content, known values, results)
-- **`summary`** — partial representation (file symbols/signatures)
-- **`index`** — path/key listed, no content (file index, stored key listing)
+- **`full`** — complete content visible (file content, known values, results)
+- **`summary`** — summary/symbols/snippet visible (FUTURE for files; used for search URL results)
+- **`index`** — path/key listed, no content (file index)
+- **`stored`** — invisible, retrievable via `<read>`
 
-Fidelity is derived from `scheme`, `state`, and `turn` via the `schemes` table
-join in `v_model_context`. `read(key)` promotes by setting turn to current turn
-(→ fidelity `full`). `store(key)` demotes by setting turn to 0 (→ fidelity `index`).
+`<read>` promotes any entry to `full`. `<store>` demotes any entry to `stored`.
+Turn tracks when an entry was last touched — freshness for the relevance
+engine's staleness calculations. Turn no longer gates visibility.
 
 ### 3.4 File Bootstrap
 
@@ -464,17 +468,15 @@ At run start, the file scanner populates `known_entries` from disk. The scanner
 checks `file_constraints` for client visibility rules: ignored files are skipped
 entirely, and `active`/`readonly` constraints are stored in `meta.constraint`.
 
-| Source | State | Turn | Value |
-|--------|-------|------|-------|
-| Agent-read (from `<read>`) | `full` | current | Full file contents |
-| Root files (no `/` in path) | `full` | current | Full file contents |
-| All other tracked files | `full` | 0 | Full file contents (path-only in context) |
+| Source | State | Value |
+|--------|-------|-------|
+| All scanned files | `index` | Full file contents (path-only in context) |
+| Client-activated files | `full` | Full file contents (visible in context) |
 
-Files at turn 0 appear as paths in the File Index. Files at turn > 0 appear with
-full content in the Files section. The `symbols` state exists for use by
-the Relevance Engine — a middle tier between full content and path-only. Symbols
-are extracted by antlrmap/ctags and stored in `meta.symbols` on every file scan,
-ready for when the Relevance Engine introduces heat-based promotion tiers.
+All files enter at `index` state — listed by path but no content in context.
+Only files explicitly activated by the client (via `<read>` or client constraint)
+get promoted to `full`. There is no root file exception. Symbol extraction is
+deferred to the relevance engine — no extraction on scan.
 
 ### 3.5 File Change Detection
 
@@ -485,17 +487,16 @@ Each turn, the server scans the project's files and compares against
 2. Scan project for all non-ignored files and their current hashes
 3. Across all active runs, add/update/delete file entries to match disk state
 4. Store constraint in `meta.constraint` for VIEW rendering
-5. Update the `turn` field on files that are model-read or newly modified
+5. Update the `turn` field on files that changed on disk
 
-Files whose `turn` matches the current turn were recently engaged — this is
-the heat signal for context budgeting.
+The `turn` field tracks when a file was last touched — freshness data for the
+relevance engine's staleness calculations.
 
 The `refs` field will store cross-reference counts. The `hash` field enables
 change detection without re-reading file contents. Both are inert (default 0 /
 NULL) until the relevance engine and context budgeting are implemented.
 
-Symbol extraction (ctags/antlrmap) runs when a file's hash changes. Symbols
-are stored in `meta` on the file's known entry.
+Symbol extraction is deferred to the relevance engine. No extraction on scan.
 
 ---
 
