@@ -359,7 +359,8 @@ export default class ContextAssembler {
 
 		const effectiveMode = promptMode || type;
 		const tools = AgentLoop.toolsForMode(effectiveMode);
-		const injected = prompt && continuation && promptOrdinal > continuationOrdinal;
+		const injected =
+			prompt && continuation && promptOrdinal > continuationOrdinal;
 		if (injected) {
 			// Injection: human prompt arrived after progress — takes precedence
 			userParts.push(

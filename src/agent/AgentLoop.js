@@ -562,12 +562,19 @@ export default class AgentLoop {
 
 		// Write directly to known_entries so the next turn picks it up
 		await this.#knownStore.upsert(
-			runRow.id, nextTurn, `prompt://${nextTurn}`,
-			"", "info", { meta: { mode: "ask" } },
+			runRow.id,
+			nextTurn,
+			`prompt://${nextTurn}`,
+			"",
+			"info",
+			{ meta: { mode: "ask" } },
 		);
 		await this.#knownStore.upsert(
-			runRow.id, nextTurn, `ask://${nextTurn}`,
-			message, "info",
+			runRow.id,
+			nextTurn,
+			`ask://${nextTurn}`,
+			message,
+			"info",
 		);
 
 		// If active, the next turn will see the ask:// and render <ask> instead of <progress>
@@ -591,7 +598,11 @@ export default class AgentLoop {
 		const projectId = sessions[0].project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		return this.#drainQueue(
-			runRow.id, runAlias, runRow.session_id, project, {},
+			runRow.id,
+			runAlias,
+			runRow.session_id,
+			project,
+			{},
 		);
 	}
 

@@ -359,12 +359,17 @@ export default class TurnExecutor {
 				const isPattern = cmd.value || cmd.path.includes("*");
 				if (isPattern) {
 					const matches = await this.#knownStore.getEntriesByPattern(
-						currentRunId, cmd.path, cmd.value,
+						currentRunId,
+						cmd.path,
+						cmd.value,
 					);
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				}
 				await this.#knownStore.promoteByPattern(
-					currentRunId, cmd.path, cmd.value, turn,
+					currentRunId,
+					cmd.path,
+					cmd.value,
+					turn,
 				);
 				continue;
 			}
@@ -378,12 +383,16 @@ export default class TurnExecutor {
 				const isPattern = cmd.value || cmd.path.includes("*");
 				if (isPattern) {
 					const matches = await this.#knownStore.getEntriesByPattern(
-						currentRunId, cmd.path, cmd.value,
+						currentRunId,
+						cmd.path,
+						cmd.value,
 					);
 					await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				}
 				await this.#knownStore.demoteByPattern(
-					currentRunId, cmd.path, cmd.value,
+					currentRunId,
+					cmd.path,
+					cmd.value,
 				);
 				continue;
 			}
