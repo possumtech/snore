@@ -279,6 +279,27 @@ persistence.
 to `read`/`store` with options. One migration, then the client speaks the
 same language as the model and plugins.
 
+### In-process vs out-of-process plugins
+
+Two plugin tiers, same interface, different transport:
+
+**In-process** — lightweight, no external deps, direct `rummy.*` calls:
+- Core tools, engine, telemetry, symbol extraction
+- Fast: direct function calls, zero serialization
+
+**Out-of-process** — heavy subsystems as separate services via RPC:
+- Web (Playwright, SearXNG) → `rummy.web` repo
+- Future: code sandbox, external API integrations
+- Registers tools at startup via handshake
+- Receives commands via RPC, responds with `write`/`read`/`store` calls back
+- Crash isolation: core keeps running if plugin service dies
+- Zero-dep deployment: don't need Playwright if you don't run `rummy.web`
+
+The native `rummy.*` interface is for in-process plugins. The RPC interface
+serves both human clients AND out-of-process plugin services. Same contract,
+same method names, two transports. When we split a plugin into its own repo,
+the only change is transport — the interface stays identical.
+
 ### TurnExecutor dispatch
 
 The command dispatch becomes registry-driven:
