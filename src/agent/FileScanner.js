@@ -57,6 +57,13 @@ export default class FileScanner {
 			constraintRows.map((c) => [c.pattern, c.visibility]),
 		);
 
+		// Include activated files that aren't in the git file list
+		for (const [pattern, visibility] of constraints) {
+			if (visibility === "active" && !mappableFiles.includes(pattern)) {
+				mappableFiles.push(pattern);
+			}
+		}
+
 		// Stat all files concurrently (no content reads), skip ignored
 		const diskStats = new Map();
 		const statResults = await Promise.all(

@@ -211,11 +211,34 @@ documentation injection, and scheme handling.
 
 ---
 
+## Todo: File Constraint Security
+
+Client file constraints have security and trust implications. Three levels:
+
+| Constraint | Behavior | Enforcement |
+|-----------|----------|-------------|
+| `active` | Full fidelity, included even if not in git | ✓ scanner includes non-git files |
+| `readonly` | Full fidelity, model warned, writes rejected | ⚠ label rendered but writes NOT rejected |
+| `ignore` | Excluded from scan, invisible to model | ✓ scanner skips, but `<read>` not blocked |
+
+### Implementation needed
+
+- [ ] **ReadOnly enforcement** — server rejects writes to readonly files in
+      TurnExecutor, same pattern as ask-mode enforcement. The `<act>` tag
+      or context label should warn the model not to attempt writes.
+- [ ] **Ignore enforcement** — `<read>` on an ignored file should fail or
+      return "file is ignored" rather than silently promoting it.
+- [ ] **Active outside project root** — paths like `../../config.txt` need
+      to resolve correctly relative to projectPath. Security: never allow
+      active constraint to escape a defined boundary.
+- [ ] **Plugin documentation split** — README.md per plugin folder
+
+---
+
 ## Todo: Remaining Cleanup
 
 - [ ] **Delete prompt.ask.md, prompt.act.md** — replaced by prompt.md
 - [ ] **Prompt carries model** — `prompt://` meta records model used
-- [ ] **Remove `write` scheme** — write acts on target paths directly
 - [ ] **ARCHITECTURE.md full pass** — align with state simplification
 - [ ] **Non-git file scanner** — fallback for non-git projects
 

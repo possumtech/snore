@@ -654,6 +654,17 @@ export default class TurnExecutor {
 			cmd.value,
 		);
 
+		if (matches.length === 0) {
+			const resultPath = `write://${cmd.path}`;
+			await this.#knownStore.upsert(
+				runId, turn, resultPath,
+				`${cmd.path} — not found in context. Use <read> to load it first.`,
+				"error",
+				{ meta: { file: cmd.path, error: "not found" } },
+			);
+			return;
+		}
+
 		for (const entry of matches) {
 			const resultPath = `write://${entry.path}`;
 			let patch = null;
