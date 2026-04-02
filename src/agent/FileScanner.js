@@ -125,9 +125,8 @@ export default class FileScanner {
 
 			changedPaths.push(relPath);
 
-			const isRoot = !relPath.includes("/");
-			const turn = isRoot ? currentTurn : entry?.turn || 0;
 			const constraint = constraints.get(relPath) || null;
+			const turn = constraint === "active" ? currentTurn : entry?.turn || 0;
 
 			await this.#knownStore.upsert(
 				runId,
@@ -152,12 +151,14 @@ export default class FileScanner {
 			for (const [relPath, symbols] of symbolMap) {
 				const symbolText = formatSymbols(symbols);
 				if (!symbolText) continue;
+				const entry = existing.find((e) => e.path === relPath);
 				const current = await this.#knownStore.getValue(runId, relPath);
 				if (current !== null) {
 					const constraint = constraints.get(relPath) || null;
+					const turn = constraint === "active" ? currentTurn : entry?.turn || 0;
 					await this.#knownStore.upsert(
 						runId,
-						currentTurn,
+						turn,
 						relPath,
 						current,
 						"full",
@@ -184,11 +185,10 @@ export default class FileScanner {
 			} catch {
 				continue;
 			}
-			const isRoot = !relPath.includes("/");
 			const constraint = constraints.get(relPath) || null;
 			await this.#knownStore.upsert(
 				runId,
-				isRoot ? currentTurn : 0,
+				constraint === "active" ? currentTurn : 0,
 				relPath,
 				content,
 				"full",

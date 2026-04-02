@@ -359,20 +359,23 @@ export default class ContextAssembler {
 
 		const effectiveMode = promptMode || type;
 		const tools = AgentLoop.toolsForMode(effectiveMode);
+		const warn = effectiveMode === "ask"
+			? ' warn="File and system modification prohibited on this turn."'
+			: "";
 		const injected =
 			prompt && continuation && promptOrdinal > continuationOrdinal;
 		if (injected) {
 			// Injection: human prompt arrived after progress — takes precedence
 			userParts.push(
-				`<${promptMode} tools="${tools}">${prompt}</${promptMode}>`,
+				`<${promptMode} tools="${tools}"${warn}>${prompt}</${promptMode}>`,
 			);
 		} else if (continuation) {
 			// Continuation turn: progress
-			userParts.push(`<progress tools="${tools}">${continuation}</progress>`);
+			userParts.push(`<progress tools="${tools}"${warn}>${continuation}</progress>`);
 		} else if (prompt && promptMode) {
 			// First turn: human prompt
 			userParts.push(
-				`<${promptMode} tools="${tools}">${prompt}</${promptMode}>`,
+				`<${promptMode} tools="${tools}"${warn}>${prompt}</${promptMode}>`,
 			);
 		}
 

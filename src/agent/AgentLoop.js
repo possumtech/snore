@@ -1,6 +1,8 @@
+import { join } from "node:path";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
+import RunDumper from "./RunDumper.js";
 
 export default class AgentLoop {
 	#db;
@@ -443,10 +445,20 @@ export default class AgentLoop {
 				return { run: currentAlias, status: "aborted", turn: loopIteration };
 			}
 			console.warn(`[RUMMY] Run failed: ${err.message}`);
+			console.warn(`[RUMMY] Stack: ${err.stack}`);
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: "failed",
 			});
+			// Log the error to known_entries so it's queryable
+			try {
+				await this.#knownStore.upsert(
+					currentRunId, loopIteration,
+					`error://${loopIteration}`,
+					`${err.message}\n${err.stack}`,
+					"info",
+				);
+			} catch {}
 			const out = {
 				run: currentAlias,
 				status: "failed",
@@ -457,6 +469,16 @@ export default class AgentLoop {
 			return out;
 		} finally {
 			this.#activeRuns.delete(currentRunId);
+			if (process.env.RUMMY_DEBUG === "true") {
+				const rummyHome = process.env.RUMMY_HOME || ".";
+				try {
+					await RunDumper.dump(
+						this.#db,
+						currentRunId,
+						join(rummyHome, "last_run.txt"),
+					);
+				} catch {}
+			}
 		}
 	}
 
@@ -508,9 +530,10 @@ export default class AgentLoop {
 			return { run: runAlias, status: "resolved" };
 		}
 
-		// Auto-resume if any action was accepted
+		// Auto-resume if any action was accepted — but not if the model already summarized
+		const hasSummary = await this.#db.get_latest_summary.get({ run_id: runId });
 		const hasAccepted = await this.#knownStore.hasAcceptedActions(runId);
-		if (hasAccepted) {
+		if (hasAccepted && !hasSummary?.value) {
 			const latestPrompt = await this.#db.get_latest_prompt.get({
 				run_id: runId,
 			});

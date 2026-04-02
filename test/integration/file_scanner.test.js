@@ -118,22 +118,32 @@ describe("FileScanner integration", () => {
 		assert.ok(symbolCalls[0].includes("sym.js"), "hook received changed path");
 	});
 
-	it("root files get current turn, nested files get 0", async () => {
+	it("only active-constrained files get current turn, all others get 0", async () => {
 		await fs.mkdir(join(projectPath, "src"), { recursive: true });
 		await fs.writeFile(join(projectPath, "root.js"), "// root\n");
 		await fs.writeFile(join(projectPath, "src/nested.js"), "// nested\n");
+		await fs.writeFile(join(projectPath, "active.js"), "// active\n");
+
+		// Set active constraint on one file
+		await tdb.db.upsert_file_constraint.run({
+			project_id: PROJECT_ID,
+			pattern: "active.js",
+			visibility: "active",
+		});
 
 		await scanner.scan(
 			projectPath,
 			PROJECT_ID,
-			["root.js", "src/nested.js"],
+			["root.js", "src/nested.js", "active.js"],
 			7,
 		);
 
 		const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 		const root = all.find((e) => e.path === "root.js");
 		const nested = all.find((e) => e.path === "src/nested.js");
-		assert.strictEqual(root.turn, 7, "root file gets current turn");
+		const active = all.find((e) => e.path === "active.js");
+		assert.strictEqual(root.turn, 0, "root file gets turn 0 (no special treatment)");
 		assert.strictEqual(nested.turn, 0, "nested file gets turn 0");
+		assert.strictEqual(active.turn, 7, "active-constrained file gets current turn");
 	});
 });
