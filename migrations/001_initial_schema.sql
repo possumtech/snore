@@ -221,8 +221,27 @@ BEGIN
 		OR (OLD.status = 'running' AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
 		OR (OLD.status = 'proposed' AND NEW.status IN ('running', 'completed', 'aborted'))
 		OR (OLD.status = 'completed' AND NEW.status IN ('running', 'aborted'))
+		OR (OLD.status = 'failed' AND NEW.status IN ('running', 'aborted'))
+		OR (OLD.status = 'aborted' AND NEW.status IN ('running'))
 	);
 END;
+
+-- Prompt queue. All prompts flow through here. Worker consumes FIFO per run.
+CREATE TABLE IF NOT EXISTS prompt_queue (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
+	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
+	, model TEXT
+	, prompt TEXT NOT NULL
+	, config JSON
+	, status TEXT NOT NULL DEFAULT 'pending'
+	CHECK (status IN ('pending', 'active', 'completed', 'aborted'))
+	, result JSON
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_queue_run ON prompt_queue (run_id, status);
 
 -- RPC audit log. Every call recorded unconditionally.
 CREATE TABLE IF NOT EXISTS rpc_log (

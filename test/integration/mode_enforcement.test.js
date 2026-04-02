@@ -39,7 +39,9 @@ describe("Mode enforcement in ask mode", () => {
 	});
 
 	it("rejects file write in ask mode", () => {
-		const { commands } = XmlParser.parse('<write path="src/app.js">new content</write>');
+		const { commands } = XmlParser.parse(
+			'<write path="src/app.js">new content</write>',
+		);
 		for (const cmd of commands) {
 			if (cmd.name === "write" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
@@ -50,7 +52,9 @@ describe("Mode enforcement in ask mode", () => {
 	});
 
 	it("allows known:// write in ask mode", () => {
-		const { commands } = XmlParser.parse('<write path="known://note">updated</write>');
+		const { commands } = XmlParser.parse(
+			'<write path="known://note">updated</write>',
+		);
 		for (const cmd of commands) {
 			if (cmd.name === "write" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
@@ -83,7 +87,9 @@ describe("Mode enforcement in ask mode", () => {
 	});
 
 	it("rejects move to file target in ask mode", () => {
-		const { commands } = XmlParser.parse('<move path="known://note">src/output.txt</move>');
+		const { commands } = XmlParser.parse(
+			'<move path="known://note">src/output.txt</move>',
+		);
 		for (const cmd of commands) {
 			if (cmd.name === "move" && cmd.to) {
 				const destScheme = KnownStore.scheme(cmd.to);
@@ -94,7 +100,9 @@ describe("Mode enforcement in ask mode", () => {
 	});
 
 	it("allows move between known entries in ask mode", () => {
-		const { commands } = XmlParser.parse('<move path="known://note">known://archive</move>');
+		const { commands } = XmlParser.parse(
+			'<move path="known://note">known://archive</move>',
+		);
 		for (const cmd of commands) {
 			if (cmd.name === "move" && cmd.to) {
 				const destScheme = KnownStore.scheme(cmd.to);

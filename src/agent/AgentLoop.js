@@ -69,6 +69,59 @@ export default class AgentLoop {
 		return parts.join("\n");
 	}
 
+	async #ensureRun(sessionId, model, run, options) {
+		const noContext = options?.noContext === true;
+		const isFork = options?.fork === true;
+		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
+
+		if (run && isFork) {
+			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: run }));
+			const alias = await this.#generateAlias(requestedModel);
+			const runRow = await this.#db.create_run.get({
+				session_id: sessionId,
+				parent_run_id: existingRun.id,
+				config: JSON.stringify({ model: requestedModel, noContext }),
+				alias,
+			});
+			await this.#db.fork_known_entries.run({
+				new_run_id: runRow.id,
+				parent_run_id: existingRun.id,
+			});
+			return { runId: runRow.id, alias };
+		}
+
+		if (run) {
+			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: run }));
+
+			const existing = this.#activeRuns.get(existingRun.id);
+			if (existing) existing.abort();
+
+			const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
+			if (unresolved.length > 0) {
+				return {
+					runId: existingRun.id,
+					alias: existingRun.alias,
+					blocked: true,
+					proposed: unresolved,
+				};
+			}
+			return { runId: existingRun.id, alias: existingRun.alias };
+		}
+
+		const alias = await this.#generateAlias(requestedModel);
+		const runRow = await this.#db.create_run.get({
+			session_id: sessionId,
+			parent_run_id: null,
+			config: JSON.stringify({ model: requestedModel, noContext }),
+			alias,
+		});
+		return { runId: runRow.id, alias };
+	}
+
 	async run(
 		mode,
 		sessionId,
@@ -87,22 +140,17 @@ export default class AgentLoop {
 			run,
 		});
 
-		const sessions = await this.#db.get_session_by_id.all({
-			id: sessionId,
-		});
-		if (!sessions || sessions.length === 0) {
+		const sessions = await this.#db.get_session_by_id.all({ id: sessionId });
+		if (!sessions || sessions.length === 0)
 			throw new Error(msg("error.session_not_found", { sessionId }));
-		}
 		const projectId = sessions[0].project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		if (!project)
 			throw new Error(msg("error.project_not_found", { projectId }));
 
 		const noContext = options?.noContext === true;
-		const isFork = options?.fork === true;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
-		// Resolve temperature
 		if (options?.temperature === undefined) {
 			const tempRow = await this.#db.get_session_temperature.get({
 				id: sessionId,
@@ -112,77 +160,94 @@ export default class AgentLoop {
 			}
 		}
 
-		let currentRunId = null;
-		let currentAlias = null;
-
-		if (run && isFork) {
-			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun)
-				throw new Error(msg("error.run_not_found", { runId: run }));
-			currentAlias = await this.#generateAlias(requestedModel);
-			const runRow = await this.#db.create_run.get({
-				session_id: sessionId,
-				parent_run_id: existingRun.id,
-				config: JSON.stringify({ model: requestedModel, noContext }),
-				alias: currentAlias,
-			});
-			currentRunId = runRow.id;
-			// Copy parent's known store into the fork
-			await this.#db.fork_known_entries.run({
-				new_run_id: currentRunId,
-				parent_run_id: existingRun.id,
-			});
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: "running",
-			});
-		} else if (run) {
-			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun)
-				throw new Error(msg("error.run_not_found", { runId: run }));
-			currentRunId = existingRun.id;
-			currentAlias = existingRun.alias;
-
-			// If this run has an active loop, abort it first
-			const existing = this.#activeRuns.get(currentRunId);
-			if (existing) {
-				existing.abort();
-				// Give the aborted loop a moment to clean up
-				await new Promise((r) => setTimeout(r, 100));
-			}
-
-			const unresolved = await this.#knownStore.getUnresolved(currentRunId);
-			if (unresolved.length > 0) {
-				return {
-					run: currentAlias,
-					status: "proposed",
-					remainingCount: unresolved.length,
-					proposed: unresolved,
-				};
-			}
-
-			// Transition to running — may already be running (no-op) or
-			// aborted/completed from the previous loop's cleanup
-			if (existingRun.status !== "running") {
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: "running",
-				});
-			}
-		} else {
-			currentAlias = await this.#generateAlias(requestedModel);
-			const runRow = await this.#db.create_run.get({
-				session_id: sessionId,
-				parent_run_id: null,
-				config: JSON.stringify({ model: requestedModel, noContext }),
-				alias: currentAlias,
-			});
-			currentRunId = runRow.id;
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: "running",
-			});
+		const runInfo = await this.#ensureRun(sessionId, model, run, options);
+		if (runInfo.blocked) {
+			return {
+				run: runInfo.alias,
+				status: "proposed",
+				remainingCount: runInfo.proposed.length,
+				proposed: runInfo.proposed,
+			};
 		}
+
+		const { runId: currentRunId, alias: currentAlias } = runInfo;
+
+		// Enqueue the prompt
+		await this.#db.enqueue_prompt.get({
+			run_id: currentRunId,
+			session_id: sessionId,
+			mode,
+			model: requestedModel,
+			prompt: prompt || "",
+			config: JSON.stringify({ noContext, temperature: options?.temperature }),
+		});
+
+		// If another loop is active for this run, the prompt is queued — return
+		if (this.#activeRuns.has(currentRunId)) {
+			return { run: currentAlias, status: "queued" };
+		}
+
+		// Process the queue
+		return this.#drainQueue(
+			currentRunId,
+			currentAlias,
+			sessionId,
+			project,
+			options,
+		);
+	}
+
+	async #drainQueue(currentRunId, currentAlias, sessionId, project, options) {
+		while (true) {
+			const queued = await this.#db.claim_next_prompt.get({
+				run_id: currentRunId,
+			});
+			if (!queued) break;
+
+			const promptConfig = queued.config ? JSON.parse(queued.config) : {};
+			const result = await this.#executeLoop({
+				mode: queued.mode,
+				project,
+				sessionId,
+				currentRunId,
+				currentAlias,
+				requestedModel: queued.model || process.env.RUMMY_MODEL_DEFAULT,
+				prompt: queued.prompt,
+				noContext: promptConfig.noContext || false,
+				options: { ...options, temperature: promptConfig.temperature },
+				hook: queued.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
+			});
+
+			await this.#db.complete_prompt.run({
+				id: queued.id,
+				result: JSON.stringify(result),
+			});
+
+			// If the loop ended with proposals, stop draining — client must resolve first
+			if (result.status === "proposed") return result;
+		}
+
+		// No more prompts — return last state
+		const runRow = await this.#db.get_run_by_alias.get({ alias: currentAlias });
+		return { run: currentAlias, status: runRow?.status || "completed" };
+	}
+
+	async #executeLoop({
+		mode,
+		project,
+		sessionId,
+		currentRunId,
+		currentAlias,
+		requestedModel,
+		prompt,
+		noContext,
+		options,
+		hook,
+	}) {
+		await this.#db.update_run_status.run({
+			id: currentRunId,
+			status: "running",
+		});
 
 		const modelContextSize =
 			await this.#llmProvider.getContextSize(requestedModel);
@@ -449,7 +514,22 @@ export default class AgentLoop {
 			const resumeMode = latestPrompt?.meta
 				? JSON.parse(latestPrompt.meta).mode
 				: "ask";
-			return this.run(resumeMode, runRow.session_id, null, "", null, runAlias);
+
+			const sessions = await this.#db.get_session_by_id.all({
+				id: runRow.session_id,
+			});
+			const projectId = sessions[0].project_id;
+			const project = await this.#db.get_project_by_id.get({ id: projectId });
+
+			await this.#db.enqueue_prompt.get({
+				run_id: runId,
+				session_id: runRow.session_id,
+				mode: resumeMode,
+				model: null,
+				prompt: "",
+				config: "{}",
+			});
+			return this.#drainQueue(runId, runAlias, runRow.session_id, project, {});
 		}
 
 		await this.#db.update_run_status.run({ id: runId, status: "completed" });
@@ -475,31 +555,32 @@ export default class AgentLoop {
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
-		const isActive = runRow.status === "running" || runRow.status === "queued";
-		const nextTurn = runRow.next_turn;
+		// Enqueue the injection as an ask prompt
+		await this.#db.enqueue_prompt.get({
+			run_id: runRow.id,
+			session_id: runRow.session_id,
+			mode: "ask",
+			model: null,
+			prompt: message,
+			config: "{}",
+		});
 
-		// Inject creates a prompt (ask mode — injections are questions)
-		await this.#knownStore.upsert(
-			runRow.id,
-			nextTurn,
-			`prompt://${nextTurn}`,
-			"",
-			"info",
-			{ meta: { mode: "ask" } },
-		);
-		await this.#knownStore.upsert(
-			runRow.id,
-			nextTurn,
-			`ask://${nextTurn}`,
-			message,
-			"info",
-		);
-
-		if (isActive) {
-			return { run: runAlias, status: runRow.status, injected: "queued" };
+		if (this.#activeRuns.has(runRow.id)) {
+			return { run: runAlias, status: "queued", injected: "queued" };
 		}
 
-		return this.run("ask", runRow.session_id, null, "", null, runAlias);
+		const sessions = await this.#db.get_session_by_id.all({
+			id: runRow.session_id,
+		});
+		const projectId = sessions[0].project_id;
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		return this.#drainQueue(
+			runRow.id,
+			runAlias,
+			runRow.session_id,
+			project,
+			{},
+		);
 	}
 
 	async getRunHistory(runAlias) {
