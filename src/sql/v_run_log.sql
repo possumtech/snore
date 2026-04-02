@@ -18,6 +18,6 @@ JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.scheme IS NOT NULL
 	AND ke.state != 'proposed'
-	AND s.category NOT IN ('knowledge')
+	AND s.category NOT IN ('knowledge', 'file')
 	AND ke.scheme NOT IN ('system', 'reasoning', 'model', 'content')
 ORDER BY ke.id;
