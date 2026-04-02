@@ -144,14 +144,25 @@ export default class TurnExecutor {
 			runId: currentRunId,
 		});
 
-		// Store system prompt audit entry
+		// Store actual assembled messages as audit (full messages sent to model)
+		const systemMsg = filteredMessages.find((m) => m.role === "system");
+		const userMsg = filteredMessages.find((m) => m.role === "user");
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
 			`system://${turn}`,
-			systemPrompt,
+			systemMsg?.content || systemPrompt,
 			"info",
 		);
+		if (userMsg) {
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`user://${turn}`,
+				userMsg.content,
+				"info",
+			);
+		}
 
 		if (process.env.RUMMY_DEBUG === "true") {
 			console.log(
@@ -183,6 +194,15 @@ export default class TurnExecutor {
 		if (process.env.RUMMY_DEBUG === "true") {
 			console.log("[DEBUG] Response content:", content.slice(0, 500));
 		}
+
+		// Store full assistant response as audit
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`assistant://${turn}`,
+			content,
+			"info",
+		);
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
@@ -336,18 +356,16 @@ export default class TurnExecutor {
 				if (/^https?:\/\//.test(cmd.path)) {
 					await this.#fetchUrl(currentRunId, turn, cmd.path);
 				}
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.value,
-				);
+				const isPattern = cmd.value || cmd.path.includes("*");
+				if (isPattern) {
+					const matches = await this.#knownStore.getEntriesByPattern(
+						currentRunId, cmd.path, cmd.value,
+					);
+					await this.#storeToolResult(currentRunId, turn, cmd, matches);
+				}
 				await this.#knownStore.promoteByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.value,
-					turn,
+					currentRunId, cmd.path, cmd.value, turn,
 				);
-				await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				continue;
 			}
 			if (cmd.name === "search") {
@@ -357,17 +375,16 @@ export default class TurnExecutor {
 			}
 			if (cmd.name === "store") {
 				if (!cmd.path) continue;
-				const matches = await this.#knownStore.getEntriesByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.value,
-				);
+				const isPattern = cmd.value || cmd.path.includes("*");
+				if (isPattern) {
+					const matches = await this.#knownStore.getEntriesByPattern(
+						currentRunId, cmd.path, cmd.value,
+					);
+					await this.#storeToolResult(currentRunId, turn, cmd, matches);
+				}
 				await this.#knownStore.demoteByPattern(
-					currentRunId,
-					cmd.path,
-					cmd.value,
+					currentRunId, cmd.path, cmd.value,
 				);
-				await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				continue;
 			}
 

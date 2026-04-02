@@ -39,6 +39,8 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('progress', 'full', 1, '["info"]', 0, 'audit'),
 ('reasoning', 'null', 0, '["info"]', 0, 'audit'),
 ('model', 'null', 0, '["info"]', 0, 'audit'),
+('user', 'null', 0, '["info"]', 0, 'audit'),
+('assistant', 'null', 0, '["info"]', 0, 'audit'),
 ('content', 'null', 0, '["info"]', 0, 'audit'),
 ('http', 'turn', 1, '["full"]', 1, 'file'),
 ('https', 'turn', 1, '["full"]', 1, 'file');

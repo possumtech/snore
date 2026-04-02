@@ -202,6 +202,8 @@ export default class ContextAssembler {
 		const messageEntries = [];
 		let prompt = null;
 		let promptMode = null;
+		let promptOrdinal = -1;
+		let continuationOrdinal = -1;
 
 		for (const row of rows) {
 			if (row.path === "system://prompt") {
@@ -210,6 +212,7 @@ export default class ContextAssembler {
 			}
 			if (row.scheme === "progress") {
 				continuation = row.content;
+				continuationOrdinal = row.ordinal;
 			}
 
 			const meta = row.meta ? JSON.parse(row.meta) : null;
@@ -251,6 +254,7 @@ export default class ContextAssembler {
 					if (row.scheme === "ask" || row.scheme === "act") {
 						prompt = row.content;
 						promptMode = row.scheme;
+						promptOrdinal = row.ordinal;
 					}
 					if (row.scheme !== "prompt") {
 						messageEntries.push({
@@ -355,12 +359,20 @@ export default class ContextAssembler {
 
 		const effectiveMode = promptMode || type;
 		const tools = AgentLoop.toolsForMode(effectiveMode);
-		if (prompt && promptMode) {
+		const injected = prompt && continuation && promptOrdinal > continuationOrdinal;
+		if (injected) {
+			// Injection: human prompt arrived after progress — takes precedence
 			userParts.push(
 				`<${promptMode} tools="${tools}">${prompt}</${promptMode}>`,
 			);
 		} else if (continuation) {
+			// Continuation turn: progress
 			userParts.push(`<progress tools="${tools}">${continuation}</progress>`);
+		} else if (prompt && promptMode) {
+			// First turn: human prompt
+			userParts.push(
+				`<${promptMode} tools="${tools}">${prompt}</${promptMode}>`,
+			);
 		}
 
 		messages.push({

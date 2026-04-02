@@ -244,10 +244,13 @@ export default class AgentLoop {
 		options,
 		hook,
 	}) {
-		await this.#db.update_run_status.run({
-			id: currentRunId,
-			status: "running",
-		});
+		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
+		if (runRow.status !== "running") {
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "running",
+			});
+		}
 
 		const modelContextSize =
 			await this.#llmProvider.getContextSize(requestedModel);
@@ -555,7 +558,24 @@ export default class AgentLoop {
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
-		// Enqueue the injection as an ask prompt
+		const nextTurn = runRow.next_turn;
+
+		// Write directly to known_entries so the next turn picks it up
+		await this.#knownStore.upsert(
+			runRow.id, nextTurn, `prompt://${nextTurn}`,
+			"", "info", { meta: { mode: "ask" } },
+		);
+		await this.#knownStore.upsert(
+			runRow.id, nextTurn, `ask://${nextTurn}`,
+			message, "info",
+		);
+
+		// If active, the next turn will see the ask:// and render <ask> instead of <progress>
+		if (this.#activeRuns.has(runRow.id)) {
+			return { run: runAlias, status: runRow.status, injected: "next_turn" };
+		}
+
+		// If idle, enqueue and drain to start a new loop
 		await this.#db.enqueue_prompt.get({
 			run_id: runRow.id,
 			session_id: runRow.session_id,
@@ -565,21 +585,13 @@ export default class AgentLoop {
 			config: "{}",
 		});
 
-		if (this.#activeRuns.has(runRow.id)) {
-			return { run: runAlias, status: "queued", injected: "queued" };
-		}
-
 		const sessions = await this.#db.get_session_by_id.all({
 			id: runRow.session_id,
 		});
 		const projectId = sessions[0].project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		return this.#drainQueue(
-			runRow.id,
-			runAlias,
-			runRow.session_id,
-			project,
-			{},
+			runRow.id, runAlias, runRow.session_id, project, {},
 		);
 	}
 
