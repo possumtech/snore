@@ -59,9 +59,6 @@ export default class AgentLoop {
 			parts.push(`Turn ${turn}/${maxTurns}`);
 		}
 
-		parts.push(
-			"Required: <update/> if still working, <summarize/> if done. Not both.",
-		);
 		return parts.join("\n");
 	}
 

@@ -21,18 +21,54 @@ const ALL_TOOLS = new Set([
 
 function parseEditContent(content) {
 	const blocks = [];
-	const re =
-		/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
-	const replaceOnly = /^=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
 
-	for (const m of content.matchAll(re)) {
+	// Format 1: Git merge conflict style
+	const mergeRe =
+		/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
+	for (const m of content.matchAll(mergeRe)) {
 		blocks.push({ search: m[1], replace: m[2] });
 	}
+	if (blocks.length > 0) return blocks;
 
-	if (blocks.length === 0) {
-		for (const m of content.matchAll(replaceOnly)) {
-			blocks.push({ search: null, replace: m[1] });
+	// Format 2: Replace-only (no search block)
+	const replaceOnly = /^=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
+	for (const m of content.matchAll(replaceOnly)) {
+		blocks.push({ search: null, replace: m[1] });
+	}
+	if (blocks.length > 0) return blocks;
+
+	// Format 3: Unified diff
+	if (
+		content.includes("@@") &&
+		(content.includes("\n-") || content.includes("\n+"))
+	) {
+		const hunks = content.split(/^@@[^@]*@@/m).slice(1);
+		for (const hunk of hunks) {
+			const oldLines = [];
+			const newLines = [];
+			for (const line of hunk.split("\n")) {
+				if (line.startsWith("-")) oldLines.push(line.slice(1));
+				else if (line.startsWith("+")) newLines.push(line.slice(1));
+				else if (line.startsWith(" ")) {
+					oldLines.push(line.slice(1));
+					newLines.push(line.slice(1));
+				}
+			}
+			if (oldLines.length > 0 || newLines.length > 0) {
+				blocks.push({
+					search: oldLines.join("\n"),
+					replace: newLines.join("\n"),
+				});
+			}
 		}
+	}
+	if (blocks.length > 0) return blocks;
+
+	// Format 4: Claude XML style
+	const claudeRe =
+		/<old_text>([\s\S]*?)<\/old_text>\s*<new_text>([\s\S]*?)<\/new_text>/g;
+	for (const m of content.matchAll(claudeRe)) {
+		blocks.push({ search: m[1], replace: m[2] });
 	}
 
 	return blocks;
@@ -81,11 +117,14 @@ function resolveCommand(name, attrs, body) {
 	const trimmed = body.trim();
 
 	if (name === "write") {
-		// SEARCH/REPLACE blocks in body → edit mode
-		if (
+		// Structured edit detection — merge conflict, udiff, Claude XML
+		const hasEdit =
 			trimmed.includes("<<<<<<< SEARCH") ||
-			trimmed.includes(">>>>>>> REPLACE")
-		) {
+			trimmed.includes(">>>>>>> REPLACE") ||
+			(trimmed.includes("@@") &&
+				(trimmed.includes("\n-") || trimmed.includes("\n+"))) ||
+			trimmed.includes("<old_text>");
+		if (hasEdit) {
 			const blocks = parseEditContent(body);
 			if (blocks.length > 0) {
 				return {

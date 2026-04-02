@@ -32,14 +32,7 @@ Example: <ask_user question="Which test framework?">Mocha, Jest, Node Native</as
 ## <write path="[path/to/file]">[information]</write> - Save information to file or entry
 Example: <write path="docs/example.txt">new text</write> (if creating or overwriting a file or entry)
 Example: <write>Donald Rumsfeld was born in 1932</write> (creates a new known entry)
-Example: <write path="docs/example.txt">
-<<<<<<< SEARCH
-old text
-=======
-new text
->>>>>>> REPLACE
-</write>
-* Use SEARCH/REPLACE syntax to edit existing files or entries
+* Use a search and replace syntax to edit existing files or entries
 * Use <write path="known://entry_label">[information]</write> to store information.
 * When irrelevant or resolved, use <store/> to remove from context.
 

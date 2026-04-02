@@ -20,9 +20,26 @@ export default class ResponseHealer {
 	static healStatus(content, commands) {
 		const trimmed = content.trim();
 
+		// No commands + plain text = answered. Treat as summary.
 		if (commands.length === 0 && trimmed) {
 			console.warn("[RUMMY] Healed: plain text response treated as summary");
 			return { summaryText: trimmed.slice(0, 500), updateText: null };
+		}
+
+		// Only write/unknown commands + no investigation tools = completed action.
+		// The model did the thing without saying <summarize>. Treat as summary.
+		const hasInvestigation = commands.some((c) =>
+			["read", "env", "search", "ask_user"].includes(c.name),
+		);
+		if (!hasInvestigation && commands.length > 0) {
+			const names = commands.map((c) => c.name).join(", ");
+			console.warn(
+				`[RUMMY] Healed: action-only response (${names}) treated as summary`,
+			);
+			return {
+				summaryText: trimmed.slice(0, 500) || "Done.",
+				updateText: null,
+			};
 		}
 
 		console.warn(
