@@ -34,18 +34,27 @@ export default class WebPlugin {
 			return sections;
 		});
 
-		// Handle search commands
-		hooks.action.search.addFilter(async (_result, { query, limit }) => {
+		// Handle search commands — plugin owns the entire operation
+		hooks.action.search.addFilter(async (_result, { query, limit, rummy }) => {
 			const results = await getFetcher().search(query, { limit: limit || 12 });
-			const listing = results
-				.map(
-					(r) => `${r.title}\n  ${WebFetcher.cleanUrl(r.url)}\n  ${r.snippet}`,
-				)
-				.join("\n\n");
-			return {
-				value: `${results.length} results for "${query}"\n\n${listing}`,
-				meta: { query, count: results.length, results },
-			};
+
+			// Create https:// entries at summary state for each result
+			for (const r of results) {
+				const url = WebFetcher.cleanUrl(r.url);
+				await rummy.write({
+					path: url,
+					value: `${r.title}\n${r.snippet}`,
+					state: "summary",
+					meta: { query, engine: r.engine },
+				});
+			}
+
+			// Confirmation entry
+			await rummy.write({
+				value: `${results.length} results for "${query}"`,
+			});
+
+			return null;
 		});
 
 		// Handle URL fetch for read commands

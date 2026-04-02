@@ -79,6 +79,67 @@ export default class RummyContext {
 		return this.#root.children.find((c) => c.tag === "assistant");
 	}
 
+	// --- Tool methods (same operations the model uses) ---
+
+	async write({ path, value, state = "full", meta } = {}) {
+		if (!path) {
+			const slugify = (await import("../sql/functions/slugify.js")).default;
+			const base = slugify(value || "");
+			path = `known://${base || Date.now()}`;
+		}
+		await this.store.upsert(
+			this.runId,
+			this.sequence,
+			path,
+			value || "",
+			state,
+			meta ? { meta } : undefined,
+		);
+		return path;
+	}
+
+	async read(path) {
+		await this.store.promoteByPattern(this.runId, path, null, this.sequence);
+	}
+
+	async storePath(path) {
+		await this.store.demoteByPattern(this.runId, path, null);
+	}
+
+	async delete(path) {
+		await this.store.remove(this.runId, path);
+	}
+
+	async move(from, to) {
+		const value = await this.store.getValue(this.runId, from);
+		if (value === null) return;
+		await this.store.upsert(this.runId, this.sequence, to, value, "full");
+		await this.store.remove(this.runId, from);
+	}
+
+	async copy(from, to) {
+		const value = await this.store.getValue(this.runId, from);
+		if (value === null) return;
+		await this.store.upsert(this.runId, this.sequence, to, value, "full");
+	}
+
+	// --- Plugin-only methods (superset) ---
+
+	async getMeta(path) {
+		return this.store.getMeta(this.runId, path);
+	}
+
+	async getEntries(pattern, valueFilter) {
+		return this.store.getEntriesByPattern(this.runId, pattern, valueFilter);
+	}
+
+	async log(message) {
+		const path = `content://${Date.now()}`;
+		await this.store.upsert(this.runId, this.sequence, path, message, "info");
+	}
+
+	// --- Node tree methods ---
+
 	tag(name, attrs = {}, children = []) {
 		const node = { tag: name, attrs, content: null, children: [] };
 		const childArray = Array.isArray(children) ? children : [children];

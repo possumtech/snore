@@ -392,7 +392,7 @@ export default class TurnExecutor {
 			}
 			if (cmd.name === "search") {
 				if (!cmd.path) continue;
-				await this.#processSearch(currentRunId, turn, cmd.path, cmd.results);
+				await this.#processSearch(rummy, cmd.path, cmd.results);
 				continue;
 			}
 			if (cmd.name === "store") {
@@ -861,34 +861,11 @@ export default class TurnExecutor {
 		);
 	}
 
-	async #processSearch(runId, turn, query, maxResults) {
-		const limit = maxResults || 12;
-		const result = await this.#hooks.action.search.filter(null, {
+	async #processSearch(rummy, query, maxResults) {
+		await this.#hooks.action.search.filter(null, {
 			query,
-			limit,
+			limit: maxResults || 12,
+			rummy,
 		});
-		if (!result) return;
-
-		const results = result.meta?.results || [];
-
-		// Create https:// entries at summary state for each result
-		for (const r of results) {
-			const url = r.url.replace(/[?#].*$/, "").replace(/\/$/, "");
-			const snippet = `${r.title}\n${r.snippet}`;
-			await this.#knownStore.upsert(runId, turn, url, snippet, "summary", {
-				meta: { query, engine: r.engine },
-			});
-		}
-
-		// Confirmation entry
-		const confirmPath = await this.#knownStore.slugPath(runId, "search", query);
-		await this.#knownStore.upsert(
-			runId,
-			turn,
-			confirmPath,
-			`${results.length} results for "${query}"`,
-			"info",
-			{ meta: { query, count: results.length } },
-		);
 	}
 }

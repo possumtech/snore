@@ -246,6 +246,39 @@ Additional capabilities beyond what the model can do:
 Model tools go through validation and mode enforcement. Plugin tools
 bypass mode enforcement but still validate schemes.
 
+### Unified RPC Interface (future)
+
+The client RPC interface should share the same verbs and semantics as
+the model and plugin tool interface. One vocabulary across the entire system.
+
+```
+Client:  { method: "read", params: { path: "src/app.js", persist: true } }
+Plugin:  rummy.read("src/app.js", { persist: true })
+Model:   <read>src/app.js</read>
+```
+
+| Current RPC | Becomes | Options |
+|------------|---------|---------|
+| `activate` | `read` | `{ persist: true }` |
+| `readOnly` | `read` | `{ persist: true, readonly: true }` |
+| `ignore` | `store` | `{ persist: true, ignore: true }` |
+| `drop` | `store` | `{ persist: true, clear: true }` |
+| `run/inject` | `write` | to `prompt://` scheme |
+| `fileStatus` | `getEntries` | with pattern |
+| `getFiles` | `getEntries` | all files |
+
+Non-tool RPCs stay as-is: `ask`, `act`, `resolve`, `abort`, `getRun`,
+`getRuns`, `getModels`, `discover`, `ping`, session config methods.
+
+The `persist` option sets a file constraint that survives across turns.
+Without it, the operation applies to the current turn only. This unifies
+the constraint system with the tool system — `activate` IS `read` with
+persistence.
+
+**Breaking client change.** The neovim client updates from `activate`/`ignore`
+to `read`/`store` with options. One migration, then the client speaks the
+same language as the model and plugins.
+
 ### TurnExecutor dispatch
 
 The command dispatch becomes registry-driven:
