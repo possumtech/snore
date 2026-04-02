@@ -72,7 +72,13 @@ function resolveCommand(name, attrs, body) {
 		) {
 			const blocks = parseEditContent(body);
 			if (blocks.length > 0) {
-				return { name, path: a.path, value: a.value, preview: a.preview, blocks };
+				return {
+					name,
+					path: a.path,
+					value: a.value,
+					preview: a.preview,
+					blocks,
+				};
 			}
 		}
 		// search+replace attrs → attribute edit mode
