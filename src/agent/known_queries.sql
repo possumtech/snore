@@ -67,7 +67,7 @@ JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.run_id = :run_id
 	AND ke.scheme IS NOT NULL
-	AND s.category NOT IN ('knowledge', 'audit')
+	AND s.category NOT IN ('knowledge', 'file', 'audit')
 ORDER BY ke.id;
 
 -- PREP: get_content
