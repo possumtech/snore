@@ -8,7 +8,10 @@ export default class CopyPlugin {
 			modes: BOTH,
 			category: "act",
 			handler: handleCopy,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# cp ${attrs.from || ""} ${attrs.to || ""}`;
+			},
 		});
 	}
 }
@@ -29,7 +32,7 @@ async function handleCopy(entry, rummy) {
 		warning = `Overwrote existing entry at ${attrs.to}`;
 	}
 
-	const body = `cp ${attrs.path} ${attrs.to}`;
+	const body = `${attrs.path} ${attrs.to}`;
 	if (destScheme === null) {
 		await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
 			attributes: { from: attrs.path, to: attrs.to, isMove: false, warning },

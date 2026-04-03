@@ -8,7 +8,10 @@ export default class StorePlugin {
 			modes: BOTH,
 			category: "ask",
 			handler: handleStore,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# store ${attrs.path || entry.path}`;
+			},
 		});
 	}
 }
@@ -36,10 +39,7 @@ async function handleStore(entry, rummy) {
 		);
 	} else {
 		const paths = matches.map((m) => m.path).join(", ");
-		const body =
-			matches.length > 0
-				? `${paths} removed from context. Use <read> to restore.`
-				: `${target} not found`;
+		const body = matches.length > 0 ? `${paths} stored` : `${target} not found`;
 		await store.upsert(runId, turn, entry.resultPath, body, "stored");
 	}
 }

@@ -5,7 +5,7 @@ export default class SummarizePlugin {
 		hooks.tools.register("summarize", {
 			modes: BOTH,
 			category: "structural",
-			project: (entry) => entry.body,
+			project: (entry) => `# summarize\n${entry.body}`,
 		});
 	}
 }

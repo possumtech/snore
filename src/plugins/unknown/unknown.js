@@ -5,7 +5,7 @@ export default class UnknownPlugin {
 		hooks.tools.register("unknown", {
 			modes: BOTH,
 			category: "structural",
-			project: (entry) => entry.body,
+			project: (entry) => `# unknown\n${entry.body}`,
 		});
 	}
 }

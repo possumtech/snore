@@ -17,7 +17,10 @@ export default class WebPlugin {
 			modes: new Set(["ask", "act"]),
 			category: "ask",
 			docs: SEARCH_DOCS,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# search "${attrs.path || ""}"\n${entry.body}`;
+			},
 		});
 
 		hooks.tools.onProject("http", (entry) => entry.body);

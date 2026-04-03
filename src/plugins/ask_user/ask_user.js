@@ -6,7 +6,10 @@ export default class AskUserPlugin {
 			modes: BOTH,
 			category: "act",
 			handler: handleAskUser,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# ask_user ${attrs.question || ""}\n${entry.body}`;
+			},
 		});
 	}
 }

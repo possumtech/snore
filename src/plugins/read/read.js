@@ -8,7 +8,10 @@ export default class ReadPlugin {
 			modes: BOTH,
 			category: "ask",
 			handler: handleRead,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# read ${attrs.path || entry.path}\n${entry.body}`;
+			},
 		});
 	}
 }
@@ -38,9 +41,7 @@ async function handleRead(entry, rummy) {
 		const total = matches.reduce((s, m) => s + m.tokens_full, 0);
 		const paths = matches.map((m) => m.path).join(", ");
 		const body =
-			matches.length > 0
-				? `${paths} loaded in context (${total} tokens)`
-				: `${target} not found`;
+			matches.length > 0 ? `${paths} ${total} tokens` : `${target} not found`;
 		await store.upsert(runId, turn, entry.resultPath, body, "read");
 	}
 }

@@ -6,7 +6,10 @@ export default class DeletePlugin {
 			modes: BOTH,
 			category: "act",
 			handler: handleDelete,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# rm ${attrs.path || entry.path}`;
+			},
 		});
 	}
 }
@@ -21,7 +24,7 @@ async function handleDelete(entry, rummy) {
 
 	for (const match of matches) {
 		const resultPath = `delete://${match.path}`;
-		const body = `rm ${match.path}`;
+		const body = match.path;
 		if (match.scheme === null) {
 			await store.upsert(runId, turn, resultPath, body, "proposed", {
 				attributes: { path: match.path },

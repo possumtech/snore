@@ -6,7 +6,10 @@ export default class RunPlugin {
 			modes: ACT_ONLY,
 			category: "act",
 			handler: handleRun,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# sh ${attrs.command || ""}\n${entry.body}`;
+			},
 		});
 	}
 }

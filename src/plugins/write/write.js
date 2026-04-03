@@ -12,16 +12,14 @@ export default class WritePlugin {
 			handler: handleWrite,
 			project: (entry) => {
 				const attrs = entry.attributes || {};
-				if (attrs.error) return `write ${attrs.file} error ${attrs.error}`;
-				if (!attrs.merge) return `write ${attrs.file || entry.path} pass`;
 				const file = attrs.file || entry.path;
-				const lines = attrs.patch
-					? attrs.patch
-							.split("\n")
-							.filter((l) => l.startsWith("+") || l.startsWith("-")).length
-					: 0;
-				const header = `write ${file} ${entry.fidelity === "full" ? "pass" : "proposed"} ${lines} lines`;
-				return `${header}\n${attrs.merge}`;
+				if (attrs.error) return `# set ${file}\n${attrs.error}`;
+				const tokens =
+					attrs.beforeTokens != null
+						? ` ${attrs.beforeTokens}→${attrs.afterTokens} tokens`
+						: "";
+				if (!attrs.merge) return `# set ${file}${tokens}`;
+				return `# set ${file}${tokens}\n${attrs.merge}`;
 			},
 		});
 	}
@@ -148,11 +146,16 @@ async function processEdit(store, runId, turn, entry, attrs) {
 		// body = original content (reconstructable with patch)
 		// attributes.patch = udiff for client
 		// attributes.merge = git conflict for model projection
+		const beforeTokens = match.tokens_full || 0;
+		const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
+
 		await store.upsert(runId, turn, resultPath, match.body, state, {
 			attributes: {
 				file: match.path,
 				patch: udiff,
 				merge,
+				beforeTokens,
+				afterTokens,
 				warning,
 				error,
 			},

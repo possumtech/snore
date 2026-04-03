@@ -5,7 +5,7 @@ export default class UpdatePlugin {
 		hooks.tools.register("update", {
 			modes: BOTH,
 			category: "structural",
-			project: (entry) => entry.body,
+			project: (entry) => `# update\n${entry.body}`,
 		});
 	}
 }

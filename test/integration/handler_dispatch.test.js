@@ -99,7 +99,7 @@ describe("Handler dispatch", () => {
 			assert.strictEqual(state.state, "full", "target promoted to full");
 
 			const result = await store.getBody(RUN_ID, entry.resultPath);
-			assert.ok(result.includes("loaded in context"), "confirmation written");
+			assert.ok(result.includes("tokens"), "confirmation written");
 		});
 	});
 

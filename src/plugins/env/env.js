@@ -6,7 +6,10 @@ export default class EnvPlugin {
 			modes: BOTH,
 			category: "ask",
 			handler: handleEnv,
-			project: (entry) => entry.body,
+			project: (entry) => {
+				const attrs = entry.attributes || {};
+				return `# env ${attrs.command || ""}\n${entry.body}`;
+			},
 		});
 	}
 }

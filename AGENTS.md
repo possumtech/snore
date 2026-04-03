@@ -121,10 +121,15 @@ registration, sacred prompt, tool header format, RPC, client, all tests.
 
 ### Tool result header format
 
-Consistent unix-style header on every tool result projection:
+Every tool result projection uses `#` comment headers. No state in the
+header — state comes from the assembler. Token counts on a second `#` line
+where the model benefits from knowing the budget impact.
+
+**Single operations:**
 
 ```
-set src/app.js pass 3/45 lines 120→125 tokens
+# set src/app.js
+# 120→125 tokens
 <<<<<<< SEARCH
 const port = 3000;
 =======
@@ -133,24 +138,84 @@ const port = 8080;
 ```
 
 ```
-get src/app.js loaded 120 tokens
-rm src/old.js proposed
-mv known://draft known://final pass
-cp .env known://env_snapshot pass
-sh npm test proposed
-env node --version pass
-store src/app.js stored
-search "query" 10 results
-known OAuth2 PKCE pass
+# read src/app.js
+src/app.js 120 tokens
 ```
+
+```
+# rm src/old.js
+# 125→0 tokens
+```
+
+```
+# mv known://draft known://final
+# 125 tokens moved
+```
+
+```
+# sh npm test
+12 passing, 0 failing
+```
+
+```
+# env node --version
+v22.1.0
+```
+
+```
+# search "Tom Petty death"
+10 results for "Tom Petty death"
+https://...
+```
+
+**Bulk operations — one entry, summary header + itemized listing:**
+
+```
+# mv old/*.js new/
+# 3,215 tokens moved
+
+# mv old/file1.js new/file1.js
+# mv old/file2.js new/file2.js
+```
+
+Bulk operations create ONE entry. `attributes.items` is an array with
+per-item metadata (including individual state for mixed-fate resolutions).
+The body IS the materialized view — summary header first, then per-item
+lines. The projection returns body directly.
+
+Future: summary projection mode that omits the itemized listing for
+large bulk operations.
+
+### Bulk operation handler refactor
+
+Currently pattern operations create N individual entries. This must change:
+
+- `storePatternResult` creates one entry with `attributes.items: [...]`
+- Each item: `{ path, state, tokens, ... }` (scheme-specific metadata)
+- Body: summary header + itemized `# verb from to` lines
+- Client resolves the single entry (bulk accept/reject)
+- The model sees one grouped result, not N individual results
+
+Affects: write (bulk update), read (pattern promote), store (pattern
+demote), delete (pattern remove), move/copy (pattern operations).
 
 ### Write entry contract
 
 - `body` = original content (reconstructable with attributes.patch)
 - `attributes.patch` = udiff for client (unix patch format)
 - `attributes.merge` = git conflict for model view (SEARCH/REPLACE)
-- Projection = header + merge block
+- `attributes.beforeTokens` / `attributes.afterTokens` = token delta
+- Projection = `# set file` + token line + merge block
 - Input: accept all formats (hedbergian). Output: always udiff to client, always git conflict to model.
+- Literal search only. No inline regex. Hedberg for pattern matching.
+
+### Resolution states
+
+| Action | State | Run continues? |
+|--------|-------|---------------|
+| `accept` | `pass` | Yes |
+| `error` | `error` | Yes (model gets error output) |
+| `reject` | `rejected` | No |
 
 ---
 
