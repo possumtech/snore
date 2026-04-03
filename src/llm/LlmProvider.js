@@ -4,9 +4,14 @@ import OpenAiClient from "./OpenAiClient.js";
 import OpenRouterClient from "./OpenRouterClient.js";
 
 export default class LlmProvider {
+	#db;
 	#openRouter;
 	#ollama;
 	#openAi;
+
+	constructor(db) {
+		this.#db = db;
+	}
 
 	#getOpenRouter() {
 		this.#openRouter ??= new OpenRouterClient(process.env.OPENROUTER_API_KEY);
@@ -28,14 +33,17 @@ export default class LlmProvider {
 		return this.#openAi;
 	}
 
-	static resolve(alias) {
-		const actual = process.env[`RUMMY_MODEL_${alias}`];
-		if (!actual) throw new Error(msg("error.model_alias_unknown", { alias }));
-		return actual;
+	async resolve(alias) {
+		const row = await this.#db.get_model_by_alias.get({ alias });
+		if (row) return row.actual;
+		// Fallback to env for transition period
+		const envActual = process.env[`RUMMY_MODEL_${alias}`];
+		if (envActual) return envActual;
+		throw new Error(msg("error.model_alias_unknown", { alias }));
 	}
 
 	async completion(messages, model, options = {}) {
-		const resolvedModel = LlmProvider.resolve(model);
+		const resolvedModel = await this.resolve(model);
 
 		const temperature =
 			options.temperature ??
@@ -70,7 +78,7 @@ export default class LlmProvider {
 	}
 
 	async getContextSize(model) {
-		const resolvedModel = LlmProvider.resolve(model);
+		const resolvedModel = await this.resolve(model);
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
 			return this.#getOllama().getContextSize(localModel);

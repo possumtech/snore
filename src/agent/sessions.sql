@@ -37,6 +37,9 @@ ORDER BY alias;
 -- PREP: update_model_context_length
 UPDATE models SET context_length = :context_length WHERE alias = :alias;
 
+-- PREP: delete_model
+DELETE FROM models WHERE alias = :alias;
+
 -- PREP: purge_old_runs
 DELETE FROM runs
 WHERE

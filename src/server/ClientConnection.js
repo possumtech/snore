@@ -1,12 +1,10 @@
 import msg from "../agent/messages.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
-import ModelAgent from "../llm/ModelAgent.js";
 
 export default class ClientConnection {
 	#ws;
 	#db;
 	#projectAgent;
-	#modelAgent;
 	#hooks;
 	#rpcRegistry;
 	#rpcLogPending = new Map();
@@ -21,7 +19,6 @@ export default class ClientConnection {
 		this.#hooks = hooks;
 		this.#rpcRegistry = hooks.rpc.registry;
 		this.#projectAgent = new ProjectAgent(db, hooks);
-		this.#modelAgent = new ModelAgent();
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
 
@@ -76,7 +73,6 @@ export default class ClientConnection {
 	#buildHandlerContext() {
 		return {
 			projectAgent: this.#projectAgent,
-			modelAgent: this.#modelAgent,
 			db: this.#db,
 			rpcRegistry: this.#rpcRegistry,
 			projectId: this.#context.projectId,

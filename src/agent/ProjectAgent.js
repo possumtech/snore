@@ -15,7 +15,7 @@ export default class ProjectAgent {
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
-		this.#llm = new LlmProvider();
+		this.#llm = new LlmProvider(db);
 		this.#knownStore = new KnownStore(db);
 
 		const turnExecutor = new TurnExecutor(
@@ -63,6 +63,10 @@ export default class ProjectAgent {
 		return result;
 	}
 
+	get store() {
+		return this.#knownStore;
+	}
+
 	// --- File constraints ---
 
 	async syncBuffered(projectId, files) {
@@ -99,12 +103,8 @@ export default class ProjectAgent {
 		}));
 	}
 
-	async activate(projectId, pattern) {
-		return this.#setConstraint(projectId, pattern, "active");
-	}
-
-	async readOnly(projectId, pattern) {
-		return this.#setConstraint(projectId, pattern, "readonly");
+	async activate(projectId, pattern, visibility = "active") {
+		return this.#setConstraint(projectId, pattern, visibility);
 	}
 
 	async ignore(projectId, pattern) {
@@ -199,7 +199,7 @@ export default class ProjectAgent {
 	}
 
 	async getModelInfo(alias) {
-		const resolved = LlmProvider.resolve(alias);
+		const resolved = await this.#llm.resolve(alias);
 		const contextSize = await this.#llm.getContextSize(alias);
 		return {
 			alias,

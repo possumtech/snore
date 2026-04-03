@@ -4,9 +4,11 @@ export default class CoreRpcPlugin {
 	static register(hooks) {
 		const r = hooks.rpc.registry;
 
+		// --- Protocol ---
+
 		r.register("ping", {
 			handler: async () => ({}),
-			description: "Liveness check. Returns {}.",
+			description: "Liveness check.",
 		});
 
 		r.register("discover", {
@@ -17,111 +19,163 @@ export default class CoreRpcPlugin {
 		r.register("init", {
 			handler: async (params, ctx) => {
 				const result = await ctx.projectAgent.init(
-					params.projectPath,
-					params.projectName,
-					params.clientId,
-					params.projectBufferFiles || [],
+					params.name,
+					params.projectRoot,
+					params.configPath,
 				);
-				ctx.setContext(
-					result.projectId,
-					params.projectRoot || params.projectPath,
-				);
+				ctx.setContext(result.projectId, params.projectRoot);
 				return result;
 			},
-			description: "Initialize project. Returns { projectId, context }.",
+			description:
+				"Initialize project. Returns { projectId, context: { gitRoot, headHash } }.",
 			params: {
-				projectPath: "string — absolute path",
-				projectName: "string — display name",
-				clientId: "string — unique client ID",
-				projectBufferFiles: "string[] — open files in IDE (optional)",
-				projectRoot: "string? — override project root path",
+				name: "string — project name (unique identifier)",
+				projectRoot: "string — absolute path to source code",
+				configPath: "string? — path to rummy config directory",
 			},
 		});
+
+		// --- Models ---
 
 		r.register("getModels", {
-			handler: async (_params, ctx) => ctx.modelAgent.getModels(),
+			handler: async (_params, ctx) => {
+				const rows = await ctx.db.get_models.all({});
+				return rows.map((m) => ({
+					alias: m.alias,
+					actual: m.actual,
+					context_length: m.context_length,
+				}));
+			},
 			description:
-				"List available model aliases. Returns [{ alias, actual, display, default }].",
+				"List available models. Returns [{ alias, actual, context_length }].",
 		});
 
-		r.register("getModelInfo", {
+		r.register("addModel", {
 			handler: async (params, ctx) => {
-				return ctx.projectAgent.getModelInfo(
-					ctx.projectId,
-					params.model || process.env.RUMMY_MODEL_DEFAULT,
+				const row = await ctx.db.upsert_model.get({
+					alias: params.alias,
+					actual: params.actual,
+					context_length: params.contextLength || null,
+				});
+				return { id: row.id, alias: params.alias };
+			},
+			description: "Add or update a model. Returns { id, alias }.",
+			params: {
+				alias: "string — short name for the model",
+				actual: "string — provider/model identifier (e.g. openai/gpt-5.4)",
+				contextLength: "number? — context window size in tokens",
+			},
+		});
+
+		r.register("removeModel", {
+			handler: async (params, ctx) => {
+				await ctx.db.delete_model.run({ alias: params.alias });
+				return { status: "ok" };
+			},
+			description: "Remove a model by alias.",
+			params: { alias: "string — model alias to remove" },
+		});
+
+		// --- File constraints ---
+
+		r.register("read", {
+			handler: async (params, ctx) => {
+				if (params.persist) {
+					const visibility = params.readonly ? "readonly" : "active";
+					return ctx.projectAgent.activate(
+						ctx.projectId,
+						params.path,
+						visibility,
+					);
+				}
+				// Non-persistent read: promote in latest run only
+				const run = await ctx.db.get_latest_run.get({
+					project_id: ctx.projectId,
+				});
+				if (!run) return { status: "ok" };
+				const store = ctx.projectAgent.store;
+				if (store) {
+					await store.promoteByPattern(run.id, params.path, null, 0);
+				}
+				return { status: "ok" };
+			},
+			description:
+				"Promote entry to full state. With persist, sets file constraint.",
+			params: {
+				path: "string — file path or glob pattern",
+				persist: "boolean? — create file constraint (survives across turns)",
+				readonly: "boolean? — with persist, set readonly instead of active",
+			},
+			requiresInit: true,
+		});
+
+		r.register("store", {
+			handler: async (params, ctx) => {
+				if (params.clear) {
+					return ctx.projectAgent.drop(ctx.projectId, params.path);
+				}
+				if (params.persist) {
+					if (params.ignore) {
+						return ctx.projectAgent.ignore(ctx.projectId, params.path);
+					}
+					return ctx.projectAgent.drop(ctx.projectId, params.path);
+				}
+				// Non-persistent store: demote in latest run only
+				const run = await ctx.db.get_latest_run.get({
+					project_id: ctx.projectId,
+				});
+				if (!run) return { status: "ok" };
+				const store = ctx.projectAgent.store;
+				if (store) {
+					await store.demoteByPattern(run.id, params.path, null);
+				}
+				return { status: "ok" };
+			},
+			description:
+				"Demote entry to stored state. With persist, sets file constraint.",
+			params: {
+				path: "string — file path or glob pattern",
+				persist: "boolean? — create file constraint",
+				ignore: "boolean? — with persist, exclude from scan entirely",
+				clear: "boolean? — remove existing constraint",
+			},
+			requiresInit: true,
+		});
+
+		r.register("getEntries", {
+			handler: async (params, ctx) => {
+				const run = await ctx.db.get_latest_run.get({
+					project_id: ctx.projectId,
+				});
+				if (!run) return [];
+				const store = ctx.projectAgent.store;
+				if (!store) return [];
+				const entries = await store.getEntriesByPattern(
+					run.id,
+					params.pattern || "*",
+					params.body || null,
 				);
+				return entries.map((e) => ({
+					path: e.path,
+					scheme: e.scheme,
+					state: e.state,
+					tokens: e.tokens_full,
+				}));
 			},
 			description:
-				"Get model metadata and context sizing. Returns { alias, model, context_length, limit, effective, name, max_completion_tokens }.",
+				"Query entries by pattern. Replaces getFiles/fileStatus. Returns [{ path, scheme, state, tokens }].",
 			params: {
-				model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT",
+				pattern: "string? — glob pattern (default: *)",
+				body: "string? — filter by body content",
 			},
 			requiresInit: true,
 		});
 
-		r.register("getFiles", {
-			handler: async (_params, ctx) =>
-				ctx.projectAgent.getFiles(ctx.projectRoot),
-			description:
-				"List project files with fidelity. Returns [{ path, fidelity, size }].",
-			requiresInit: true,
-		});
-
-		r.register("fileStatus", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.fileStatus(ctx.projectId, params.pattern),
-			description:
-				"File state in the known store. Accepts regex pattern. Returns [{ path, state, turn }].",
-			params: { pattern: "string — file path or regex pattern" },
-			requiresInit: true,
-		});
-
-		r.register("activate", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.activate(ctx.projectId, params.pattern),
-			description: "Set file to full fidelity (editable).",
-			params: { pattern: "string — file path or glob" },
-			requiresInit: true,
-		});
-
-		r.register("readOnly", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.readOnly(ctx.projectId, params.pattern),
-			description: "Set file to full:readonly fidelity.",
-			params: { pattern: "string — file path or glob" },
-			requiresInit: true,
-		});
-
-		r.register("ignore", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.ignore(ctx.projectId, params.pattern),
-			description: "Exclude file from model context.",
-			params: { pattern: "string — file path or glob" },
-			requiresInit: true,
-		});
-
-		r.register("drop", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.drop(ctx.projectId, params.pattern),
-			description: "Remove file state override. File reverts to default.",
-			params: { pattern: "string — file path or glob" },
-			requiresInit: true,
-		});
-
-		r.register("startRun", {
-			handler: async (params, ctx) => {
-				const result = await ctx.projectAgent.startRun(ctx.projectId, params);
-				return { run: result.alias };
-			},
-			description: "Pre-create a run. Returns { run }.",
-			params: {
-				model: "string — optional model override",
-			},
-			requiresInit: true,
-		});
+		// --- Runs ---
 
 		r.register("ask", {
 			handler: async (params, ctx) => {
+				if (!params.model) throw new Error("model is required");
 				return ctx.projectAgent.ask(
 					ctx.projectId,
 					params.model,
@@ -129,25 +183,32 @@ export default class CoreRpcPlugin {
 					params.run,
 					{
 						temperature: params.temperature,
+						persona: params.persona,
+						contextLimit: params.contextLimit,
 						noContext: params.noContext,
 						fork: params.fork,
 					},
 				);
 			},
-			description: "Non-mutating query. Returns { run, status, turn }.",
+			description:
+				"Non-mutating query. Model required. Returns { run, status, turn }.",
 			longRunning: true,
 			params: {
 				prompt: "string — user message",
-				model: "string — model alias",
-				run: "string — continue existing run",
-				noContext: "boolean — skip file map (Lite mode)",
-				fork: "boolean — branch from run history",
+				model: "string — model alias (required)",
+				run: "string? — continue existing run",
+				temperature: "number? — 0 to 2",
+				persona: "string? — agent persona for new run",
+				contextLimit: "number? — token limit for new run",
+				noContext: "boolean? — skip file map (Lite mode)",
+				fork: "boolean? — branch from run history",
 			},
 			requiresInit: true,
 		});
 
 		r.register("act", {
 			handler: async (params, ctx) => {
+				if (!params.model) throw new Error("model is required");
 				return ctx.projectAgent.act(
 					ctx.projectId,
 					params.model,
@@ -155,20 +216,25 @@ export default class CoreRpcPlugin {
 					params.run,
 					{
 						temperature: params.temperature,
+						persona: params.persona,
+						contextLimit: params.contextLimit,
 						noContext: params.noContext,
 						fork: params.fork,
 					},
 				);
 			},
 			description:
-				"Mutating directive. Returns { run, status, turn, proposed? }.",
+				"Mutating directive. Model required. Returns { run, status, turn, proposed? }.",
 			longRunning: true,
 			params: {
 				prompt: "string — user message",
-				model: "string — model alias",
-				run: "string — continue existing run",
-				noContext: "boolean — skip file map (Lite mode)",
-				fork: "boolean — branch from run history",
+				model: "string — model alias (required)",
+				run: "string? — continue existing run",
+				temperature: "number? — 0 to 2",
+				persona: "string? — agent persona for new run",
+				contextLimit: "number? — token limit for new run",
+				noContext: "boolean? — skip file map (Lite mode)",
+				fork: "boolean? — branch from run history",
 			},
 			requiresInit: true,
 		});
@@ -179,7 +245,7 @@ export default class CoreRpcPlugin {
 			description: "Resolve a proposed entry. Returns { run, status }.",
 			longRunning: true,
 			params: {
-				run: "string — run name",
+				run: "string — run alias",
 				resolution:
 					"{ path: string, action: 'accept'|'reject', output?: string }",
 			},
@@ -199,7 +265,7 @@ export default class CoreRpcPlugin {
 				return { status: "ok" };
 			},
 			description: "Abort run. Stops in-flight turns immediately.",
-			params: { run: "string — run name" },
+			params: { run: "string — run alias" },
 			requiresInit: true,
 		});
 
@@ -228,8 +294,8 @@ export default class CoreRpcPlugin {
 			},
 			description: "Rename a run. Must be unique, [a-zA-Z0-9_]+.",
 			params: {
-				run: "string — current run name",
-				name: "string — new name, [a-zA-Z0-9_]+",
+				run: "string — current run alias",
+				name: "string — new name",
 			},
 			requiresInit: true,
 		});
@@ -238,10 +304,10 @@ export default class CoreRpcPlugin {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.inject(params.run, params.message),
 			description:
-				"Inject a message into a run. If idle, resumes with the message as context. If active, queues it for the next turn.",
+				"Inject a message into a run. If idle, resumes. If active, queues for next turn.",
 			longRunning: true,
 			params: {
-				run: "string — run name",
+				run: "string — run alias",
 				message: "string — message to inject",
 			},
 			requiresInit: true,
@@ -266,12 +332,14 @@ export default class CoreRpcPlugin {
 			params: {
 				run: "string — run alias",
 				temperature: "number? — 0 to 2",
-				persona: "string? — agent persona",
-				contextLimit: "number? — token count",
+				persona: "string?",
+				contextLimit: "number?",
 				model: "string? — model alias",
 			},
 			requiresInit: true,
 		});
+
+		// --- Queries ---
 
 		r.register("getRuns", {
 			handler: async (_params, ctx) => {
@@ -286,8 +354,7 @@ export default class CoreRpcPlugin {
 					created: r.created_at,
 				}));
 			},
-			description:
-				"List all runs for the current project with turn count and latest summary.",
+			description: "List all runs for the current project.",
 			requiresInit: true,
 		});
 
@@ -299,36 +366,24 @@ export default class CoreRpcPlugin {
 				if (!run)
 					throw new Error(msg("error.run_not_found", { runId: params.run }));
 
-				const [
-					telemetry,
-					reasoning,
-					content,
-					history,
-					promptRow,
-					summaryRow,
-					latestPrompt,
-				] = await Promise.all([
-					ctx.db.get_run_usage.get({ run_id: run.id }),
-					ctx.db.get_reasoning.all({ run_id: run.id }),
-					ctx.db.get_content.all({ run_id: run.id }),
-					ctx.db.get_history.all({ run_id: run.id }),
-					ctx.db.get_latest_user_prompt.get({ run_id: run.id }),
-					ctx.db.get_latest_summary.get({ run_id: run.id }),
-					ctx.db.get_latest_prompt.get({ run_id: run.id }),
-				]);
+				const [telemetry, reasoning, content, history, promptRow, summaryRow] =
+					await Promise.all([
+						ctx.db.get_run_usage.get({ run_id: run.id }),
+						ctx.db.get_reasoning.all({ run_id: run.id }),
+						ctx.db.get_content.all({ run_id: run.id }),
+						ctx.db.get_history.all({ run_id: run.id }),
+						ctx.db.get_latest_user_prompt.get({ run_id: run.id }),
+						ctx.db.get_latest_summary.get({ run_id: run.id }),
+					]);
 
-				const promptAttrs = latestPrompt?.attributes
-					? JSON.parse(latestPrompt.attributes)
-					: null;
 				return {
 					run: run.alias,
 					turn: run.next_turn - 1,
-					mode: promptAttrs?.mode || null,
 					status: run.status,
+					model: run.model_id,
 					temperature: run.temperature,
 					persona: run.persona,
 					context_limit: run.context_limit,
-					model: run.model_id,
 					context: {
 						telemetry: {
 							prompt_tokens: telemetry.prompt_tokens,
@@ -363,27 +418,22 @@ export default class CoreRpcPlugin {
 				};
 			},
 			description:
-				"Get full run detail: config (temperature, persona, context_limit, model), context (telemetry, reasoning, content, history), last_user_prompt, last_summary.",
+				"Full run detail: config, context (telemetry, reasoning, content, history), last_user_prompt, last_summary.",
 			params: { run: "string — run alias" },
 			requiresInit: true,
 		});
 
-		// Notifications
+		// --- Notifications ---
+
 		r.registerNotification(
 			"run/state",
-			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost, context_distribution[] } }.",
+			"Turn state update. { run, turn, status, summary, history[], unknowns[], proposed[], telemetry }.",
 		);
 		r.registerNotification(
 			"run/progress",
-			"Turn status. Payload: { run, turn, status: 'thinking'|'processing'|'retrying' }.",
+			"Turn status. { run, turn, status: 'thinking'|'processing' }.",
 		);
-		r.registerNotification(
-			"ui/render",
-			"Streaming output. Payload: { text, append }.",
-		);
-		r.registerNotification(
-			"ui/notify",
-			"Toast notification. Payload: { text, level }.",
-		);
+		r.registerNotification("ui/render", "Streaming output. { text, append }.");
+		r.registerNotification("ui/notify", "Toast notification. { text, level }.");
 	}
 }
