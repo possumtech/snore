@@ -9,24 +9,6 @@ FROM v_model_context
 WHERE run_id = :run_id
 ORDER BY ordinal;
 
--- PREP: materialize_turn_context
-INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, state, body, tokens, attributes, category
-)
-SELECT
-	run_id
-	, :turn
-	, ordinal
-	, path
-	, fidelity
-	, state
-	, body
-	, tokens
-	, attributes
-	, category
-FROM v_model_context
-WHERE run_id = :run_id;
-
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
 	run_id, turn, ordinal, path, fidelity, state, body, tokens, attributes, category
