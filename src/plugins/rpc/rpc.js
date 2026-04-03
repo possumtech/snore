@@ -240,7 +240,7 @@ export default class CoreRpcPlugin {
 				// If it's a known:// or other K/V path, write directly
 				const scheme = KnownStore.scheme(params.path);
 				if (scheme) {
-					await rummy.write({
+					await rummy.set({
 						path: params.path,
 						body: params.body || "",
 						state: params.state || "full",

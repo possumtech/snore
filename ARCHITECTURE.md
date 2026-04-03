@@ -44,7 +44,7 @@ Paths use URI scheme syntax. Bare paths (no `://`) are files.
 |-------|-----------|
 | `full` | File content in code fence |
 | `index` | Path listed in File Index |
-| `stored` | Invisible, retrievable via `<read>` |
+| `stored` | Invisible, retrievable via `<get>` |
 
 **Knowledge** (`known://`, `unknown://`):
 
@@ -53,11 +53,11 @@ Paths use URI scheme syntax. Bare paths (no `://`) are files.
 | `full` | Key — value in bullet list |
 | `stored` | Key listed, no value |
 
-**Tool results** (`write://`, `run://`, `env://`, `delete://`, `ask_user://`,
-`move://`, `copy://`, `search://`, `read://`, `store://`):
+**Tool results** (`set://`, `sh://`, `env://`, `rm://`, `ask_user://`,
+`mv://`, `cp://`, `search://`, `get://`, `store://`):
 
 All start at `full` state when recorded. Handlers set the final state:
-`proposed`, `pass`, `warn`, `error`, `pattern`, `read`, `stored`, `info`.
+`proposed`, `pass`, `rejected`, `error`, `pattern`, `read`, `stored`, `info`.
 
 **Skills** (`skill://`): `full` or `stored`. Rendered in system message.
 
@@ -80,7 +80,7 @@ Plugins cannot bypass this (circular dependency prevents schemes as entries).
 ### 1.4 UPSERT Semantics
 
 INSERT OR REPLACE on `(run_id, path)`. Each write increments `write_count`.
-Blank body is valid. Deletion uses `<delete>`, which removes the row entirely.
+Blank body is valid. Deletion uses `<rm>`, which removes the row entirely.
 
 ---
 
@@ -131,10 +131,10 @@ Abort stops the current prompt; pending prompts survive.
 ### 3.1 Model Path
 
 ```
-Model emits <read path="src/app.js"/>
-  → XmlParser produces { name: "read", path: "src/app.js" }
-  → TurnExecutor.#record() writes read://src%2Fapp.js at full state
-  → hooks.tools.dispatch("read", entry, rummy):
+Model emits <get path="src/app.js"/>
+  → XmlParser produces { name: "get", path: "src/app.js" }
+  → TurnExecutor.#record() writes get://src%2Fapp.js at full state
+  → hooks.tools.dispatch("get", entry, rummy):
       priority 5: WebPlugin checks if http URL — no, passes through
       priority 10: CoreToolsPlugin promotes file, writes confirmation
   → hooks.entry.created.emit(entry)
@@ -145,8 +145,8 @@ Model emits <read path="src/app.js"/>
 ```
 Client sends read { run: "turboqwen_123", path: "src/app.js" }
   → buildRunContext() creates RummyContext for the run
-  → dispatchTool() records read:// entry at full state
-  → hooks.tools.dispatch("read", entry, rummy)  ← same chain
+  → dispatchTool() records get:// entry at full state
+  → hooks.tools.dispatch("get", entry, rummy)  ← same chain
   → hooks.entry.created.emit(entry)
 ```
 
@@ -181,7 +181,7 @@ to stop the chain.
 ### 3.5 Mode Enforcement
 
 In ask mode, TurnExecutor rejects: file writes, file deletes, file
-move/copy targets, `<run>`. K/V operations are allowed in both modes.
+move/copy targets, `<sh>`. K/V operations are allowed in both modes.
 
 ---
 
@@ -384,16 +384,16 @@ await hooks.tools.materialize(store, runId, turn);
 
 ### 6.3 RummyContext (`rummy`)
 
-Tool methods (same verbs as model and client):
+Tool methods (same verbs as model and client, except `known` which is model-only):
 
 | Method | Effect |
 |--------|--------|
-| `rummy.write({ path, body, state, attributes })` | Create/update entry |
-| `rummy.read(path)` | Promote to full |
+| `rummy.set({ path, body, state, attributes })` | Create/update entry |
+| `rummy.get(path)` | Promote to full |
 | `rummy.store(path)` | Demote to stored |
-| `rummy.delete(path)` | Remove permanently |
-| `rummy.move(from, to)` | Move entry |
-| `rummy.copy(from, to)` | Copy entry |
+| `rummy.rm(path)` | Remove permanently |
+| `rummy.mv(from, to)` | Move entry |
+| `rummy.cp(from, to)` | Copy entry |
 
 Plugin-only:
 
@@ -427,14 +427,26 @@ Filters: `llm.messages`, `llm.response`, `file.symbols`, `run.config`,
 
 | Plugin | Purpose |
 |--------|---------|
-| `tools` | Core tool handlers (read, write, store, delete, etc.) |
+| `get` | Load file/entry into context |
+| `set` | Edit file/entry via SEARCH/REPLACE |
+| `known` | Save knowledge entries |
+| `store` | Remove from context (retrievable) |
+| `rm` | Delete permanently |
+| `mv` | Move entry |
+| `cp` | Copy entry |
+| `sh` | Shell command with side effects |
+| `env` | Exploratory shell command |
+| `ask_user` | Ask the user a question |
+| `summarize` | Signal run completion |
+| `update` | Signal continued work |
+| `unknown` | Register open questions |
+| `instructions` | System prompt assembly |
+| `file` | File projections and constraints |
 | `rpc` | RPC method registration |
 | `skills` | Skill/persona file loading and RPCs |
 | `web` | Web search and URL fetching |
-| `engine` | Empty — placeholder for janitor/relevance plugins |
 | `symbols` | Symbol extraction via antlrmap + ctags |
-| `telemetry` | Debug logging |
-| `git` | Git detection |
+| `telemetry` | Debug logging and run dumps |
 
 ---
 
@@ -447,7 +459,7 @@ The model picks its preferred edit format. The parser understands all of them:
 3. Unified diff: `@@ -1,3 +1,3 @@` with `-`/`+` lines
 4. Claude XML: `<old_text>old</old_text><new_text>new</new_text>`
 5. JSON body: `{"search": "old", "replace": "new"}`
-6. XML attributes: `<write search="old" replace="new"/>`
+6. XML attributes: `<set search="old" replace="new"/>`
 7. Full replacement: anything else becomes the new content
 
 ---

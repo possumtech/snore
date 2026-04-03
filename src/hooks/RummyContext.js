@@ -85,7 +85,7 @@ export default class RummyContext {
 
 	// --- Tool methods (same operations the model uses) ---
 
-	async write({ path, body, state = "full", attributes } = {}) {
+	async set({ path, body, state = "full", attributes } = {}) {
 		if (!path) {
 			const slugify = (await import("../sql/functions/slugify.js")).default;
 			const base = slugify(body || "");
@@ -102,7 +102,7 @@ export default class RummyContext {
 		return path;
 	}
 
-	async read(path) {
+	async get(path) {
 		await this.entries.promoteByPattern(this.runId, path, null, this.sequence);
 	}
 
@@ -110,18 +110,18 @@ export default class RummyContext {
 		await this.entries.demoteByPattern(this.runId, path, null);
 	}
 
-	async delete(path) {
+	async rm(path) {
 		await this.entries.remove(this.runId, path);
 	}
 
-	async move(from, to) {
+	async mv(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
 		await this.entries.upsert(this.runId, this.sequence, to, body, "full");
 		await this.entries.remove(this.runId, from);
 	}
 
-	async copy(from, to) {
+	async cp(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
 		await this.entries.upsert(this.runId, this.sequence, to, body, "full");

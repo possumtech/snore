@@ -34,7 +34,7 @@ use the same `tools.register()` / `tools.onHandle()` interface.
 - Sessions killed: runs belong to projects directly
 - Models table: DB-backed, env bootstrap, runtime CRUD via RPC
 - RPC rebuilt: `read`/`store`/`write`/`delete` dispatch through handler chain
-- Unified verbs: model, plugin (`rummy.read/store/write/delete`), and client use same pipe
+- Unified verbs: model, plugin (`rummy.get/store/set/rm`), and client use same pipe
 - `progress://` as entry: continuation prompt modifiable by plugins before materialization
 - Materialization in TurnExecutor: core plumbing, not a plugin
 - Engine plugin emptied: no premature budget enforcement
@@ -92,32 +92,29 @@ it does and why. The extraction is the cleanup.
 
 ---
 
-## Todo: Tool Rename — Lean Into Training Data
+## Done: Tool Rename — Lean Into Training Data
 
-Rename core tools to align with unix/programming primitives the model
+Core tools renamed to align with unix/programming primitives the model
 has deep training on. The tag name is in the model's output token
 stream — training synergy matters here because we use XML tags, not
 native tool calling.
 
-| Current | New | Why |
-|---------|-----|-----|
-| `read` | `get` | Universal primitive. `get src/app.js` = load into context |
-| `write` | `set` | Universal primitive. `set src/app.js` = modify this entry |
-| `write` (naked) | `known` | Explicit knowledge save. `<known>OAuth2 PKCE</known>` |
-| `delete` | `rm` | Unix. Unambiguous |
-| `move` | `mv` | Unix |
-| `copy` | `cp` | Unix |
-| `run` | `sh` | Unix. Models know `sh` = shell execution |
-| `store` | `store` | No better analog |
-| `env` | `env` | Already unix |
-| `search` | `search` | No better analog |
-| `ask_user` | `ask_user` | No better analog |
-| `summarize` | `summarize` | No better analog |
-| `update` | `update` | No better analog |
-| `unknown` | `unknown` | No better analog |
-
-Breaking change: schemes table, XmlParser ALL_TOOLS, every plugin
-registration, sacred prompt, tool header format, RPC, client, all tests.
+| Tool | Scheme | Why |
+|------|--------|-----|
+| `get` | `get://` | Universal primitive. `get src/app.js` = load into context |
+| `set` | `set://` | Universal primitive. `set src/app.js` = modify this entry |
+| `known` | `known://` | Explicit knowledge save. `<known>OAuth2 PKCE</known>` |
+| `rm` | `rm://` | Unix. Unambiguous |
+| `mv` | `mv://` | Unix |
+| `cp` | `cp://` | Unix |
+| `sh` | `sh://` | Unix. Models know `sh` = shell execution |
+| `store` | `store://` | No better analog |
+| `env` | `env://` | Already unix |
+| `search` | `search://` | No better analog |
+| `ask_user` | `ask_user://` | No better analog |
+| `summarize` | `summarize://` | No better analog |
+| `update` | `update://` | No better analog |
+| `unknown` | `unknown://` | No better analog |
 
 ### Tool result header format
 
@@ -138,7 +135,7 @@ const port = 8080;
 ```
 
 ```
-# read src/app.js
+# get src/app.js
 src/app.js 120 tokens
 ```
 
@@ -196,10 +193,10 @@ Currently pattern operations create N individual entries. This must change:
 - Client resolves the single entry (bulk accept/reject)
 - The model sees one grouped result, not N individual results
 
-Affects: write (bulk update), read (pattern promote), store (pattern
-demote), delete (pattern remove), move/copy (pattern operations).
+Affects: set (bulk update), get (pattern promote), store (pattern
+demote), rm (pattern remove), mv/cp (pattern operations).
 
-### Write entry contract
+### Set entry contract
 
 - `body` = original content (reconstructable with attributes.patch)
 - `attributes.patch` = udiff for client (unix patch format)
