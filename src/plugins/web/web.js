@@ -100,22 +100,22 @@ export default class WebPlugin {
 			5,
 		);
 
-		// Amend system prompt with web tool docs
+		// Push web tool docs into instructions://system toolDescriptions
 		hooks.onTurn(async (rummy) => {
 			const { entries: store, runId } = rummy;
-			const attrs = await store.getAttributes(runId, "system://prompt");
+			const attrs = await store.getAttributes(runId, "instructions://system");
 			if (!attrs) return;
-			const amendments = attrs.amendments || [];
-			const webDocs = `${SEARCH_DOCS}\n\n${FETCH_DOCS}`;
-			if (amendments.some((a) => a.includes("search"))) return;
-			amendments.push(webDocs);
+			const descs = attrs.toolDescriptions || [];
+			if (descs.some((d) => d.includes("search"))) return;
+			descs.push(SEARCH_DOCS);
+			descs.push(FETCH_DOCS);
 			await store.upsert(
 				runId,
 				rummy.sequence,
-				"system://prompt",
-				await store.getBody(runId, "system://prompt"),
+				"instructions://system",
+				await store.getBody(runId, "instructions://system"),
 				"info",
-				{ attributes: { ...attrs, amendments } },
+				{ attributes: { ...attrs, toolDescriptions: descs } },
 			);
 		}, 15);
 	}

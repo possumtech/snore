@@ -185,50 +185,83 @@ move/copy targets, `<run>`. K/V operations are allowed in both modes.
 
 ---
 
-## 4. Context Assembly
+## 4. Message Structure
 
 Two messages per turn. System = stable truth. User = conversation.
 
+### 4.1 Key Entries
+
+| Path | Lifetime | Body | Attributes |
+|------|----------|------|-----------|
+| `instructions://system` | One per run (mutable) | prompt.md raw text | `{ toolDescriptions: [], persona }` |
+| `system://N` | Audit, one per turn | Full assembled system message | — |
+| `user://N` | Audit, one per turn | Full assembled user message | — |
+| `assistant://N` | Audit, one per turn | Model's raw response | — |
+
+`instructions://system` is the only mutable entry in this group. Plugins
+modify its attributes during `onTurn` (e.g., web plugin pushes search
+docs into `toolDescriptions`). The instructions tool's projection
+assembles the final text from body + attributes.
+
+### 4.2 System Message
+
 ```
-system:
-  prompt.md (with [%TOOLS%] replaced)
-  persona (from runs.persona)
-  tool:// docs (plugin documentation)
-  skill:// bodies (active skills)
-  <context>
-    knowledge, stored keys, file index, files, unknowns
-  </context>
+instructions://system projection:
+  prompt.md body (with [%TOOLS%] replaced from registry)
+  + each toolDescriptions[] entry
+  + persona
 
-user:
-  <messages>tool results, updates, summaries</messages>
-  <ask tools="..." warn="...">question</ask>       ← first turn
-  <progress tools="..." warn="...">Turn N/M</progress>  ← continuation
+<context>
+  skills (skill:// bodies)
+  knowledge (known:// at full)
+  stored keys (known:// at stored)
+  file index (files at index)
+  files (files at full)
+  unknowns (unknown://)
+</context>
 ```
 
-### 4.1 Materialization
+The instructions come from the projected `instructions://system` entry.
+The context comes from turn_context rows rendered by ContextAssembler.
+They concatenate into the system message, stored as `system://N` audit.
 
-Each turn, TurnExecutor materializes `turn_context` from `known_entries`
-via the `v_model_context` VIEW:
+### 4.3 User Message
 
-1. Materialize `tool://` entries from ToolRegistry (idempotent)
-2. Run plugin hooks (`hooks.processTurn`) — janitor/relevance can modify entries
-3. Clear turn_context, insert system prompt, copy from VIEW
+```
+<messages>
+  tool results, updates, summaries (chronological)
+</messages>
+<ask tools="..." warn="...">question</ask>           ← first turn
+<progress tools="..." warn="...">Turn N/M</progress>  ← continuation
+```
 
-The VIEW determines what the model sees. State IS fidelity:
+Rendered from turn_context rows. Stored as `user://N` audit.
+
+### 4.4 Materialization
+
+Each turn:
+
+1. Write `instructions://system` (body = prompt.md, attributes = { toolDescriptions, persona })
+2. Run plugin hooks (`onTurn`) — plugins modify instructions attributes and store entries
+3. Project `instructions://system` → system prompt text
+4. Query `v_model_context` VIEW → visible entries
+5. Project each entry through its tool's projection function
+6. Insert projected rows into `turn_context`
+7. ContextAssembler renders system prompt + turn_context → two LLM messages
+8. Store as `system://N` and `user://N` audit entries
+
+The VIEW determines visibility. State IS fidelity:
 - `full` → body visible
-- `summary` → body visible (summary content)
+- `summary` → body visible
 - `index` → path listed, no content
 - `stored` → invisible
 - `proposed` → invisible (pending client)
-- Audit schemes (`model_visible = 0`) → invisible
+- `model_visible = 0` → invisible (audit, tool, instructions)
 
-Render order: tools → knowledge → stored keys → file index → files →
-results → structural → unknowns → prompt.
+### 4.5 progress:// as Entry
 
-### 4.2 progress:// as Entry
-
-The continuation prompt is a `progress://N` entry in the store. Plugins
-can modify its body before materialization. No hardcoded string building.
+The continuation prompt is a `progress://N` entry. Plugins can modify its
+body before materialization.
 
 ---
 

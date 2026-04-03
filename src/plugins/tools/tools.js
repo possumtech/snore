@@ -83,18 +83,19 @@ export default class CoreToolsPlugin {
 			project: (entry) => entry.body,
 		});
 
-		// System prompt — assembled from body + attributes by projection
-		tools.onProject("system", (entry) => {
-			let prompt = entry.body || "";
+		// Instructions — assembled from body (prompt.md) + attributes
+		tools.onProject("instructions", (entry) => {
 			const attrs = entry.attributes || {};
-			if (attrs.tools) {
-				prompt = prompt.replace("[%TOOLS%]", attrs.tools);
+			const toolNames = hooks.tools
+				.namesForMode("act")
+				.map((t) => `\`<${t}/>\``)
+				.join(" ");
+			let prompt = (entry.body || "").replace("[%TOOLS%]", toolNames);
+			for (const doc of attrs.toolDescriptions || []) {
+				prompt += `\n\n${doc}`;
 			}
 			if (attrs.persona) {
 				prompt += `\n\n## Persona\n\n${attrs.persona}`;
-			}
-			for (const amendment of attrs.amendments || []) {
-				prompt += `\n\n${amendment}`;
 			}
 			return prompt;
 		});

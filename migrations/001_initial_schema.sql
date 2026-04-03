@@ -32,6 +32,7 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('search', 'full', 1, '["full","info"]', 0, 'result'),
 ('summarize', 'full', 1, '["summary"]', 0, 'structural'),
 ('update', 'full', 1, '["info"]', 0, 'structural'),
+('instructions', 'null', 0, '["info"]', 0, 'audit'),
 ('system', 'null', 0, '["info"]', 0, 'audit'),
 ('prompt', 'null', 0, '["info"]', 0, 'audit'),
 ('ask', 'full', 1, '["info"]', 0, 'audit'),

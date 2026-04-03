@@ -106,25 +106,20 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Write system://prompt entry — body is prompt.md, attributes carry config.
-		// Plugins can modify attributes during onTurn (e.g., push amendments).
+		// Write instructions entry — body is prompt.md, attributes carry config.
+		// Plugins modify attributes during onTurn (e.g., push toolDescriptions).
 		const promptBody = await this.#loadPrompt();
 		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
-		const toolNames = this.#hooks.tools
-			.namesForMode(mode)
-			.map((t) => `\`<${t}/>\``)
-			.join(" ");
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
-			"system://prompt",
+			"instructions://system",
 			promptBody,
 			"info",
 			{
 				attributes: {
-					tools: toolNames,
+					toolDescriptions: [],
 					persona: runRow2?.persona || null,
-					amendments: [],
 				},
 			},
 		);
@@ -159,20 +154,23 @@ export default class TurnExecutor {
 		);
 		await this.#hooks.processTurn(rummy);
 
-		// Project system://prompt through the system tool's projection
-		const systemEntry = await this.#knownStore.getEntriesByPattern(
+		// Project instructions://system through the instructions tool's projection
+		const instrEntry = await this.#knownStore.getEntriesByPattern(
 			currentRunId,
-			"system://prompt",
+			"instructions://system",
 			null,
 		);
-		const systemAttrs = systemEntry[0]
-			? await this.#knownStore.getAttributes(currentRunId, "system://prompt")
+		const instrAttrs = instrEntry[0]
+			? await this.#knownStore.getAttributes(
+					currentRunId,
+					"instructions://system",
+				)
 			: null;
-		const systemPrompt = this.#hooks.tools.project("system", {
-			path: "system://prompt",
-			scheme: "system",
-			body: systemEntry[0]?.body || promptBody,
-			attributes: systemAttrs,
+		const systemPrompt = this.#hooks.tools.project("instructions", {
+			path: "instructions://system",
+			scheme: "instructions",
+			body: instrEntry[0]?.body || promptBody,
+			attributes: instrAttrs,
 			fidelity: "full",
 			category: "system",
 		});
