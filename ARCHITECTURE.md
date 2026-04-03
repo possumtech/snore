@@ -1,1165 +1,479 @@
 # RUMMY: Architecture Specification
 
-This document is the authoritative reference for Rummy's design. The system prompt
-file (`prompt.md`) defines model-facing behavior. This document
-defines everything else: data model, protocol, context management, plugins, and testing.
+The authoritative reference for Rummy's design. The sacred prompt
+(`prompt.md`) defines model-facing behavior. This document defines
+everything else.
 
 ---
 
 ## 1. The Known Store
 
-All model-facing state lives in one table: `known_entries`. Files, knowledge,
-tool results, summaries — everything is a keyed entry with a URI scheme
-and state. No separate findings tables, no message history. The known store
-IS the model's memory.
+All model-facing state lives in `known_entries`. Files, knowledge, tool
+results, skills, audit — everything is a keyed entry with a URI scheme,
+body, attributes, and state.
 
 ### 1.1 Schema
 
 ```sql
-CREATE TABLE known_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT
-    , run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-    , turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
-    , path TEXT NOT NULL
-    , value TEXT NOT NULL DEFAULT ''
-    , scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
-    , state TEXT NOT NULL
-    , hash TEXT
-    , meta JSON
-    , tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
-    , tokens_full INTEGER NOT NULL DEFAULT 0 CHECK (tokens_full >= 0)
-    , refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
-    , write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
-    , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    , updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    -- State validated by trigger against schemes.valid_states
-);
-CREATE UNIQUE INDEX idx_known_entries_run_path ON known_entries (run_id, path);
-CREATE INDEX idx_known_entries_scheme_state ON known_entries (run_id, scheme, state);
-CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
+known_entries (
+    id, run_id, turn, path, body, scheme, state, hash,
+    attributes, tokens, tokens_full, refs, write_count,
+    created_at, updated_at
+)
 ```
-
-**Columns:**
-- `path` — the entry's address. Bare file paths (`src/app.js`) or URIs (`known://auth`, `env://node_version`).
-- `scheme` — generated column: `schemeOf(path)`. Always correct by definition. Drives the CHECK constraint and indexed queries.
-- `turn` — integer sequence number. Freshness signal — tracks when an entry was last touched. Used by the relevance engine for staleness calculations.
-- `hash` — SHA-256 content hash for file change detection.
-- `meta` — JSON metadata. Files store `{ constraint }`. Edits store `{ file, blocks, patch }`. Commands store `{ command }`.
-- `tokens` — context cost at current state. Updated on every state change (promote, demote).
-- `tokens_full` — cost of the raw value at full fidelity. Set on UPSERT, only changes when value changes.
-- `refs` — cross-reference count. Reserved for the relevance engine.
-- `write_count` — incremented on every UPSERT. Volatility tracking.
-
-### 1.2 URI Schemes & States
-
-Paths use URI scheme syntax. Bare paths (no `://`) are files. Everything else
-uses `scheme://identifier`.
-
-**Files** (`scheme IS NULL`) — project files bootstrapped at run start:
-
-| State | Model sees |
-|-------|------------|
-| `full` | `file` (with content) |
-| `summary` | `file:summary` (summary/symbols/snippet) — FUTURE |
-| `index` | path listed in File Index |
-| `stored` | invisible, retrievable via `<read>` |
-
-Client visibility constraints (`active`, `readonly`, `ignore`) are stored in the
-`file_constraints` table (project-scoped), not in `known_entries.state`. The
-FileScanner stores the constraint in `meta.constraint` for rendering labels.
-Ignored files are excluded from scanning entirely.
-
-**Knowledge** (`known://`, `unknown://`) — model-emitted:
-
-| State | Meaning | Model sees |
-|-------|---------|------------|
-| `full` | Value loaded | `full` |
-| `stored` | Key exists, value not in context | `stored` |
-
-Unknowns are `unknown://N` entries. Sticky until the model stores them via
-`<store path="unknown://42"/>`. Server deduplicates on insert.
-
-**Tool results** (`run://`, `env://`, `delete://`, `ask_user://`, `move://`, `copy://`, `search://`):
-
-| State | Meaning |
-|-------|---------|
-| `proposed` | Awaiting user approval *(hidden until resolved)* |
-| `pass` | Succeeded/accepted |
-| `warn` | Rejected |
-
-**Write is not a result scheme.** Write acts ON other paths — the effect appears
-on the target entry itself (file or known://). Successful writes update the
-target's value. Failed writes set the target to `error` state with the error
-message as content. There is no `write://` scheme.
-
-**Internal** (`summarize://`, `update://`, `system://`, `prompt://`, `ask://`, `act://`, `progress://`, `reasoning://`, `content://`, `model://`):
-- `summarize://N` — state `summary` (run termination signal)
-- `update://N` — state `info` (run continuation signal)
-- `prompt://N` — state `info` (loop identity / mode via `meta.mode`)
-- `ask://N` — state `info` (ask payload)
-- `act://N` — state `info` (act payload)
-- `progress://N` — state `info` (automated continuation)
-- `system://N`, `reasoning://N`, `content://N`, `model://N` — state `info` (audit)
-
-### 1.3 Path Namespaces
-
-| Format | Namespace | Examples |
-|--------|-----------|---------|
-| bare path | File paths | `src/app.js`, `package.json` |
-| `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
-| `unknown://` | Open questions | `unknown://1`, `unknown://42` |
-| `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `search://query`, `summarize://answer` |
-| `prompt://` | Loop identity / mode | `prompt://1` (with `meta.mode`) |
-| `ask://` | Ask payloads | `ask://1`, `ask://2` |
-| `act://` | Act payloads | `act://1`, `act://2` |
-| `progress://` | Continuations | `progress://2`, `progress://3` |
-| `http://`, `https://` | Fetched content | `https://docs.example.com/api` |
-
-Result paths use the tool name as scheme and a content-derived slug per run.
-Write has no result scheme — outcomes appear on the target path directly.
-
-Knowledge path constraint: `known://[a-z0-9_]+`. Short lowercase slugs.
-Prefer descriptive names — `known://oauth2_token_rotation` over `known://auth_rot`.
-
-### 1.4 UPSERT Semantics
-
-The known store uses INSERT OR REPLACE keyed on `(run_id, path)`. Each write
-increments `write_count` (useful for detecting oscillation in future diagnostics).
-
-There is no "empty value = delete" convention. Deletion uses the `delete` tool,
-which removes the entry from the store entirely. A blank value is a legitimate
-state (empty files, cleared entries).
-
-### 1.5 State Lock
-
-Application-level check: before calling the LLM, the server queries for proposed
-entries (`KnownStore.getUnresolved()`). If any exist, the turn is blocked.
-No database trigger — the check lives in code.
-
-### 1.6 Resolution
-
-When the client resolves a proposed entry via `run/resolve`:
-
-- **`accept`** → state changes from `proposed` to `pass`. Value updated with output.
-- **`reject`** → state changes from `proposed` to `warn`. Value updated with rejection reason.
-
-The model sees the resolved entry as `stored` next turn. It can `read` the key
-to see the full resolution output.
-
-After all proposed entries are resolved:
-- Any `warn` (rejection) → server returns `{ status: "resolved" }`, client decides next step.
-- All `pass` → server auto-resumes the run (model needs a continuation turn).
-- No actionable results → run completes.
-
----
-
-## 2. XML Tool Commands
-
-The model communicates via XML tags written directly in the response content.
-No native tool calling API. No message history. The server parses the response
-with htmlparser2 (forgiving HTML/XML parser). Free-form text between tool tags is
-captured as `content://N` (assistant text) and `reasoning://N` (model thinking).
-Both are hidden from the model but available for audit and client display.
-
-### 2.1 Tool Inventory
-
-The sacred prompt (`prompt.md`) is the authoritative
-tool reference. This section documents server behavior for each tool.
-
-| Tool | ask | act | Body content | Scheme | States |
-|------|-----|-----|-------------|--------|--------|
-| `<unknown>` | yes | yes | open question text | `unknown` | `full`, `stored` |
-| `<read>` | yes | yes | path (simple), or use attrs | *(none — promotes target)* | — |
-| `<env>` | yes | yes | shell command | `env` | `proposed`, `pass`, `warn` |
-| `<ask_user>` | yes | yes | comma-separated options | `ask_user` | `proposed`, `pass`, `warn` |
-| `<search>` | yes | yes | search query | `search` + `https` | `pass`, `summary` |
-| `<write>` | known:// only | files + known:// | content or SEARCH/REPLACE | `write` | `proposed`, `pass`, `warn`, `error`, `pattern` |
-| `<move>` | yes | yes | destination path | `move` | `proposed`, `pass`, `warn`, `pattern` |
-| `<copy>` | yes | yes | destination path | `copy` | `proposed`, `pass`, `warn`, `pattern` |
-| `<store>` | yes | yes | — | *(none — demotes target)* | — |
-| `<delete>` | yes | yes | — | `delete` | `proposed`, `pass`, `warn`, `pattern` |
-| `<run>` | no | yes | shell command | `run` | `proposed`, `pass`, `warn` |
-| `<update>` | yes | yes | brief status text | `update` | `info` |
-| `<summarize>` | yes | yes | final answer/result | `summary` | `summary` |
-
-### 2.2 Unified Attribute System
-
-Every store-facing tool uses the same attribute set. Pattern matching is via
-`hedberg()` — auto-detects glob, regex, XPath, and JSONPath.
-
-| Attribute | Meaning | Tools |
-|-----------|---------|-------|
-| `path` | Target path (hedberg pattern) | read, write, store, delete, move, copy |
-| `value` | Content filter (hedberg pattern) | read, write, store, delete |
-| `preview` | Preview mode — show matches as `pattern` state entry on tool's scheme, no changes | read, write, store, delete |
-| `question` | Question text | ask_user |
-
-The parser accepts both attribute-style (`<read path="x"/>`) and body-style
-(`<read>x</read>`) for applicable tools. Legacy attributes (`key=""`, `file=""`,
-`to=""`) are silently remapped.
-
-### 2.3 How Commands Become Known Entries
-
-Every parsed command writes to the known store. The model sees results as
-entries in the context next turn. Pattern-based commands operate on all matches.
-
-**`<write>`** — the unified file + knowledge tool:
-- Plain body → create or overwrite the entry at `path`
-- Structured edit body → auto-detected, applied via HeuristicMatcher
-- `search` + `replace` attrs → literal attribute edit mode
-- `path` + `value` attrs → bulk-update matching entries
-- File targets (scheme NULL): state `proposed` (client reviews)
-- K/V targets (known://, etc.): state `pass` (applied immediately)
-
-**Hedberg Editing Syntax** (auto-detects whatever format the model produces):
-1. Git merge conflict: `<<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE`
-2. Unified diff: `@@ -1,3 +1,3 @@` with `-`/`+` lines
-3. Claude XML: `<old_text>old</old_text><new_text>new</new_text>`
-4. JSON body: `{"search": "old", "replace": "new"}`
-5. XML attributes: `<write search="old" replace="new"/>`
-6. Full replacement: anything else becomes the new content
-
-**`<unknown>`** — creates a sticky `unknown://N` entry (state `full`).
-Persists across turns until explicitly stored. Server deduplicates on insert.
-
-**`<read>`** — promotes matching entries by changing state to `full`.
-Values already exist in the store (from file scanner or previous write).
-Promotion makes them visible in context next turn. With patterns, bulk-promotes.
-URLs (`http://`, `https://`) are fetched via WebFetcher.
-
-**`<store>`** — demotes matching entries by changing state to `stored`. Values stay
-in the store but disappear from context. A stored entry can be restored
-with `<read>`. With patterns, bulk-demotes.
-
-**`<delete>`** — removes entries from context AND permanently deletes them.
-File targets: state `proposed` (client confirms). K/V targets: immediate removal.
-
-**`<env>`** — creates an `env://N` entry, state `proposed`. The client executes
-the command and resolves with output.
-
-**`<run>`** — creates a `run://N` entry, state `proposed`. The client executes
-and resolves with output. Act-only.
-
-**`<ask_user>`** — creates an `ask_user://N` entry, state `proposed`. The client
-shows the question with options and resolves with the selected answer.
-
-**`<search>`** — web search via SearXNG. Creates a `search://N` confirmation at
-state `pass` plus individual `https://` entries at state `summary` with snippets.
-`<read>` on a URL promotes to `full` (fetches page).
-
-**`<move>`** — reads source, writes to destination, removes source. File
-destinations → proposed. K/V destinations → immediate.
-
-**`<copy>`** — reads source, writes to destination. Source stays. Same file/K/V
-split as move.
-
-**`<update>`** — stores as `update://N` info entry. Signals the model is still
-working. The run continues.
-
-**`<summarize>`** — stores as `summarize://N` summary entry. Signals the model is
-done. **The run terminates.**
-
-**`preview` flag** — any store-facing tool with `preview` resolves the pattern and stores
-the matching list as an entry under the tool's own scheme with `state: "pattern"`.
-No state change occurs on the matched entries. The result entry content is
-prefixed with "PREVIEW" and includes per-path token count and total:
-
-```
-PREVIEW 23 paths (4812 tokens total)
-src/auth.js (342)
-src/config.js (128)
-known://auth_flow (56)
-```
-
-**Bulk operations** — pattern-based `read`, `store`, `write`, and `delete` that
-execute (not preview) also produce result entries with `state: "pattern"` showing
-matched paths and token counts. The content has the same format but without the
-"PREVIEW" prefix:
-
-```
-23 paths (4812 tokens total)
-src/auth.js (342)
-src/config.js (128)
-known://auth_flow (56)
-```
-
-### 2.4 Promotion Model
-
-`read` and `store` operate on `state`:
-
-| Command | Effect |
-|---------|--------|
-| `<read>x</read>` | Set `state` to `full` → value appears in context |
-| `<store path="x"/>` | Set `state` to `stored` → value hidden from context |
-
-Both support patterns: `<read path="src/*.js"/>` promotes all matching files.
-`<store value="deprecated"/>` demotes all entries containing "deprecated".
-
-All other action commands (`env`, `run`, `delete`, `write`, `ask_user`) create new
-result entries as `proposed`. The `delete` command for `known://*` or `[tool]://*`
-paths removes the entry from the store entirely.
-
-### 2.5 update/summarize Termination Protocol
-
-The model declares its own state via `<update/>` or `<summarize/>`:
-
-| Signal | Meaning | Run continues? |
-|--------|---------|----------------|
-| `<update>` only | Model is still working | Yes |
-| `<summarize>` only | Model is done | **No — run terminates** |
-| Both present | Summarize wins | **No — run terminates** |
-| Neither present (with tools) | Healed to update, increment stall counter | Yes (up to `RUMMY_MAX_STALLS`) |
-| Neither present (plain text, no tools) | Healed to summarize | **No — run terminates** |
-
-**Stall protection:** if the model emits tool commands without `<update>` or
-`<summarize>` for `RUMMY_MAX_STALLS` consecutive turns (default 3), the run
-force-completes. Healed updates (from tool-only responses) count as stalls.
-
-**Plain text healing:** if the model responds with plain text and zero tool
-commands, it answered the question. The text is healed to `<summarize>` and the
-run terminates. A model that's still working uses tools.
-
-**Repetition detection:** if the model emits the same tool commands
-(name + path) for `RUMMY_MAX_REPETITIONS` consecutive turns (default 3),
-the run force-completes. Catches search loops and other retry patterns.
-
-### 2.6 Enforcement Layers
-
-1. **Prompt instructions + examples** — sacred prompts define tool commands with format and examples.
-2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML.
-3. **Syntax flexibility** — the parser accepts both attribute-style and body-style for every tool. Legacy attributes are silently remapped.
-4. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. The server never throws on model output.
-5. **Termination protocol** — `<summarize>` terminates; `<update>` continues; plain text → summarize; tools without status → stall counter; repeated commands → loop detection.
-6. **Content capture** — free-form text between tags is captured as `content://N` (assistant text). Model thinking is `reasoning://N`. Raw API response diagnostics are `model://N`. All hidden from model.
-
-### 2.7 Response Healing Philosophy
-
-Every malformed model response is a diagnostic opportunity, not a "model drift" excuse. When healing a response, ask in order:
-
-1. **Can we recover?** Extract the data and continue.
-2. **Can we warn usefully?** Log structured warnings that help future healing rules.
-3. **Did our structure cause this?** Check if context formatting, prompt wording, or tool definitions nudged the model toward the failure.
-4. **Did we miss something in prompts?** Check examples, instructions, continuation prompts.
-5. **Model drift is the LAST answer**, after all of the above have been ruled out.
-
-The server must never throw on model output.
-
-### 2.8 Server Execution Order
-
-The server parses all XML commands from the response, then processes in strict order:
-
-1. **Store audit entries** — create `system://N`, `prompt://N`, `ask://N` or `act://N`, `reasoning://N`, `content://N` entries.
-2. **Execute action commands** — `read` promotes, `store` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result entries.
-3. **Process unknowns** — create `unknown://N` entries, deduplicated.
-4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
-5. **Store status** — create `summarize://N` (from `<summarize>`) or `update://N` entry.
-6. **Emit `run/state`** — send client notification with history, proposed, unknowns, and telemetry.
-
-### 2.9 Tool Result Content Contract
-
-Every tool result entry must contain content the model can understand — what
-the tool did and what happened. The model sees results in the `<messages>`
-section of the user message. If content is blank, the model knows a tool was
-invoked but not what it returned, causing retry loops.
-
-**Write is the exception.** Write does not create its own scheme entry. It acts
-directly on the target path. The target entry's state and value reflect the
-outcome.
-
-#### Result content by scheme
-
-| Scheme | Content format | Example |
-|--------|---------------|---------|
-| `search://` | Full search results | `31 results for "Tom Petty death date"\n\nTom Petty - Wikipedia...` |
-| `env://` | `<env>command</env><output>...</output>` | `<env>npm --version</env><output>10.2.0</output>` |
-| `run://` | `<run>command</run><output>...</output>` | `<run>npm test</run><output>12 passing</output>` |
-| `ask_user://` | `Question? Answered: answer` | `Which framework? Answered: Express` |
-| `delete://` | `rm target_path` | `rm src/old_file.js` |
-| `move://` | `mv source destination` | `mv known://draft known://final` |
-| `copy://` | `cp source destination` | `cp known://config known://config_backup` |
-
-#### Write outcomes on target path
-
-| State | Content | When |
-|-------|---------|------|
-| `full` / `pass` | Full content after edit | Successful write to file or known entry |
-| `error` | Error message + failed command | SEARCH block not found, etc. |
-| `proposed` | Proposed content | File write awaiting client approval |
-
-The unix-style content formats (`rm`, `mv`, `cp`) leverage the model's shell
-training — these are unambiguous semantics the model understands without any
-custom explanation framework.
-
-#### Content projection in v_model_context
-
-The `v_model_context` VIEW projects `content` from `known_entries.value` based
-on `state`. **Every result scheme must be explicitly listed in the content
-projection CASE statement.** The default `ELSE value` passes content through
-for unlisted schemes. New schemes get their raw value by default — explicit
-CASE entries are only needed for schemes that compose content (e.g., wrapping
-output in XML tags).
-
----
-
-## 3. Model Context
-
-Two messages per turn. System carries stable truth (instructions + world state).
-User carries the conversation (message history + current task). Models treat
-system and user fundamentally differently — system is the behavioral contract,
-user is high-signal task input. The current task (prompt or progress) is always
-last in user — the highest-attention position.
-
-### 3.1 Message Structure
-
-```
-system:
-  <instructions>prompt.md (with [%TOOLS%] replaced from registry)</instructions>
-  <context>files, knowledge, unknowns (rendered from turn_context)</context>
-
-user:
-  <messages>chronological: tool results, updates, summaries</messages>
-  <ask tools="..." warn="...">question</ask>    ← ask mode
-  <act tools="...">instruction</act>            ← act mode
-  — OR —
-  <progress tools="..." warn="...">Turn N/M</progress>  ← continuation turns
-```
-
-**System** = instructions + context. Instructions come from `prompt.md` with
-`[%TOOLS%]` replaced by the registered tool list from ToolRegistry. Context
-is the state of the world — files, knowledge, unknowns. Context is rendered
-from `turn_context` and ends with unknowns (the uncertainty boundary).
-
-**User** = messages + ask/act/progress. Messages are the chronological log
-of tool results, updates, and summaries. The final element is the current
-task: `<ask>` or `<act>` (human prompt) or `<progress>` (continuation).
-
-The `tools` attribute lists available tools for this mode. The `warn`
-attribute appears only on `<ask>` and its `<progress>` continuations,
-carrying mode restrictions ("File and system modification prohibited").
-
-**`<ask>`/`<act>`** only appears on the first turn of a prompt loop or on
-injection. It does not appear on
-continuation turns.
-
-**Progress** is ephemeral — it conveys turn count, token budget, and allowed tools
-for the current continuation. Stored for audit but not part of the message history.
-
-### 3.2 Context Materialization
-
-Each turn, the engine materializes `turn_context` from `known_entries` via the
-`v_model_context` VIEW. State directly determines what the model sees — there
-is no separate fidelity computation. The VIEW uses `countTokens()` for accurate
-token counts. Ordinal assignment uses `ROW_NUMBER()` to establish render order:
-
-1. **Knowledge** — `known://*` at state `full` (working memory)
-2. **Stored keys** — `known://*` at state `stored` (discoverable, key only)
-3. **File Index** — files at state `index` (path listing)
-4. **Summary files** — files at state `summary` (summary/symbols/snippet — FUTURE)
-5. **Full files** — files at state `full` (complete content)
-6. **Unknowns** — `unknown://*` entries (uncertainty boundary, always last)
-
-Results, summaries, updates, and prompts are NOT in context — they are in
-messages (user message). The context is the model's world state; messages
-are the conversation.
-
-### 3.3 State IS Fidelity
-
-State directly determines what the model sees. There is no computed fidelity —
-the `state` column on `known_entries` is the fidelity level:
-
-- **`full`** — complete content visible (file content, known values, results)
-- **`summary`** — summary/symbols/snippet visible (FUTURE for files; used for search URL results)
-- **`index`** — path/key listed, no content (file index)
-- **`stored`** — invisible, retrievable via `<read>`
-
-`<read>` promotes any entry to `full`. `<store>` demotes any entry to `stored`.
-Turn tracks when an entry was last touched — freshness for the relevance
-engine's staleness calculations. Turn no longer gates visibility.
-
-### 3.4 File Bootstrap
-
-At run start, the file scanner populates `known_entries` from disk. The scanner
-checks `file_constraints` for client visibility rules: ignored files are skipped
-entirely, and `active`/`readonly` constraints are stored in `meta.constraint`.
-
-| Source | State | Value |
-|--------|-------|-------|
-| All scanned files | `index` | Full file contents (path-only in context) |
-| Client-activated files | `full` | Full file contents (visible in context) |
-
-All files enter at `index` state — listed by path but no content in context.
-Only files explicitly activated by the client (via `<read>` or client constraint)
-get promoted to `full`. There is no root file exception. Symbol extraction is
-deferred to the relevance engine — no extraction on scan.
-
-### 3.5 File Change Detection
-
-Each turn, the server scans the project's files and compares against
-`known_entries.hash`:
-
-1. Load `file_constraints` for the project — skip ignored files
-2. Scan project for all non-ignored files and their current hashes
-3. Across all active runs, add/update/delete file entries to match disk state
-4. Store constraint in `meta.constraint` for VIEW rendering
-5. Update the `turn` field on files that changed on disk
-
-The `turn` field tracks when a file was last touched — freshness data for the
-relevance engine's staleness calculations.
-
-The `refs` field will store cross-reference counts. The `hash` field enables
-change detection without re-reading file contents. Both are inert (default 0 /
-NULL) until the relevance engine and context budgeting are implemented.
-
-Symbol extraction is deferred to the relevance engine. No extraction on scan.
-
----
-
-## 4. State Scopes
-
-| Scope | Lifetime | Contains |
-|-------|----------|----------|
-| **Project** | Until deleted | Project path, name, git state |
-| **Session** | Client connection | Config (persona, system prompt, skills, temperature, context limit) |
-| **Run** | Open-ended conversation | `known_entries`, `turns` |
-| **Turn** | Single LLM request/response | Entries written with that turn number |
-
-### 4.1 Project Scope
-
-- `projects` — project path, name, git hash, last indexed timestamp
-
-No separate file index tables. File metadata (path, hash, symbols) lives in
-`known_entries` as file-scheme entries. The project table is structural only.
-
-### 4.2 Run Scope
-
-- `known_entries` — the unified state machine. Files, knowledge, tool results, audit.
-- `prompt_queue` — FIFO prompt queue. All prompts enter here. Worker consumes.
-- `turns` — usage stats (prompt_tokens, completion_tokens, cost). Operational, not model-facing.
-- `runs.next_turn` — sequential counter for turn numbers
-
-Runs are long-lived. All terminal states (`completed`, `failed`, `aborted`) allow
-transition back to `running`. A run accumulates known entries across many prompts.
-
-Files are scanned from disk and written to `known_entries` per-run. Multiple
-concurrent runs reference the same files as separate entries (different `run_id`,
-same `key`). The file scanner updates all active runs in bulk when files change
-on disk.
-
-### 4.3 Prompt Queue
-
-All `ask`/`act` requests INSERT into `prompt_queue` and return immediately.
-A server-side worker processes one prompt per run at a time in FIFO order.
 
 | Column | Purpose |
 |--------|---------|
-| `run_id` | Which run this prompt belongs to |
-| `mode` | `ask` or `act` |
-| `prompt` | The user's message |
-| `status` | `pending` → `active` → `completed` or `aborted` |
-| `result` | JSON result after completion |
+| `path` | Entry identity. Bare paths (`src/app.js`) or URIs (`known://auth`) |
+| `body` | Tag body text. File content, tool output, skill docs. |
+| `attributes` | Tag attributes as JSON. Handler-private workspace. `CHECK (json_valid)` |
+| `scheme` | Generated from path via `schemeOf()`. Drives dispatch and view routing |
+| `state` | Lifecycle stage. Determines model visibility |
+| `hash` | SHA-256 for file change detection |
+| `tokens` | Context cost at current state |
+| `tokens_full` | Cost of raw body at full fidelity |
+| `turn` | Freshness — when was this entry last touched |
 
-**Abort** sets the active prompt to `aborted`. Pending prompts survive —
-abort means "stop this," not "cancel everything."
+### 1.2 Schemes & States
 
-**Server restart** — active prompts reset to pending. Pending prompts are
-retried. The queue is crash-safe.
+Paths use URI scheme syntax. Bare paths (no `://`) are files.
 
----
+**Files** (`scheme IS NULL`):
 
-## 5. RPC Protocol
+| State | Model sees |
+|-------|-----------|
+| `full` | File content in code fence |
+| `index` | Path listed in File Index |
+| `stored` | Invisible, retrievable via `<read>` |
 
-JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol reference.
+**Knowledge** (`known://`, `unknown://`):
 
-### 5.1 Methods
+| State | Model sees |
+|-------|-----------|
+| `full` | Key — value in bullet list |
+| `stored` | Key listed, no value |
 
-#### Session Setup
+**Tool results** (`write://`, `run://`, `env://`, `delete://`, `ask_user://`,
+`move://`, `copy://`, `search://`, `read://`, `store://`):
 
-| Method | Params | Description |
-|--------|--------|-------------|
-| `ping` | — | Liveness check |
-| `discover` | — | Returns method & notification catalog |
-| `init` | `projectPath`, `projectName`, `clientId`, `projectBufferFiles?` | Initialize project and session |
+All start at `full` state when recorded. Handlers set the final state:
+`proposed`, `pass`, `warn`, `error`, `pattern`, `read`, `stored`, `info`.
 
-#### Model Discovery
+**Skills** (`skill://`): `full` or `stored`. Rendered in system message.
 
-| Method | Params | Description |
-|--------|--------|-------------|
-| `getModels` | — | List available model aliases |
-| `getModelInfo` | `model?` | Returns `{ alias, model, context_size, limit, effective }` |
+**Tools** (`tool://`): `full`. Plugin docs rendered in system message.
 
-#### File Visibility (Project-Scoped)
+**URLs** (`http://`, `https://`): `full`, `summary`, `stored`.
 
-Writes to `file_constraints` table. Constraints persist across runs.
+**Structural** (`summarize://`, `update://`): Status signals.
 
-| Method | Params | Description |
-|--------|--------|-------------|
-| `activate` | `pattern` | Set constraint to `active` (priority in context) |
-| `readOnly` | `pattern` | Set constraint to `readonly` (edits blocked) |
-| `ignore` | `pattern` | Set constraint to `ignore` (excluded from scanning) |
-| `drop` | `pattern` | Remove constraint (revert to default) |
-| `fileStatus` | `path` | Get file state + constraint |
-| `getFiles` | — | Get project tree |
+**Audit** (`system://`, `prompt://`, `ask://`, `act://`, `progress://`,
+`reasoning://`, `model://`, `error://`, `user://`, `assistant://`,
+`content://`): `info` state, `model_visible = 0` (hidden from model).
 
-#### Run Execution
+### 1.3 State Validation
 
-| Method | Params | Description |
-|--------|--------|-------------|
-| `ask` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Non-mutating query |
-| `act` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Mutating directive |
-| `run/resolve` | `run`, `resolution: {key, action: 'accept'\|'reject', output?}` | Resolve a proposed entry by its key |
-| `run/abort` | `run` | Signal in-flight loop to stop via AbortController. Sets status to `aborted`. |
-| `run/rename` | `run`, `name` | Rename a run. `[a-z_]+`, must be unique. |
-| `run/inject` | `run`, `message` | Inject a human prompt into a run (creates `prompt://N` entry) |
-| `getRuns` | — | List runs for session |
+The `schemes` table is a bootstrap registry — 30 rows of static config.
+INSERT/UPDATE triggers validate state against `schemes.valid_states`.
+Plugins cannot bypass this (circular dependency prevents schemes as entries).
 
-All run params accept the **run name** (e.g. `ccp_1`), not a UUID. Model aliases
-defined via `RUMMY_MODEL_{alias}` env vars.
+### 1.4 UPSERT Semantics
 
-#### Session Configuration
-
-| Method | Params | Description |
-|--------|--------|-------------|
-| `systemPrompt` | `text` | Set system prompt override |
-| `persona` | `text` | Set agent persona |
-| `skill/add` | `name` | Enable skill |
-| `skill/remove` | `name` | Disable skill |
-| `getSkills` | — | List active skills |
-| `setTemperature` | `temperature` | Set temperature (0-2) |
-| `getTemperature` | — | Get temperature |
-| `setContextLimit` | `limit` | Override context window (tokens). `null` resets to model default. Min 1024. |
-| `getContext` | `model?` | Returns `{ model_max, limit, effective }` — model's max, session override, actual size used |
-
-### 5.2 Notifications
-
-| Notification | Payload | Description |
-|---|---|---|
-| `run/state` | See below | Primary turn update — sent after each turn |
-| `run/progress` | `run`, `turn`, `status` | Turn status: `thinking`, `processing`, `retrying` |
-| `ui/render` | `text`, `append` | Streaming output |
-| `ui/notify` | `text`, `level` | Toast notification |
-
-**`run/state` payload:**
-
-```json
-{
-  "run": "kimi_1",
-  "turn": 3,
-  "status": "running",
-  "summary": "Latest one-liner status.",
-  "history": [
-    {"path": "env://1", "tool": "env", "target": "npm --version", "status": "pass"},
-    {"path": "summarize://1", "tool": "summary", "status": "summary", "value": "Previous summary."},
-    {"path": "write://3", "tool": "write", "target": "src/config.js", "status": "proposed"}
-  ],
-  "unknowns": [
-    {"path": "unknown://1", "value": "Which session store is configured"}
-  ],
-  "proposed": [
-    {"path": "write://3", "type": "write", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
-  ],
-  "telemetry": {
-    "modelAlias": "kimi",
-    "model": "moonshotai/kimi-k2.5",
-    "temperature": 0.7,
-    "context_size": 131072,
-    "prompt_tokens": 3400,
-    "completion_tokens": 280,
-    "total_tokens": 3680,
-    "cost": 0.0024,
-    "context_distribution": [
-      {"bucket": "system",  "tokens": 800,  "entries": 2},
-      {"bucket": "files",   "tokens": 2400, "entries": 3},
-      {"bucket": "keys",    "tokens": 120,  "entries": 45},
-      {"bucket": "known",   "tokens": 340,  "entries": 5},
-      {"bucket": "history", "tokens": 580,  "entries": 8}
-    ]
-  }
-}
-```
-
-The client receives one notification per turn. `proposed` entries include `type`
-(e.g., `"edit"`, `"run"`, `"ask_user"`) and `meta` with the patch/command/question.
-The client routes by `type`, not by parsing key prefixes.
-Resolution via `run/resolve` with `{ key, action: "accept"|"reject", output? }`.
-
-### 5.3 Run Lifecycle
-
-All prompts flow through a persistent `prompt_queue` table. The queue is the
-default path — not an exceptional fallback.
-
-```
-ask/act RPC → INSERT INTO prompt_queue (pending) → return { run, queued }
-worker      → SELECT next pending → AgentLoop.run() → turns → XML commands
-                                                                  │
-                                              run/resolve ────────┘ (per entry)
-                                                                  │
-                         ◄────────────────────────────────────────┘ (auto-resume)
-worker      → prompt completed → SELECT next pending → ... (or idle)
-```
-
-Multiple prompts to the same run queue in FIFO order. One active at a time.
-Abort stops the current prompt; remaining queued prompts survive.
-
-All terminal states (`completed`, `failed`, `aborted`) are restartable —
-runs are long-lived conversations, not one-shot operations.
-
-**Who applies edits to disk?** The client. The server proposes edits as known
-entries. The client resolves them (accept/reject) and writes accepted changes
-to its own filesystem. The server never touches the working tree.
-
-### 5.4 Mode Enforcement
-
-In **ask** mode, the server rejects mutating operations before they reach the
-client. Rejected tools: file writes, file deletes, file move/copy targets,
-`<run>`. K/V operations (`known://` writes, stores, deletes) are allowed in
-both modes.
-
-### 5.5 Run Modes
-
-| Mode | Params | Behavior |
-|------|--------|----------|
-| **Continue** | `run = <name>` | Same run, same known store |
-| **New** | `run` omitted | Fresh run, fresh known store, file bootstrap |
-| **Lite** | `noContext = true` | No file bootstrap |
-| **Fork** | `fork = true` | New run, inherits parent's known store |
+INSERT OR REPLACE on `(run_id, path)`. Each write increments `write_count`.
+Blank body is valid. Deletion uses `<delete>`, which removes the row entirely.
 
 ---
 
-## 6. Provider Compatibility
+## 2. Relational Tables
 
-Since tool commands are XML in the response content (not native tool calling),
-provider compatibility is straightforward. Any provider that returns text
-content works. No `strict: true`, `tool_choice`, or tool schema negotiation.
+The K/V store is the memory. Relational tables are the skeleton.
 
-The server sends `{model, messages, include_reasoning: true}` and parses the
-response content. `include_reasoning` is always sent to OpenRouter. Reasoning
-content (`reasoning_content` field) is captured when providers return it.
+```sql
+projects (id, name UNIQUE, project_root, config_path, created_at)
+models   (id, alias UNIQUE, actual, context_length, created_at)
+runs     (id, project_id, parent_run_id, model, alias UNIQUE, status,
+          temperature, persona, context_limit, next_turn, created_at)
+turns    (id, run_id, sequence, prompt_tokens, completion_tokens,
+          total_tokens, cost, created_at)
 
-### 6.1 Provider Configuration
-
-| Prefix | Provider | Env vars |
-|--------|----------|----------|
-| *(none)* | OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` |
-| `ollama/` | Ollama | `OLLAMA_BASE_URL` |
-| `openai/` | OpenAI-compatible | `OPENAI_BASE_URL`, `OPENAI_API_KEY` |
-
-```env
-RUMMY_MODEL_ccp=deepseek/deepseek-chat
-RUMMY_MODEL_local=ollama/qwen3:latest
-RUMMY_MODEL_DEFAULT=ccp
+file_constraints (id, project_id, pattern, visibility, created_at)
+prompt_queue     (id, run_id, mode, model, prompt, config, status, result)
+rpc_log          (id, project_id, method, rpc_id, params, result, error)
 ```
+
+**No sessions.** Runs belong to projects. Any client that knows the project
+name can access any run. Temperature, persona, and context_limit are per-run.
+
+**Models** are bootstrapped from `RUMMY_MODEL_*` env vars at startup (upsert).
+Clients can add/remove models at runtime via RPC. No default model — the
+client picks for every run.
+
+### 2.1 Run State Machine
+
+```
+queued → running → proposed → running → completed
+                → completed
+                → failed → running
+                → aborted → running
+```
+
+All terminal states allow transition back to `running`. Runs are long-lived.
+
+### 2.2 Prompt Queue
+
+All prompts flow through `prompt_queue`. FIFO per run. One active at a time.
+Abort stops the current prompt; pending prompts survive.
 
 ---
 
-## 7. Plugin System
+## 3. Entry-Driven Dispatch
 
-Plugins extend the server through a registration pattern. Core functionality
-uses the same pattern — there is no distinction between "built-in" and
-"third-party" at the registration level. The bundled plugins (tools, rpc,
-symbols, telemetry, git, mapping, nvim) are loaded from `src/plugins/`.
-User plugins are loaded from `~/.rummy/plugins/`.
+### 3.1 Model Path
 
-### 7.1 Plugin Contract
-
-A plugin is a `.js` file that exports a default class with a static `register` method:
-
-```js
-export default class MyPlugin {
-    static register(hooks) {
-        // Register tools, RPC methods, turn processors, event listeners, filters
-    }
-}
+```
+Model emits <read path="src/app.js"/>
+  → XmlParser produces { name: "read", path: "src/app.js" }
+  → TurnExecutor.#record() writes read://src%2Fapp.js at full state
+  → hooks.tools.dispatch("read", entry, rummy):
+      priority 5: WebPlugin checks if http URL — no, passes through
+      priority 10: CoreToolsPlugin promotes file, writes confirmation
+  → hooks.entry.created.emit(entry)
 ```
 
-**Loading:** The loader scans each plugin directory for subdirectories containing
-`index.js` or a file matching the directory name (e.g., `symbols/symbols.js`).
-Test files are skipped. Plugins are loaded in directory order, then alphabetical.
+### 3.2 Client Path
 
-**Deployment:** Drop a directory into `~/.rummy/plugins/`:
 ```
-~/.rummy/plugins/
-  my-plugin/
-    my-plugin.js    ← exports default class with static register(hooks)
+Client sends read { run: "turboqwen_123", path: "src/app.js" }
+  → buildRunContext() creates RummyContext for the run
+  → dispatchTool() records read:// entry at full state
+  → hooks.tools.dispatch("read", entry, rummy)  ← same chain
+  → hooks.entry.created.emit(entry)
 ```
 
-### 7.2 Registries
+Same pipe. No mode enforcement for client (operator privilege).
 
-#### Tool Registry (`hooks.tools`)
-
-Register XML tool commands the model can invoke. Tools with handlers own
-their entire operation — TurnExecutor dispatches to the handler instead of
-using hardcoded logic.
+### 3.3 Handler Registration
 
 ```js
 hooks.tools.register("search", {
     modes: new Set(["ask", "act"]),
     category: "ask",
-    handler: async (cmd, rummy) => {
-        const results = await fetchResults(cmd.path, cmd.results);
-        for (const r of results) {
-            rummy.write({ path: r.url, value: `${r.title}\n${r.snippet}`, state: "summary" });
-        }
-        rummy.write({ value: `${results.length} results for "${cmd.path}"` });
-    },
+    docs: "## <search>...</search>\nSearch the web.",
 });
+
+hooks.tools.onHandle("search", async (entry, rummy) => {
+    // entry = { scheme, path, body, attributes, state, resultPath }
+    // rummy = RummyContext
+}, priority);
 ```
 
-- `modes` — which modes this tool is available in.
-- `category` — `"ask"` (direct execution), `"act"` (proposed for client), `"structural"` (metadata).
-- `handler` — async function receiving the parsed command and RummyContext. If present, TurnExecutor dispatches to it. If absent, TurnExecutor uses built-in logic.
+Multiple handlers per scheme. Lower priority runs first. Return `false`
+to stop the chain.
 
-Plugins call the same operations the model calls via RummyContext:
+### 3.4 Access Tiers
 
-| Model tool | Plugin method | Effect |
-|-----------|--------------|--------|
-| `<write>` | `rummy.write({ path, value, state })` | Create/update entry |
-| `<read>` | `rummy.read(path)` | Promote to `full` |
-| `<store>` | `rummy.store(path)` | Demote to `stored` |
-| `<delete>` | `rummy.delete(path)` | Remove permanently |
+| Caller | Mode enforcement | Handler dispatch |
+|--------|-----------------|-----------------|
+| Model | Yes (ask/act) | Yes |
+| Client (RPC) | No | Yes |
+| Plugin (internal) | No | Optional |
 
-Plugin-only methods (superset): `rummy.emit()`, `rummy.query()`,
-`rummy.getMeta()`, `rummy.getEntries()`, `rummy.log()`.
+### 3.5 Mode Enforcement
 
-**Methods**: `get(name)`, `has(name)`, `actTools` (getter), `names` (getter),
-`namesForMode(mode)`, `entries()`.
+In ask mode, TurnExecutor rejects: file writes, file deletes, file
+move/copy targets, `<run>`. K/V operations are allowed in both modes.
 
-#### RPC Registry (`hooks.rpc.registry`)
+---
 
-Register JSON-RPC methods:
+## 4. Context Assembly
+
+Two messages per turn. System = stable truth. User = conversation.
+
+```
+system:
+  prompt.md (with [%TOOLS%] replaced)
+  persona (from runs.persona)
+  tool:// docs (plugin documentation)
+  skill:// bodies (active skills)
+  <context>
+    knowledge, stored keys, file index, files, unknowns
+  </context>
+
+user:
+  <messages>tool results, updates, summaries</messages>
+  <ask tools="..." warn="...">question</ask>       ← first turn
+  <progress tools="..." warn="...">Turn N/M</progress>  ← continuation
+```
+
+### 4.1 Materialization
+
+Each turn, TurnExecutor materializes `turn_context` from `known_entries`
+via the `v_model_context` VIEW:
+
+1. Materialize `tool://` entries from ToolRegistry (idempotent)
+2. Run plugin hooks (`hooks.processTurn`) — janitor/relevance can modify entries
+3. Clear turn_context, insert system prompt, copy from VIEW
+
+The VIEW determines what the model sees. State IS fidelity:
+- `full` → body visible
+- `summary` → body visible (summary content)
+- `index` → path listed, no content
+- `stored` → invisible
+- `proposed` → invisible (pending client)
+- Audit schemes (`model_visible = 0`) → invisible
+
+Render order: tools → knowledge → stored keys → file index → files →
+results → structural → unknowns → prompt.
+
+### 4.2 progress:// as Entry
+
+The continuation prompt is a `progress://N` entry in the store. Plugins
+can modify its body before materialization. No hardcoded string building.
+
+---
+
+## 5. RPC Protocol
+
+JSON-RPC 2.0 over WebSocket. `discover` returns the live catalog.
+
+### 5.1 Methods
+
+#### Protocol
+
+| Method | Params |
+|--------|--------|
+| `ping` | — |
+| `discover` | — |
+| `init` | `{ name, projectRoot, configPath? }` |
+
+#### Models
+
+| Method | Params |
+|--------|--------|
+| `getModels` | `{ limit?, offset? }` |
+| `addModel` | `{ alias, actual, contextLength? }` |
+| `removeModel` | `{ alias }` |
+
+#### Entry Operations (dispatched through handler chain)
+
+| Method | Params |
+|--------|--------|
+| `read` | `{ path, run?, persist?, readonly? }` |
+| `store` | `{ path, run?, persist?, ignore?, clear? }` |
+| `write` | `{ run, path, body?, state?, attributes? }` |
+| `delete` | `{ run, path }` |
+| `getEntries` | `{ pattern?, body?, run?, limit?, offset? }` |
+
+`persist` creates a project-level file constraint (operator privilege).
+Without `persist`, operations dispatch through the handler chain.
+
+#### Runs
+
+| Method | Params |
+|--------|--------|
+| `startRun` | `{ model, temperature?, persona?, contextLimit? }` |
+| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, fork? }` |
+| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, fork? }` |
+| `run/resolve` | `{ run, resolution: { path, action, output? } }` |
+| `run/abort` | `{ run }` |
+| `run/rename` | `{ run, name }` |
+| `run/inject` | `{ run, message }` |
+| `run/config` | `{ run, temperature?, persona?, contextLimit?, model? }` |
+
+`model` is required on `ask`, `act`, and `startRun`. No default.
+
+#### Queries
+
+| Method | Params |
+|--------|--------|
+| `getRuns` | `{ limit?, offset? }` |
+| `getRun` | `{ run }` |
+
+#### Skills & Personas
+
+| Method | Params |
+|--------|--------|
+| `skill/add` | `{ run, name }` |
+| `skill/remove` | `{ run, name }` |
+| `getSkills` | `{ run }` |
+| `listSkills` | — |
+| `persona/set` | `{ run, name?, text? }` |
+| `listPersonas` | — |
+
+Skills loaded from `config_path/skills/{name}.md`. Personas from
+`config_path/personas/{name}.md`.
+
+### 5.2 Notifications
+
+| Notification | Scoped by |
+|-------------|-----------|
+| `run/state` | projectId |
+| `run/progress` | projectId |
+| `ui/render` | projectId |
+| `ui/notify` | projectId |
+
+### 5.3 Resolution
+
+| Resolution | Model signal | Outcome |
+|-----------|-------------|---------|
+| reject | any | `completed` — rejection stops the bus |
+| accept | `<update>` | `running` — model has more work |
+| accept | `<summarize>` | `completed` |
+| accept | neither | `running` — healer decides |
+
+---
+
+## 6. Plugin System
+
+Plugins extend rummy through registration. Core and third-party use the
+same interface. No distinction at the registration level.
+
+### 6.1 Plugin Contract
 
 ```js
-hooks.rpc.registry.register("myMethod", {
-    handler: async (params, ctx) => {
-        // ctx.projectAgent, ctx.modelAgent, ctx.db
-        // ctx.projectId, ctx.sessionId, ctx.projectPath
-        return { result: "value" };
-    },
-    description: "What this method does",
-    params: { arg1: "description" },
-    requiresInit: true,
-});
+export default class MyPlugin {
+    static register(hooks) {
+        // Register tools, RPC methods, turn processors, event listeners
+    }
+}
 ```
 
-Register notification metadata (for `discover` output):
+Loading: `src/plugins/` (built-in) then `~/.rummy/plugins/` (user).
+
+### 6.2 Tool Registry (`hooks.tools`)
 
 ```js
-hooks.rpc.registry.registerNotification("my/notification", "Description.");
+hooks.tools.register(name, { modes, category, docs?, handler? });
+hooks.tools.onHandle(scheme, handler, priority);
+await hooks.tools.dispatch(scheme, entry, rummy);
+await hooks.tools.materialize(store, runId, turn);
 ```
 
-`discover` auto-generates from the registry. No manual catalog.
+### 6.3 RummyContext (`rummy`)
 
-### 7.3 Turn Processors (`hooks.onTurn`)
+Tool methods (same verbs as model and client):
 
-Run logic before each LLM call. Priority controls execution order (lower = first).
+| Method | Effect |
+|--------|--------|
+| `rummy.write({ path, body, state, attributes })` | Create/update entry |
+| `rummy.read(path)` | Promote to full |
+| `rummy.store(path)` | Demote to stored |
+| `rummy.delete(path)` | Remove permanently |
+| `rummy.move(from, to)` | Move entry |
+| `rummy.copy(from, to)` | Copy entry |
+
+Plugin-only:
+
+| Property/Method | Purpose |
+|----------------|---------|
+| `rummy.entries` | KnownStore instance |
+| `rummy.hooks` | Hook system |
+| `rummy.db` | Database |
+| `rummy.getAttributes(path)` | Read entry attributes |
+| `rummy.getEntries(pattern, body?)` | Pattern query |
+| `rummy.log(message)` | Audit log entry |
+
+### 6.4 Turn Processors (`hooks.onTurn`)
 
 ```js
 hooks.onTurn(async (rummy) => {
-    if (rummy.noContext) return;
-    // Access the K/V store
-    const files = await rummy.store.getFileEntries(rummy.runId);
-    // Inject content into context
-    const node = rummy.tag("mycontent", {}, ["data"]);
-    rummy.contextEl.children.push(node);
-}, 10);
+    // Runs before materialization. Modify entries to affect model view.
+}, priority);
 ```
 
-#### RummyContext API (`rummy`)
+### 6.5 Events & Filters
 
-| Property | Type | Description |
-|---|---|---|
-| `db` | SqlRite | Database with all prepared queries |
-| `store` | KnownStore | K/V store API (promote, demote, upsert, getValue, etc.) |
-| `project` | Object | `{ id, path, name }` |
-| `mode` | String | `"ask"` or `"act"` (sourced from `prompt://` entry's `meta.mode`) |
-| `sessionId` | String | Current session ID |
-| `runId` | String | Current run ID |
-| `turnId` | Number | Current turn ID |
-| `sequence` | Number | Turn sequence number |
-| `noContext` | Boolean | True in Lite mode |
-| `contextSize` | Number | Token budget |
-| `systemPrompt` | String | Built system prompt for this turn |
-| `loopPrompt` | String | User/continuation prompt for this turn |
-| `system` | Object | System node |
-| `contextEl` | Object | Context node |
-| `user` | Object | User node |
-| `assistant` | Object | Assistant node |
-| `tag(name, attrs?, children?)` | Function | Create a node |
+Events: `project.init.started/completed`, `run.started/progress/state/step.completed`,
+`ask.started/completed`, `act.started/completed`, `llm.request.started/completed`,
+`entry.created`, `ui.render`, `ui.notify`, `rpc.started/completed/error`.
 
-The `store` property provides the full KnownStore API: `upsert`, `promote`,
-`demote`, `remove`, `resolve`, `getValue`, `getMeta`, `getFileEntries`,
-`getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`.
+Filters: `llm.messages`, `llm.response`, `file.symbols`, `run.config`,
+`socket.message.raw`, `rpc.request`, `rpc.response.result`.
 
-The engine materializes `turn_context` from `known_entries` each turn via
-the `v_model_context` VIEW (`INSERT INTO turn_context SELECT FROM v_model_context`).
-Plugins read `turn_context` for the exact model view. The VIEW uses SQL
-functions (`countTokens`, `schemeOf`, `slugify`) registered at startup from
-`src/sql/functions/`.
+### 6.6 Bundled Plugins
 
-### 7.4 Events
-
-Fire-and-forget notifications. All handlers run; return values ignored.
-
-```js
-hooks.run.step.completed.on(async (payload) => {
-    console.log(`Turn ${payload.turn} completed for run ${payload.run}`);
-}, 5);
-```
-
-| Hook | Payload | When |
-|---|---|---|
-| `project.init.started` | `{ projectPath, projectName, clientId }` | Before project setup |
-| `project.init.completed` | `{ projectId, sessionId, projectPath, db }` | After project setup |
-| `project.files.update.started` | `{ projectId, pattern, constraint }` | Before file state change |
-| `project.files.update.completed` | `{ projectId, projectPath, pattern, constraint, db }` | After file state change |
-| `run.started` | `{ run, sessionId, mode }` | Run created |
-| `run.progress` | `{ sessionId, run, turn, status }` | Turn progress: thinking, processing, retrying |
-| `run.state` | `{ sessionId, run, turn, status, summary, history, unknowns, proposed, telemetry }` | Turn state update (one per turn) |
-| `run.step.completed` | `{ sessionId, run, turn, flags }` | After each turn completes |
-| `ask.started` | `{ sessionId, model, prompt, run }` | Ask run begins |
-| `ask.completed` | `{ sessionId, run, status, turn }` | Ask run ends |
-| `act.started` | `{ sessionId, model, prompt, run }` | Act run begins |
-| `act.completed` | `{ sessionId, run, status, turn }` | Act run ends |
-| `llm.request.started` | `{ model, turn }` | Before LLM API call |
-| `llm.request.completed` | `{ model, turn, usage }` | After LLM API call |
-| `ui.render` | `{ sessionId, text, append }` | Streaming output |
-| `ui.notify` | `{ sessionId, text, level }` | Toast notification |
-| `rpc.started` | `{ method, params, id, sessionId }` | RPC call received |
-| `rpc.completed` | `{ method, id, result }` | RPC call succeeded |
-| `rpc.error` | `{ id, error }` | RPC call failed |
-
-### 7.5 Filters
-
-Transform data through a chain. Each handler receives the value and context,
-returns the (possibly modified) value. Priority controls order (lower = first).
-
-```js
-hooks.llm.messages.addFilter(async (messages, context) => {
-    return [{ role: "system", content: "Extra instruction" }, ...messages];
-}, 5);
-```
-
-| Hook | Value | Context | Purpose |
-|---|---|---|---|
-| `run.config` | Config object | `{ sessionId }` | Modify run configuration |
-| `llm.messages` | Message array | `{ model, sessionId, runId }` | Transform LLM input |
-| `llm.response` | Response object | `{ model, sessionId, runId }` | Transform LLM output |
-| `file.symbols` | `Map<path, symbol[]>` | `{ paths, projectPath }` | Symbol extraction pipeline |
-| `socket.message.raw` | Raw buffer | — | Transform incoming WebSocket data |
-| `rpc.request` | Parsed request | — | Transform RPC request |
-| `rpc.response.result` | Result object | `{ method, id }` | Transform RPC response |
-
-### 7.6 Bundled Plugins
-
-| Plugin | Directory | What it does |
-|--------|-----------|-------------|
-| **tools** | `src/plugins/tools/` | Registers the 10 core XML tool commands |
-| **rpc** | `src/plugins/rpc/` | Registers 23 RPC methods + 4 notifications |
-| **symbols** | `src/plugins/symbols/` | Symbol extraction via antlrmap (ANTLR4) + ctags fallback |
-| **telemetry** | `src/plugins/telemetry/` | Debug logging on `run.step.completed` |
-| **git** | `src/plugins/git/` | Git detection and status |
-| **mapping** | `src/plugins/mapping/` | File scanning hooks |
-| **nvim** | `src/plugins/nvim/` | Neovim integration |
-| **engine** | `src/plugins/engine/` | Budget enforcement + turn_context materialization |
-
-### 7.7 SQL Functions
-
-Registered at startup via SqlRite's `functions` option. Available in all queries
-and views. Source: `src/sql/functions/`.
-
-| Function | Deterministic | Purpose |
-|----------|--------------|---------|
-| `schemeOf(path)` | Yes | Extract URI scheme from path (`"env://1"` → `"env"`, `"src/app.js"` → NULL) |
-| `countTokens(text)` | Yes | Tiktoken o200k_base token count, `ceil(len/4)` fallback |
-| `langFor(path)` | Yes | File extension → syntax language name |
-| `hedberg(pattern, string)` | Yes | Universal pattern matching — auto-detects glob, regex, XPath, JSONPath |
-| `slugify(text)` | Yes | Content-derived slug: lowercase, strip non-[a-z0-9_], max 32 chars |
-
-`schemeOf` powers the generated `scheme` column on `known_entries` and
-`turn_context`. Fidelity and tier are derived from the `schemes` table join
-in `v_model_context` — no functions needed.
-
-### 7.8 Examples
-
-#### Replace Symbol Extraction (tree-sitter)
-
-```js
-import Parser from "web-tree-sitter";
-
-export default class TreeSitterPlugin {
-    static register(hooks) {
-        hooks.file.symbols.addFilter(async (symbolMap, { paths, projectPath }) => {
-            for (const relPath of paths) {
-                if (symbolMap.has(relPath)) continue;
-                const symbols = await extractWithTreeSitter(projectPath, relPath);
-                if (symbols.length > 0) symbolMap.set(relPath, symbols);
-            }
-            return symbolMap;
-        }, 40);  // priority 40 runs before default (50)
-    }
-}
-```
-
-The symbol array format: `[{ name, kind?, params?, line?, endLine? }]`.
-`kind` is used for tree indentation (class/function/method). `line`/`endLine`
-enable containment detection — methods between a class's line and endLine
-are rendered as children.
-
-#### Custom RPC Method
-
-```js
-export default class StatsPlugin {
-    static register(hooks) {
-        hooks.rpc.registry.register("getStats", {
-            handler: async (params, ctx) => {
-                const runs = await ctx.db.get_runs_by_session.all({
-                    session_id: ctx.sessionId,
-                });
-                return { totalRuns: runs.length };
-            },
-            description: "Get run statistics for the current session",
-            requiresInit: true,
-        });
-    }
-}
-```
-
-#### Relevance Engine (turn processor)
-
-```js
-export default class RelevancePlugin {
-    static register(hooks) {
-        hooks.onTurn(async (rummy) => {
-            if (rummy.noContext) return;
-            const files = await rummy.store.getFileEntries(rummy.runId);
-            for (const file of files) {
-                // Promote high-ref files, demote stale ones
-                if (file.refs > 3 && file.turn === 0) {
-                    await rummy.store.promote(rummy.runId, file.key, rummy.sequence);
-                }
-            }
-        }, 5);  // priority 5: runs early, before context assembly
-    }
-}
-```
-
-#### LLM Observability
-
-```js
-export default class MetricsPlugin {
-    static register(hooks) {
-        hooks.llm.request.started.on(async ({ model, turn }) => {
-            console.log(`[metrics] LLM call: model=${model} turn=${turn}`);
-        });
-        hooks.llm.request.completed.on(async ({ model, turn, usage }) => {
-            console.log(`[metrics] LLM done: ${usage?.total_tokens} tokens`);
-        });
-    }
-}
-```
+| Plugin | Purpose |
+|--------|---------|
+| `tools` | Core tool handlers (read, write, store, delete, etc.) |
+| `rpc` | RPC method registration |
+| `skills` | Skill/persona file loading and RPCs |
+| `web` | Web search and URL fetching |
+| `engine` | Empty — placeholder for janitor/relevance plugins |
+| `symbols` | Symbol extraction via antlrmap + ctags |
+| `telemetry` | Debug logging |
+| `git` | Git detection |
 
 ---
 
-## 8. Testing
+## 7. Hedberg Editing Syntax
 
-| Tier | Location | Runner | LLM required? |
-|------|----------|--------|---------------|
-| Unit | `src/**/*.test.js` | `node --test --test-force-exit` | No |
-| Integration | `test/integration/**/*.test.js` | `node --test --test-force-exit` | No |
-| E2E | `test/e2e/**/*.test.js` | `node --test --test-force-exit` | **Yes** |
+The model picks its preferred edit format. The parser understands all of them:
 
-E2E tests execute real turns against a live LLM. **E2E tests must NEVER mock
-the LLM.** Coverage target: 80/80/80.
-
-### 8.1 Environment Cascade
-
-1. `.env.example` — load-bearing defaults (OPENROUTER_BASE_URL, PORT, etc.)
-2. `.env` — local overrides (API keys, model aliases, DB path)
-3. `.env.test` / `.env.dev` — mode-specific overrides
-
-Always use `npm run test:*`. Never invoke node directly with a single env file.
+1. Git merge conflict: `<<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE`
+2. Replace-only: `======= ... >>>>>>> REPLACE`
+3. Unified diff: `@@ -1,3 +1,3 @@` with `-`/`+` lines
+4. Claude XML: `<old_text>old</old_text><new_text>new</new_text>`
+5. JSON body: `{"search": "old", "replace": "new"}`
+6. XML attributes: `<write search="old" replace="new"/>`
+7. Full replacement: anything else becomes the new content
 
 ---
 
-## 9. RPC Audit Log
+## 8. Response Healing
 
-Every RPC call is recorded unconditionally in `rpc_log`. No debug flag, no opt-in.
+The server never throws on model output. Recovery order:
 
-```sql
-SELECT method, rpc_id, params, result, error, created_at
-FROM rpc_log WHERE session_id = ? ORDER BY id;
-```
+1. Can we recover? Extract the data and continue.
+2. Can we warn? Log structured warnings.
+3. Did our structure cause this? Check formatting, prompts.
+4. Model drift is the LAST answer.
 
-The log records what arrived, what was returned, and what errored. This is the
-first place to look when debugging client-server communication failures (e.g.,
-"did the client send `run/abort`?" — check the log, don't guess).
-
-Console output mirrors the DB log: `[RPC] → method(id)` on arrival,
-`[RPC] ← method(id) elapsed_ms` on completion, `[RPC] ✗ (id) elapsed_ms` on error.
+Termination protocol:
+- `<summarize>` → run terminates
+- `<update>` → run continues
+- Both → summarize wins
+- Neither + tools → stall counter
+- Neither + plain text → healed to summarize
+- Repeated commands → loop detection
 
 ---
 
-## 10. Database Hygiene
+## 9. Testing
 
-On every startup, the server runs cleanup:
+| Tier | Location | LLM? |
+|------|----------|------|
+| Unit | `src/**/*.test.js` | No |
+| Integration | `test/integration/` | No |
+| Live | `test/live/` | Yes |
+| E2E | `test/e2e/` | Yes |
 
-1. **`purge_old_runs`** — delete completed/aborted runs older than `RUMMY_RETENTION_DAYS` (default: 31). Cascades handle turns and known entries.
-2. **`purge_stale_sessions`** — delete sessions with no runs.
+E2E tests must NEVER mock the LLM. Environment cascade:
+`.env.example` → `.env` → `.env.test`. Always use `npm run test:*`.
 
-### 9.1 Context Sizing
+---
 
-The context window is resolved per-turn: `min(session_override, RUMMY_CONTEXT_SIZE)`.
+## 10. SQL Functions
 
-- **Context size** — `RUMMY_CONTEXT_SIZE` env var (default 131072). No provider catalog.
-- **Session override** — set by the client via `setContextLimit({ limit: N })`. Stored in `sessions.context_limit`. Pass `null` to reset to default.
-- **Effective size** — passed as `rummy.contextSize` to turn processors and the Relevance Engine. The engine uses this budget to decide what to promote/demote.
+| Function | Purpose |
+|----------|---------|
+| `schemeOf(path)` | Extract URI scheme |
+| `countTokens(text)` | Token count (tiktoken o200k_base, `ceil(len/4)` fallback) |
+| `hedberg(pattern, string)` | Universal pattern matching (glob, regex, XPath, JSONPath) |
+| `slugify(text)` | URI-encoded slug, max 80 chars |
 
-The client retrieves sizing via `getContext({ model? })` → `{ context_size, limit, effective }`.
+---
 
-Token distribution is computed from `turn_context` via `get_turn_distribution`
-and included in every `run/state` notification under
-`telemetry.context_distribution`: `[{ bucket, tokens, entries }]`. Buckets:
-`system`, `files`, `keys`, `known`, `history`.
-
-### 9.2 Configuration
+## 11. Configuration
 
 ```env
-RUMMY_CONTEXT_SIZE=131072       # Default context window (tokens). No provider catalog.
-RUMMY_MAX_TURNS=15              # Max continuation turns per run
-RUMMY_MAX_UNKNOWN_WARNINGS=3    # Warnings before giving up on unknowns
-RUMMY_MAX_STALLS=3              # Tool-only responses (no update/summary) before force-completing
-RUMMY_MAX_REPETITIONS=3         # Repeated tool commands before force-completing
-RUMMY_RETENTION_DAYS=31         # Days to keep completed runs
-RUMMY_FETCH_TIMEOUT=120000      # LLM fetch timeout (ms)
-RUMMY_RPC_TIMEOUT=30000         # Non-long-running RPC timeout (ms)
-RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
+RUMMY_HOME=~/.rummy
+RUMMY_MAX_TURNS=15
+RUMMY_MAX_STALLS=3
+RUMMY_MAX_REPETITIONS=3
+RUMMY_RETENTION_DAYS=31
+RUMMY_TEMPERATURE=0.7
+RUMMY_DEBUG=false
 ```
 
----
-
-## 10. Dependencies
-
-| Dependency | Purpose |
-|---|---|
-| `@possumtech/sqlrite` | SQLite (author's own anti-ORM) |
-| `ws` | WebSocket server |
-| `htmlparser2` | XML parsing for model response tool commands |
-| `tiktoken` | Token counting (o200k_base encoding, with `length/4` fallback). Registered as `countTokens()` SQL function via SqlRite. Required dependency. |
-
-**Optional:** `@possumtech/antlrmap` — ANTLR4-based symbol extraction (formal grammars).
-**CLI deps:** `ctags` (universal-ctags, fallback symbol extraction), `git` (file tracking, cached per HEAD hash).
-
----
-
-## 11. Terminology
-
-| Term | Definition |
-|------|------------|
-| **Project** | A codebase. Project path, name, git state. |
-| **Session** | A client connection. Owns config (persona, system prompt, skills). |
-| **Run** | An open-ended conversation. Owns `known_entries` and turns. |
-| **Turn** | A single LLM request/response cycle. |
-| **Known Entry** | A keyed entry in the unified state machine. |
-| **Domain** | The entry's namespace: `file`, `known`, or `result`. |
-| **State** | The entry's status within its scheme. Server-internal; the model sees a projection. |
-| **Result Key** | A `[tool]://N` key generated for each tool command. Sequential per run. |
-| **Rumsfeld Loop** | The turn cycle: the model uses `<write>` to persist knowledge, `<unknown>` to declare uncertainty, `<update>` to signal continued work, and `<summarize>` to terminate. Forces discovery before modification. |
+Model aliases: `RUMMY_MODEL_{alias}={provider/model}`. Seeded into
+`models` table at startup.

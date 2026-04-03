@@ -8,26 +8,41 @@ export default class CoreToolsPlugin {
 	static register(hooks) {
 		const { tools } = hooks;
 
-		// Structural — no handler (recording IS the action)
-		tools.register("summarize", { modes: BOTH, category: "structural" });
-		tools.register("update", { modes: BOTH, category: "structural" });
-		tools.register("unknown", { modes: BOTH, category: "structural" });
+		// Structural
+		tools.register("summarize", {
+			modes: BOTH,
+			category: "structural",
+			project: (entry) => entry.body,
+		});
+		tools.register("update", {
+			modes: BOTH,
+			category: "structural",
+			project: (entry) => entry.body,
+		});
+		tools.register("unknown", {
+			modes: BOTH,
+			category: "structural",
+			project: (entry) => entry.body,
+		});
 
 		// Investigation
 		tools.register("read", {
 			modes: BOTH,
 			category: "ask",
 			handler: handleRead,
+			project: (entry) => entry.body,
 		});
 		tools.register("store", {
 			modes: BOTH,
 			category: "ask",
 			handler: handleStore,
+			project: (entry) => entry.body,
 		});
 		tools.register("env", {
 			modes: BOTH,
 			category: "ask",
 			handler: handleEnv,
+			project: (entry) => entry.body,
 		});
 
 		// Mutation
@@ -35,32 +50,48 @@ export default class CoreToolsPlugin {
 			modes: BOTH,
 			category: "act",
 			handler: handleWrite,
+			project: (entry) => entry.body,
 		});
 		tools.register("move", {
 			modes: BOTH,
 			category: "act",
 			handler: handleMoveCopy,
+			project: (entry) => entry.body,
 		});
 		tools.register("copy", {
 			modes: BOTH,
 			category: "act",
 			handler: handleMoveCopy,
+			project: (entry) => entry.body,
 		});
 		tools.register("delete", {
 			modes: BOTH,
 			category: "act",
 			handler: handleDelete,
+			project: (entry) => entry.body,
 		});
 		tools.register("run", {
 			modes: ACT_ONLY,
 			category: "act",
 			handler: handleRun,
+			project: (entry) => entry.body,
 		});
 		tools.register("ask_user", {
 			modes: BOTH,
 			category: "act",
 			handler: handleAskUser,
+			project: (entry) => entry.body,
 		});
+
+		// Non-tool schemes that appear in the model view.
+		// Each one explicitly decides what the model sees.
+		tools.onProject("file", (entry) => entry.body);
+		tools.onProject("tool", (entry) => entry.body);
+		tools.onProject("skill", (entry) => entry.body);
+		tools.onProject("known", (entry) => entry.body);
+		tools.onProject("ask", (entry) => entry.body);
+		tools.onProject("act", (entry) => entry.body);
+		tools.onProject("progress", (entry) => entry.body);
 	}
 }
 

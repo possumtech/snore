@@ -134,10 +134,14 @@ describe("Engine integration", () => {
 			);
 		});
 
-		it("symbol files at turn > 0 have summary fidelity", async () => {
-			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "summary", {
-				attributes: { symbols: "function bar()" },
-			});
+		it("summary files have summary fidelity with body passed through", async () => {
+			await store.upsert(
+				RUN_ID,
+				3,
+				"src/active.js",
+				"function bar() {}",
+				"summary",
+			);
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -158,7 +162,7 @@ describe("Engine integration", () => {
 			);
 			assert.ok(
 				active.body.includes("function bar()"),
-				"symbols body should come from attributes",
+				"body should pass through at summary fidelity",
 			);
 		});
 	});

@@ -1,8 +1,9 @@
 import { countTokens } from "../../src/agent/tokens.js";
 
 /**
- * Materialize turn_context for a run/turn, same as TurnExecutor does.
- * Use in integration tests that need turn_context populated.
+ * Materialize turn_context for a run/turn via the VIEW.
+ * Simple path — no projection functions, uses VIEW output directly.
+ * For integration tests that need turn_context populated.
  */
 export default async function materialize(
 	db,
@@ -17,6 +18,7 @@ export default async function materialize(
 			ordinal: 0,
 			path: "system://prompt",
 			fidelity: "full",
+			state: "info",
 			body: systemPrompt,
 			tokens: countTokens(systemPrompt),
 			attributes: null,

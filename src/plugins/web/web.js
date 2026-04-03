@@ -13,12 +13,15 @@ Example: <read>https://docs.example.com/api</read>
 
 export default class WebPlugin {
 	static register(hooks) {
-		// Register search tool with docs
 		hooks.tools.register("search", {
 			modes: new Set(["ask", "act"]),
 			category: "ask",
 			docs: SEARCH_DOCS,
+			project: (entry) => entry.body,
 		});
+
+		hooks.tools.onProject("http", (entry) => entry.body);
+		hooks.tools.onProject("https", (entry) => entry.body);
 
 		let fetcher = null;
 

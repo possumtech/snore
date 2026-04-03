@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, path TEXT NOT NULL
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'summary', 'index'))
+	, state TEXT NOT NULL DEFAULT 'full'
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON CHECK (attributes IS NULL OR json_valid(attributes))

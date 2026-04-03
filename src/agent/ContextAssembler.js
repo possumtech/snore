@@ -258,9 +258,14 @@ export default class ContextAssembler {
 					messageEntries.push({
 						path: row.path,
 						body: row.body,
-						tool: attrs?.tool,
-						target: attrs?.target,
-						state: attrs?.state,
+						tool: row.scheme,
+						target:
+							attrs?.command ||
+							attrs?.file ||
+							attrs?.path ||
+							attrs?.question ||
+							"",
+						state: row.state,
 					});
 					break;
 				case "structural":

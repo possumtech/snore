@@ -131,7 +131,7 @@ export default class TurnExecutor {
 		);
 		await this.#hooks.processTurn(rummy);
 
-		// Materialize turn_context from VIEW
+		// Materialize turn_context: query VIEW, apply projections, insert
 		await this.#db.clear_turn_context.run({ run_id: currentRunId, turn });
 		if (systemPrompt) {
 			await this.#db.insert_turn_context.run({
@@ -140,16 +140,40 @@ export default class TurnExecutor {
 				ordinal: 0,
 				path: "system://prompt",
 				fidelity: "full",
+				state: "info",
 				body: systemPrompt,
 				tokens: countTokens(systemPrompt),
 				attributes: null,
 				category: "system",
 			});
 		}
-		await this.#db.materialize_turn_context.run({
+		const viewRows = await this.#db.get_model_context.all({
 			run_id: currentRunId,
-			turn,
 		});
+		for (const row of viewRows) {
+			const scheme = row.scheme || "file";
+			const projectedBody = this.#hooks.tools.project(scheme, {
+				path: row.path,
+				scheme,
+				body: row.body,
+				attributes: row.attributes ? JSON.parse(row.attributes) : null,
+				fidelity: row.fidelity,
+				category: row.category,
+			});
+
+			await this.#db.insert_turn_context.run({
+				run_id: currentRunId,
+				turn,
+				ordinal: row.ordinal,
+				path: row.path,
+				fidelity: row.fidelity,
+				state: row.state,
+				body: projectedBody ?? "",
+				tokens: countTokens(projectedBody ?? ""),
+				attributes: row.attributes,
+				category: row.category,
+			});
+		}
 
 		await this.#hooks.run.progress.emit({
 			projectId,

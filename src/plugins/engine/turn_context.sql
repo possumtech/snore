@@ -2,9 +2,16 @@
 DELETE FROM turn_context
 WHERE run_id = :run_id AND turn = :turn;
 
+-- PREP: get_model_context
+SELECT
+	ordinal, path, scheme, fidelity, state, body, tokens, attributes, category
+FROM v_model_context
+WHERE run_id = :run_id
+ORDER BY ordinal;
+
 -- PREP: materialize_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, body, tokens, attributes, category
+	run_id, turn, ordinal, path, fidelity, state, body, tokens, attributes, category
 )
 SELECT
 	run_id
@@ -12,6 +19,7 @@ SELECT
 	, ordinal
 	, path
 	, fidelity
+	, state
 	, body
 	, tokens
 	, attributes
@@ -21,14 +29,14 @@ WHERE run_id = :run_id;
 
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, body, tokens, attributes, category
+	run_id, turn, ordinal, path, fidelity, state, body, tokens, attributes, category
 )
 VALUES (
-	:run_id, :turn, :ordinal, :path, :fidelity, :body, :tokens, :attributes, :category
+	:run_id, :turn, :ordinal, :path, :fidelity, :state, :body, :tokens, :attributes, :category
 );
 
 -- PREP: get_turn_context
-SELECT ordinal, path, scheme, fidelity, body, tokens, attributes, category
+SELECT ordinal, path, scheme, fidelity, state, body, tokens, attributes, category
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn
 ORDER BY ordinal;

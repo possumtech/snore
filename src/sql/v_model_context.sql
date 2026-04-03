@@ -45,41 +45,11 @@ projected AS (
 		, scheme
 		, state
 		, fidelity
+		, attributes
 		, CASE
-			WHEN fidelity = 'full' THEN body
-			WHEN fidelity = 'summary' THEN COALESCE(json_extract(attributes, '$.symbols'), body)
+			WHEN fidelity IN ('full', 'summary') THEN body
 			ELSE ''
 		END AS body
-		, CASE
-			WHEN scheme IS NULL AND fidelity = 'full'
-				THEN json_object(
-					'constraint', json_extract(attributes, '$.constraint')
-					, 'tokens_full', tokens_full
-				)
-			WHEN scheme IN ('http', 'https') AND fidelity = 'full'
-				THEN json_object(
-					'constraint', json_extract(attributes, '$.constraint')
-					, 'tokens_full', tokens_full
-				)
-			WHEN
-				scheme IS NOT NULL
-				AND fidelity = 'full'
-				AND scheme NOT IN (
-					'known', 'unknown', 'ask', 'act', 'progress', 'http', 'https'
-				)
-				THEN json_object(
-					'tool', COALESCE(scheme, state)
-					, 'target', COALESCE(
-						json_extract(attributes, '$.command')
-						, json_extract(attributes, '$.file')
-						, json_extract(attributes, '$.path')
-						, json_extract(attributes, '$.question')
-						, ''
-					)
-					, 'state', state
-				)
-			ELSE NULL
-		END AS attributes
 		, CASE
 			WHEN scheme IS NULL AND state = 'full' THEN 'file'
 			WHEN scheme IS NULL AND state = 'summary' THEN 'file_summary'
@@ -105,6 +75,7 @@ SELECT
 	, path
 	, scheme
 	, fidelity
+	, state
 	, body
 	, attributes
 	, category
