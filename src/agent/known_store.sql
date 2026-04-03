@@ -134,7 +134,11 @@ WHERE
 	run_id = :run_id
 	AND hedberg(:path, path)
 	AND (:body IS NULL OR hedberg(:body, body))
-ORDER BY path;
+ORDER BY path
+LIMIT
+	COALESCE(:limit, -1)
+	OFFSET
+	COALESCE(:offset, 0);
 
 -- PREP: delete_entries_by_pattern
 DELETE FROM known_entries

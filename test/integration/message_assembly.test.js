@@ -9,47 +9,18 @@ import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import ContextAssembler from "../../src/agent/ContextAssembler.js";
 import KnownStore from "../../src/agent/KnownStore.js";
-import createHooks from "../../src/hooks/Hooks.js";
-import RummyContext from "../../src/hooks/RummyContext.js";
-import Engine from "../../src/plugins/engine/engine.js";
+import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
-let PROJECT;
 const TURN = 1;
 
-function makeRummy(db, store, { sequence = TURN, contextSize = 50000 } = {}) {
-	const hookRoot = {
-		tag: "turn",
-		attrs: {},
-		content: null,
-		children: [
-			{ tag: "system", attrs: {}, content: null, children: [] },
-			{ tag: "context", attrs: {}, content: null, children: [] },
-			{ tag: "user", attrs: {}, content: null, children: [] },
-			{ tag: "assistant", attrs: {}, content: null, children: [] },
-		],
-	};
-	return new RummyContext(hookRoot, {
-		db,
-		store,
-		project: PROJECT,
-		type: "ask",
-		sequence,
+async function assembleMessages(tdb, _store) {
+	await materialize(tdb.db, {
 		runId: RUN_ID,
-		turnId: 1,
-		noContext: false,
-		contextSize,
+		turn: TURN,
 		systemPrompt: "You are a test assistant.",
-		loopPrompt: "test prompt",
 	});
-}
-
-async function assembleMessages(tdb, store) {
-	const hooks = createHooks();
-	Engine.register(hooks);
-	const rummy = makeRummy(tdb.db, store);
-	await hooks.processTurn(rummy);
 	const rows = await tdb.db.get_turn_context.all({
 		run_id: RUN_ID,
 		turn: TURN,
@@ -69,7 +40,6 @@ describe("Message assembly", () => {
 		store = new KnownStore(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
-		PROJECT = { id: seed.projectId, path: "/tmp/test" };
 	});
 
 	after(async () => {
@@ -93,33 +63,11 @@ describe("Message assembly", () => {
 
 	it("act prompt renders as <act> tag with run tool", async () => {
 		await store.upsert(RUN_ID, TURN, "act://1", "Refactor the code", "info");
-		const hooks = createHooks();
-		Engine.register(hooks);
-		const hookRoot = {
-			tag: "turn",
-			attrs: {},
-			content: null,
-			children: [
-				{ tag: "system", attrs: {}, content: null, children: [] },
-				{ tag: "context", attrs: {}, content: null, children: [] },
-				{ tag: "user", attrs: {}, content: null, children: [] },
-				{ tag: "assistant", attrs: {}, content: null, children: [] },
-			],
-		};
-		const rummy = new RummyContext(hookRoot, {
-			db: tdb.db,
-			store,
-			project: PROJECT,
-			type: "act",
-			sequence: TURN,
+		await materialize(tdb.db, {
 			runId: RUN_ID,
-			turnId: 1,
-			noContext: false,
-			contextSize: 50000,
+			turn: TURN,
 			systemPrompt: "You are a test assistant.",
-			loopPrompt: "test",
 		});
-		await hooks.processTurn(rummy);
 		const rows = await tdb.db.get_turn_context.all({
 			run_id: RUN_ID,
 			turn: TURN,

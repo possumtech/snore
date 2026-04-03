@@ -50,7 +50,11 @@ SELECT
 	) AS summary
 FROM runs AS r
 WHERE r.project_id = :project_id
-ORDER BY r.created_at DESC;
+ORDER BY r.created_at DESC
+LIMIT
+	COALESCE(:limit, -1)
+	OFFSET
+	COALESCE(:offset, 0);
 
 -- PREP: rename_run
 UPDATE runs

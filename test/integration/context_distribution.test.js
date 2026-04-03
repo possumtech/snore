@@ -1,53 +1,21 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
-import createHooks from "../../src/hooks/Hooks.js";
-import RummyContext from "../../src/hooks/RummyContext.js";
-import Engine from "../../src/plugins/engine/engine.js";
+import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
-let PROJECT;
 const TURN = 1;
-
-function makeRummy(db, store, { sequence = TURN, contextSize = 50000 } = {}) {
-	const hookRoot = {
-		tag: "turn",
-		attrs: {},
-		content: null,
-		children: [
-			{ tag: "system", attrs: {}, content: null, children: [] },
-			{ tag: "context", attrs: {}, content: null, children: [] },
-			{ tag: "user", attrs: {}, content: null, children: [] },
-			{ tag: "assistant", attrs: {}, content: null, children: [] },
-		],
-	};
-	return new RummyContext(hookRoot, {
-		db,
-		store,
-		project: PROJECT,
-		type: "act",
-		sequence,
-		runId: RUN_ID,
-		turnId: 1,
-		noContext: false,
-		contextSize,
-		systemPrompt: "You are a test assistant.",
-		loopPrompt: "",
-	});
-}
 
 describe("turn_context distribution bucket correctness", () => {
 	let tdb;
 	let store;
-	let hooks;
 
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dist_1" });
 		RUN_ID = seed.runId;
-		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		// Populate known_entries
 		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");
@@ -58,11 +26,12 @@ describe("turn_context distribution bucket correctness", () => {
 		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
 		await store.upsert(RUN_ID, 1, "ask://1", "test question", "info");
 
-		// Materialize turn_context via engine
-		hooks = createHooks();
-		Engine.register(hooks);
-		const rummy = makeRummy(tdb.db, store);
-		await hooks.processTurn(rummy);
+		// Materialize turn_context
+		await materialize(tdb.db, {
+			runId: RUN_ID,
+			turn: TURN,
+			systemPrompt: "You are a test assistant.",
+		});
 	});
 
 	after(async () => {

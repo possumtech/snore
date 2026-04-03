@@ -44,6 +44,7 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('assistant', 'null', 0, '["info"]', 0, 'audit'),
 ('content', 'null', 0, '["info"]', 0, 'audit'),
 ('tool', 'full', 1, '["full"]', 0, 'tool'),
+('skill', 'full', 1, '["full","stored"]', 5, 'tool'),
 ('http', 'turn', 1, '["full","summary","stored"]', 1, 'file'),
 ('https', 'turn', 1, '["full","summary","stored"]', 1, 'file');
 

@@ -13,7 +13,6 @@ import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
-import Engine from "../../src/plugins/engine/engine.js";
 import CoreToolsPlugin from "../../src/plugins/tools/tools.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -65,7 +64,6 @@ describe("Handler dispatch", () => {
 
 		hooks = createHooks();
 		CoreToolsPlugin.register(hooks);
-		Engine.register(hooks);
 	});
 
 	after(async () => {
@@ -357,8 +355,7 @@ describe("Handler dispatch", () => {
 
 	describe("tool:// materialization", () => {
 		it("creates tool:// entries from registry", async () => {
-			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 2 });
-			await hooks.processTurn(rummy);
+			await hooks.tools.materialize(store, RUN_ID, 2);
 
 			const readTool = await store.getBody(RUN_ID, "tool://read");
 			assert.ok(readTool !== null, "tool://read exists");
@@ -376,11 +373,8 @@ describe("Handler dispatch", () => {
 		});
 
 		it("is idempotent across turns", async () => {
-			const rummy1 = makeRummy(hooks, tdb.db, store, { sequence: 3 });
-			await hooks.processTurn(rummy1);
-
-			const rummy2 = makeRummy(hooks, tdb.db, store, { sequence: 4 });
-			await hooks.processTurn(rummy2);
+			await hooks.tools.materialize(store, RUN_ID, 3);
+			await hooks.tools.materialize(store, RUN_ID, 4);
 
 			const entries = await store.getEntriesByPattern(RUN_ID, "tool://*", null);
 			const readEntries = entries.filter((e) => e.path === "tool://read");

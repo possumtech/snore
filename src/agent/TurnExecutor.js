@@ -6,6 +6,7 @@ import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
 import ResponseHealer from "./ResponseHealer.js";
+import { countTokens } from "./tokens.js";
 import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
@@ -62,8 +63,9 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Store prompt entries BEFORE context materialization
-		if (loopPrompt && !options?.isContinuation) {
+		// Store prompt/progress entries BEFORE plugin hooks and materialization.
+		// Plugins can modify progress:// body before it reaches the model.
+		if (!options?.isContinuation) {
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
@@ -76,15 +78,15 @@ export default class TurnExecutor {
 				currentRunId,
 				turn,
 				`${mode}://${turn}`,
-				loopPrompt,
+				loopPrompt || "",
 				"info",
 			);
-		} else if (loopPrompt) {
+		} else {
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
 				`progress://${turn}`,
-				loopPrompt,
+				loopPrompt || "",
 				"info",
 			);
 		}
@@ -96,33 +98,58 @@ export default class TurnExecutor {
 			hooks: this.#hooks,
 		});
 
-		// Run hooks — engine materializes turn_context at priority 20
-		const hookRoot = {
-			tag: "turn",
-			attrs: {},
-			content: null,
-			children: [
-				{ tag: "system", attrs: {}, content: null, children: [] },
-				{ tag: "context", attrs: {}, content: null, children: [] },
-				{ tag: "user", attrs: {}, content: null, children: [] },
-				{ tag: "assistant", attrs: {}, content: null, children: [] },
-			],
-		};
-		const rummy = new RummyContext(hookRoot, {
-			hooks: this.#hooks,
-			db: this.#db,
-			store: this.#knownStore,
-			project,
-			type: mode,
-			sequence: turn,
-			runId: currentRunId,
-			turnId: turnRow.id,
-			noContext,
-			contextSize,
-			systemPrompt,
-			loopPrompt,
-		});
+		// Materialize tool:// entries from registry
+		await this.#hooks.tools.materialize(this.#knownStore, currentRunId, turn);
+
+		// Run plugin hooks (janitor, relevance engine, etc.)
+		const rummy = new RummyContext(
+			{
+				tag: "turn",
+				attrs: {},
+				content: null,
+				children: [
+					{ tag: "system", attrs: {}, content: null, children: [] },
+					{ tag: "context", attrs: {}, content: null, children: [] },
+					{ tag: "user", attrs: {}, content: null, children: [] },
+					{ tag: "assistant", attrs: {}, content: null, children: [] },
+				],
+			},
+			{
+				hooks: this.#hooks,
+				db: this.#db,
+				store: this.#knownStore,
+				project,
+				type: mode,
+				sequence: turn,
+				runId: currentRunId,
+				turnId: turnRow.id,
+				noContext,
+				contextSize,
+				systemPrompt,
+				loopPrompt,
+			},
+		);
 		await this.#hooks.processTurn(rummy);
+
+		// Materialize turn_context from VIEW
+		await this.#db.clear_turn_context.run({ run_id: currentRunId, turn });
+		if (systemPrompt) {
+			await this.#db.insert_turn_context.run({
+				run_id: currentRunId,
+				turn,
+				ordinal: 0,
+				path: "system://prompt",
+				fidelity: "full",
+				body: systemPrompt,
+				tokens: countTokens(systemPrompt),
+				attributes: null,
+				category: "system",
+			});
+		}
+		await this.#db.materialize_turn_context.run({
+			run_id: currentRunId,
+			turn,
+		});
 
 		await this.#hooks.run.progress.emit({
 			projectId,
@@ -131,7 +158,7 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Assemble context from materialized turn_context
+		// Assemble messages from materialized turn_context
 		const rows = await this.#db.get_turn_context.all({
 			run_id: currentRunId,
 			turn,

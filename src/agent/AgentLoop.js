@@ -29,28 +29,8 @@ export default class AgentLoop {
 		return `${modelAlias}_${Date.now()}`;
 	}
 
-	#buildContinuationPrompt(_type, turn, maxTurns, contextSize, report) {
-		const parts = [];
-
-		if (report) {
-			const dist = report.contextDistribution || [];
-			const usedTokens = dist.reduce((sum, b) => sum + b.tokens, 0);
-			const pct = contextSize
-				? Math.round((usedTokens / contextSize) * 100)
-				: 0;
-			const status = `Turn ${turn}/${maxTurns} · ${usedTokens} tokens (${pct}%)`;
-			if (report.unknownCount > 0) {
-				parts.push(
-					`${status} · ${report.unknownCount} unknown${report.unknownCount > 1 ? "s" : ""} remaining`,
-				);
-			} else {
-				parts.push(status);
-			}
-		} else {
-			parts.push(`Turn ${turn}/${maxTurns}`);
-		}
-
-		return parts.join("\n");
+	#buildContinuationPrompt(turn, maxTurns) {
+		return `Turn ${turn}/${maxTurns}`;
 	}
 
 	async #ensureRun(projectId, model, run, options) {
@@ -232,7 +212,6 @@ export default class AgentLoop {
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
 		const healer = new ResponseHealer();
-		let lastTurnReport = null;
 
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
@@ -259,11 +238,8 @@ export default class AgentLoop {
 					turnPrompt = prompt;
 				} else {
 					turnPrompt = this.#buildContinuationPrompt(
-						mode,
 						loopIteration,
 						MAX_LOOP_ITERATIONS,
-						contextSize,
-						lastTurnReport,
 					);
 				}
 
@@ -343,18 +319,6 @@ export default class AgentLoop {
 					turn: result.turn,
 					flags: result.flags,
 				});
-
-				lastTurnReport = {
-					turn: result.turn,
-					flags: result.flags,
-					summary: latestSummary?.body || "",
-					unknownCount: unknowns.length,
-					usage: runUsage,
-					contextDistribution: await this.#db.get_turn_distribution.all({
-						run_id: currentRunId,
-						turn: result.turn,
-					}),
-				};
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {

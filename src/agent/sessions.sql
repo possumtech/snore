@@ -32,7 +32,11 @@ WHERE alias = :alias;
 -- PREP: get_models
 SELECT id, alias, actual, context_length
 FROM models
-ORDER BY alias;
+ORDER BY alias
+LIMIT
+	COALESCE(:limit, -1)
+	OFFSET
+	COALESCE(:offset, 0);
 
 -- PREP: update_model_context_length
 UPDATE models SET context_length = :context_length WHERE alias = :alias;

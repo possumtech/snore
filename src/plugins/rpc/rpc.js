@@ -38,8 +38,11 @@ export default class CoreRpcPlugin {
 		// --- Models ---
 
 		r.register("getModels", {
-			handler: async (_params, ctx) => {
-				const rows = await ctx.db.get_models.all({});
+			handler: async (params, ctx) => {
+				const rows = await ctx.db.get_models.all({
+					limit: params.limit ?? null,
+					offset: params.offset ?? null,
+				});
 				return rows.map((m) => ({
 					alias: m.alias,
 					actual: m.actual,
@@ -48,6 +51,10 @@ export default class CoreRpcPlugin {
 			},
 			description:
 				"List available models. Returns [{ alias, actual, context_length }].",
+			params: {
+				limit: "number? — max results",
+				offset: "number? — skip first N results",
+			},
 		});
 
 		r.register("addModel", {
@@ -159,6 +166,7 @@ export default class CoreRpcPlugin {
 					run.id,
 					params.pattern || "*",
 					params.body || null,
+					{ limit: params.limit, offset: params.offset },
 				);
 				return entries.map((e) => ({
 					path: e.path,
@@ -168,15 +176,44 @@ export default class CoreRpcPlugin {
 				}));
 			},
 			description:
-				"Query entries by pattern. Replaces getFiles/fileStatus. Returns [{ path, scheme, state, tokens }].",
+				"Query entries by pattern. Returns [{ path, scheme, state, tokens }].",
 			params: {
 				pattern: "string? — glob pattern (default: *)",
 				body: "string? — filter by body content",
+				run: "string? — run alias (default: latest run)",
+				limit: "number? — max results",
+				offset: "number? — skip first N results",
 			},
 			requiresInit: true,
 		});
 
 		// --- Runs ---
+
+		r.register("startRun", {
+			handler: async (params, ctx) => {
+				if (!params.model) throw new Error("model is required");
+				const alias = `${params.model}_${Date.now()}`;
+				const runRow = await ctx.db.create_run.get({
+					project_id: ctx.projectId,
+					parent_run_id: null,
+					model: params.model,
+					alias,
+					temperature: params.temperature ?? null,
+					persona: params.persona ?? null,
+					context_limit: params.contextLimit ?? null,
+				});
+				return { run: alias, id: runRow.id };
+			},
+			description:
+				"Pre-create a run. Returns { run, id }. Use the alias on subsequent ask/act calls.",
+			params: {
+				model: "string — model alias (required)",
+				temperature: "number? — 0 to 2",
+				persona: "string?",
+				contextLimit: "number?",
+			},
+			requiresInit: true,
+		});
 
 		r.register("ask", {
 			handler: async (params, ctx) => {
@@ -347,9 +384,11 @@ export default class CoreRpcPlugin {
 		// --- Queries ---
 
 		r.register("getRuns", {
-			handler: async (_params, ctx) => {
+			handler: async (params, ctx) => {
 				const rows = await ctx.db.get_runs_by_project.all({
 					project_id: ctx.projectId,
+					limit: params.limit ?? null,
+					offset: params.offset ?? null,
 				});
 				return rows.map((r) => ({
 					run: r.alias,
@@ -359,7 +398,11 @@ export default class CoreRpcPlugin {
 					created: r.created_at,
 				}));
 			},
-			description: "List all runs for the current project.",
+			description: "List runs for the current project.",
+			params: {
+				limit: "number? — max results",
+				offset: "number? — skip first N results",
+			},
 			requiresInit: true,
 		});
 

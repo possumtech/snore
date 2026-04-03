@@ -106,11 +106,13 @@ export default class KnownStore {
 		});
 	}
 
-	async getEntriesByPattern(runId, path, body) {
+	async getEntriesByPattern(runId, path, body, { limit, offset } = {}) {
 		return this.#db.get_entries_by_pattern.all({
 			run_id: runId,
 			path,
 			body: KnownStore.#bodyPattern(body),
+			limit: limit ?? null,
+			offset: offset ?? null,
 		});
 	}
 
