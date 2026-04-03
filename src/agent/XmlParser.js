@@ -142,19 +142,31 @@ function resolveCommand(name, attrs, rawBody) {
 				};
 			}
 		}
-		// JSON { search, replace } healing — models sometimes produce this
-		if (trimmed.startsWith("{") && trimmed.includes('"search"')) {
+		// JSON-style { search, replace } — accept valid JSON and =style variants
+		if (trimmed.startsWith("{") && /search/.test(trimmed)) {
+			let search = null;
+			let replace = null;
 			try {
 				const json = JSON.parse(trimmed);
-				if (json.search != null) {
-					return {
-						name,
-						path: a.path,
-						search: json.search,
-						replace: json.replace ?? "",
-					};
+				search = json.search;
+				replace = json.replace ?? "";
+			} catch {
+				// Try = style: { search="old", replace="new" }
+				const searchMatch = trimmed.match(/search\s*=\s*"([^"]*)"/);
+				const replaceMatch = trimmed.match(/replace\s*=\s*"([^"]*)"/);
+				if (searchMatch) {
+					search = searchMatch[1];
+					replace = replaceMatch?.[1] ?? "";
 				}
-			} catch {}
+			}
+			if (search != null) {
+				return {
+					name,
+					path: a.path,
+					search,
+					replace,
+				};
+			}
 		}
 		// search+replace attrs → attribute edit mode
 		if (a.search) {

@@ -31,8 +31,8 @@ Example: <ask_user question="Which test framework?">Mocha; Jest; Node Native</as
 
 ## <set path="[path/to/file]">[edit]</set> - Edit a file or entry
 Example: <set path="src/config.js">s/localhost/0.0.0.0/g</set>
-* All merge syntaxes supported (s/old/new, { search="old", replace="new" }, <<<<<<< old ======= new >>>>>>>, etc.)
-* Do not use <sh /> to read, create, update, or delete files or entries
+* All syntaxes supported: s/old/new/, {"search":"old","replace":"new"}, <<<<<<< SEARCH / ======= / >>>>>>> REPLACE
+* Do not use <sh/> or <env/> to read, create, update, or delete files or entries
 
 ## <known>[information]</known> - Save knowledge
 Example: <known>Donald Rumsfeld was born in 1932</known>
