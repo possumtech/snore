@@ -59,7 +59,7 @@ async function handleSet(entry, rummy) {
 	const scheme = KnownStore.scheme(target);
 	if (scheme === null) {
 		const udiff = generatePatch(target, "", entry.body || "");
-		const merge = `=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
+		const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
 		// body = empty (new file, no original). attributes carry patch + merge.
 		await store.upsert(runId, turn, entry.resultPath, "", "proposed", {
 			attributes: { file: target, patch: udiff, merge },

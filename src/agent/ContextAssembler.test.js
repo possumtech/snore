@@ -159,10 +159,7 @@ describe("ContextAssembler", () => {
 			});
 			const content = messages[0].content;
 
-			assert.ok(
-				content.includes("File Index"),
-				"index files render as File Index",
-			);
+			assert.ok(content.includes("Index"), "index files render as Index");
 			assert.ok(content.includes("src/utils.js"));
 			assert.ok(content.includes("Stored"), "index known renders as Stored");
 			assert.ok(content.includes("known://old"));

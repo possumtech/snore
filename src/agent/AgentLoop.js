@@ -502,15 +502,9 @@ export default class AgentLoop {
 		return this.#drainQueue(runId, runAlias, projectId, project, {});
 	}
 
-	async #composeResolvedContent(runId, path, attrs, output) {
+	async #composeResolvedContent(runId, path, _attrs, output) {
 		const scheme = path.split("://")[0];
 		switch (scheme) {
-			case "env":
-				return `<env>${attrs?.command || ""}</env><output>${output || ""}</output>`;
-			case "sh":
-				return `<sh>${attrs?.command || ""}</sh><output>${output || ""}</output>`;
-			case "ask_user":
-				return `${attrs?.question || ""} Answered: ${output || ""}`;
 			case "set": {
 				const existing = await this.#knownStore.getBody(runId, path);
 				return existing || output || "";

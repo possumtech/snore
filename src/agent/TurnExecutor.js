@@ -541,13 +541,19 @@ export default class TurnExecutor {
 			};
 		}
 
-		// Build the result path (where the tool result entry goes)
-		const target = cmd.path || cmd.command || cmd.question || "";
+		// Normalize path — encode spaces in scheme:// paths
+		const rawTarget = cmd.path || cmd.command || cmd.question || "";
+		const target = rawTarget.includes("://")
+			? rawTarget.replace(
+					/:\/\/(.*)$/,
+					(_, rest) => `://${encodeURIComponent(decodeURIComponent(rest))}`,
+				)
+			: rawTarget;
 		const resultPath = await this.#knownStore.slugPath(runId, scheme, target);
 
 		// Build attributes from the command's parsed fields
 		const attributes = {};
-		if (cmd.path) attributes.path = cmd.path;
+		if (cmd.path) attributes.path = target;
 		if (cmd.body !== undefined && cmd.body !== "") attributes.body = cmd.body;
 		if (cmd.command) attributes.command = cmd.command;
 		if (cmd.question) attributes.question = cmd.question;

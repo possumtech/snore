@@ -30,18 +30,8 @@ Example: <env>npm --version</env>
 Example: <ask_user question="Which test framework?">Mocha; Jest; Node Native</ask_user>
 
 ## <set path="[path/to/file]">[edit]</set> - Edit a file or entry
-Example: <set path="known://db_type">PostgreSQL</set>
 Example: <set path="src/config.js">s/localhost/0.0.0.0/g</set>
-Example: <set path="src/config.js">{search="3000", replace="8080"}</set>
-Example:
-<set path="src/config.js">
-<<<<<<< SEARCH
-const port = 3000;
-=======
-const port = 8080;
->>>>>>> REPLACE
-</set>
-* Supported: simple replace, sed replace, json replace, and SEARCH/REPLACE 
+* All merge syntaxes supported
 
 ## <known>[information]</known> - Save knowledge
 Example: <known>Donald Rumsfeld was born in 1932</known>

@@ -156,7 +156,7 @@ export default class ContextAssembler {
 
 		if (storedFiles.length > 0) {
 			contextParts.push(
-				`### File Index\n${storedFiles.map((f) => f.path).join(", ")}`,
+				`### Index\n${storedFiles.map((f) => f.path).join(", ")}`,
 			);
 		}
 
