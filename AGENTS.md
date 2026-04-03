@@ -1,5 +1,10 @@
 # AGENTS: Planning & Progress
 
+> Every piece of data that exists at runtime must exist as an entry in the
+> K/V store or as a column on a relational table. There is no third option.
+> If you're building a special mechanism, a cache, a side channel, or a
+> separate assembly path, you're building outside the paradigm. Stop and ask.
+
 ## Current State
 
 Entry-driven dispatch architecture. Every interaction follows one contract:
@@ -76,13 +81,30 @@ Separate from the relevance engine (stochastic, model-assisted, separate project
 
 ---
 
+## Todo: Rip Out Orphaned Symbols Infrastructure
+
+Symbol extraction is orphaned repomap code. It should not be active in
+core. The symbols plugin (`src/plugins/symbols/`) is destined for its own
+repo. All symbol references outside that plugin must be removed:
+
+- [ ] `known_store.sql` — `json_extract(attributes, '$.symbols')` in set_file_state
+- [ ] `FileScanner.js` — symbol extraction hook call, `formatSymbols()`, attributes.symbols
+- [ ] `ContextAssembler.js` — `file_summary` category, `symbolFiles` array
+- [ ] `Hooks.js` — `file.symbols` filter hook
+- [ ] `CtagsExtractor.js` — entire file (moves to symbols plugin or deleted)
+- [ ] `v_model_context.sql` — `file_summary` category (dead without symbols)
+
+The summary state for files exists in theory but nothing produces it
+after symbol removal. Files are `full`, `index`, or `stored`.
+
+---
+
 ## Todo: Cleanup
 
-- [ ] Delete `SessionManager.js` (stub file)
-- [ ] Delete `ModelAgent.js` (dead code)
-- [ ] Delete `prompt.ask.md`, `prompt.act.md` (replaced by `prompt.md`)
+- [ ] Delete `PromptManager.js` (replaced by system tool)
 - [ ] Audit all imports for dead references
-- [ ] ProjectAgent decomposition (still a god object)
+- [ ] Rename `continuation` to `progress` throughout ContextAssembler
+- [ ] Remove "bucket" terminology from code comments
 
 ---
 

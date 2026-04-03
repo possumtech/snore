@@ -83,11 +83,13 @@ export default class ToolRegistry {
 	 */
 	async materialize(store, runId, turn) {
 		for (const [name, def] of this.#tools) {
+			if (!def.docs) continue;
+
 			const path = `tool://${name}`;
 			const existing = await store.getBody(runId, path);
 			if (existing !== null) continue;
 
-			await store.upsert(runId, turn, path, def.docs || "", "full", {
+			await store.upsert(runId, turn, path, def.docs, "full", {
 				attributes: {
 					modes: [...(def.modes || [])],
 					category: def.category || null,

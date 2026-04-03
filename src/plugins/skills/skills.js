@@ -160,22 +160,21 @@ export default class SkillsPlugin {
 
 // --- Shared file helpers ---
 
-function configDir(project, subfolder) {
-	if (project?.config_path) return join(project.config_path, subfolder);
-	if (project?.project_root)
-		return join(project.project_root, ".rummy", subfolder);
+function configDir(subfolder) {
+	const home = process.env.RUMMY_HOME;
+	if (home) return join(home, subfolder);
 	return null;
 }
 
-function filePath(project, subfolder, name) {
-	const dir = configDir(project, subfolder);
+function filePath(subfolder, name) {
+	const dir = configDir(subfolder);
 	if (!dir) return null;
 	return join(dir, `${name}.md`);
 }
 
-async function loadFile(project, subfolder, name) {
-	const path = filePath(project, subfolder, name);
-	if (!path) throw new Error("No config path configured for this project");
+async function loadFile(subfolder, name) {
+	const path = filePath(subfolder, name);
+	if (!path) throw new Error("RUMMY_HOME not configured");
 	try {
 		return await fs.readFile(path, "utf8");
 	} catch (err) {
@@ -186,8 +185,8 @@ async function loadFile(project, subfolder, name) {
 	}
 }
 
-async function listAvailable(project, subfolder) {
-	const dir = configDir(project, subfolder);
+async function listAvailable(subfolder) {
+	const dir = configDir(subfolder);
 	if (!dir) return [];
 	try {
 		const files = await fs.readdir(dir);

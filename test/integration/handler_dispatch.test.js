@@ -354,31 +354,16 @@ describe("Handler dispatch", () => {
 	});
 
 	describe("tool:// materialization", () => {
-		it("creates tool:// entries from registry", async () => {
+		it("only materializes tools with docs", async () => {
 			await hooks.tools.materialize(store, RUN_ID, 2);
 
-			const readTool = await store.getBody(RUN_ID, "tool://read");
-			assert.ok(readTool !== null, "tool://read exists");
-
-			const readAttrs = await store.getAttributes(RUN_ID, "tool://read");
-			assert.ok(readAttrs.modes.includes("ask"), "read has ask mode");
-			assert.ok(readAttrs.modes.includes("act"), "read has act mode");
-			assert.strictEqual(readAttrs.category, "ask", "read category is ask");
-
-			const writeTool = await store.getBody(RUN_ID, "tool://write");
-			assert.ok(writeTool !== null, "tool://write exists");
-
-			const writeAttrs = await store.getAttributes(RUN_ID, "tool://write");
-			assert.strictEqual(writeAttrs.category, "act", "write category is act");
-		});
-
-		it("is idempotent across turns", async () => {
-			await hooks.tools.materialize(store, RUN_ID, 3);
-			await hooks.tools.materialize(store, RUN_ID, 4);
-
+			// Core tools have no docs — nothing materialized
 			const entries = await store.getEntriesByPattern(RUN_ID, "tool://*", null);
-			const readEntries = entries.filter((e) => e.path === "tool://read");
-			assert.strictEqual(readEntries.length, 1, "no duplicate tool:// entries");
+			assert.strictEqual(
+				entries.length,
+				0,
+				"no tool:// entries for docless tools",
+			);
 		});
 	});
 });

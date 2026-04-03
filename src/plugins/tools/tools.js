@@ -83,10 +83,25 @@ export default class CoreToolsPlugin {
 			project: (entry) => entry.body,
 		});
 
+		// System prompt — assembled from body + attributes by projection
+		tools.onProject("system", (entry) => {
+			let prompt = entry.body || "";
+			const attrs = entry.attributes || {};
+			if (attrs.tools) {
+				prompt = prompt.replace("[%TOOLS%]", attrs.tools);
+			}
+			if (attrs.persona) {
+				prompt += `\n\n## Persona\n\n${attrs.persona}`;
+			}
+			for (const amendment of attrs.amendments || []) {
+				prompt += `\n\n${amendment}`;
+			}
+			return prompt;
+		});
+
 		// Non-tool schemes that appear in the model view.
 		// Each one explicitly decides what the model sees.
 		tools.onProject("file", (entry) => entry.body);
-		tools.onProject("tool", (entry) => entry.body);
 		tools.onProject("skill", (entry) => entry.body);
 		tools.onProject("known", (entry) => entry.body);
 		tools.onProject("ask", (entry) => entry.body);

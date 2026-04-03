@@ -100,15 +100,23 @@ export default class WebPlugin {
 			5,
 		);
 
-		// Append fetch docs to the read tool's tool:// entry
-		// (read is registered by core, we add our docs to it)
+		// Amend system prompt with web tool docs
 		hooks.onTurn(async (rummy) => {
-			const { entries: store, runId, sequence } = rummy;
-			const readPath = "tool://read";
-			const existing = await store.getBody(runId, readPath);
-			if (existing?.includes("Fetch a web page")) return;
-			const body = existing ? `${existing}\n\n${FETCH_DOCS}` : FETCH_DOCS;
-			await store.upsert(runId, sequence, readPath, body, "full");
+			const { entries: store, runId } = rummy;
+			const attrs = await store.getAttributes(runId, "system://prompt");
+			if (!attrs) return;
+			const amendments = attrs.amendments || [];
+			const webDocs = `${SEARCH_DOCS}\n\n${FETCH_DOCS}`;
+			if (amendments.some((a) => a.includes("search"))) return;
+			amendments.push(webDocs);
+			await store.upsert(
+				runId,
+				rummy.sequence,
+				"system://prompt",
+				await store.getBody(runId, "system://prompt"),
+				"info",
+				{ attributes: { ...attrs, amendments } },
+			);
 		}, 15);
 	}
 }

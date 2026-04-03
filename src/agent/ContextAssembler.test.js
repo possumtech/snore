@@ -4,17 +4,8 @@ import ContextAssembler from "./ContextAssembler.js";
 
 describe("ContextAssembler", () => {
 	describe("assembleFromTurnContext", () => {
-		it("renders system prompt + context + continuation", () => {
+		it("renders system prompt + context + progress", () => {
 			const rows = [
-				{
-					ordinal: 0,
-					path: "system://prompt",
-					scheme: "system",
-					fidelity: "full",
-					body: "You are helpful.",
-					tokens: 5,
-					attributes: null,
-				},
 				{
 					ordinal: 1,
 					path: "known://auth",
@@ -46,7 +37,9 @@ describe("ContextAssembler", () => {
 					category: "prompt",
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const messages = ContextAssembler.assembleFromTurnContext(rows, {
+				systemPrompt: "You are helpful.",
+			});
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].role, "system");
@@ -62,15 +55,6 @@ describe("ContextAssembler", () => {
 		it("uses user scheme as prompt in user message", () => {
 			const rows = [
 				{
-					ordinal: 0,
-					path: "system://prompt",
-					scheme: "system",
-					fidelity: "full",
-					body: "sys",
-					tokens: 1,
-					attributes: null,
-				},
-				{
 					ordinal: 1,
 					path: "ask://1",
 					scheme: "ask",
@@ -81,7 +65,9 @@ describe("ContextAssembler", () => {
 					category: "prompt",
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const messages = ContextAssembler.assembleFromTurnContext(rows, {
+				systemPrompt: "sys",
+			});
 
 			assert.strictEqual(messages.length, 2);
 			assert.ok(messages[1].role, "user");
@@ -91,15 +77,6 @@ describe("ContextAssembler", () => {
 
 		it("renders results with status symbols", () => {
 			const rows = [
-				{
-					ordinal: 0,
-					path: "system://prompt",
-					scheme: "system",
-					fidelity: "full",
-					body: "sys",
-					tokens: 1,
-					attributes: null,
-				},
 				{
 					ordinal: 1,
 					path: "edit://1",
@@ -123,7 +100,9 @@ describe("ContextAssembler", () => {
 					category: "result",
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const messages = ContextAssembler.assembleFromTurnContext(rows, {
+				systemPrompt: "sys",
+			});
 			assert.strictEqual(messages.length, 2);
 			const userContent = messages[1].content;
 
@@ -142,18 +121,10 @@ describe("ContextAssembler", () => {
 		});
 
 		it("renders empty context when no entries", () => {
-			const rows = [
-				{
-					ordinal: 0,
-					path: "system://prompt",
-					scheme: "system",
-					fidelity: "full",
-					body: "sys",
-					tokens: 1,
-					attributes: null,
-				},
-			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const rows = [];
+			const messages = ContextAssembler.assembleFromTurnContext(rows, {
+				systemPrompt: "sys",
+			});
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].content, "sys");
@@ -162,15 +133,6 @@ describe("ContextAssembler", () => {
 
 		it("renders index fidelity for files and stored known", () => {
 			const rows = [
-				{
-					ordinal: 0,
-					path: "system://prompt",
-					scheme: "system",
-					fidelity: "full",
-					body: "sys",
-					tokens: 1,
-					attributes: null,
-				},
 				{
 					ordinal: 1,
 					path: "src/utils.js",
@@ -192,7 +154,9 @@ describe("ContextAssembler", () => {
 					category: "known_index",
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows);
+			const messages = ContextAssembler.assembleFromTurnContext(rows, {
+				systemPrompt: "sys",
+			});
 			const content = messages[0].content;
 
 			assert.ok(

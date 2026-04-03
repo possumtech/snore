@@ -1,13 +1,18 @@
+import fs from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
-import PromptManager from "./PromptManager.js";
 import ResponseHealer from "./ResponseHealer.js";
 import { countTokens } from "./tokens.js";
 import XmlParser from "./XmlParser.js";
+
+const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "../..");
+let promptCache = null;
 
 export default class TurnExecutor {
 	#db;
@@ -22,6 +27,16 @@ export default class TurnExecutor {
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
 		this.#fileScanner = new FileScanner(knownStore, db, hooks);
+	}
+
+	async #loadPrompt() {
+		if (promptCache) return promptCache;
+		try {
+			promptCache = await fs.readFile(join(ROOT_DIR, "prompt.md"), "utf8");
+		} catch {
+			throw new Error("prompt.md not found");
+		}
+		return promptCache;
 	}
 
 	async execute({
@@ -91,17 +106,30 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Build system prompt before hooks (static for the turn)
-		const systemPrompt = await PromptManager.getSystemPrompt(mode, {
-			db: this.#db,
-			runId: currentRunId,
-			hooks: this.#hooks,
-		});
+		// Write system://prompt entry — body is prompt.md, attributes carry config.
+		// Plugins can modify attributes during onTurn (e.g., push amendments).
+		const promptBody = await this.#loadPrompt();
+		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
+		const toolNames = this.#hooks.tools
+			.namesForMode(mode)
+			.map((t) => `\`<${t}/>\``)
+			.join(" ");
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			"system://prompt",
+			promptBody,
+			"info",
+			{
+				attributes: {
+					tools: toolNames,
+					persona: runRow2?.persona || null,
+					amendments: [],
+				},
+			},
+		);
 
-		// Materialize tool:// entries from registry
-		await this.#hooks.tools.materialize(this.#knownStore, currentRunId, turn);
-
-		// Run plugin hooks (janitor, relevance engine, etc.)
+		// Run plugin hooks (janitor, relevance engine, web plugin amendments, etc.)
 		const rummy = new RummyContext(
 			{
 				tag: "turn",
@@ -125,28 +153,32 @@ export default class TurnExecutor {
 				turnId: turnRow.id,
 				noContext,
 				contextSize,
-				systemPrompt,
+				systemPrompt: null,
 				loopPrompt,
 			},
 		);
 		await this.#hooks.processTurn(rummy);
 
-		// Materialize turn_context: query VIEW, apply projections, insert
+		// Project system://prompt through the system tool's projection
+		const systemEntry = await this.#knownStore.getEntriesByPattern(
+			currentRunId,
+			"system://prompt",
+			null,
+		);
+		const systemAttrs = systemEntry[0]
+			? await this.#knownStore.getAttributes(currentRunId, "system://prompt")
+			: null;
+		const systemPrompt = this.#hooks.tools.project("system", {
+			path: "system://prompt",
+			scheme: "system",
+			body: systemEntry[0]?.body || promptBody,
+			attributes: systemAttrs,
+			fidelity: "full",
+			category: "system",
+		});
+
+		// Materialize turn_context: VIEW rows projected through tools
 		await this.#db.clear_turn_context.run({ run_id: currentRunId, turn });
-		if (systemPrompt) {
-			await this.#db.insert_turn_context.run({
-				run_id: currentRunId,
-				turn,
-				ordinal: 0,
-				path: "system://prompt",
-				fidelity: "full",
-				state: "info",
-				body: systemPrompt,
-				tokens: countTokens(systemPrompt),
-				attributes: null,
-				category: "system",
-			});
-		}
 		const viewRows = await this.#db.get_model_context.all({
 			run_id: currentRunId,
 		});
@@ -182,15 +214,15 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Assemble messages from materialized turn_context
+		// Assemble messages from projected system prompt + materialized turn_context
 		const rows = await this.#db.get_turn_context.all({
 			run_id: currentRunId,
 			turn,
 		});
-		const toolNames = this.#hooks.tools.namesForMode(mode).join(" ");
 		const messages = ContextAssembler.assembleFromTurnContext(rows, {
 			type: mode,
 			tools: toolNames,
+			systemPrompt,
 		});
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {

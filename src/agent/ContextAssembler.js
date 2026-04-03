@@ -40,12 +40,14 @@ function langFor(filePath) {
 }
 
 export default class ContextAssembler {
-	static assembleFromTurnContext(rows, { type = "ask", tools = "" } = {}) {
-		let instructions = "";
+	static assembleFromTurnContext(
+		rows,
+		{ type = "ask", tools = "", systemPrompt = "" } = {},
+	) {
+		const instructions = systemPrompt;
 		let continuation = null;
 
 		// Context buckets (system message)
-		const toolDocs = [];
 		const files = [];
 		const symbolFiles = [];
 		const storedFiles = [];
@@ -61,10 +63,6 @@ export default class ContextAssembler {
 		let continuationOrdinal = -1;
 
 		for (const row of rows) {
-			if (row.path === "system://prompt") {
-				instructions = row.body;
-				continue;
-			}
 			if (row.scheme === "progress") {
 				continuation = row.body;
 				continuationOrdinal = row.ordinal;
@@ -73,9 +71,6 @@ export default class ContextAssembler {
 			const attrs = row.attributes ? JSON.parse(row.attributes) : null;
 
 			switch (row.category) {
-				case "tool":
-					if (row.body) toolDocs.push(row.body);
-					break;
 				case "file": {
 					const constraint = attrs?.constraint;
 					const label =
@@ -189,9 +184,6 @@ export default class ContextAssembler {
 		}
 
 		const systemParts = [instructions];
-		if (toolDocs.length > 0) {
-			systemParts.push(toolDocs.join("\n\n"));
-		}
 		if (contextParts.length > 0) {
 			systemParts.push(`<context>\n${contextParts.join("\n\n")}\n</context>`);
 		}

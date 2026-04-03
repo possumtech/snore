@@ -66,7 +66,9 @@ export default function createHooks(debug = false) {
 		file: {
 			symbols: createFilter("file.symbols"),
 		},
-		prompt: {},
+		prompt: {
+			tools: createFilter("prompt.tools"),
+		},
 		entry: {
 			created: createEvent("entry.created"),
 		},

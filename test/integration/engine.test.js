@@ -168,13 +168,18 @@ describe("Engine integration", () => {
 	});
 
 	describe("tool:// materialization", () => {
-		it("creates tool:// entries from registry", async () => {
+		it("only materializes tools with docs", async () => {
 			const hooks = createHooks();
 			CoreToolsPlugin.register(hooks);
+			// Core tools have no docs — nothing should be materialized
 			await hooks.tools.materialize(store, RUN_ID, 1);
 
 			const readTool = await store.getBody(RUN_ID, "tool://read");
-			assert.ok(readTool !== null, "tool://read should exist");
+			assert.strictEqual(
+				readTool,
+				null,
+				"tool://read should not exist (no docs)",
+			);
 		});
 	});
 });
