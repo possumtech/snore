@@ -135,8 +135,8 @@ Model emits <get path="src/app.js"/>
   → XmlParser produces { name: "get", path: "src/app.js" }
   → TurnExecutor.#record() writes get://src%2Fapp.js at full state
   → hooks.tools.dispatch("get", entry, rummy):
-      priority 5: WebPlugin checks if http URL — no, passes through
-      priority 10: CoreToolsPlugin promotes file, writes confirmation
+      priority 5: external plugin handler (if registered)
+      priority 10: core get handler promotes file, writes confirmation
   → hooks.entry.created.emit(entry)
 ```
 
@@ -155,13 +155,14 @@ Same pipe. No mode enforcement for client (operator privilege).
 ### 3.3 Handler Registration
 
 ```js
-hooks.tools.register("search", {
+hooks.tools.register("mytool", {
     modes: new Set(["ask", "act"]),
     category: "ask",
-    docs: "## <search>...</search>\nSearch the web.",
+    docs: "## <mytool>...</mytool>\nWhat this tool does.",
+    project: (entry) => `# mytool ${entry.path}\n${entry.body}`,
 });
 
-hooks.tools.onHandle("search", async (entry, rummy) => {
+hooks.tools.onHandle("mytool", async (entry, rummy) => {
     // entry = { scheme, path, body, attributes, state, resultPath }
     // rummy = RummyContext
 }, priority);
@@ -199,7 +200,7 @@ Two messages per turn. System = stable truth. User = conversation.
 | `assistant://N` | Audit, one per turn | Model's raw response | — |
 
 `instructions://system` is the only mutable entry in this group. Plugins
-modify its attributes during `onTurn` (e.g., web plugin pushes search
+modify its attributes during `onTurn` (e.g., a plugin pushes tool
 docs into `toolDescriptions`). The instructions tool's projection
 assembles the final text from body + attributes.
 
@@ -444,7 +445,7 @@ Filters: `llm.messages`, `llm.response`, `file.symbols`, `run.config`,
 | `file` | File projections and constraints |
 | `rpc` | RPC method registration |
 | `skills` | Skill/persona file loading and RPCs |
-| `web` | Web search and URL fetching |
+| `web` | Web search and URL fetching (`@possumtech/rummy.web`, external) |
 | `symbols` | Symbol extraction via antlrmap + ctags |
 | `telemetry` | Debug logging and run dumps |
 
