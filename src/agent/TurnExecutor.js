@@ -106,14 +106,17 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Write instructions entry — body is prompt.md, attributes carry config.
-		// Plugins modify attributes during onTurn (e.g., push toolDescriptions).
+		// Write instructions entry — body is prompt.md, attributes from registry.
 		const promptBody = await this.#loadPrompt();
 		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
 		const toolNames = this.#hooks.tools
 			.namesForMode(mode)
 			.map((t) => `\`<${t}/>\``)
 			.join(" ");
+		const toolDescriptions = [];
+		for (const [, def] of this.#hooks.tools.entries()) {
+			if (def.docs) toolDescriptions.push(def.docs);
+		}
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
@@ -123,7 +126,7 @@ export default class TurnExecutor {
 			{
 				attributes: {
 					tools: toolNames,
-					toolDescriptions: [],
+					toolDescriptions,
 					persona: runRow2?.persona || null,
 				},
 			},

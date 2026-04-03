@@ -39,16 +39,13 @@
 		"@biomejs/biome": "^2.4.6"
 	},
 	"dependencies": {
-		"@mozilla/readability": "^0.6.0",
 		"@possumtech/sqlrite": "^2.4.0",
 		"htmlparser2": "^12.0.0",
-		"jsdom": "^29.0.1",
-		"playwright": "^1.58.2",
 		"tiktoken": "^1.0.22",
-		"turndown": "^7.2.2",
 		"ws": "^8.19.0"
 	},
 	"optionalDependencies": {
-		"@possumtech/antlrmap": "^0.0.8"
+		"@possumtech/antlrmap": "^0.0.8",
+		"@possumtech/rummy.web": "^0.0.4"
 	}
 }

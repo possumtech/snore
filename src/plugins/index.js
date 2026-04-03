@@ -4,13 +4,32 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /**
- * Dynamically loads and registers plugins from provided directories.
+ * Dynamically loads and registers plugins from provided directories
+ * and RUMMY_PLUGIN_* env vars.
  */
 export async function registerPlugins(dirs = [], hooks) {
 	const uniqueDirs = [...new Set(dirs.map((d) => join(d)))];
 
 	for (const dir of uniqueDirs) {
-		await scanDir(dir, hooks, true); // Root level
+		await scanDir(dir, hooks, true);
+	}
+
+	await loadEnvPlugins(hooks);
+}
+
+async function loadEnvPlugins(hooks) {
+	for (const [key, value] of Object.entries(process.env)) {
+		if (!key.startsWith("RUMMY_PLUGIN_") || !value) continue;
+		const name = key.replace("RUMMY_PLUGIN_", "").toLowerCase();
+		try {
+			const { default: Plugin } = await import(value);
+			if (typeof Plugin?.register === "function") {
+				await Plugin.register(hooks);
+				console.log(`[RUMMY] Plugin ${name}: ${value}`);
+			}
+		} catch (err) {
+			console.warn(`[RUMMY] Plugin ${name} (${value}): ${err.message}`);
+		}
 	}
 }
 
@@ -71,7 +90,7 @@ async function loadPlugin(filePath, hooks) {
 		const url = pathToFileURL(filePath).href;
 		const { default: Plugin } = await import(url);
 		if (typeof Plugin?.register === "function") {
-			Plugin.register(hooks);
+			await Plugin.register(hooks);
 		} else {
 			if (process.env.RUMMY_DEBUG === "true") {
 				console.error(
