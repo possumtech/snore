@@ -39,82 +39,73 @@ function langFor(filePath) {
 	return EXT_LANG[extname(filePath)] || "";
 }
 
+const FIDELITY_ORDER = { index: 0, summary: 1, full: 2 };
+
 export default class ContextAssembler {
 	static assembleFromTurnContext(
 		rows,
 		{ type = "ask", tools = "", systemPrompt = "" } = {},
 	) {
-		const instructions = systemPrompt;
-		let continuation = null;
+		// --- Classify rows ---
 
-		// Context buckets (system message)
-		const files = [];
-		const storedFiles = [];
-		const activeKnown = [];
-		const storedKnown = [];
+		// Knowledge (system <knowledge>): files, known, stored, index
+		const knowledge = [];
+
+		// Unknowns (system <unknowns>)
 		const unknowns = [];
 
-		// Message buckets (user message)
-		const messageEntries = [];
-		let prompt = null;
-		let promptMode = null;
-		let promptOrdinal = -1;
-		let continuationOrdinal = -1;
+		// Find the active prompt and loop boundary
+		let activePrompt = null;
+		let activeMode = null;
+		let loopStartTurn = 0;
+
+		// History entries (result, structural, prompt, assistant responses)
+		const history = [];
+
+		// Progress entry
+		let progressBody = null;
 
 		for (const row of rows) {
-			if (row.scheme === "progress") {
-				continuation = row.body;
-				continuationOrdinal = row.ordinal;
-			}
-
 			const attrs = row.attributes ? JSON.parse(row.attributes) : null;
 
 			switch (row.category) {
-				case "file": {
-					const constraint = attrs?.constraint;
-					const label =
-						constraint === "readonly"
-							? "file:readonly"
-							: constraint === "active"
-								? "file:active"
-								: "file";
-					files.push({
+				case "file":
+				case "file_index":
+				case "known":
+				case "known_index":
+					knowledge.push({
 						path: row.path,
 						body: row.body,
 						tokens: row.tokens,
-						state: label,
+						state: row.state,
+						fidelity: row.fidelity,
+						category: row.category,
+						constraint: attrs?.constraint,
 					});
 					break;
-				}
-				case "file_index":
-					storedFiles.push({ path: row.path });
-					break;
-				case "known":
-					activeKnown.push({ path: row.path, body: row.body });
-					break;
-				case "known_index":
-					storedKnown.push({ path: row.path });
-					break;
+
 				case "unknown":
 					unknowns.push({ body: row.body });
 					break;
+
 				case "prompt":
 					if (row.scheme === "ask" || row.scheme === "act") {
-						prompt = row.body;
-						promptMode = row.scheme;
-						promptOrdinal = row.ordinal;
+						activePrompt = row.body;
+						activeMode = row.scheme;
+						loopStartTurn = row.source_turn;
 					} else if (row.scheme === "progress") {
-						messageEntries.push({
-							path: row.path,
-							scheme: row.scheme,
-							body: row.body,
-						});
+						progressBody = row.body;
 					}
 					break;
+
 				case "result":
-					messageEntries.push({
+				case "structural":
+					history.push({
 						path: row.path,
+						scheme: row.scheme,
 						body: row.body,
+						state: row.state,
+						source_turn: row.source_turn,
 						tool: row.scheme,
 						target:
 							attrs?.command ||
@@ -122,112 +113,127 @@ export default class ContextAssembler {
 							attrs?.path ||
 							attrs?.question ||
 							"",
-						state: row.state,
-					});
-					break;
-				case "structural":
-					messageEntries.push({
-						path: row.path,
-						scheme: row.scheme,
-						body: row.body,
-						state: row.scheme === "summarize" ? "summary" : "info",
 					});
 					break;
 			}
 		}
 
-		// --- System message: instructions + context ---
-		const contextParts = [];
+		// --- System message ---
+		const systemParts = [systemPrompt];
 
-		if (activeKnown.length > 0) {
-			const lines = activeKnown.map((k) => `* ${k.path} — ${k.body}`);
-			contextParts.push(`### Knowledge\n${lines.join("\n")}`);
-		}
-
-		if (storedKnown.length > 0) {
-			contextParts.push(
-				`### Stored\n${storedKnown.map((k) => k.path).join(", ")}`,
-			);
-		}
-
-		if (storedFiles.length > 0) {
-			contextParts.push(
-				`### Index\n${storedFiles.map((f) => f.path).join(", ")}`,
-			);
-		}
-
-		if (files.length > 0) {
-			const fileBlocks = files.map((f) => {
-				const lang = langFor(f.path);
-				const tokens = f.tokens ? ` (${f.tokens} tokens)` : "";
-				const label =
-					f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
-				return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.body}\n\`\`\``;
+		// <knowledge>: sorted by fidelity (index, summary, full), then scheme
+		if (knowledge.length > 0) {
+			knowledge.sort((a, b) => {
+				const fa = FIDELITY_ORDER[a.fidelity] ?? 0;
+				const fb = FIDELITY_ORDER[b.fidelity] ?? 0;
+				if (fa !== fb) return fa - fb;
+				const sa = a.category;
+				const sb = b.category;
+				if (sa < sb) return -1;
+				if (sa > sb) return 1;
+				return 0;
 			});
-			contextParts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
+			const knowledgeLines = knowledge.map((k) => renderKnowledgeEntry(k));
+			systemParts.push(
+				`<knowledge>\n${knowledgeLines.join("\n")}\n</knowledge>`,
+			);
 		}
 
+		// <previous>: completed loop history (before current loop)
+		const previousEntries = history.filter(
+			(e) => loopStartTurn > 0 && e.source_turn < loopStartTurn,
+		);
+		if (previousEntries.length > 0) {
+			const lines = previousEntries.map(renderHistoryEntry);
+			systemParts.push(`<previous>\n${lines.join("\n")}\n</previous>`);
+		}
+
+		// <unknowns>
 		if (unknowns.length > 0) {
 			const lines = unknowns.map((u) => `* ${u.body}`);
-			contextParts.push(`### Unknowns\n${lines.join("\n")}`);
-		}
-
-		const systemParts = [instructions];
-		if (contextParts.length > 0) {
-			systemParts.push(`<context>\n${contextParts.join("\n\n")}\n</context>`);
+			systemParts.push(`<unknowns>\n${lines.join("\n")}\n</unknowns>`);
 		}
 
 		const messages = [{ role: "system", content: systemParts.join("\n\n") }];
 
-		// --- User message: messages + prompt/progress ---
+		// --- User message ---
 		const userParts = [];
 
-		if (messageEntries.length > 0) {
-			const lines = messageEntries.map((e) => {
-				if (e.scheme === "ask") return `> [ask] ${e.body}`;
-				if (e.scheme === "act") return `> [act] ${e.body}`;
-				if (e.scheme === "progress") return `> [continuation] ${e.body}`;
-				const check =
-					e.state === "pass" || e.state === "summary"
-						? "✓"
-						: e.state === "rejected" || e.state === "error"
-							? "✗"
-							: "·";
-				if (e.state === "summary") return `* summary: ${e.body}`;
-				const tool = e.tool || e.path.match(/^(\w+):\/\//)?.[1] || "?";
-				const target = e.target || "";
-				const detail = e.body ? ` — ${e.body.slice(0, 120)}` : "";
-				return `* ${tool} ${target} ${check}${detail}`;
-			});
-			userParts.push(`<messages>\n${lines.join("\n")}\n</messages>`);
+		// <current>: active loop history (minus the active prompt)
+		const currentEntries = history.filter(
+			(e) => e.source_turn >= loopStartTurn,
+		);
+		if (currentEntries.length > 0) {
+			const lines = currentEntries.map(renderHistoryEntry);
+			userParts.push(`<current>\n${lines.join("\n")}\n</current>`);
 		}
 
-		const effectiveMode = promptMode || type;
+		// <progress>
+		const effectiveMode = activeMode || type;
 		const warn =
 			effectiveMode === "ask"
 				? ' warn="File and system modification prohibited on this turn."'
 				: "";
-		const injected =
-			prompt && continuation && promptOrdinal > continuationOrdinal;
-		if (injected) {
-			userParts.push(
-				`<${promptMode} tools="${tools}"${warn}>${prompt}</${promptMode}>`,
-			);
-		} else if (continuation) {
-			userParts.push(
-				`<progress tools="${tools}"${warn}>${continuation}</progress>`,
-			);
-		} else if (prompt && promptMode) {
-			userParts.push(
-				`<${promptMode} tools="${tools}"${warn}>${prompt}</${promptMode}>`,
-			);
-		}
+
+		const progressText =
+			progressBody ||
+			(currentEntries.length > 0
+				? "The above actions have been performed in response to the following prompt:"
+				: "Begin.");
+		userParts.push(`<progress>${progressText}</progress>`);
+
+		// <ask> or <act> — always present
+		const promptBody = activePrompt || "";
+		userParts.push(
+			`<${effectiveMode} tools="${tools}"${warn}>${promptBody}</${effectiveMode}>`,
+		);
 
 		messages.push({
 			role: "user",
-			content: userParts.length > 0 ? userParts.join("\n") : "Begin.",
+			content: userParts.join("\n"),
 		});
 
 		return messages;
 	}
+}
+
+function renderKnowledgeEntry(entry) {
+	switch (entry.category) {
+		case "file_index":
+		case "known_index":
+			return entry.path;
+		case "known":
+			return `* ${entry.path} — ${entry.body}`;
+		case "file": {
+			const lang = langFor(entry.path);
+			const tokens = entry.tokens ? ` (${entry.tokens} tokens)` : "";
+			const label =
+				entry.constraint === "readonly"
+					? " (readonly)"
+					: entry.constraint === "active"
+						? " (active)"
+						: "";
+			return `#### ${entry.path}${tokens}${label}\n\`\`\`${lang}\n${entry.body}\n\`\`\``;
+		}
+		default:
+			return `* ${entry.path} — ${entry.body}`;
+	}
+}
+
+function renderHistoryEntry(entry) {
+	if (entry.scheme === "ask") return `> [ask] ${entry.body}`;
+	if (entry.scheme === "act") return `> [act] ${entry.body}`;
+	if (entry.scheme === "summarize") return `* summary: ${entry.body}`;
+	if (entry.scheme === "update") return `* update: ${entry.body}`;
+
+	const check =
+		entry.state === "pass" || entry.state === "summary"
+			? "✓"
+			: entry.state === "rejected" || entry.state === "error"
+				? "✗"
+				: "·";
+	const tool = entry.tool || entry.path.match(/^(\w+):\/\//)?.[1] || "?";
+	const target = entry.target || "";
+	const detail = entry.body ? ` — ${entry.body.slice(0, 120)}` : "";
+	return `* ${tool} ${target} ${check}${detail}`;
 }

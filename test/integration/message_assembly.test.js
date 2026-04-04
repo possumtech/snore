@@ -175,12 +175,12 @@ describe("Message assembly", () => {
 		);
 	});
 
-	it("context contains files and knowledge, not results", async () => {
+	it("knowledge contains files and known entries, not results", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
 		assert.ok(
-			system.content.includes("<context>"),
-			"should have context section",
+			system.content.includes("<knowledge>"),
+			"should have knowledge section",
 		);
 		assert.ok(system.content.includes("src/app.js"), "files in context");
 		// Results should NOT be in the system message

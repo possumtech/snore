@@ -25,14 +25,6 @@ classified AS (
 			WHEN ke.state IN ('pass', 'error', 'warn', 'pattern', 'read', 'info', 'summary') THEN 'full'
 			ELSE NULL
 		END AS fidelity
-		, CASE
-			WHEN ke.scheme IN ('ask', 'act', 'progress')
-				THEN ROW_NUMBER() OVER (
-					PARTITION BY ke.run_id, ke.scheme
-					ORDER BY ke.id DESC
-				)
-			ELSE 1
-		END AS prompt_rank
 	FROM known_entries AS ke
 	JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 	WHERE ke.state NOT IN ('proposed')
@@ -45,6 +37,7 @@ projected AS (
 		, scheme
 		, state
 		, fidelity
+		, turn
 		, attributes
 		, CASE
 			WHEN fidelity IN ('full', 'summary') THEN body
@@ -65,7 +58,7 @@ projected AS (
 			ELSE 'result'
 		END AS category
 	FROM classified
-	WHERE fidelity IS NOT NULL AND prompt_rank = 1
+	WHERE fidelity IS NOT NULL
 )
 SELECT
 	run_id
@@ -76,6 +69,7 @@ SELECT
 	, body
 	, attributes
 	, category
+	, turn
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY

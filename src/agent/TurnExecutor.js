@@ -211,6 +211,7 @@ export default class TurnExecutor {
 				tokens: countTokens(projectedBody ?? ""),
 				attributes: row.attributes,
 				category: row.category,
+				source_turn: row.turn || 0,
 			});
 		}
 

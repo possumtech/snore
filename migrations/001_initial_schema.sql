@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, category TEXT NOT NULL DEFAULT 'result'
+	, source_turn INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn
 ON turn_context (run_id, turn);
