@@ -1,5 +1,3 @@
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import msg from "../agent/messages.js";
 
 export default class XaiClient {
@@ -14,11 +12,7 @@ export default class XaiClient {
 	async completion(messages, model, options = {}) {
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
-		const systemMsg = messages.find((m) => m.role === "system");
-		const input = messages.filter((m) => m.role !== "system");
-
-		const body = { model, input };
-		if (systemMsg) body.instructions = systemMsg.content;
+		const body = { model, input: messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
@@ -55,10 +49,6 @@ export default class XaiClient {
 		}
 
 		const data = await response.json();
-		const home = process.env.RUMMY_HOME;
-		if (home) {
-			try { writeFileSync(join(home, "xai_raw.json"), JSON.stringify(data, null, 2)); } catch {}
-		}
 		return this.#normalize(data);
 	}
 
@@ -94,9 +84,11 @@ export default class XaiClient {
 			],
 			usage: {
 				prompt_tokens: inputTokens,
-				cached_tokens: usage.cache_read_input_tokens || 0,
+				cached_tokens: usage.input_tokens_details?.cached_tokens || 0,
 				completion_tokens: outputTokens,
+				reasoning_tokens: usage.output_tokens_details?.reasoning_tokens || 0,
 				total_tokens: inputTokens + outputTokens,
+				cost: (usage.cost_in_usd_ticks || 0) / 10_000_000_000,
 			},
 		};
 	}
@@ -105,7 +97,7 @@ export default class XaiClient {
 		if (typeof content === "string") return content;
 		if (!Array.isArray(content)) return null;
 		return content
-			.filter((c) => c.type === "text")
+			.filter((c) => c.type === "text" || c.type === "output_text")
 			.map((c) => c.text)
 			.join("\n") || null;
 	}

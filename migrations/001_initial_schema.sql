@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS turns (
 	, prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0)
 	, cached_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cached_tokens >= 0)
 	, completion_tokens INTEGER NOT NULL DEFAULT 0 CHECK (completion_tokens >= 0)
+	, reasoning_tokens INTEGER NOT NULL DEFAULT 0 CHECK (reasoning_tokens >= 0)
 	, total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0)
 	, cost REAL NOT NULL DEFAULT 0 CHECK (cost >= 0)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP

@@ -9,6 +9,7 @@ SET
 	prompt_tokens = :prompt_tokens
 	, cached_tokens = :cached_tokens
 	, completion_tokens = :completion_tokens
+	, reasoning_tokens = :reasoning_tokens
 	, total_tokens = :total_tokens
 	, cost = :cost
 WHERE id = :id;
@@ -18,6 +19,7 @@ SELECT
 	COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens
 	, COALESCE(SUM(cached_tokens), 0) AS cached_tokens
 	, COALESCE(SUM(completion_tokens), 0) AS completion_tokens
+	, COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens
 	, COALESCE(SUM(total_tokens), 0) AS total_tokens
 	, COALESCE(SUM(cost), 0) AS cost
 FROM turns

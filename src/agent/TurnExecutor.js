@@ -347,13 +347,19 @@ export default class TurnExecutor {
 		const usage = result.usage || {};
 		const cachedTokens = usage.cached_tokens
 			|| usage.prompt_tokens_details?.cached_tokens
+			|| usage.input_tokens_details?.cached_tokens
 			|| usage.cache_read_input_tokens
+			|| 0;
+		const reasoningTokens = usage.reasoning_tokens
+			|| usage.completion_tokens_details?.reasoning_tokens
+			|| usage.output_tokens_details?.reasoning_tokens
 			|| 0;
 		await this.#db.update_turn_stats.run({
 			id: turnRow.id,
 			prompt_tokens: Number(usage.prompt_tokens || 0),
 			cached_tokens: Number(cachedTokens),
 			completion_tokens: Number(usage.completion_tokens || 0),
+			reasoning_tokens: Number(reasoningTokens),
 			total_tokens: Number(usage.total_tokens || 0),
 			cost: Number(usage.cost || 0),
 		});

@@ -14,6 +14,7 @@ function expandPath(path) {
 
 // 0. Pre-flight Check: Environment and Dependencies
 const rummyHome = expandPath(process.env.RUMMY_HOME);
+if (rummyHome) process.env.RUMMY_HOME = rummyHome;
 const defaultModel = process.env.RUMMY_MODEL_DEFAULT;
 
 if (!rummyHome) {

@@ -168,6 +168,18 @@ function resolveCommand(name, attrs, rawBody) {
 				};
 			}
 		}
+		// Sed syntax: s/search/replace/flags — split on delimiter, pass through
+		if (trimmed.startsWith("s/")) {
+			const parts = trimmed.slice(2).split("/");
+			if (parts.length >= 2) {
+				return {
+					name,
+					path: a.path,
+					search: parts[0],
+					replace: parts[1],
+				};
+			}
+		}
 		// search+replace attrs → attribute edit mode
 		if (a.search) {
 			const replace = a.replace ?? trimmed;

@@ -289,7 +289,9 @@ export default class AgentLoop {
 						temperature: result.temperature,
 						context_size: result.contextSize,
 						prompt_tokens: runUsage.prompt_tokens,
+						cached_tokens: runUsage.cached_tokens,
 						completion_tokens: runUsage.completion_tokens,
+						reasoning_tokens: runUsage.reasoning_tokens,
 						total_tokens: runUsage.total_tokens,
 						cost: runUsage.cost,
 						context_distribution: await this.#db.get_turn_distribution.all({
