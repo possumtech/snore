@@ -103,6 +103,8 @@ async function processEdit(store, runId, turn, entry, attrs) {
 
 	for (const match of matches) {
 		const resultPath = `set://${match.path}`;
+		// Current file content — may already have earlier edits from this turn
+		const currentBody = match.body;
 		let patch = null;
 		let warning = null;
 		let error = null;
@@ -112,15 +114,12 @@ async function processEdit(store, runId, turn, entry, attrs) {
 		if (attrs.search != null) {
 			searchText = attrs.search;
 			replaceText = attrs.replace ?? "";
-			if (match.body.includes(attrs.search)) {
-				// Literal match
-				patch = match.body.replaceAll(attrs.search, replaceText);
+			if (currentBody.includes(attrs.search)) {
+				patch = currentBody.replaceAll(attrs.search, replaceText);
 			} else {
-				// Literal failed — try HeuristicMatcher (handles whitespace,
-				// indentation differences, escaped characters)
 				const matched = HeuristicMatcher.matchAndPatch(
 					match.path,
-					match.body,
+					currentBody,
 					attrs.search,
 					replaceText,
 				);
@@ -131,13 +130,13 @@ async function processEdit(store, runId, turn, entry, attrs) {
 		} else if (attrs.blocks?.length > 0 && attrs.blocks[0].search === null) {
 			patch = attrs.blocks[0].replace;
 			replaceText = attrs.blocks[0].replace;
-		} else if (match.body && attrs.blocks?.length > 0) {
+		} else if (currentBody && attrs.blocks?.length > 0) {
 			const block = attrs.blocks[0];
 			searchText = block.search;
 			replaceText = block.replace;
 			const matched = HeuristicMatcher.matchAndPatch(
 				match.path,
-				match.body,
+				currentBody,
 				block.search,
 				block.replace,
 			);
@@ -148,19 +147,26 @@ async function processEdit(store, runId, turn, entry, attrs) {
 
 		const state = error ? "error" : match.scheme === null ? "proposed" : "pass";
 
-		const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
-		const merge =
+		// Check for existing result from earlier edit this turn
+		const existing = await store.getEntry(resultPath);
+		const originalBody = existing?.body || currentBody;
+
+		// Patch and merge are always against the ORIGINAL content
+		const udiff = patch ? generatePatch(match.path, originalBody, patch) : null;
+
+		// Accumulate merge blocks from prior edits
+		const priorMerge = existing?.attributes?.merge || "";
+		const thisMerge =
 			searchText != null
 				? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
-				: null;
+				: "";
+		const merge = [priorMerge, thisMerge].filter(Boolean).join("\n") || null;
 
-		// body = original content (reconstructable with patch)
-		// attributes.patch = udiff for client
-		// attributes.merge = git conflict for model projection
-		const beforeTokens = match.tokens_full || 0;
+		const beforeTokens = existing?.attributes?.beforeTokens ?? match.tokens_full ?? 0;
 		const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
 
-		await store.upsert(runId, turn, resultPath, match.body, state, {
+		// body = original content (before any edits this turn)
+		await store.upsert(runId, turn, resultPath, originalBody, state, {
 			attributes: {
 				file: match.path,
 				patch: udiff,
@@ -174,6 +180,13 @@ async function processEdit(store, runId, turn, entry, attrs) {
 
 		if (state === "pass" && patch) {
 			await store.upsert(runId, turn, match.path, patch, match.state);
+		}
+
+		// If this entry merged into an existing result, demote the recorded entry to audit
+		if (entry.resultPath !== resultPath) {
+			await store.upsert(runId, turn, entry.resultPath, entry.body, "info", {
+				attributes: { mergedInto: resultPath },
+			});
 		}
 	}
 }
