@@ -61,7 +61,8 @@ let SqlRite, SocketServer, registerPlugins, createHooks, RpcRegistry;
 try {
 	SqlRite = (await import("@possumtech/sqlrite")).default;
 	SocketServer = (await import("./src/server/SocketServer.js")).default;
-	registerPlugins = (await import("./src/plugins/index.js")).registerPlugins;
+	const pluginIndex = await import("./src/plugins/index.js");
+	registerPlugins = pluginIndex.registerPlugins;
 	createHooks = (await import("./src/hooks/Hooks.js")).default;
 	RpcRegistry = (await import("./src/server/RpcRegistry.js")).default;
 } catch (err) {

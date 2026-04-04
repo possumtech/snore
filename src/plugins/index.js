@@ -2,6 +2,9 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import PluginContext from "../hooks/PluginContext.js";
+
+const instances = new Map();
 
 /**
  * Dynamically loads and registers plugins from provided directories
@@ -15,6 +18,16 @@ export async function registerPlugins(dirs = [], hooks) {
 	}
 
 	await loadEnvPlugins(hooks);
+}
+
+/**
+ * After DB is ready, inject db and store into all PluginContext instances.
+ */
+export function initPlugins(db, store) {
+	for (const ctx of instances.values()) {
+		ctx.db = db;
+		ctx.entries = store;
+	}
 }
 
 async function loadEnvPlugins(hooks) {
@@ -89,14 +102,14 @@ async function loadPlugin(filePath, hooks) {
 	try {
 		const url = pathToFileURL(filePath).href;
 		const { default: Plugin } = await import(url);
+
 		if (typeof Plugin?.register === "function") {
 			await Plugin.register(hooks);
-		} else {
-			if (process.env.RUMMY_DEBUG === "true") {
-				console.error(
-					`[RUMMY] Plugin at ${filePath} has no register() method.`,
-				);
-			}
+		} else if (typeof Plugin === "function") {
+			const name = basename(filePath, ".js");
+			const ctx = new PluginContext(name, hooks);
+			const _instance = new Plugin(ctx);
+			instances.set(name, ctx);
 		}
 	} catch (err) {
 		if (process.env.RUMMY_DEBUG === "true") {

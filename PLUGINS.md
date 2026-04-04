@@ -3,17 +3,32 @@
 ## Plugin Contract
 
 A plugin is a directory under `src/plugins/` containing a `.js` file that
-exports a default class with a static `register` method:
+exports a default class. The class name matches the file name. The
+constructor receives `rummy` — the plugin's complete interface with
+the system.
 
 ```js
-export default class MyPlugin {
-    static register(hooks) {
-        // Register tools, RPC methods, turn processors, events, filters
+export default class MyTool {
+    #rummy;
+
+    constructor(rummy) {
+        this.#rummy = rummy;
+        rummy.on("handler", this.handler.bind(this));
+        rummy.on("view", this.view.bind(this));
+    }
+
+    async handler(entry, rummy) {
+        // What the tool does
+    }
+
+    view(entry) {
+        // What the model sees
+        return `# mytool ${entry.path}\n${entry.body}`;
     }
 }
 ```
 
-File naming: `src/plugins/mytool/mytool.js` or `src/plugins/mytool/index.js`.
+File naming: `src/plugins/mytool/mytool.js`. Class name = file name.
 
 External plugins install via npm and load via `RUMMY_PLUGIN_*` env vars:
 
@@ -22,111 +37,111 @@ RUMMY_PLUGIN_WEB=@possumtech/rummy.web
 RUMMY_PLUGIN_REPO=@possumtech/rummy.repo
 ```
 
-## Tool Registration
+## Unified API
 
-```js
-hooks.tools.register("mytool", {
-    modes: new Set(["ask", "act"]),  // or just ["ask"] or ["act"]
-    category: "ask",                  // "ask", "act", or "structural"
-    docs: "## <mytool>...</mytool>\nTool documentation for the model.",
-    project: (entry) => {             // REQUIRED — how the model sees the result
-        return `# mytool ${entry.path}\n${entry.body}`;
-    },
-    handler: async (entry, rummy) => {
-        // Handle the tool command
-    },
-});
+The model, the client, and plugins all use the same interface. Each tier
+is a superset of the one below. `name` (model) = `method` (client) =
+method name (plugin). The params shape is the same at every tier.
+
+```
+Model:  <rm path="file.txt"/>           → { name: "rm", path: "file.txt" }
+Client: { method: "rm", params: { path: "file.txt" } }
+Plugin: rummy.rm({ path: "file.txt" })
 ```
 
-### Projection (`project`)
+## Registration
 
-Every tool MUST define a projection. No default. No fallback. Crash if missing.
+All registration happens in the constructor via `rummy.on()` and
+`rummy.filter()`. No static methods. No direct hook manipulation.
 
-The projection receives the entry and returns the string the model sees in
-its message history. The entry has: `{ path, scheme, body, attributes, fidelity, category }`.
+### rummy.on(event, callback, priority?)
 
-### Handler
+| Event | Purpose |
+|-------|---------|
+| `"handler"` | Tool handler — called when model/client invokes this tool |
+| `"full"` | Full projection — what the model sees at full fidelity |
+| `"summary"` | Summary projection — condensed view under token pressure |
+| `"docs"` | Tool documentation — included in model prompt |
+| `"turn"` | Turn processor — runs before context materialization |
+| `"entry.created"` | Entry created during dispatch |
+| `"entry.changed"` | File entries changed on disk |
+| Any `"dotted.name"` | Resolves to the matching hook in the hook tree |
 
-The handler receives `(entry, rummy)` where entry is:
+### rummy.filter(name, callback, priority?)
+
+| Filter | Purpose |
+|--------|---------|
+| `"assembly.system"` | Contribute to system message |
+| `"assembly.user"` | Contribute to user message |
+| `"llm.messages"` | Transform final messages before LLM call |
+| `"llm.response"` | Transform LLM response |
+| Any `"dotted.name"` | Resolves to the matching filter in the hook tree |
+
+### handler(entry, rummy)
+
+The handler receives the parsed command entry and a per-turn RummyContext:
+
 ```js
-{
+entry = {
     scheme,       // Tool name ("set", "get", "rm", etc.)
-    path,         // Entry path ("set://src%2Fapp.js")
+    path,         // Entry path ("set://src/app.js")
     body,         // Tag body text
     attributes,   // Parsed tag attributes
-    state,        // Current state ("full" on initial recording)
+    state,        // Current state
     resultPath,   // Where to write the result
 }
 ```
 
-### Handler Priority Chain
+Multiple handlers per scheme. Lower priority runs first. Return `false`
+to stop the chain.
 
-Multiple handlers per scheme. Lower priority runs first.
+### view(entry)
 
-```js
-hooks.tools.onHandle("get", async (entry, rummy) => {
-    // Priority 5 — runs before default handler at 10
-    if (!isHttpUrl(entry.attributes.path)) return;
-    // Handle http URLs, return false to stop chain
-    return false;
-}, 5);
-```
+Returns the string the model sees for this tool's entries. Called during
+materialization. Every tool MUST register a view. No default. No fallback.
 
-Return `false` to stop the chain. Return anything else (or nothing) to
-continue to the next handler.
+## Two Rummy Objects
 
-## RummyContext (`rummy`)
+Plugins interact with two rummy objects at different scopes:
 
-The plugin's interface to the store. All methods auto-scope to the current run.
+**PluginContext** (`this.#rummy`) — startup-scoped. Created once per plugin.
+Used for registration (`on()`, `filter()`), database access, store queries.
+Lives for the lifetime of the service.
 
-### Tool Methods (same verbs as model and client)
+**RummyContext** (`rummy` argument) — turn-scoped. Passed to handlers
+per-invocation. Has tool verbs, per-turn state (runId, turn, mode).
+
+### Tool Verbs (available on both objects)
 
 | Method | Effect |
 |--------|--------|
 | `rummy.set({ path, body, state, attributes })` | Create/update entry |
-| `rummy.get(path)` | Promote to full state |
-| `rummy.store(path)` | Demote to stored state |
-| `rummy.rm(path)` | Delete permanently |
-| `rummy.mv(from, to)` | Move entry |
-| `rummy.cp(from, to)` | Copy entry |
+| `rummy.get({ path })` | Promote to full state |
+| `rummy.store({ path })` | Demote to stored state |
+| `rummy.rm({ path })` | Delete permanently |
+| `rummy.mv({ path, to })` | Move entry |
+| `rummy.cp({ path, to })` | Copy entry |
 
-### Read Methods
+### Query Methods
 
 | Method | Returns |
 |--------|---------|
-| `rummy.getEntry(path)` | Full entry: `{ path, body, scheme, state, tokens_full, attributes }` |
+| `rummy.getEntry(path)` | Full entry object |
 | `rummy.getBody(path)` | Body text or null |
 | `rummy.getState(path)` | State string or null |
 | `rummy.getAttributes(path)` | Parsed attributes `{}` |
 | `rummy.getEntries(pattern, body?)` | Array of matching entries |
 
-### Write Methods
-
-| Method | Effect |
-|--------|--------|
-| `rummy.setAttributes(path, attrs)` | Atomic merge via `json_patch` (concurrency-safe) |
-| `rummy.log(message)` | Create audit log entry |
-
-### Context Properties
+### Properties
 
 | Property | Type |
 |----------|------|
-| `rummy.entries` | KnownStore instance (raw store access) |
-| `rummy.hooks` | Hook system |
+| `rummy.name` | Plugin name (PluginContext only) |
+| `rummy.entries` | KnownStore instance |
 | `rummy.db` | Database |
-| `rummy.runId` | Current run ID |
+| `rummy.runId` | Current run ID (RummyContext only) |
 | `rummy.projectId` | Current project ID |
-| `rummy.sequence` | Current turn number |
-
-## Turn Processors
-
-Run logic before materialization. Priority controls order (lower = first).
-
-```js
-hooks.onTurn(async (rummy) => {
-    // Modify entries before the model sees them
-}, priority);
-```
+| `rummy.sequence` | Current turn number (RummyContext only) |
 
 ## Events & Filters
 

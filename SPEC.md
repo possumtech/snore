@@ -154,61 +154,82 @@ Abort stops the current prompt; pending prompts survive.
 
 ## 3. Entry-Driven Dispatch
 
-### 3.1 Model Path
+### 3.1 Unified API
+
+Three callers, one interface. Each tier is a superset of the one below.
+
+| Tier | Transport | Invocation shape |
+|------|-----------|-----------------|
+| Model | XML tags | `{ name: "rm", path: "file.txt" }` |
+| Client | JSON-RPC | `{ method: "rm", params: { path: "file.txt" } }` |
+| Plugin | PluginContext | `rummy.rm({ path: "file.txt" })` |
+
+`name` (model) = `method` (client) = method name (plugin). The params
+object is the same shape at every tier.
+
+| Method | Model | Client | Plugin |
+|--------|-------|--------|--------|
+| `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env`, `store` | ✓ | ✓ | ✓ |
+| `known`, `unknown`, `ask_user`, `summarize`, `update` | ✓ | ✓ | ✓ |
+| `ask`, `act`, `resolve`, `abort`, `startRun` | — | ✓ | ✓ |
+| `getRuns`, `getModels`, `getEntries` | — | ✓ | ✓ |
+| `on()`, `filter()`, db/store access | — | — | ✓ |
+
+Model tier restrictions enforced by mode (ask removes act-only tools).
+Client tier requires project init. Plugin tier has no restrictions.
+
+### 3.2 Dispatch Path
+
+All three tiers feed the same handler chain:
 
 ```
-Model emits <get path="src/app.js"/>
-  → XmlParser produces { name: "get", path: "src/app.js" }
-  → TurnExecutor.#record() writes get://src%2Fapp.js at full state
-  → hooks.tools.dispatch("get", entry, rummy):
-      priority 5: external plugin handler (if registered)
-      priority 10: core get handler promotes file, writes confirmation
-  → hooks.entry.created.emit(entry)
+Model:  XmlParser → { name, path, ... } → #record() → dispatch(scheme, entry, rummy)
+Client: JSON-RPC  → { method, params }   → #record() → dispatch(scheme, entry, rummy)
+Plugin: rummy.rm({ path })               → #record() → dispatch(scheme, entry, rummy)
 ```
 
-### 3.2 Client Path
+### 3.3 Plugin Convention
 
-```
-Client sends read { run: "turboqwen_123", path: "src/app.js" }
-  → buildRunContext() creates RummyContext for the run
-  → dispatchTool() records get:// entry at full state
-  → hooks.tools.dispatch("get", entry, rummy)  ← same chain
-  → hooks.entry.created.emit(entry)
-```
-
-Same pipe. No mode enforcement for client (operator privilege).
-
-### 3.3 Handler Registration
+A plugin is an instantiated class. The class name matches the file name.
+The constructor receives `rummy` (a PluginContext) — the plugin's
+complete interface with the system.
 
 ```js
-hooks.tools.register("mytool", {
-    modes: new Set(["ask", "act"]),
-    category: "ask",
-    docs: "## <mytool>...</mytool>\nWhat this tool does.",
-    project: (entry) => `# mytool ${entry.path}\n${entry.body}`,
-});
+export default class Rm {
+    #rummy;
 
-hooks.tools.onHandle("mytool", async (entry, rummy) => {
-    // entry = { scheme, path, body, attributes, state, resultPath }
-    // rummy = RummyContext
-}, priority);
+    constructor(rummy) {
+        this.#rummy = rummy;
+        rummy.on("handler", this.handler.bind(this));
+        rummy.on("view", this.view.bind(this));
+    }
+
+    async handler(entry, rummy) {
+        // rummy here is per-turn RummyContext (not the startup PluginContext)
+    }
+
+    view(entry) {
+        return `# rm ${entry.attributes.path}`;
+    }
+}
 ```
 
-Multiple handlers per scheme. Lower priority runs first. Return `false`
-to stop the chain.
+**Two rummy objects:**
+- `this.#rummy` — PluginContext (startup). For registration: `on()`, `filter()`.
+- `rummy` argument — RummyContext (per-turn). For runtime: tool verbs, queries.
 
-### 3.4 Access Tiers
+**Plugin types:**
+- **Tool plugins**: register `handler` + `view`. Model-invokable.
+- **Assembly plugins**: register `rummy.filter("assembly.system", ...)`. Own a packet tag.
+- **Infrastructure plugins**: register `rummy.on("turn", ...)`. Background work.
 
-| Caller | Mode enforcement | Handler dispatch |
-|--------|-----------------|-----------------|
-| Model | Yes (ask/act) | Yes |
-| Client (RPC) | No | Yes |
-| Plugin (internal) | No | Optional |
+A plugin can be multiple types. Known is a tool AND an assembly plugin.
 
-### 3.5 Mode Enforcement
+### 3.4 Mode Enforcement
 
-In ask mode, TurnExecutor rejects: file writes, file deletes, file
-move/copy targets, `<sh>`. K/V operations are allowed in both modes.
+All tools are available by default. In ask mode, the core removes
+act-only tools (`sh`, file-scheme `set`) from the tool list. This is
+a core concern — plugins do not declare their modes.
 
 ---
 

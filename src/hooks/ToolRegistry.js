@@ -37,8 +37,21 @@ export default class ToolRegistry {
 	 * transforms the entry's body/attributes into what the model sees.
 	 * Called during materialization. No projection = crash.
 	 */
-	onProject(scheme, fn) {
-		this.#projections.set(scheme, fn);
+	onProject(scheme, fn, fidelity = "full") {
+		if (!this.#projections.has(scheme))
+			this.#projections.set(scheme, new Map());
+		this.#projections.get(scheme).set(fidelity, fn);
+	}
+
+	setDocs(scheme, docs) {
+		this.ensureTool(scheme);
+		const existing = this.#tools.get(scheme);
+		this.#tools.set(scheme, Object.freeze({ ...existing, docs }));
+	}
+
+	ensureTool(scheme) {
+		if (this.#tools.has(scheme)) return;
+		this.#tools.set(scheme, Object.freeze({ modes: new Set(["ask", "act"]) }));
 	}
 
 	/**
@@ -46,13 +59,16 @@ export default class ToolRegistry {
 	 * Throws if no projection is registered for the scheme.
 	 */
 	project(scheme, entry) {
-		const fn = this.#projections.get(scheme);
-		if (!fn) {
+		const fidelityMap = this.#projections.get(scheme);
+		if (!fidelityMap) {
 			throw new Error(
 				`No projection registered for scheme '${scheme}'. ` +
 					`Every tool must define how its entries appear in the model view.`,
 			);
 		}
+		const fidelity = entry.fidelity || "full";
+		const fn = fidelityMap.get(fidelity);
+		if (!fn) return "";
 		return fn(entry);
 	}
 
@@ -60,7 +76,8 @@ export default class ToolRegistry {
 	 * Check if a projection is registered for a scheme.
 	 */
 	hasProjection(scheme) {
-		return this.#projections.has(scheme);
+		const fidelityMap = this.#projections.get(scheme);
+		return fidelityMap?.size > 0;
 	}
 
 	/**

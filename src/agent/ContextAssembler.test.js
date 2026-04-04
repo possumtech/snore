@@ -357,7 +357,7 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 
 			assert.ok(
-				user.includes("The above actions have been performed"),
+				user.includes("The above actions were performed"),
 				"progress bridges to prompt",
 			);
 		});
