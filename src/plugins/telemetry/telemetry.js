@@ -1,11 +1,19 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 /**
  * TelemetryPlugin: Console logging for RPC and turn events.
- * DB audit logging lives in ClientConnection (has db access).
+ * Dumps raw LLM messages/responses to last_run.txt in RUMMY_HOME.
  */
 export default class TelemetryPlugin {
 	static #starts = new Map();
+	static #lastRunPath = null;
+	static #turnLog = [];
 
 	static register(hooks) {
+		const home = process.env.RUMMY_HOME;
+		if (home) TelemetryPlugin.#lastRunPath = join(home, "last_run.txt");
+
 		hooks.rpc.started.on(async ({ method, id, params }) => {
 			TelemetryPlugin.#starts.set(id, Date.now());
 			const summary =
@@ -17,6 +25,10 @@ export default class TelemetryPlugin {
 							? `run=${params?.run} action=${params?.resolution?.action}`
 							: "";
 			console.log(`[RPC] → ${method}(${id})${summary ? ` ${summary}` : ""}`);
+
+			if (method === "ask" || method === "act") {
+				TelemetryPlugin.#turnLog = [];
+			}
 		});
 
 		hooks.rpc.completed.on(async ({ method, id, result }) => {
@@ -48,5 +60,49 @@ export default class TelemetryPlugin {
 				`[DEBUG] Turn ${payload.turn} completed for run ${payload.run}`,
 			);
 		});
+
+		hooks.llm.messages.addFilter(async (messages, context) => {
+			TelemetryPlugin.#appendTurn(
+				`\n${"=".repeat(60)}\nTURN — model=${context.model} run=${context.runId}\n${"=".repeat(60)}`,
+			);
+			for (const msg of messages) {
+				const label = msg.role.toUpperCase();
+				const body = typeof msg.content === "string"
+					? msg.content
+					: JSON.stringify(msg.content);
+				TelemetryPlugin.#appendTurn(`\n--- ${label} ---\n${body}`);
+			}
+			return messages;
+		}, 999);
+
+		hooks.llm.response.addFilter(async (response, context) => {
+			const msg = response.choices?.[0]?.message;
+			TelemetryPlugin.#appendTurn(`\n--- ASSISTANT ---\n${msg?.content || "(empty)"}`);
+			if (msg?.reasoning_content) {
+				TelemetryPlugin.#appendTurn(`\n--- REASONING ---\n${msg.reasoning_content}`);
+			}
+			const usage = response.usage || {};
+			TelemetryPlugin.#appendTurn(
+				`\n--- USAGE ---\n${JSON.stringify(usage)}`,
+			);
+			TelemetryPlugin.#flush();
+			return response;
+		}, 999);
+	}
+
+	static #appendTurn(text) {
+		TelemetryPlugin.#turnLog.push(text);
+	}
+
+	static #flush() {
+		if (!TelemetryPlugin.#lastRunPath || TelemetryPlugin.#turnLog.length === 0) return;
+		try {
+			writeFileSync(
+				TelemetryPlugin.#lastRunPath,
+				TelemetryPlugin.#turnLog.join("\n") + "\n",
+			);
+		} catch {
+			// RUMMY_HOME may not exist yet
+		}
 	}
 }

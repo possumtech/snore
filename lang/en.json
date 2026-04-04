@@ -26,5 +26,9 @@
 	"error.unresolved_proposed": "Blocked: run has {count} unresolved proposed entries.",
 	"error.tool_already_registered": "Tool '{name}' already registered.",
 	"error.rpc_already_registered": "RPC method '{name}' already registered.",
-	"error.resolution_invalid": "Invalid resolution action: {action}. Use 'accept' or 'reject'."
+	"error.resolution_invalid": "Invalid resolution action: {action}. Use 'accept' or 'reject'.",
+	"error.xai_base_url_missing": "x.ai/ model requested but XAI_BASE_URL is not set.",
+	"error.xai_api_key_missing": "x.ai/ model requested but XAI_API_KEY is not set.",
+	"error.xai_auth": "xAI Authentication Error: {status}. Please check your XAI_API_KEY.",
+	"error.xai_api": "xAI API error: {status}"
 }

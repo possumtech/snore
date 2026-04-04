@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS turns (
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
 	, prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0)
+	, cached_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cached_tokens >= 0)
 	, completion_tokens INTEGER NOT NULL DEFAULT 0 CHECK (completion_tokens >= 0)
 	, total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0)
 	, cost REAL NOT NULL DEFAULT 0 CHECK (cost >= 0)

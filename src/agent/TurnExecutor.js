@@ -345,9 +345,14 @@ export default class TurnExecutor {
 
 		// Commit usage
 		const usage = result.usage || {};
+		const cachedTokens = usage.cached_tokens
+			|| usage.prompt_tokens_details?.cached_tokens
+			|| usage.cache_read_input_tokens
+			|| 0;
 		await this.#db.update_turn_stats.run({
 			id: turnRow.id,
 			prompt_tokens: Number(usage.prompt_tokens || 0),
+			cached_tokens: Number(cachedTokens),
 			completion_tokens: Number(usage.completion_tokens || 0),
 			total_tokens: Number(usage.total_tokens || 0),
 			cost: Number(usage.cost || 0),
