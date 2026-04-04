@@ -1,6 +1,6 @@
-# Test Map: ARCHITECTURE.md → Tests
+# Test Map: SPEC.md → Tests
 
-Every testable promise in ARCHITECTURE.md mapped to a test.
+Every testable promise in SPEC.md mapped to a test.
 `[x]` = tested. `[ ]` = not yet tested.
 
 ## §1 The Known Store

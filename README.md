@@ -14,7 +14,7 @@ Rummy is the first and only client/server architecture LLM agent service dedicat
 
 - **Client/Server:** Rummy runs on your device, and then you have dozens of neovim (or whatever) instances scattered across your tmux sessions, windows, and panes -- each one of them containing a thin client that relies on the rummy service. Makes much more sense than having a whole instance for every project and worktree branch you're juggling.
 
-- **Plugin Architecture:** Don't send us a pull request for your cool feature, just build a plugin. Core features like symbol extraction, RPC methods, and tool definitions are themselves plugins. Drop a directory into `~/.rummy/plugins/` and it's loaded on startup. Swap out antlrmap for tree-sitter. Add custom RPC methods. Inject context. Build a relevance engine. The hook system covers the full lifecycle: turn processors, event listeners, filter chains, tool registration, and RPC registration. See `ARCHITECTURE.md` §7 for the complete plugin API.
+- **Plugin Architecture:** Don't send us a pull request for your cool feature, just build a plugin. Core features like symbol extraction, RPC methods, and tool definitions are themselves plugins. Drop a directory into `~/.rummy/plugins/` and it's loaded on startup. Swap out antlrmap for tree-sitter. Add custom RPC methods. Inject context. Build a relevance engine. The hook system covers the full lifecycle: turn processors, event listeners, filter chains, tool registration, and RPC registration. See [PLUGINS.md](PLUGINS.md) for the complete plugin API.
 
 - **SQLite Done Right:** While rummy's technically a NodeJS project, it's better understood as a SQL project that relies on JS as the glue for imperative and interactive steps. Our SQL queries are all compiled prepared statements, all carefully indexed, all delivering the nosebleed speed and reliability you expect from SQLite. This does wonders for your memory footprint.
 
@@ -38,6 +38,13 @@ npm start   # Production mode (port 3044)
 npm run dev # Watch mode with dev database (port 3045)
 ```
 
-See `ARCHITECTURE.md` for the full specification and `AGENTS.md` for planning
-and progress. The `discover` RPC method returns the live protocol reference
-at runtime.
+## Documentation
+
+| Document | Contents |
+|----------|----------|
+| [SPEC.md](SPEC.md) | System design: K/V store, dispatch, context assembly, RPC, config |
+| [PLUGINS.md](PLUGINS.md) | Plugin development: registration, RummyContext API, events, filters, hedberg |
+| [AGENTS.md](AGENTS.md) | Planning and progress |
+
+Each plugin has its own README at `src/plugins/{name}/README.md`.
+The `discover` RPC method returns the live protocol reference at runtime.
