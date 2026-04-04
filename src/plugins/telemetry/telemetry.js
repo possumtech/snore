@@ -67,24 +67,27 @@ export default class TelemetryPlugin {
 			);
 			for (const msg of messages) {
 				const label = msg.role.toUpperCase();
-				const body = typeof msg.content === "string"
-					? msg.content
-					: JSON.stringify(msg.content);
+				const body =
+					typeof msg.content === "string"
+						? msg.content
+						: JSON.stringify(msg.content);
 				TelemetryPlugin.#appendTurn(`\n--- ${label} ---\n${body}`);
 			}
 			return messages;
 		}, 999);
 
-		hooks.llm.response.addFilter(async (response, context) => {
+		hooks.llm.response.addFilter(async (response, _context) => {
 			const msg = response.choices?.[0]?.message;
-			TelemetryPlugin.#appendTurn(`\n--- ASSISTANT ---\n${msg?.content || "(empty)"}`);
+			TelemetryPlugin.#appendTurn(
+				`\n--- ASSISTANT ---\n${msg?.content || "(empty)"}`,
+			);
 			if (msg?.reasoning_content) {
-				TelemetryPlugin.#appendTurn(`\n--- REASONING ---\n${msg.reasoning_content}`);
+				TelemetryPlugin.#appendTurn(
+					`\n--- REASONING ---\n${msg.reasoning_content}`,
+				);
 			}
 			const usage = response.usage || {};
-			TelemetryPlugin.#appendTurn(
-				`\n--- USAGE ---\n${JSON.stringify(usage)}`,
-			);
+			TelemetryPlugin.#appendTurn(`\n--- USAGE ---\n${JSON.stringify(usage)}`);
 			TelemetryPlugin.#flush();
 			return response;
 		}, 999);
@@ -95,11 +98,12 @@ export default class TelemetryPlugin {
 	}
 
 	static #flush() {
-		if (!TelemetryPlugin.#lastRunPath || TelemetryPlugin.#turnLog.length === 0) return;
+		if (!TelemetryPlugin.#lastRunPath || TelemetryPlugin.#turnLog.length === 0)
+			return;
 		try {
 			writeFileSync(
 				TelemetryPlugin.#lastRunPath,
-				TelemetryPlugin.#turnLog.join("\n") + "\n",
+				`${TelemetryPlugin.#turnLog.join("\n")}\n`,
 			);
 		} catch {
 			// RUMMY_HOME may not exist yet

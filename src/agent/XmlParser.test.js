@@ -368,4 +368,46 @@ I need to check the port.
 			assert.ok(unparsed.includes("Just some text"));
 		});
 	});
+
+	describe("sed syntax", () => {
+		it("parses s/search/replace/", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="config.js">s/3000/8080/</set>',
+			);
+			assert.strictEqual(commands[0].search, "3000");
+			assert.strictEqual(commands[0].replace, "8080");
+		});
+
+		it("parses s/search/replace/g", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="config.js">s/localhost/0.0.0.0/g</set>',
+			);
+			assert.strictEqual(commands[0].search, "localhost");
+			assert.strictEqual(commands[0].replace, "0.0.0.0");
+		});
+
+		it("parses s/search/replace without trailing slash", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="config.js">s/old/new</set>',
+			);
+			assert.strictEqual(commands[0].search, "old");
+			assert.strictEqual(commands[0].replace, "new");
+		});
+
+		it("parses sed with spaces in search/replace", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="hw.txt">s/7 - a = /7 - a = 5/g</set>',
+			);
+			assert.strictEqual(commands[0].search, "7 - a = ");
+			assert.strictEqual(commands[0].replace, "7 - a = 5");
+		});
+
+		it("parses sed with empty replace (deletion)", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="f.js">s/debugger;//</set>',
+			);
+			assert.strictEqual(commands[0].search, "debugger;");
+			assert.strictEqual(commands[0].replace, "");
+		});
+	});
 });

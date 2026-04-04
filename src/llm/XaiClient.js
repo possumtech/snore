@@ -61,7 +61,10 @@ export default class XaiClient {
 		for (const item of output) {
 			if (item.type === "reasoning") {
 				const text = this.#extractText(item.content);
-				if (text) reasoningContent = reasoningContent ? `${reasoningContent}\n${text}` : text;
+				if (text)
+					reasoningContent = reasoningContent
+						? `${reasoningContent}\n${text}`
+						: text;
 			}
 			if (item.type === "message") {
 				const text = this.#extractText(item.content);
@@ -96,10 +99,12 @@ export default class XaiClient {
 	#extractText(content) {
 		if (typeof content === "string") return content;
 		if (!Array.isArray(content)) return null;
-		return content
-			.filter((c) => c.type === "text" || c.type === "output_text")
-			.map((c) => c.text)
-			.join("\n") || null;
+		return (
+			content
+				.filter((c) => c.type === "text" || c.type === "output_text")
+				.map((c) => c.text)
+				.join("\n") || null
+		);
 	}
 
 	async getContextSize(_model) {

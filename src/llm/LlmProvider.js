@@ -83,11 +83,7 @@ export default class LlmProvider {
 
 		if (resolvedModel.startsWith("x.ai/")) {
 			const localModel = resolvedModel.replace("x.ai/", "");
-			return this.#getXai().completion(
-				messages,
-				localModel,
-				resolvedOptions,
-			);
+			return this.#getXai().completion(messages, localModel, resolvedOptions);
 		}
 
 		return this.#getOpenRouter().completion(
