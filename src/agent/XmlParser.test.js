@@ -440,5 +440,31 @@ I need to check the port.
 			assert.strictEqual(commands[0].blocks[0].search, "a");
 			assert.strictEqual(commands[0].blocks[1].search, "c");
 		});
+
+		it("parses sed with escaped slashes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="hw.txt">s/b \\/ 4 = 3/12 \\/ 4 = 3/</set>',
+			);
+			assert.strictEqual(commands[0].search, "b / 4 = 3");
+			assert.strictEqual(commands[0].replace, "12 / 4 = 3");
+		});
+
+		it("parses chained seds with escaped slashes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="hw.txt">s/a + 4 = 6/2 + 4 = 6/ s/b \\/ 4 = 3/12 \\/ 4 = 3/</set>',
+			);
+			assert.strictEqual(commands[0].blocks.length, 2);
+			assert.strictEqual(commands[0].blocks[0].search, "a + 4 = 6");
+			assert.strictEqual(commands[0].blocks[1].search, "b / 4 = 3");
+			assert.strictEqual(commands[0].blocks[1].replace, "12 / 4 = 3");
+		});
+
+		it("parses sed with regex anchors as literal text", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="hw.txt">s/7 - a =$/7 - a = 5/</set>',
+			);
+			assert.strictEqual(commands[0].search, "7 - a =$");
+			assert.strictEqual(commands[0].replace, "7 - a = 5");
+		});
 	});
 });

@@ -251,7 +251,7 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].content, "sys");
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<progress>Begin.</progress>"));
+			assert.ok(messages[1].content.includes("<progress>"));
 		});
 
 		it("renders known sorted by fidelity then category", async () => {

@@ -233,13 +233,27 @@ export default class Set {
 		if (attrs.search != null) {
 			searchText = attrs.search;
 			replaceText = attrs.replace ?? "";
-			if (body.includes(attrs.search)) {
-				patch = body.replaceAll(attrs.search, replaceText);
-			} else {
+			if (attrs.sed) {
+				const flags = attrs.flags || "";
+				try {
+					const re = new RegExp(
+						searchText,
+						flags.includes("g") ? flags : `${flags}g`,
+					);
+					patch = body.replace(re, replaceText);
+					if (patch === body) patch = null;
+				} catch {
+					patch = null;
+				}
+			}
+			if (!patch && body.includes(searchText)) {
+				patch = body.replaceAll(searchText, replaceText);
+			}
+			if (!patch) {
 				const matched = HeuristicMatcher.matchAndPatch(
 					"",
 					body,
-					attrs.search,
+					searchText,
 					replaceText,
 				);
 				patch = matched.newContent;

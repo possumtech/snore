@@ -6,7 +6,7 @@
 export default class ContextAssembler {
 	static async assembleFromTurnContext(
 		rows,
-		{ type = "ask", systemPrompt = "" } = {},
+		{ type = "ask", systemPrompt = "", contextSize = 0 } = {},
 		hooks,
 	) {
 		// Find loop boundary from active prompt
@@ -16,7 +16,7 @@ export default class ContextAssembler {
 		);
 		const loopStartTurn = promptEntry?.source_turn ?? 0;
 
-		const ctx = { rows, loopStartTurn, type };
+		const ctx = { rows, loopStartTurn, type, contextSize };
 
 		const system = await hooks.assembly.system.filter(systemPrompt, ctx);
 		const user = await hooks.assembly.user.filter("", ctx);

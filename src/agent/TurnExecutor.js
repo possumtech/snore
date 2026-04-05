@@ -222,6 +222,7 @@ export default class TurnExecutor {
 			{
 				type: mode,
 				systemPrompt,
+				contextSize,
 			},
 			this.#hooks,
 		);
@@ -562,20 +563,9 @@ export default class TurnExecutor {
 			: rawTarget;
 		const resultPath = await this.#knownStore.dedup(runId, scheme, target);
 
-		// Build attributes from the command's parsed fields
-		const attributes = {};
+		// Pass parsed command fields through as attributes
+		const { name: _, ...attributes } = cmd;
 		if (cmd.path) attributes.path = target;
-		if (cmd.body !== undefined && cmd.body !== "") attributes.body = cmd.body;
-		if (cmd.command) attributes.command = cmd.command;
-		if (cmd.question) attributes.question = cmd.question;
-		if (cmd.options) attributes.options = cmd.options;
-		if (cmd.to) attributes.to = cmd.to;
-		if (cmd.search != null) attributes.search = cmd.search;
-		if (cmd.replace != null) attributes.replace = cmd.replace;
-		if (cmd.blocks) attributes.blocks = cmd.blocks;
-		if (cmd.filter) attributes.filter = cmd.filter;
-		if (cmd.preview) attributes.preview = cmd.preview;
-		if (cmd.results) attributes.results = cmd.results;
 
 		// known tool or naked write → known:// slug from body
 		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
