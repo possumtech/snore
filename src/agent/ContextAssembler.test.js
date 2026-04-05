@@ -1,10 +1,25 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { dirname, join } from "node:path";
+import { before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import createHooks from "../hooks/Hooks.js";
+import { registerPlugins } from "../plugins/index.js";
 import ContextAssembler from "./ContextAssembler.js";
+
+let hooks;
+
+before(async () => {
+	hooks = createHooks();
+	const pluginsDir = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"../plugins",
+	);
+	await registerPlugins([pluginsDir], hooks);
+});
 
 describe("ContextAssembler", () => {
 	describe("assembleFromTurnContext", () => {
-		it("renders system prompt + knowledge + user prompt", () => {
+		it("renders system prompt + known + user prompt", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -40,22 +55,24 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "You are helpful.",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "You are helpful." },
+				hooks,
+			);
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].role, "system");
 			assert.ok(messages[0].content.includes("You are helpful."));
 			assert.ok(messages[0].content.includes("known://auth"));
 			assert.ok(messages[0].content.includes("const x = 1;"));
-			assert.ok(messages[0].content.includes("<knowledge>"));
+			assert.ok(messages[0].content.includes("<known>"));
 			assert.strictEqual(messages[1].role, "user");
 			assert.ok(messages[1].content.includes("<ask"));
 			assert.ok(messages[1].content.includes("What does this do?"));
 		});
 
-		it("prompt always appears last in user message", () => {
+		it("prompt always appears last in user message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -81,9 +98,11 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 
 			const user = messages[1].content;
 			const currentPos = user.indexOf("<current>");
@@ -94,7 +113,7 @@ describe("ContextAssembler", () => {
 			assert.ok(user.endsWith("</ask>"), "ask is last");
 		});
 
-		it("splits history into previous and current by loop boundary", () => {
+		it("splits history into previous and current by loop boundary", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -132,9 +151,11 @@ describe("ContextAssembler", () => {
 					source_turn: 3,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 
 			const system = messages[0].content;
 			const user = messages[1].content;
@@ -146,7 +167,7 @@ describe("ContextAssembler", () => {
 			assert.ok(!user.includes("old result"), "old result not in current");
 		});
 
-		it("omits previous on first loop", () => {
+		it("omits previous on first loop", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -160,14 +181,16 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 
 			assert.ok(!messages[0].content.includes("<previous>"));
 		});
 
-		it("renders results with status symbols in current", () => {
+		it("renders results with status symbols in current", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -205,9 +228,11 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 			const user = messages[1].content;
 
 			assert.ok(user.includes("✓"), "pass result has check mark");
@@ -215,11 +240,13 @@ describe("ContextAssembler", () => {
 			assert.ok(user.includes("<current>"), "results in current block");
 		});
 
-		it("renders empty context when no entries", () => {
+		it("renders empty context when no entries", async () => {
 			const rows = [];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].content, "sys");
@@ -227,7 +254,7 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[1].content.includes("<progress>Begin.</progress>"));
 		});
 
-		it("renders knowledge sorted by fidelity then category", () => {
+		it("renders known sorted by fidelity then category", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -274,24 +301,25 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 			const content = messages[0].content;
 
-			assert.ok(content.includes("<knowledge>"));
+			assert.ok(content.includes("<known>"));
 			assert.ok(content.includes("src/utils.js"), "index file listed");
 			assert.ok(content.includes("known://old"), "index known listed");
 			assert.ok(content.includes("const x = 1;"), "full file rendered");
 			assert.ok(content.includes("known://auth"), "full known rendered");
 
-			// Index entries appear before full entries
 			const indexPos = content.indexOf("src/utils.js");
 			const fullPos = content.indexOf("const x = 1;");
 			assert.ok(indexPos < fullPos, "index before full");
 		});
 
-		it("renders unknowns in system message after previous", () => {
+		it("renders unknowns in system message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -316,16 +344,18 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 			const system = messages[0].content;
 
 			assert.ok(system.includes("<unknowns>"));
 			assert.ok(system.includes("which database adapter"));
 		});
 
-		it("progress bridges current to prompt", () => {
+		it("progress bridges current to prompt", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -351,9 +381,11 @@ describe("ContextAssembler", () => {
 					source_turn: 1,
 				},
 			];
-			const messages = ContextAssembler.assembleFromTurnContext(rows, {
-				systemPrompt: "sys",
-			});
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
 			const user = messages[1].content;
 
 			assert.ok(

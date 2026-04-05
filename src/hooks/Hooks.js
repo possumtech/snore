@@ -50,6 +50,10 @@ export default function createHooks(debug = false) {
 		turn: {
 			proposing: createEvent("turn.proposing"),
 		},
+		assembly: {
+			system: createFilter("assembly.system"),
+			user: createFilter("assembly.user"),
+		},
 		ask: {
 			started: createEvent("ask.started"),
 			completed: createEvent("ask.completed"),

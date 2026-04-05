@@ -211,7 +211,7 @@ export default class TurnExecutor {
 				tokens: countTokens(projectedBody ?? ""),
 				attributes: row.attributes,
 				category: row.category,
-				source_turn: row.turn || 0,
+				source_turn: row.turn,
 			});
 		}
 
@@ -227,11 +227,15 @@ export default class TurnExecutor {
 			run_id: currentRunId,
 			turn,
 		});
-		const messages = ContextAssembler.assembleFromTurnContext(rows, {
-			type: mode,
-			tools: toolNames,
-			systemPrompt,
-		});
+		const messages = await ContextAssembler.assembleFromTurnContext(
+			rows,
+			{
+				type: mode,
+				tools: toolNames,
+				systemPrompt,
+			},
+			this.#hooks,
+		);
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,

@@ -39,6 +39,7 @@ export default async function materialize(
 			tokens: row.tokens,
 			attributes: row.attributes,
 			category: row.category,
+			source_turn: row.turn,
 		});
 	}
 }

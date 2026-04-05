@@ -6,13 +6,18 @@
  * system and user message content directly.
  */
 import assert from "node:assert";
+import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import ContextAssembler from "../../src/agent/ContextAssembler.js";
 import KnownStore from "../../src/agent/KnownStore.js";
+import createHooks from "../../src/hooks/Hooks.js";
+import { registerPlugins } from "../../src/plugins/index.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let hooks;
 const TURN = 1;
 
 async function assembleMessages(tdb, _store) {
@@ -25,16 +30,26 @@ async function assembleMessages(tdb, _store) {
 		run_id: RUN_ID,
 		turn: TURN,
 	});
-	return ContextAssembler.assembleFromTurnContext(rows, {
-		type: "ask",
-		tools: "unknown get env ask_user set mv cp store rm update summary",
-	});
+	return ContextAssembler.assembleFromTurnContext(
+		rows,
+		{
+			type: "ask",
+			tools: "unknown get env ask_user set mv cp store rm update summary",
+		},
+		hooks,
+	);
 }
 
 describe("Message assembly", () => {
 	let tdb, store;
 
 	before(async () => {
+		hooks = createHooks();
+		const pluginsDir = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"../../src/plugins",
+		);
+		await registerPlugins([pluginsDir], hooks);
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
 		const seed = await tdb.seedRun();
@@ -68,10 +83,14 @@ describe("Message assembly", () => {
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const messages = ContextAssembler.assembleFromTurnContext(rows, {
-			type: "act",
-			tools: "unknown get env ask_user set mv cp store rm sh update summary",
-		});
+		const messages = await ContextAssembler.assembleFromTurnContext(
+			rows,
+			{
+				type: "act",
+				tools: "unknown get env ask_user set mv cp store rm sh update summary",
+			},
+			hooks,
+		);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("<act tools="), "should have <act> tag");
 		assert.ok(user.content.includes("sh "), "act tools should include sh");
@@ -178,10 +197,7 @@ describe("Message assembly", () => {
 	it("knowledge contains files and known entries, not results", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
-		assert.ok(
-			system.content.includes("<knowledge>"),
-			"should have knowledge section",
-		);
+		assert.ok(system.content.includes("<known>"), "should have known section");
 		assert.ok(system.content.includes("src/app.js"), "files in context");
 		// Results should NOT be in the system message
 		assert.ok(
