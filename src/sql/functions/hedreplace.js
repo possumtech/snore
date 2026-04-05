@@ -1,4 +1,4 @@
-import { hedreplace } from "./hedberg.js";
+import { hedreplace } from "../hedberg.js";
 
 export const deterministic = true;
 

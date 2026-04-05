@@ -6,46 +6,16 @@ import { spawnSync } from "node:child_process";
 // Helper to expand ~ in paths since node --env-file doesn't do it
 // 0. Pre-flight Check: Environment and Dependencies
 const rummyHome = process.env.RUMMY_HOME;
-const defaultModel = process.env.RUMMY_MODEL_DEFAULT;
 
 if (!rummyHome) {
 	console.error("RUMMY Configuration Error: RUMMY_HOME is not defined in environment.");
 	process.exit(1);
 }
 
-if (!defaultModel) {
-	console.error("RUMMY Configuration Error: RUMMY_MODEL_DEFAULT is not defined.");
-	process.exit(1);
-}
-
-// Resolve the actual model ID (handles aliases like RUMMY_MODEL_ccp=...)
-const actualModelId = process.env[`RUMMY_MODEL_${defaultModel}`] || defaultModel;
-
 // Check for optional system dependencies
-const ctagsCheck = spawnSync("ctags", ["--version"]);
-if (ctagsCheck.error || ctagsCheck.status !== 0) {
-	console.warn("[RUMMY] WARNING: 'universal-ctags' not found. Symbol extraction disabled.");
-	console.warn("        Install: https://ctags.io/");
-}
-
 const gitCheck = spawnSync("git", ["--version"]);
 if (gitCheck.error || gitCheck.status !== 0) {
 	console.warn("[RUMMY] WARNING: 'git' not found. File tracking will use manual activation only.");
-}
-
-// Check if we need an API key (OpenRouter models) or OLLAMA_BASE_URL
-if (actualModelId.startsWith("ollama/")) {
-	if (!process.env.OLLAMA_BASE_URL) {
-		console.error("RUMMY Configuration Error:");
-		console.error(`- Model '${defaultModel}' (${actualModelId}) requires OLLAMA_BASE_URL.`);
-		console.error("\nPlease check your .env file.");
-		process.exit(1);
-	}
-} else if (!process.env.OPENROUTER_API_KEY) {
-	console.error("RUMMY Configuration Error:");
-	console.error(`- Model '${defaultModel}' (${actualModelId}) requires OPENROUTER_API_KEY.`);
-	console.error("\nPlease check your .env file or use an 'ollama/' prefixed model.");
-	process.exit(1);
 }
 
 let SqlRite, SocketServer, registerPlugins, createHooks, RpcRegistry;
@@ -98,7 +68,7 @@ async function main() {
 	{
 		const modelAliases = [];
 		for (const key of Object.keys(process.env)) {
-			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_MODEL_DEFAULT") continue;
+			if (!key.startsWith("RUMMY_MODEL_")) continue;
 			const alias = key.replace("RUMMY_MODEL_", "");
 			const actual = process.env[key];
 			await db.upsert_model.get({

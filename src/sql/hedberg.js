@@ -450,9 +450,3 @@ export function hedreplace(pattern, replacement, string) {
 
 // SQL functions are in separate files (hedmatch.js, hedsearch.js)
 // that import from this library. Filename = SQL function name.
-
-// Legacy default export for backward compat during transition.
-export default function hedberg(pattern, string) {
-	if (string === null) return 0;
-	return hedmatch(pattern, string) ? 1 : 0;
-}

@@ -1,4 +1,4 @@
-import { hedmatch } from "./hedberg.js";
+import { hedmatch } from "../hedberg.js";
 
 export const deterministic = true;
 

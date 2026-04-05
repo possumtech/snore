@@ -1,93 +1,93 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import hedberg, { hedmatch, hedreplace, hedsearch } from "./hedberg.js";
+import { hedmatch, hedreplace, hedsearch } from "./hedberg.js";
 
 describe("hedberg", () => {
 	describe("glob patterns", () => {
 		it("matches wildcard", () => {
-			assert.equal(hedberg("*.js", "index.js"), 1);
-			assert.equal(hedberg("*.js", "readme.md"), 0);
+			assert.equal(hedmatch("*.js", "index.js"), true);
+			assert.equal(hedmatch("*.js", "readme.md"), false);
 		});
 
 		it("matches single char wildcard", () => {
-			assert.equal(hedberg("????.ts", "test.ts"), 1);
-			assert.equal(hedberg("????.ts", "index.ts"), 0);
+			assert.equal(hedmatch("????.ts", "test.ts"), true);
+			assert.equal(hedmatch("????.ts", "index.ts"), false);
 		});
 
 		it("matches globstar", () => {
-			assert.equal(hedberg("src/**/*.ts", "src/a/b.ts"), 1);
-			assert.equal(hedberg("src/**/*.ts", "lib/a.ts"), 0);
+			assert.equal(hedmatch("src/**/*.ts", "src/a/b.ts"), true);
+			assert.equal(hedmatch("src/**/*.ts", "lib/a.ts"), false);
 		});
 
 		it("matches character class", () => {
-			assert.equal(hedberg("[abc]*.js", "alpha.js"), 1);
-			assert.equal(hedberg("[abc]*.js", "delta.js"), 0);
+			assert.equal(hedmatch("[abc]*.js", "alpha.js"), true);
+			assert.equal(hedmatch("[abc]*.js", "delta.js"), false);
 		});
 
 		it("handles null string", () => {
-			assert.equal(hedberg("*.js", null), 0);
+			assert.equal(hedmatch("*.js", null), false);
 		});
 	});
 
 	describe("glob NOT misdetected as regex", () => {
 		it("file+name.txt stays glob", () => {
-			assert.equal(hedberg("file+name.txt", "file+name.txt"), 1);
-			assert.equal(hedberg("file+name.txt", "fileXname.txt"), 0);
+			assert.equal(hedmatch("file+name.txt", "file+name.txt"), true);
+			assert.equal(hedmatch("file+name.txt", "fileXname.txt"), false);
 		});
 
 		it("c++ stays glob", () => {
-			assert.equal(hedberg("c++", "c++"), 1);
+			assert.equal(hedmatch("c++", "c++"), true);
 		});
 
 		it("parens in path stay glob", () => {
 			assert.equal(
-				hedberg("src/utils (copy)/*", "src/utils (copy)/file.js"),
-				1,
+				hedmatch("src/utils (copy)/*", "src/utils (copy)/file.js"),
+				true,
 			);
 		});
 
 		it("non-numeric brace expansion stays glob", () => {
-			assert.equal(hedberg("log{a,b}.txt", "log{a,b}.txt"), 1);
+			assert.equal(hedmatch("log{a,b}.txt", "log{a,b}.txt"), true);
 		});
 
 		it("globstar with dotted extensions stays glob", () => {
-			assert.equal(hedberg("**/*.test.*", "src/foo.test.js"), 1);
-			assert.equal(hedberg("**/*.test.*", "src/foo.js"), 0);
+			assert.equal(hedmatch("**/*.test.*", "src/foo.test.js"), true);
+			assert.equal(hedmatch("**/*.test.*", "src/foo.js"), false);
 		});
 
 		it("*.foo.* stays glob not regex", () => {
-			assert.equal(hedberg("*.foo.*", "bar.foo.baz"), 1);
-			assert.equal(hedberg("*.foo.*", "nope"), 0);
+			assert.equal(hedmatch("*.foo.*", "bar.foo.baz"), true);
+			assert.equal(hedmatch("*.foo.*", "nope"), false);
 		});
 	});
 
 	describe("regex patterns (require /slashes/)", () => {
 		it("slash-delimited regex matches", () => {
-			assert.equal(hedberg("/^(index|utils)/", "index.js"), 1);
-			assert.equal(hedberg("/^(index|utils)/", "readme.md"), 0);
+			assert.equal(hedmatch("/^(index|utils)/", "index.js"), true);
+			assert.equal(hedmatch("/^(index|utils)/", "readme.md"), false);
 		});
 
 		it("regex with escape sequences", () => {
-			assert.equal(hedberg("/\\.(js|ts)$/", "test.ts"), 1);
-			assert.equal(hedberg("/\\.(js|ts)$/", "test.py"), 0);
+			assert.equal(hedmatch("/\\.(js|ts)$/", "test.ts"), true);
+			assert.equal(hedmatch("/\\.(js|ts)$/", "test.py"), false);
 		});
 
 		it("regex with quantifiers", () => {
-			assert.equal(hedberg("/foo.+bar/", "foo123bar"), 1);
-			assert.equal(hedberg("/\\d+/", "abc123"), 1);
-			assert.equal(hedberg("/\\d+/", "abcdef"), 0);
+			assert.equal(hedmatch("/foo.+bar/", "foo123bar"), true);
+			assert.equal(hedmatch("/\\d+/", "abc123"), true);
+			assert.equal(hedmatch("/\\d+/", "abcdef"), false);
 		});
 
 		it("unslashed patterns are literal, not regex", () => {
 			// Without slashes, these are literal text — no regex detection
-			assert.equal(hedberg("\\d+", "\\d+"), 1);
-			assert.equal(hedberg("\\d+", "abc123"), 0);
+			assert.equal(hedmatch("\\d+", "\\d+"), true);
+			assert.equal(hedmatch("\\d+", "abc123"), false);
 		});
 	});
 
 	describe("regex NOT misdetected as jsonpath", () => {
 		it("$.+ with slashes is regex not jsonpath", () => {
-			assert.equal(hedberg("/$.+/", "anything"), 0);
+			assert.equal(hedmatch("/$.+/", "anything"), false);
 		});
 	});
 
@@ -96,37 +96,37 @@ describe("hedberg", () => {
 			'<root><item id="3"><name>test</name></item><item id="5"/></root>';
 
 		it("matches //element", () => {
-			assert.equal(hedberg("//item", xml), 1);
-			assert.equal(hedberg("//missing", xml), 0);
+			assert.equal(hedmatch("//item", xml), true);
+			assert.equal(hedmatch("//missing", xml), false);
 		});
 
 		it("matches //element with attribute predicate", () => {
-			assert.equal(hedberg("//item[@id='3']", xml), 1);
-			assert.equal(hedberg("//item[@id='99']", xml), 0);
+			assert.equal(hedmatch("//item[@id='3']", xml), true);
+			assert.equal(hedmatch("//item[@id='99']", xml), false);
 		});
 
 		it("matches absolute path with positional predicate", () => {
-			assert.equal(hedberg("/root/item[1]", xml), 1);
+			assert.equal(hedmatch("/root/item[1]", xml), true);
 		});
 
 		it("matches xpath with function in predicate", () => {
-			assert.equal(hedberg("/root/item[position()>1]", xml), 1);
+			assert.equal(hedmatch("/root/item[position()>1]", xml), true);
 		});
 
 		it("matches xpath with axis", () => {
-			assert.equal(hedberg("//item/child::name", xml), 1);
+			assert.equal(hedmatch("//item/child::name", xml), true);
 		});
 
 		it("returns 0 for non-XML string", () => {
-			assert.equal(hedberg("//div", "just plain text"), 0);
+			assert.equal(hedmatch("//div", "just plain text"), false);
 		});
 	});
 
 	describe("xpath NOT misdetected", () => {
 		it("C++ namespace path stays glob", () => {
 			assert.equal(
-				hedberg("/path/to/std::vector.html", "/path/to/std::vector.html"),
-				1,
+				hedmatch("/path/to/std::vector.html", "/path/to/std::vector.html"),
+				true,
 			);
 		});
 	});
@@ -139,42 +139,42 @@ describe("hedberg", () => {
 		});
 
 		it("matches property access", () => {
-			assert.equal(hedberg("$.name", json), 1);
+			assert.equal(hedmatch("$.name", json), true);
 		});
 
 		it("matches nested property", () => {
-			assert.equal(hedberg("$.nested.deep.value", json), 1);
+			assert.equal(hedmatch("$.nested.deep.value", json), true);
 		});
 
 		it("matches array index", () => {
-			assert.equal(hedberg("$.items[0].id", json), 1);
+			assert.equal(hedmatch("$.items[0].id", json), true);
 		});
 
 		it("matches array wildcard", () => {
-			assert.equal(hedberg("$.items[*].id", json), 1);
+			assert.equal(hedmatch("$.items[*].id", json), true);
 		});
 
 		it("matches recursive descent", () => {
-			assert.equal(hedberg("$..value", json), 1);
-			assert.equal(hedberg("$..missing", json), 0);
+			assert.equal(hedmatch("$..value", json), true);
+			assert.equal(hedmatch("$..missing", json), false);
 		});
 
 		it("returns 0 for missing key", () => {
-			assert.equal(hedberg("$.missing", json), 0);
+			assert.equal(hedmatch("$.missing", json), false);
 		});
 
 		it("returns 0 for non-JSON string", () => {
-			assert.equal(hedberg("$.name", "not json"), 0);
+			assert.equal(hedmatch("$.name", "not json"), false);
 		});
 	});
 
 	describe("scheme paths stay glob", () => {
 		it("edit:// is glob", () => {
-			assert.equal(hedberg("edit://*", "edit://3"), 1);
+			assert.equal(hedmatch("edit://*", "edit://3"), true);
 		});
 
 		it("summary:// is glob", () => {
-			assert.equal(hedberg("summary://1", "summary://1"), 1);
+			assert.equal(hedmatch("summary://1", "summary://1"), true);
 		});
 	});
 

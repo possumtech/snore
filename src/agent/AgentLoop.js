@@ -34,7 +34,7 @@ export default class AgentLoop {
 	async #ensureRun(projectId, model, run, options) {
 		const _noContext = options?.noContext === true;
 		const isFork = options?.fork === true;
-		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
+		const requestedModel = model;
 
 		if (run && isFork) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
@@ -113,7 +113,7 @@ export default class AgentLoop {
 			throw new Error(msg("error.project_not_found", { projectId }));
 
 		const noContext = options?.noContext === true;
-		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
+		const requestedModel = model;
 
 		const runInfo = await this.#ensureRun(projectId, model, run, options);
 		if (runInfo.blocked) {
@@ -162,7 +162,7 @@ export default class AgentLoop {
 				projectId,
 				currentRunId,
 				currentAlias,
-				requestedModel: queued.model || process.env.RUMMY_MODEL_DEFAULT,
+				requestedModel: queued.model,
 				prompt: queued.prompt,
 				noContext: promptConfig.noContext || false,
 				options: { ...options, temperature: promptConfig.temperature },

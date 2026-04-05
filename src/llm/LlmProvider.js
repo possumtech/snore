@@ -27,8 +27,7 @@ export default class LlmProvider {
 
 	#getOpenAi() {
 		if (!this.#openAi) {
-			const baseUrl =
-				process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE;
+			const baseUrl = process.env.OPENAI_BASE_URL;
 			if (!baseUrl) throw new Error(msg("error.openai_base_url_missing"));
 			this.#openAi = new OpenAiClient(baseUrl, process.env.OPENAI_API_KEY);
 		}
@@ -47,9 +46,6 @@ export default class LlmProvider {
 	async resolve(alias) {
 		const row = await this.#db.get_model_by_alias.get({ alias });
 		if (row) return row.actual;
-		// Fallback to env for transition period
-		const envActual = process.env[`RUMMY_MODEL_${alias}`];
-		if (envActual) return envActual;
 		throw new Error(msg("error.model_alias_unknown", { alias }));
 	}
 
