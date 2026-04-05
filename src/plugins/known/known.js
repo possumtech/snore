@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { FIDELITY_ORDER, langFor } from "../helpers.js";
+import { langFor } from "../helpers.js";
 
 export default class Known {
 	#core;
@@ -40,19 +40,7 @@ export default class Known {
 		);
 		if (entries.length === 0) return content;
 
-		const SCHEME_ORDER = { skill: 0 };
-		entries.sort((a, b) => {
-			const sa = SCHEME_ORDER[a.scheme] ?? 1;
-			const sb = SCHEME_ORDER[b.scheme] ?? 1;
-			if (sa !== sb) return sa - sb;
-			const fa = FIDELITY_ORDER[a.fidelity] ?? 0;
-			const fb = FIDELITY_ORDER[b.fidelity] ?? 0;
-			if (fa !== fb) return fa - fb;
-			if (a.category < b.category) return -1;
-			if (a.category > b.category) return 1;
-			return 0;
-		});
-
+		// Rows arrive pre-sorted by SQL: skill → index → summary → full, then by recency
 		const lines = entries.map((e) => renderKnowledgeEntry(e));
 		return `${content}\n\n<known>\n${lines.join("\n")}\n</known>`;
 	}

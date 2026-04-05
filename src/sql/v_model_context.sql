@@ -10,6 +10,7 @@ classified AS (
 		, ke.scheme
 		, ke.state
 		, ke.turn
+		, ke.updated_at
 		, ke.attributes
 		, ke.tokens AS tokens_full
 		, CASE
@@ -38,6 +39,7 @@ projected AS (
 		, state
 		, fidelity
 		, turn
+		, updated_at
 		, attributes
 		, CASE
 			WHEN fidelity IN ('full', 'summary') THEN body
@@ -76,16 +78,23 @@ SELECT
 			CASE category
 				WHEN 'tool' THEN 1
 				WHEN 'known' THEN 2
-				WHEN 'known_index' THEN 3
-				WHEN 'file_index' THEN 4
-				WHEN 'file_summary' THEN 5
-				WHEN 'file' THEN 6
-				WHEN 'result' THEN 7
-				WHEN 'structural' THEN 8
-				WHEN 'unknown' THEN 9
-				WHEN 'prompt' THEN 10
-				ELSE 10
+				WHEN 'known_index' THEN 2
+				WHEN 'file_index' THEN 2
+				WHEN 'file' THEN 2
+				WHEN 'result' THEN 3
+				WHEN 'structural' THEN 4
+				WHEN 'unknown' THEN 5
+				WHEN 'prompt' THEN 6
+				ELSE 6
 			END
+			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
+			, CASE state
+				WHEN 'index' THEN 0
+				WHEN 'summary' THEN 1
+				ELSE 2
+			END
+			, turn
+			, updated_at
 			, id
 	) AS ordinal
 	, countTokens(body) AS tokens

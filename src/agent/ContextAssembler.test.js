@@ -254,7 +254,7 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[1].content.includes("<progress>"));
 		});
 
-		it("renders known sorted by fidelity then category", async () => {
+		it("renders known entries in row order", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -265,17 +265,17 @@ describe("ContextAssembler", () => {
 					tokens: 5,
 					attributes: null,
 					category: "file",
-					source_turn: 1,
+					source_turn: 3,
 				},
 				{
 					ordinal: 2,
-					path: "src/utils.js",
+					path: "src/old.js",
 					scheme: null,
-					fidelity: "index",
-					body: "",
-					tokens: 0,
+					fidelity: "full",
+					body: "const y = 2;",
+					tokens: 5,
 					attributes: null,
-					category: "file_index",
+					category: "file",
 					source_turn: 1,
 				},
 				{
@@ -287,18 +287,7 @@ describe("ContextAssembler", () => {
 					tokens: 1,
 					attributes: null,
 					category: "known",
-					source_turn: 1,
-				},
-				{
-					ordinal: 4,
-					path: "known://old",
-					scheme: "known",
-					fidelity: "index",
-					body: "",
-					tokens: 0,
-					attributes: null,
-					category: "known_index",
-					source_turn: 1,
+					source_turn: 2,
 				},
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
@@ -309,14 +298,9 @@ describe("ContextAssembler", () => {
 			const content = messages[0].content;
 
 			assert.ok(content.includes("<known>"));
-			assert.ok(content.includes("src/utils.js"), "index file listed");
-			assert.ok(content.includes("known://old"), "index known listed");
-			assert.ok(content.includes("const x = 1;"), "full file rendered");
-			assert.ok(content.includes("known://auth"), "full known rendered");
-
-			const indexPos = content.indexOf("src/utils.js");
-			const fullPos = content.indexOf("const x = 1;");
-			assert.ok(indexPos < fullPos, "index before full");
+			assert.ok(content.includes("const y = 2;"), "old file rendered");
+			assert.ok(content.includes("JWT"), "known rendered");
+			assert.ok(content.includes("const x = 1;"), "new file rendered");
 		});
 
 		it("renders unknowns in system message", async () => {
