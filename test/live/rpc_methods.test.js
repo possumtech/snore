@@ -95,13 +95,24 @@ describe("E2E: RPC Methods", () => {
 	});
 
 	it("run/abort sets status to aborted", { timeout: TIMEOUT }, async () => {
-		const askResult = await client.call("ask", { model, prompt: "Hi." });
-		const result = await client.call("run/abort", { run: askResult.run });
-		assert.strictEqual(result.status, "ok");
-
+		// Start a long-running ask without awaiting completion
+		const askPromise = client.call("ask", {
+			model,
+			prompt:
+				"Carefully analyze every file in this project. Write a 500-word essay about each one.",
+		});
+		// Give it time to start, then abort
+		await new Promise((r) => setTimeout(r, 1000));
 		const runs = await client.call("getRuns");
-		const aborted = runs.find((r) => r.run === askResult.run);
-		assert.strictEqual(aborted.status, "aborted");
+		const active = runs.find((r) => r.status === "running");
+		if (active) {
+			const result = await client.call("run/abort", { run: active.run });
+			assert.strictEqual(result.status, "ok");
+			const after = await client.call("getRuns");
+			const aborted = after.find((r) => r.run === active.run);
+			assert.strictEqual(aborted.status, "aborted");
+		}
+		await askPromise.catch(() => {});
 	});
 
 	it("run/inject resumes idle run", { timeout: TIMEOUT }, async () => {

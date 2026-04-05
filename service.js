@@ -59,19 +59,17 @@ async function main() {
 		.filter((f) => f.endsWith(".js") && !f.endsWith(".test.js"))
 		.map((f) => join(functionsDir, f));
 
+	const mmapMb = Number.parseInt(process.env.RUMMY_MMAP_MB || "0", 10);
 	const db = await SqlRite.open({
 		path: dbPath,
 		dir: ["migrations", "src"],
 		functions: sqlFunctions,
+		params: {
+			mmap_size: mmapMb * 1024 * 1024,
+		},
 	});
 
-	// 6. Configure SQLite
-	if (process.env.RUMMY_MMAP_MB) {
-		const bytes = Number.parseInt(process.env.RUMMY_MMAP_MB, 10) * 1024 * 1024;
-		await db.exec(`PRAGMA mmap_size = ${bytes}`);
-	}
-
-	// 7. Initialize plugins (inject DB, register schemes)
+	// 6. Initialize plugins (inject DB, register schemes)
 	await initPlugins(db, null, hooks);
 
 	// 7. Bootstrap models from env vars

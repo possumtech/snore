@@ -30,6 +30,7 @@ export default class TestDb {
 			path: dbPath,
 			dir: ["migrations", "src"],
 			functions: sqlFunctions,
+			params: { mmap_size: 0 },
 		});
 		const hooks = createHooks();
 		hooks.rpc.registry = new RpcRegistry();

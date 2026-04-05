@@ -352,7 +352,7 @@ export default class TurnExecutor {
 				options?.temperature ??
 				Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
 			contextSize,
-			usage,
+			usage: result.usage,
 		};
 	}
 

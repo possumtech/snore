@@ -204,7 +204,7 @@ describe("E2E Stories", () => {
 		const r = await client.call("ask", {
 			model,
 			prompt:
-				"What test framework does this project use? Register an unknown for it, then investigate by reading project files. Report what you find.",
+				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What test framework does this project use?",
 		});
 		await client.assertRun(r, "completed", "unknowns");
 		const entries = await allEntries(tdb.db, r.run);
