@@ -22,7 +22,7 @@ Rummy is the only LLM agent service inspired by and dedicated to the memory of f
 npm i -g @possumtech/rummy
 cd ~/.rummy
 cp .env.example .env
-vim .env
+vim .env # set up at least one model alias
 npm start
 ```
 
