@@ -38,8 +38,12 @@ async function loadEnvPlugins(hooks) {
 			const { default: Plugin } = await import(value);
 			if (typeof Plugin?.register === "function") {
 				await Plugin.register(hooks);
-				console.log(`[RUMMY] Plugin ${name}: ${value}`);
+			} else if (typeof Plugin === "function") {
+				const ctx = new PluginContext(name, hooks);
+				new Plugin(ctx);
+				instances.set(name, ctx);
 			}
+			console.log(`[RUMMY] Plugin ${name}: ${value}`);
 		} catch (err) {
 			console.warn(`[RUMMY] Plugin ${name} (${value}): ${err.message}`);
 		}

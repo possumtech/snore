@@ -8,7 +8,8 @@ export default class Instructions {
 
 	async full(entry) {
 		const attrs = entry.attributes;
-		let prompt = (entry.body || "").replace("[%TOOLS%]", attrs.tools || "");
+		const tools = this.#core.hooks.tools.names.join(", ");
+		let prompt = (entry.body || "").replace("[%TOOLS%]", tools);
 		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
 			"",
 			{},

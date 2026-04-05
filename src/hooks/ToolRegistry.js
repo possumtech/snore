@@ -31,7 +31,7 @@ export default class ToolRegistry {
 		this.#views.get(scheme).set(fidelity, fn);
 	}
 
-	view(scheme, entry) {
+	async view(scheme, entry) {
 		const fidelityMap = this.#views.get(scheme);
 		if (!fidelityMap) {
 			throw new Error(
@@ -42,7 +42,7 @@ export default class ToolRegistry {
 		const fidelity = entry.fidelity || "full";
 		const fn = fidelityMap.get(fidelity);
 		if (!fn) return "";
-		return fn(entry);
+		return await fn(entry);
 	}
 
 	hasView(scheme) {

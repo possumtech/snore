@@ -85,15 +85,12 @@ describe("Message assembly", () => {
 		});
 		const messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			{
-				type: "act",
-				tools: "unknown get env ask_user set mv cp store rm sh update summary",
-			},
+			{ type: "act" },
 			hooks,
 		);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("<act tools="), "should have <act> tag");
-		assert.ok(user.content.includes("sh "), "act tools should include sh");
+		assert.ok(user.content.includes("sh"), "act tools should include sh");
 	});
 
 	it("pattern result appears in messages with matched paths", async () => {

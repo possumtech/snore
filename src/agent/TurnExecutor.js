@@ -97,10 +97,6 @@ export default class TurnExecutor {
 		// Write instructions entry — body is prompt.md, attributes from registry.
 		const promptBody = await this.#loadPrompt();
 		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
-		const toolNames = this.#hooks.tools
-			.namesForMode(mode)
-			.map((t) => `\`<${t}/>\``)
-			.join(" ");
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
@@ -109,7 +105,6 @@ export default class TurnExecutor {
 			"info",
 			{
 				attributes: {
-					tools: toolNames,
 					persona: runRow2?.persona || null,
 				},
 			},
@@ -170,7 +165,7 @@ export default class TurnExecutor {
 					"instructions://system",
 				)
 			: null;
-		const systemPrompt = this.#hooks.tools.view("instructions", {
+		const systemPrompt = await this.#hooks.tools.view("instructions", {
 			path: "instructions://system",
 			scheme: "instructions",
 			body: instrEntry[0]?.body || promptBody,
@@ -186,7 +181,7 @@ export default class TurnExecutor {
 		});
 		for (const row of viewRows) {
 			const scheme = row.scheme || "file";
-			const projectedBody = this.#hooks.tools.view(scheme, {
+			const projectedBody = await this.#hooks.tools.view(scheme, {
 				path: row.path,
 				scheme,
 				body: row.body,
@@ -226,7 +221,6 @@ export default class TurnExecutor {
 			rows,
 			{
 				type: mode,
-				tools: toolNames,
 				systemPrompt,
 			},
 			this.#hooks,

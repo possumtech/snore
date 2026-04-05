@@ -14,11 +14,12 @@ export default class Prompt {
 
 		const mode = promptEntry?.scheme || ctx.type;
 		const body = promptEntry?.body || "";
+		const tools = this.#core.hooks.tools.namesForMode(mode).join(", ");
 		const warn =
 			mode === "ask"
 				? ' warn="File and system modification prohibited on this turn."'
 				: "";
 
-		return `${content}<${mode} tools="${ctx.tools}"${warn}>${body}</${mode}>`;
+		return `${content}<${mode} tools="${tools}"${warn}>${body}</${mode}>`;
 	}
 }

@@ -45,7 +45,7 @@
 		"ws": "^8.19.0"
 	},
 	"optionalDependencies": {
-		"@possumtech/rummy.repo": "^0.0.1",
-		"@possumtech/rummy.web": "^0.0.4"
+		"@possumtech/rummy.repo": "^0.0.3",
+		"@possumtech/rummy.web": "^0.0.6"
 	}
 }
