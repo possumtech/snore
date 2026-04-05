@@ -1,6 +1,6 @@
 import KnownStore from "../../agent/KnownStore.js";
+import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
-import HeuristicMatcher, { generatePatch } from "./HeuristicMatcher.js";
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
@@ -117,10 +117,8 @@ export default class Set {
 				return;
 			}
 
-			const { patch, searchText, replaceText, warning, error } = Set.#applyEdit(
-				match.body,
-				attrs,
-			);
+			const { patch, searchText, replaceText, warning, error } =
+				Set.#applyRevision(match.body, attrs);
 
 			const state = error ? "error" : "pass";
 			const resultPath = `set://${match.path}`;
@@ -174,7 +172,7 @@ export default class Set {
 			for (const rev of attrs.revisions) {
 				if (!rev) continue;
 				const { patch, searchText, replaceText, warning, error } =
-					Set.#applyEdit(current, { search: rev.search, replace: rev.replace });
+					Set.#applyRevision(current, rev);
 
 				if (error) lastError = error;
 				else if (patch) current = patch;
@@ -223,61 +221,35 @@ export default class Set {
 		return null;
 	}
 
-	static #applyEdit(body, attrs) {
-		let patch = null;
-		let warning = null;
-		let error = null;
-		let searchText = null;
-		let replaceText = null;
-
+	static #applyRevision(body, attrs) {
 		if (attrs.search != null) {
-			searchText = attrs.search;
-			replaceText = attrs.replace ?? "";
-			if (attrs.sed) {
-				const flags = attrs.flags || "";
-				try {
-					const re = new RegExp(
-						searchText,
-						flags.includes("g") ? flags : `${flags}g`,
-					);
-					patch = body.replace(re, replaceText);
-					if (patch === body) patch = null;
-				} catch {
-					patch = null;
-				}
-			}
-			if (!patch && body.includes(searchText)) {
-				patch = body.replaceAll(searchText, replaceText);
-			}
-			if (!patch) {
-				const matched = HeuristicMatcher.matchAndPatch(
-					"",
-					body,
-					searchText,
-					replaceText,
-				);
-				patch = matched.newContent;
-				warning = matched.warning;
-				error = matched.error;
-			}
-		} else if (attrs.blocks?.length > 0 && attrs.blocks[0].search === null) {
-			patch = attrs.blocks[0].replace;
-			replaceText = attrs.blocks[0].replace;
-		} else if (body && attrs.blocks?.length > 0) {
-			const block = attrs.blocks[0];
-			searchText = block.search;
-			replaceText = block.replace;
-			const matched = HeuristicMatcher.matchAndPatch(
-				"",
-				body,
-				block.search,
-				block.replace,
-			);
-			patch = matched.newContent;
-			warning = matched.warning;
-			error = matched.error;
+			return Hedberg.replace(body, attrs.search, attrs.replace ?? "", {
+				sed: attrs.sed,
+				flags: attrs.flags,
+			});
 		}
-
-		return { patch, searchText, replaceText, warning, error };
+		if (attrs.blocks?.length > 0 && attrs.blocks[0].search === null) {
+			return {
+				patch: attrs.blocks[0].replace,
+				searchText: null,
+				replaceText: attrs.blocks[0].replace,
+				warning: null,
+				error: null,
+			};
+		}
+		if (body && attrs.blocks?.length > 0) {
+			const block = attrs.blocks[0];
+			return Hedberg.replace(body, block.search, block.replace, {
+				sed: block.sed,
+				flags: block.flags,
+			});
+		}
+		return {
+			patch: null,
+			searchText: null,
+			replaceText: null,
+			warning: null,
+			error: null,
+		};
 	}
 }
