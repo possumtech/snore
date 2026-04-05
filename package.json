@@ -1,6 +1,6 @@
 {
-	"name": "rummy",
-	"version": "0.2.0",
+	"name": "@possumtech/rummy",
+	"version": "0.2.1",
 	"description": "Relational Unknowns Memory Management Yoke",
 	"keywords": [
 		"llm"
