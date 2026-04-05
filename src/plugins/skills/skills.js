@@ -1,20 +1,19 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 
-export default class SkillsPlugin {
-	static register(hooks) {
-		const r = hooks.rpc.registry;
+export default class Skills {
+	#core;
 
-		// --- Skills (stackable, per-run entries) ---
+	constructor(core) {
+		this.#core = core;
+		const r = core.hooks.rpc.registry;
 
 		r.register("skill/add", {
 			handler: async (params, ctx) => {
 				if (!params.name) throw new Error("name is required");
 				if (!params.run) throw new Error("run is required");
 
-				const runRow = await ctx.db.get_run_by_alias.get({
-					alias: params.run,
-				});
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
 				const body = await loadFile("skills", params.name);
@@ -35,7 +34,8 @@ export default class SkillsPlugin {
 
 				return { status: "ok", skill: params.name };
 			},
-			description: "Add a skill to a run. Reads from config/skills/{name}.md.",
+			description:
+				"Add a skill to a run. Reads from RUMMY_HOME/skills/{name}.md.",
 			params: {
 				run: "string — run alias",
 				name: "string — skill name (filename without .md)",
@@ -48,9 +48,7 @@ export default class SkillsPlugin {
 				if (!params.name) throw new Error("name is required");
 				if (!params.run) throw new Error("run is required");
 
-				const runRow = await ctx.db.get_run_by_alias.get({
-					alias: params.run,
-				});
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
 				const store = ctx.projectAgent.entries;
@@ -70,9 +68,7 @@ export default class SkillsPlugin {
 			handler: async (params, ctx) => {
 				if (!params.run) throw new Error("run is required");
 
-				const runRow = await ctx.db.get_run_by_alias.get({
-					alias: params.run,
-				});
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
 				const store = ctx.projectAgent.entries;
@@ -97,15 +93,11 @@ export default class SkillsPlugin {
 			requiresInit: true,
 		});
 
-		// --- Personas (exclusive, per-run column) ---
-
 		r.register("persona/set", {
 			handler: async (params, ctx) => {
 				if (!params.run) throw new Error("run is required");
 
-				const runRow = await ctx.db.get_run_by_alias.get({
-					alias: params.run,
-				});
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
 				let text = params.text;
@@ -124,7 +116,7 @@ export default class SkillsPlugin {
 				return { status: "ok" };
 			},
 			description:
-				"Set persona on a run. Pass name to load from config/personas/{name}.md, or text for raw content. Pass neither to clear.",
+				"Set persona on a run. Pass name or text. Pass neither to clear.",
 			params: {
 				run: "string — run alias",
 				name: "string? — persona filename (without .md)",
@@ -140,8 +132,6 @@ export default class SkillsPlugin {
 		});
 	}
 }
-
-// --- Shared file helpers ---
 
 function configDir(subfolder) {
 	const home = process.env.RUMMY_HOME;
@@ -161,9 +151,7 @@ async function loadFile(subfolder, name) {
 	try {
 		return await fs.readFile(path, "utf8");
 	} catch (err) {
-		if (err.code === "ENOENT") {
-			throw new Error(`Not found: ${path}`);
-		}
+		if (err.code === "ENOENT") throw new Error(`Not found: ${path}`);
 		throw err;
 	}
 }
@@ -175,10 +163,7 @@ async function listAvailable(subfolder) {
 		const files = await fs.readdir(dir);
 		return files
 			.filter((f) => f.endsWith(".md"))
-			.map((f) => ({
-				name: f.replace(".md", ""),
-				path: join(dir, f),
-			}));
+			.map((f) => ({ name: f.replace(".md", ""), path: join(dir, f) }));
 	} catch {
 		return [];
 	}

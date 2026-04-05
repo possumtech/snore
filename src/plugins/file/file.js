@@ -1,21 +1,21 @@
 import { isAbsolute, relative } from "node:path";
 
-/**
- * File plugin — owns everything about files on disk as entries.
- * Projections, file constraints, and constraint RPCs.
- */
-export default class FilePlugin {
-	static register(hooks) {
-		// Projections for schemes that appear in the model view
-		hooks.tools.onProject("file", (entry) => entry.body);
-		hooks.tools.onProject("known", (entry) => entry.body);
-		hooks.tools.onProject("skill", (entry) => entry.body);
-		hooks.tools.onProject("ask", (entry) => entry.body);
-		hooks.tools.onProject("act", (entry) => entry.body);
-		hooks.tools.onProject("progress", (entry) => entry.body);
+export default class File {
+	#core;
+
+	constructor(core) {
+		this.#core = core;
+		core.on("full", this.full.bind(this));
+
+		// Register identity projections for schemes that just pass through body
+		for (const scheme of ["known", "skill", "ask", "act", "progress"]) {
+			core.hooks.tools.onProject(scheme, (entry) => entry.body);
+		}
 	}
 
-	// --- File constraint methods (called by RPC handlers) ---
+	full(entry) {
+		return entry.body;
+	}
 
 	static async activate(
 		db,
@@ -44,7 +44,7 @@ export default class FilePlugin {
 	}
 
 	static async ignore(db, knownStore, projectId, pattern) {
-		return FilePlugin.activate(db, knownStore, projectId, pattern, "ignore");
+		return File.activate(db, knownStore, projectId, pattern, "ignore");
 	}
 
 	static async drop(db, projectId, pattern) {
