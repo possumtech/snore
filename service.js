@@ -1,20 +1,11 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 // Helper to expand ~ in paths since node --env-file doesn't do it
-function expandPath(path) {
-	if (!path) return path;
-	if (path.startsWith("~/")) return join(homedir(), path.slice(2));
-	if (path === "~") return homedir();
-	return path;
-}
-
 // 0. Pre-flight Check: Environment and Dependencies
-const rummyHome = expandPath(process.env.RUMMY_HOME);
-if (rummyHome) process.env.RUMMY_HOME = rummyHome;
+const rummyHome = process.env.RUMMY_HOME;
 const defaultModel = process.env.RUMMY_MODEL_DEFAULT;
 
 if (!rummyHome) {
