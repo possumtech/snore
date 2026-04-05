@@ -60,10 +60,6 @@ export default class PluginContext {
 			this.#hooks.tools.onView(this.#name, callback, event);
 			return;
 		}
-		if (event === "docs") {
-			this.#hooks.tools.setDocs(this.#name, callback);
-			return;
-		}
 		const hook = this.#resolveEvent(event);
 		if (hook) hook.on(callback, priority);
 	}

@@ -425,23 +425,4 @@ describe("Handler dispatch", () => {
 			assert.deepStrictEqual(order, ["first"], "chain stopped after false");
 		});
 	});
-
-	describe("tool:// materialization", () => {
-		it("only materializes tools with docs", async () => {
-			await hooks.tools.materialize(store, RUN_ID, 2);
-
-			const entries = await store.getEntriesByPattern(RUN_ID, "tool://*", null);
-			// Only tools with docs get entries (e.g., search from web plugin)
-			for (const e of entries) {
-				assert.ok(e.body.length > 0, `${e.path} should have docs body`);
-			}
-			// Core tools (get, set, etc.) should NOT have entries
-			const getTool = entries.find((e) => e.path === "tool://get");
-			assert.strictEqual(
-				getTool,
-				undefined,
-				"tool://get should not exist (no docs)",
-			);
-		});
-	});
 });

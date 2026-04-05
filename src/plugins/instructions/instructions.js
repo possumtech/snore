@@ -6,15 +6,15 @@ export default class Instructions {
 		core.on("full", this.full.bind(this));
 	}
 
-	full(entry) {
+	async full(entry) {
 		const attrs = entry.attributes;
 		let prompt = (entry.body || "").replace("[%TOOLS%]", attrs.tools || "");
-		for (const doc of attrs.toolDescriptions || []) {
-			prompt += `\n\n${doc}`;
-		}
-		if (attrs.persona) {
-			prompt += `\n\n## Persona\n\n${attrs.persona}`;
-		}
+		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
+			"",
+			{},
+		);
+		if (toolDocs) prompt += `\n\n${toolDocs}`;
+		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;
 	}
 }

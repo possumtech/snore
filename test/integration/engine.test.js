@@ -3,11 +3,9 @@ import { dirname, join } from "node:path";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import KnownStore from "../../src/agent/KnownStore.js";
-import createHooks from "../../src/hooks/Hooks.js";
-import { registerPlugins } from "../../src/plugins/index.js";
 import materialize from "../helpers/materialize.js";
 
-const pluginsDir = join(
+const _pluginsDir = join(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../src/plugins",
 );
@@ -171,22 +169,6 @@ describe("Engine integration", () => {
 			assert.ok(
 				active.body.includes("function bar()"),
 				"body should pass through at summary fidelity",
-			);
-		});
-	});
-
-	describe("tool:// materialization", () => {
-		it("only materializes tools with docs", async () => {
-			const hooks = createHooks();
-			await registerPlugins([pluginsDir], hooks);
-			// Core tools have no docs — nothing should be materialized
-			await hooks.tools.materialize(store, RUN_ID, 1);
-
-			const readTool = await store.getBody(RUN_ID, "tool://read");
-			assert.strictEqual(
-				readTool,
-				null,
-				"tool://read should not exist (no docs)",
 			);
 		});
 	});

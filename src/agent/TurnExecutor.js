@@ -101,10 +101,6 @@ export default class TurnExecutor {
 			.namesForMode(mode)
 			.map((t) => `\`<${t}/>\``)
 			.join(" ");
-		const toolDescriptions = [];
-		for (const [, def] of this.#hooks.tools.entries()) {
-			if (def.docs) toolDescriptions.push(def.docs);
-		}
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
@@ -114,7 +110,6 @@ export default class TurnExecutor {
 			{
 				attributes: {
 					tools: toolNames,
-					toolDescriptions,
 					persona: runRow2?.persona || null,
 				},
 			},

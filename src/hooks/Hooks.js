@@ -54,6 +54,9 @@ export default function createHooks(debug = false) {
 			system: createFilter("assembly.system"),
 			user: createFilter("assembly.user"),
 		},
+		instructions: {
+			toolDocs: createFilter("instructions.toolDocs"),
+		},
 		ask: {
 			started: createEvent("ask.started"),
 			completed: createEvent("ask.completed"),
