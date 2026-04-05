@@ -1,22 +1,20 @@
-const BOTH = new Set(["ask", "act"]);
+export default class Env {
+	#core;
 
-export default class EnvPlugin {
-	static register(hooks) {
-		hooks.tools.register("env", {
-			modes: BOTH,
-			category: "ask",
-			handler: handleEnv,
-			project: (entry) => {
-				const attrs = entry.attributes || {};
-				return `# env ${attrs.command || ""}\n${entry.body}`;
-			},
+	constructor(core) {
+		this.#core = core;
+		core.on("handler", this.handler.bind(this));
+		core.on("full", this.full.bind(this));
+	}
+
+	async handler(entry, rummy) {
+		const { entries: store, sequence: turn, runId } = rummy;
+		await store.upsert(runId, turn, entry.resultPath, entry.body, "pass", {
+			attributes: entry.attributes,
 		});
 	}
-}
 
-async function handleEnv(entry, rummy) {
-	const { entries: store, sequence: turn, runId } = rummy;
-	await store.upsert(runId, turn, entry.resultPath, entry.body, "pass", {
-		attributes: entry.attributes,
-	});
+	full(entry) {
+		return `# env ${entry.attributes.command || ""}\n${entry.body}`;
+	}
 }

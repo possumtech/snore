@@ -1,11 +1,12 @@
-const BOTH = new Set(["ask", "act"]);
+export default class Summarize {
+	#core;
 
-export default class SummarizePlugin {
-	static register(hooks) {
-		hooks.tools.register("summarize", {
-			modes: BOTH,
-			category: "structural",
-			project: (entry) => `# summarize\n${entry.body}`,
-		});
+	constructor(core) {
+		this.#core = core;
+		core.on("full", this.full.bind(this));
+	}
+
+	full(entry) {
+		return `# summarize\n${entry.body}`;
 	}
 }

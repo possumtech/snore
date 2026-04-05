@@ -1,11 +1,12 @@
-const BOTH = new Set(["ask", "act"]);
+export default class Update {
+	#core;
 
-export default class UpdatePlugin {
-	static register(hooks) {
-		hooks.tools.register("update", {
-			modes: BOTH,
-			category: "structural",
-			project: (entry) => `# update\n${entry.body}`,
-		});
+	constructor(core) {
+		this.#core = core;
+		core.on("full", this.full.bind(this));
+	}
+
+	full(entry) {
+		return `# update\n${entry.body}`;
 	}
 }

@@ -1,22 +1,20 @@
-const ACT_ONLY = new Set(["act"]);
+export default class Sh {
+	#core;
 
-export default class ShPlugin {
-	static register(hooks) {
-		hooks.tools.register("sh", {
-			modes: ACT_ONLY,
-			category: "act",
-			handler: handleSh,
-			project: (entry) => {
-				const attrs = entry.attributes || {};
-				return `# sh ${attrs.command || ""}\n${entry.body}`;
-			},
+	constructor(core) {
+		this.#core = core;
+		core.on("handler", this.handler.bind(this));
+		core.on("full", this.full.bind(this));
+	}
+
+	async handler(entry, rummy) {
+		const { entries: store, sequence: turn, runId } = rummy;
+		await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
+			attributes: entry.attributes,
 		});
 	}
-}
 
-async function handleSh(entry, rummy) {
-	const { entries: store, sequence: turn, runId } = rummy;
-	await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
-		attributes: entry.attributes,
-	});
+	full(entry) {
+		return `# sh ${entry.attributes.command || ""}\n${entry.body}`;
+	}
 }

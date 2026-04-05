@@ -1,10 +1,10 @@
 export default class Rm {
-	#rummy;
+	#core;
 
-	constructor(rummy) {
-		this.#rummy = rummy;
-		rummy.on("handler", this.handler.bind(this));
-		rummy.on("full", this.full.bind(this));
+	constructor(core) {
+		this.#core = core;
+		core.on("handler", this.handler.bind(this));
+		core.on("full", this.full.bind(this));
 	}
 
 	async handler(entry, rummy) {

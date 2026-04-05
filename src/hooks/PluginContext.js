@@ -1,10 +1,11 @@
 /**
- * PluginContext is the interface a plugin receives at construction time.
- * It carries the plugin's identity and provides registration methods
- * for handlers, views, events, and filters.
+ * PluginContext is the plugin-only interface to the rummy system.
+ * Available as `rummy.core` on the per-turn RummyContext, and as the
+ * direct object passed to plugin constructors at startup.
  *
- * Startup-scoped: created once per plugin when the service starts.
- * Runtime context (runId, turn) is passed to handlers per-invocation.
+ * Carries plugin identity, hook registration, and infrastructure access.
+ * The unified API (tool verbs, queries) lives on RummyContext.
+ * This is the tier boundary: clients can't reach core.
  */
 export default class PluginContext {
 	#name;
@@ -37,10 +38,16 @@ export default class PluginContext {
 		this.#store = value;
 	}
 
+	get hooks() {
+		return this.#hooks;
+	}
+
 	/**
 	 * Register a named callback for this plugin.
-	 * "handler" and "view" register against this plugin's tool scheme.
-	 * All other names register as event subscriptions.
+	 * "handler" registers the tool handler.
+	 * "full"/"summary" register fidelity projections.
+	 * "docs" sets tool documentation.
+	 * Everything else resolves to a hook event.
 	 */
 	on(event, callback, priority = 10) {
 		if (event === "handler") {
