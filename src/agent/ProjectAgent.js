@@ -40,7 +40,7 @@ export default class ProjectAgent {
 		const projectRow = await this.#db.upsert_project.get({
 			name: projectName,
 			project_root: projectRoot,
-			config_path: configPath || null,
+			config_path: configPath ?? null,
 		});
 		const projectId = projectRow.id;
 
@@ -56,8 +56,6 @@ export default class ProjectAgent {
 	get entries() {
 		return this.#knownStore;
 	}
-
-	// --- Run operations ---
 
 	async ask(projectId, model, prompt, run = null, options = {}) {
 		return this.#agentLoop.run(

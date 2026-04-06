@@ -19,6 +19,7 @@ export default class Get {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId } = rummy;
 		const target = entry.attributes.path;
+		if (!target) return;
 		const bodyFilter = entry.attributes.body || null;
 		const isPattern = bodyFilter || target.includes("*");
 		const matches = await store.getEntriesByPattern(runId, target, bodyFilter);

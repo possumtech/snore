@@ -67,7 +67,7 @@ export default class Rpc {
 				const row = await ctx.db.upsert_model.get({
 					alias: params.alias,
 					actual: params.actual,
-					context_length: params.contextLength || null,
+					context_length: params.contextLength ?? null,
 				});
 				return { id: row.id, alias: params.alias };
 			},
@@ -90,7 +90,7 @@ export default class Rpc {
 
 		// --- Entry operations (same dispatch as model) ---
 
-		r.register("read", {
+		r.register("get", {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
 
@@ -159,7 +159,7 @@ export default class Rpc {
 			requiresInit: true,
 		});
 
-		r.register("write", {
+		r.register("set", {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
 				if (!params.run) throw new Error("run is required");
@@ -169,19 +169,15 @@ export default class Rpc {
 				if (scheme) {
 					await rummy.set({
 						path: params.path,
-						body: params.body || "",
+						body: params.body,
 						state: params.state || "full",
 						attributes: params.attributes,
 					});
 				} else {
-					await dispatchTool(
-						hooks,
-						rummy,
-						"set",
-						params.path,
-						params.body || "",
-						{ path: params.path, ...params.attributes },
-					);
+					await dispatchTool(hooks, rummy, "set", params.path, params.body, {
+						path: params.path,
+						...params.attributes,
+					});
 				}
 				return { status: "ok" };
 			},
@@ -196,7 +192,7 @@ export default class Rpc {
 			requiresInit: true,
 		});
 
-		r.register("delete", {
+		r.register("rm", {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
 				if (!params.run) throw new Error("run is required");
@@ -225,9 +221,9 @@ export default class Rpc {
 				if (!run) return [];
 				const entries = await ctx.projectAgent.entries.getEntriesByPattern(
 					run.id,
-					params.pattern || "*",
-					params.body || null,
-					{ limit: params.limit, offset: params.offset },
+					params.pattern,
+					params.body,
+					{ limit: params.limit ?? null, offset: params.offset },
 				);
 				return entries.map((e) => ({
 					path: e.path,
@@ -256,7 +252,7 @@ export default class Rpc {
 				const runRow = await ctx.db.create_run.get({
 					project_id: ctx.projectId,
 					parent_run_id: null,
-					model: params.model,
+					model: params.model ?? null,
 					alias,
 					temperature: params.temperature ?? null,
 					persona: params.persona ?? null,
@@ -283,8 +279,8 @@ export default class Rpc {
 					params.prompt,
 					params.run,
 					{
-						temperature: params.temperature,
-						persona: params.persona,
+						temperature: params.temperature ?? null,
+						persona: params.persona ?? null,
 						contextLimit: params.contextLimit,
 						noContext: params.noContext,
 						fork: params.fork,
@@ -315,8 +311,8 @@ export default class Rpc {
 					params.prompt,
 					params.run,
 					{
-						temperature: params.temperature,
-						persona: params.persona,
+						temperature: params.temperature ?? null,
+						persona: params.persona ?? null,
 						contextLimit: params.contextLimit,
 						noContext: params.noContext,
 						fork: params.fork,
@@ -447,7 +443,7 @@ export default class Rpc {
 					run: row.alias,
 					status: row.status,
 					turn: row.turn,
-					summary: row.summary || "",
+					summary: row.summary,
 					created: row.created_at,
 				}));
 			},
@@ -512,8 +508,8 @@ export default class Rpc {
 							};
 						}),
 					},
-					last_user_prompt: promptRow?.body || "",
-					last_summary: summaryRow?.body || "",
+					last_user_prompt: promptRow?.body,
+					last_summary: summaryRow?.body,
 				};
 			},
 			description: "Full run detail.",
@@ -558,24 +554,17 @@ async function buildRunContext(hooks, ctx, runAlias) {
 
 async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 	const store = rummy.entries;
-	const resultPath = await store.dedup(rummy.runId, scheme, path || "");
+	const resultPath = await store.dedup(rummy.runId, scheme, path);
 
-	await store.upsert(
-		rummy.runId,
-		rummy.sequence,
-		resultPath,
-		body || "",
-		"full",
-		{
-			attributes: attributes || null,
-		},
-	);
+	await store.upsert(rummy.runId, rummy.sequence, resultPath, body, "full", {
+		attributes: attributes,
+	});
 
 	const entry = {
 		scheme,
 		path: resultPath,
-		body: body || "",
-		attributes: attributes || {},
+		body: body,
+		attributes: attributes,
 		state: "full",
 		resultPath,
 	};

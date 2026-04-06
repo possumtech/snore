@@ -110,7 +110,7 @@ export default class ClientConnection {
 
 			try {
 				const logRow = await this.#db.log_rpc_call.get({
-					project_id: this.#context.projectId || null,
+					project_id: this.#context.projectId ?? null,
 					method,
 					rpc_id: id,
 					params: params ? JSON.stringify(params) : null,
@@ -184,10 +184,8 @@ export default class ClientConnection {
 				} catch {}
 			}
 		} catch (error) {
-			if (debug) {
-				console.error(`[SOCKET] ERR: ${error.message}`);
-				console.error(`[DEBUG] Stack: ${error.stack}`);
-			}
+			console.error(`[RUMMY] RPC Error: ${error.message}`);
+			console.error(`[RUMMY] Stack: ${error.stack}`);
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },
