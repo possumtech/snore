@@ -558,6 +558,7 @@ async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 
 	await store.upsert(rummy.runId, rummy.sequence, resultPath, body, "full", {
 		attributes: attributes,
+		loopId: rummy.loopId,
 	});
 
 	const entry = {

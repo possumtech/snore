@@ -10,7 +10,7 @@ export async function storePatternResult(
 	path,
 	bodyFilter,
 	matches,
-	preview = false,
+	{ preview = false, loopId = null } = {},
 ) {
 	const slug = await store.slugPath(runId, scheme, path);
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
@@ -18,5 +18,5 @@ export async function storePatternResult(
 	const listing = matches.map((m) => `${m.path} (${m.tokens_full})`).join("\n");
 	const prefix = preview ? "PREVIEW " : "";
 	const body = `${prefix}${scheme} path="${path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
-	await store.upsert(runId, turn, slug, body, "pattern");
+	await store.upsert(runId, turn, slug, body, "pattern", { loopId });
 }

@@ -115,7 +115,7 @@ async function main() {
 	}
 
 	// 6b. Abort stuck runs (can't be running if the server just started)
-	await db.reset_active_prompts.run({});
+	await db.reset_active_loops.run({});
 	const aborted = await db.abort_stuck_runs.run({});
 	if (aborted.changes > 0) {
 		console.log(`[RUMMY] Recovered ${aborted.changes} stuck run(s)`);

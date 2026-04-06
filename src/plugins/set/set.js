@@ -23,7 +23,7 @@ export default class Set {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
 
 		if (attrs.blocks || attrs.search != null) {
@@ -45,7 +45,7 @@ export default class Set {
 				attrs.path,
 				attrs.body,
 				matches,
-				true,
+				{ preview: true, loopId },
 			);
 			return;
 		}
@@ -59,6 +59,7 @@ export default class Set {
 			const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
 			await store.upsert(runId, turn, entry.resultPath, "", "proposed", {
 				attributes: { file: target, patch: udiff, merge },
+				loopId,
 			});
 		} else if (attrs.filter || target.includes("*")) {
 			const matches = await store.getEntriesByPattern(
@@ -80,9 +81,10 @@ export default class Set {
 				target,
 				attrs.filter,
 				matches,
+				{ loopId },
 			);
 		} else {
-			await store.upsert(runId, turn, target, entry.body, "full");
+			await store.upsert(runId, turn, target, entry.body, "full", { loopId });
 		}
 	}
 
@@ -103,13 +105,14 @@ export default class Set {
 	}
 
 	async #processEdit(rummy, entry, attrs) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = attrs.path;
 		const matches = await store.getEntriesByPattern(runId, target, attrs.body);
 
 		if (matches.length === 0) {
 			await store.upsert(runId, turn, entry.resultPath, "", "error", {
 				attributes: { file: target, error: `${target} not found in context` },
+				loopId,
 			});
 			return;
 		}
@@ -123,6 +126,7 @@ export default class Set {
 				revisions.push(revision);
 				await store.upsert(runId, turn, canonicalPath, "", "full", {
 					attributes: { file: match.path, revisions },
+					loopId,
 				});
 				if (KnownStore.normalizePath(entry.resultPath) !== canonicalPath) {
 					await store.remove(runId, entry.resultPath);
@@ -153,16 +157,19 @@ export default class Set {
 					warning,
 					error,
 				},
+				loopId,
 			});
 
 			if (state === "pass" && patch) {
-				await store.upsert(runId, turn, match.path, patch, match.state);
+				await store.upsert(runId, turn, match.path, patch, match.state, {
+					loopId,
+				});
 			}
 		}
 	}
 
 	async #materializeRevisions({ rummy }) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const setEntries = await store.getEntriesByPattern(runId, "set://*");
 
 		for (const entry of setEntries) {
@@ -217,6 +224,7 @@ export default class Set {
 					warning: lastWarning,
 					error: lastError,
 				},
+				loopId,
 			});
 		}
 	}

@@ -57,6 +57,7 @@ SELECT body
 FROM known_entries
 WHERE
 	run_id = :run_id
+	AND loop_id = :loop_id
 	AND scheme = 'summarize'
 ORDER BY id DESC
 LIMIT 1;

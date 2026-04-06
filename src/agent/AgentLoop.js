@@ -127,8 +127,10 @@ export default class AgentLoop {
 
 		const { runId: currentRunId, alias: currentAlias } = runInfo;
 
-		await this.#db.enqueue_prompt.get({
+		const loopSeq = await this.#db.next_loop.get({ run_id: currentRunId });
+		await this.#db.enqueue_loop.get({
 			run_id: currentRunId,
+			sequence: loopSeq.sequence,
 			mode,
 			model: requestedModel,
 			prompt: prompt || "",
@@ -150,27 +152,29 @@ export default class AgentLoop {
 
 	async #drainQueue(currentRunId, currentAlias, projectId, project, options) {
 		while (true) {
-			const queued = await this.#db.claim_next_prompt.get({
+			const loop = await this.#db.claim_next_loop.get({
 				run_id: currentRunId,
 			});
-			if (!queued) break;
+			if (!loop) break;
 
-			const promptConfig = queued.config ? JSON.parse(queued.config) : {};
+			const loopConfig = loop.config ? JSON.parse(loop.config) : {};
 			const result = await this.#executeLoop({
-				mode: queued.mode,
+				mode: loop.mode,
 				project,
 				projectId,
 				currentRunId,
 				currentAlias,
-				requestedModel: queued.model,
-				prompt: queued.prompt,
-				noContext: promptConfig.noContext || false,
-				options: { ...options, temperature: promptConfig.temperature },
-				hook: queued.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
+				currentLoopId: loop.id,
+				requestedModel: loop.model,
+				prompt: loop.prompt,
+				noContext: loopConfig.noContext || false,
+				options: { ...options, temperature: loopConfig.temperature },
+				hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
 			});
 
-			await this.#db.complete_prompt.run({
-				id: queued.id,
+			await this.#db.complete_loop.run({
+				id: loop.id,
+				status: result.status === "proposed" ? "proposed" : result.status,
 				result: JSON.stringify(result),
 			});
 
@@ -187,6 +191,7 @@ export default class AgentLoop {
 		projectId,
 		currentRunId,
 		currentAlias,
+		currentLoopId,
 		requestedModel,
 		prompt,
 		noContext,
@@ -247,6 +252,7 @@ export default class AgentLoop {
 					projectId,
 					currentRunId,
 					currentAlias,
+					currentLoopId,
 					requestedModel,
 					loopPrompt: turnPrompt,
 					noContext,
@@ -384,6 +390,7 @@ export default class AgentLoop {
 					`error://${loopIteration}`,
 					`${err.message}\n${err.stack}`,
 					"info",
+					{ loopId: currentLoopId },
 				);
 			} catch {}
 			const out = {
@@ -461,16 +468,39 @@ export default class AgentLoop {
 			};
 		}
 
-		if (await this.#knownStore.hasRejections(runId)) {
+		// Scope completion checks to the current loop
+		const currentLoop = await this.#db.get_current_loop.get({ run_id: runId });
+		const loopId = currentLoop?.id ?? null;
+
+		if (await this.#knownStore.hasRejections(runId, loopId)) {
+			if (currentLoop)
+				await this.#db.complete_loop.run({
+					id: loopId,
+					status: "completed",
+					result: null,
+				});
 			await this.#db.update_run_status.run({ id: runId, status: "completed" });
 			return { run: runAlias, status: "completed" };
 		}
 
-		const hasSummary = await this.#db.get_latest_summary.get({ run_id: runId });
+		const hasSummary = await this.#db.get_latest_summary.get({
+			run_id: runId,
+			loop_id: loopId,
+		});
 		if (hasSummary?.body) {
+			if (currentLoop)
+				await this.#db.complete_loop.run({
+					id: loopId,
+					status: "completed",
+					result: null,
+				});
 			await this.#db.update_run_status.run({ id: runId, status: "completed" });
 			return { run: runAlias, status: "completed" };
 		}
+
+		// No summary and no rejections in this loop — resume it
+		const projectId = runRow.project_id;
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
 
 		const latestPrompt = await this.#db.get_latest_prompt.get({
 			run_id: runId,
@@ -479,11 +509,11 @@ export default class AgentLoop {
 			? JSON.parse(latestPrompt.attributes).mode
 			: "ask";
 
-		const projectId = runRow.project_id;
-		const project = await this.#db.get_project_by_id.get({ id: projectId });
-
-		await this.#db.enqueue_prompt.get({
+		// Re-enqueue the current loop's prompt to continue it
+		const loopSeq = await this.#db.next_loop.get({ run_id: runId });
+		await this.#db.enqueue_loop.get({
 			run_id: runId,
+			sequence: loopSeq.sequence,
 			mode: resumeMode,
 			model: runRow.model,
 			prompt: "",
@@ -531,8 +561,10 @@ export default class AgentLoop {
 			return { run: runAlias, status: runRow.status, injected: "next_turn" };
 		}
 
-		await this.#db.enqueue_prompt.get({
+		const injectLoopSeq = await this.#db.next_loop.get({ run_id: runRow.id });
+		await this.#db.enqueue_loop.get({
 			run_id: runRow.id,
+			sequence: injectLoopSeq.sequence,
 			mode: "ask",
 			model: runRow.model,
 			prompt: message,

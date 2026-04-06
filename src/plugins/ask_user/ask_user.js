@@ -16,7 +16,7 @@ export default class AskUser {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { question, options: rawOptions } = entry.attributes;
 
 		const optionText = rawOptions || entry.body || "";
@@ -30,6 +30,7 @@ export default class AskUser {
 
 		await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
 			attributes: { question, options },
+			loopId,
 		});
 	}
 

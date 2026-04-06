@@ -1,10 +1,10 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, turn, path, body, state, hash, attributes
+	run_id, loop_id, turn, path, body, state, hash, attributes
 	, tokens, tokens_full, updated_at
 )
 VALUES (
-	:run_id, :turn, :path, :body, :state, :hash, COALESCE(:attributes, '{}')
+	:run_id, :loop_id, :turn, :path, :body, :state, :hash, COALESCE(:attributes, '{}')
 	, countTokens(:body)
 	, countTokens(:body)
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
@@ -14,6 +14,7 @@ ON CONFLICT (run_id, path) DO UPDATE SET
 	, state = excluded.state
 	, hash = COALESCE(excluded.hash, known_entries.hash)
 	, attributes = COALESCE(excluded.attributes, known_entries.attributes)
+	, loop_id = excluded.loop_id
 	, turn = excluded.turn
 	, tokens = countTokens(excluded.body)
 	, tokens_full = countTokens(excluded.body)

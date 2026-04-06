@@ -18,7 +18,7 @@ export default class Rm {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		const matches = await store.getEntriesByPattern(
 			runId,
@@ -31,11 +31,13 @@ export default class Rm {
 			if (match.scheme === null) {
 				await store.upsert(runId, turn, resultPath, match.path, "proposed", {
 					attributes: { path: match.path },
+					loopId,
 				});
 			} else {
 				await store.remove(runId, match.path);
 				await store.upsert(runId, turn, resultPath, match.path, "pass", {
 					attributes: { path: match.path },
+					loopId,
 				});
 			}
 		}

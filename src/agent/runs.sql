@@ -22,14 +22,14 @@ RETURNING id;
 -- PREP: get_run_by_alias
 SELECT
 	id, project_id, parent_run_id, model, status, alias
-	, temperature, persona, context_limit, next_turn, created_at
+	, temperature, persona, context_limit, next_turn, next_loop, created_at
 FROM runs
 WHERE alias = :alias;
 
 -- PREP: get_run_by_id
 SELECT
 	id, project_id, parent_run_id, model, status, alias
-	, temperature, persona, context_limit, next_turn, created_at
+	, temperature, persona, context_limit, next_turn, next_loop, created_at
 FROM runs
 WHERE id = :id;
 
@@ -80,11 +80,11 @@ RETURNING next_turn - 1 AS turn;
 
 -- PREP: fork_known_entries
 INSERT INTO known_entries (
-	run_id, turn, path, body, state
+	run_id, loop_id, turn, path, body, state
 	, hash, attributes, tokens, tokens_full, refs, write_count
 )
 SELECT
-	:new_run_id, turn, path, body, state
+	:new_run_id, NULL, turn, path, body, state
 	, hash, attributes, tokens, tokens_full, refs, write_count
 FROM known_entries
 WHERE run_id = :parent_run_id;

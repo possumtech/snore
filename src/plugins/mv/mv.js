@@ -19,7 +19,7 @@ export default class Mv {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
 
 		const source = await store.getBody(runId, path);
@@ -36,12 +36,14 @@ export default class Mv {
 		if (destScheme === null) {
 			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
 				attributes: { from: path, to, isMove: true, warning },
+				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, "full");
+			await store.upsert(runId, turn, to, source, "full", { loopId });
 			await store.remove(runId, path);
 			await store.upsert(runId, turn, entry.resultPath, body, "pass", {
 				attributes: { from: path, to, isMove: true, warning },
+				loopId,
 			});
 		}
 	}

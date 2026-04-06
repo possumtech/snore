@@ -1,6 +1,6 @@
 -- PREP: create_turn
-INSERT INTO turns (run_id, sequence)
-VALUES (:run_id, :sequence)
+INSERT INTO turns (run_id, loop_id, sequence)
+VALUES (:run_id, :loop_id, :sequence)
 RETURNING id, sequence;
 
 -- PREP: update_turn_stats

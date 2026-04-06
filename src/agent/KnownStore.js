@@ -62,10 +62,11 @@ export default class KnownStore {
 		path,
 		body,
 		state,
-		{ attributes = null, hash = null, updatedAt = null } = {},
+		{ attributes = null, hash = null, updatedAt = null, loopId = null } = {},
 	) {
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
+			loop_id: loopId,
 			turn,
 			path: KnownStore.normalizePath(path),
 			body,
@@ -185,8 +186,11 @@ export default class KnownStore {
 		return this.#db.get_file_states_by_pattern.all({ run_id: runId, pattern });
 	}
 
-	async hasRejections(runId) {
-		const row = await this.#db.has_rejections.get({ run_id: runId });
+	async hasRejections(runId, loopId) {
+		const row = await this.#db.has_rejections.get({
+			run_id: runId,
+			loop_id: loopId,
+		});
 		return row.count > 0;
 	}
 

@@ -80,17 +80,23 @@ export default class Telemetry {
 		systemMsg,
 		userMsg,
 	}) {
-		const { entries: store, runId } = rummy;
+		const { entries: store, runId, loopId } = rummy;
 
 		// assistant://N — the model's raw response
-		await store.upsert(runId, turn, `assistant://${turn}`, content, "info");
+		await store.upsert(runId, turn, `assistant://${turn}`, content, "info", {
+			loopId,
+		});
 
 		// system://N, user://N — assembled messages as audit
 		if (systemMsg) {
-			await store.upsert(runId, turn, `system://${turn}`, systemMsg, "info");
+			await store.upsert(runId, turn, `system://${turn}`, systemMsg, "info", {
+				loopId,
+			});
 		}
 		if (userMsg) {
-			await store.upsert(runId, turn, `user://${turn}`, userMsg, "info");
+			await store.upsert(runId, turn, `user://${turn}`, userMsg, "info", {
+				loopId,
+			});
 		}
 
 		// model://N — raw API response diagnostics
@@ -106,6 +112,7 @@ export default class Telemetry {
 				model: result.model || null,
 			}),
 			"info",
+			{ loopId },
 		);
 
 		// reasoning://N
@@ -116,12 +123,15 @@ export default class Telemetry {
 				`reasoning://${turn}`,
 				responseMessage.reasoning_content,
 				"info",
+				{ loopId },
 			);
 		}
 
 		// content://N — unparsed text
 		if (unparsed) {
-			await store.upsert(runId, turn, `content://${turn}`, unparsed, "info");
+			await store.upsert(runId, turn, `content://${turn}`, unparsed, "info", {
+				loopId,
+			});
 		}
 
 		// Commit usage stats

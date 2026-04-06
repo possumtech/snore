@@ -8,13 +8,16 @@ export default class Prompt {
 	}
 
 	async onTurnStarted({ rummy, mode, prompt, isContinuation }) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
 			await store.upsert(runId, turn, `prompt://${turn}`, "", "info", {
 				attributes: { mode },
+				loopId,
 			});
-			await store.upsert(runId, turn, `${mode}://${turn}`, prompt, "info");
+			await store.upsert(runId, turn, `${mode}://${turn}`, prompt, "info", {
+				loopId,
+			});
 		} else {
 			await store.upsert(
 				runId,
@@ -22,6 +25,7 @@ export default class Prompt {
 				`progress://${turn}`,
 				prompt || "",
 				"info",
+				{ loopId },
 			);
 		}
 	}

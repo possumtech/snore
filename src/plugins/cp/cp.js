@@ -19,7 +19,7 @@ export default class Cp {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
 
 		const source = await store.getBody(runId, path);
@@ -36,11 +36,13 @@ export default class Cp {
 		if (destScheme === null) {
 			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
 				attributes: { from: path, to, isMove: false, warning },
+				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, "full");
+			await store.upsert(runId, turn, to, source, "full", { loopId });
 			await store.upsert(runId, turn, entry.resultPath, body, "pass", {
 				attributes: { from: path, to, isMove: false, warning },
+				loopId,
 			});
 		}
 	}

@@ -51,6 +51,10 @@ export default class RummyContext {
 		return this.#context.turnId || null;
 	}
 
+	get loopId() {
+		return this.#context.loopId || null;
+	}
+
 	get noContext() {
 		return this.#context.noContext === true;
 	}
@@ -97,7 +101,7 @@ export default class RummyContext {
 			path,
 			body || "",
 			state,
-			attributes ? { attributes } : undefined,
+			{ attributes, loopId: this.loopId },
 		);
 		return path;
 	}
@@ -117,14 +121,18 @@ export default class RummyContext {
 	async mv(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, "full");
+		await this.entries.upsert(this.runId, this.sequence, to, body, "full", {
+			loopId: this.loopId,
+		});
 		await this.entries.remove(this.runId, from);
 	}
 
 	async cp(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, "full");
+		await this.entries.upsert(this.runId, this.sequence, to, body, "full", {
+			loopId: this.loopId,
+		});
 	}
 
 	// --- Plugin-only methods (superset) ---

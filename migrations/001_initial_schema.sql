@@ -53,16 +53,40 @@ CREATE TABLE IF NOT EXISTS runs (
 	, persona TEXT
 	, context_limit INTEGER CHECK (context_limit IS NULL OR context_limit >= 1024)
 	, next_turn INTEGER NOT NULL DEFAULT 1 CHECK (next_turn >= 1)
+	, next_loop INTEGER NOT NULL DEFAULT 1 CHECK (next_loop >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias);
 CREATE INDEX IF NOT EXISTS idx_runs_project ON runs (project_id);
 
+-- Loops: execution units within a run. Each ask/act call creates a loop.
+-- A loop consists of one or more turns. At most one loop per run may be running.
+CREATE TABLE IF NOT EXISTS loops (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
+	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
+	, model TEXT
+	, prompt TEXT NOT NULL DEFAULT ''
+	, status TEXT NOT NULL DEFAULT 'pending' CHECK (
+		status IN ('pending', 'running', 'proposed', 'completed', 'failed', 'aborted')
+	)
+	, config JSON
+	, result JSON
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, UNIQUE (run_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_loops_run ON loops (run_id);
+-- Enforce at most one running loop per run.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_loops_one_active
+ON loops (run_id) WHERE status = 'running';
+
 -- Turns: usage stats and sequencing (operational, not model-facing)
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, loop_id INTEGER NOT NULL REFERENCES loops (id) ON DELETE CASCADE
 	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
 	, prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0)
 	, cached_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cached_tokens >= 0)
@@ -94,6 +118,7 @@ ON file_constraints (project_id);
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, loop_id INTEGER REFERENCES loops (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
 	, path TEXT NOT NULL
 	, body TEXT NOT NULL DEFAULT ''
@@ -162,6 +187,7 @@ WHERE state = 'proposed';
 CREATE TABLE IF NOT EXISTS turn_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, loop_id INTEGER REFERENCES loops (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL CHECK (turn >= 1)
 	, ordinal INTEGER NOT NULL CHECK (ordinal >= 0)
 	, path TEXT NOT NULL
@@ -195,21 +221,8 @@ BEGIN
 	);
 END;
 
--- Prompt queue. All prompts flow through here. Worker consumes FIFO per run.
-CREATE TABLE IF NOT EXISTS prompt_queue (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
-	, model TEXT
-	, prompt TEXT NOT NULL
-	, config JSON
-	, status TEXT NOT NULL DEFAULT 'pending'
-	CHECK (status IN ('pending', 'active', 'completed', 'aborted'))
-	, result JSON
-	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_prompt_queue_run ON prompt_queue (run_id, status);
+-- Prompt queue is the loops table (defined above).
+-- Each ask/act enqueues a loop (status=pending). Worker claims FIFO per run.
 
 -- RPC audit log. Every call recorded unconditionally.
 CREATE TABLE IF NOT EXISTS rpc_log (

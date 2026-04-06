@@ -17,7 +17,7 @@ export default class Store {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		const bodyFilter = entry.attributes.body || null;
 		const isPattern = bodyFilter || target.includes("*");
@@ -33,12 +33,15 @@ export default class Store {
 				target,
 				bodyFilter,
 				matches,
+				{ loopId },
 			);
 		} else {
 			const paths = matches.map((m) => m.path).join(", ");
 			const body =
 				matches.length > 0 ? `${paths} stored` : `${target} not found`;
-			await store.upsert(runId, turn, entry.resultPath, body, "stored");
+			await store.upsert(runId, turn, entry.resultPath, body, "stored", {
+				loopId,
+			});
 		}
 	}
 

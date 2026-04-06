@@ -25,6 +25,7 @@ export default class TurnExecutor {
 		projectId,
 		currentRunId,
 		currentAlias,
+		currentLoopId,
 		requestedModel,
 		loopPrompt,
 		noContext,
@@ -36,6 +37,7 @@ export default class TurnExecutor {
 
 		const turnRow = await this.#db.create_turn.get({
 			run_id: currentRunId,
+			loop_id: currentLoopId,
 			sequence: turn,
 		});
 
@@ -67,6 +69,7 @@ export default class TurnExecutor {
 				type: mode,
 				sequence: turn,
 				runId: currentRunId,
+				loopId: currentLoopId,
 				turnId: turnRow.id,
 				noContext,
 				contextSize,
@@ -123,6 +126,7 @@ export default class TurnExecutor {
 
 			await this.#db.insert_turn_context.run({
 				run_id: currentRunId,
+				loop_id: currentLoopId,
 				turn,
 				ordinal: row.ordinal,
 				path: row.path,
@@ -217,7 +221,13 @@ export default class TurnExecutor {
 		let updateText = null;
 
 		for (const cmd of commands) {
-			const entry = await this.#record(currentRunId, turn, mode, cmd);
+			const entry = await this.#record(
+				currentRunId,
+				currentLoopId,
+				turn,
+				mode,
+				cmd,
+			);
 			if (!entry) continue;
 
 			if (entry.scheme === "summarize") summaryText = entry.body;
@@ -250,6 +260,7 @@ export default class TurnExecutor {
 				summaryPath,
 				summaryText,
 				"summary",
+				{ loopId: currentLoopId },
 			);
 		} else if (updateText) {
 			const updatePath = await this.#knownStore.slugPath(
@@ -263,6 +274,7 @@ export default class TurnExecutor {
 				updatePath,
 				updateText,
 				"info",
+				{ loopId: currentLoopId },
 			);
 		}
 
@@ -343,7 +355,7 @@ export default class TurnExecutor {
 	 * Record a parsed command as a known_entries row.
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
-	async #record(runId, turn, mode, cmd) {
+	async #record(runId, loopId, turn, mode, cmd) {
 		// Mode enforcement — reject prohibited commands in ask mode
 		if (mode === "ask") {
 			if (cmd.name === "sh") {
@@ -391,7 +403,14 @@ export default class TurnExecutor {
 				"unknown",
 				cmd.body,
 			);
-			await this.#knownStore.upsert(runId, turn, unknownPath, cmd.body, "full");
+			await this.#knownStore.upsert(
+				runId,
+				turn,
+				unknownPath,
+				cmd.body,
+				"full",
+				{ loopId },
+			);
 			return {
 				scheme,
 				path: unknownPath,
@@ -414,7 +433,9 @@ export default class TurnExecutor {
 			if (!cmd.body) return null;
 			const knownPath =
 				cmd.path || (await this.#knownStore.slugPath(runId, "known", cmd.body));
-			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, "full");
+			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, "full", {
+				loopId,
+			});
 			return {
 				scheme: "known",
 				path: knownPath,
@@ -429,6 +450,7 @@ export default class TurnExecutor {
 		const state = this.#initialState(scheme);
 		await this.#knownStore.upsert(runId, turn, resultPath, body, state, {
 			attributes,
+			loopId,
 		});
 
 		return {

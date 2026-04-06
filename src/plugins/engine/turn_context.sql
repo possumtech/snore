@@ -11,10 +11,11 @@ ORDER BY ordinal;
 
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
-	run_id, turn, ordinal, path, fidelity, state, body, tokens, attributes, category, source_turn
+	run_id, loop_id, turn, ordinal, path, fidelity, state
+	, body, tokens, attributes, category, source_turn
 )
 VALUES (
-	:run_id, :turn, :ordinal, :path, :fidelity, :state, :body, :tokens
+	:run_id, :loop_id, :turn, :ordinal, :path, :fidelity, :state, :body, :tokens
 	, COALESCE(:attributes, '{}'), :category, :source_turn
 );
 

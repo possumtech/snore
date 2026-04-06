@@ -17,7 +17,7 @@ export default class Get {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) return;
 		const bodyFilter = entry.attributes.body || null;
@@ -34,13 +34,16 @@ export default class Get {
 				target,
 				bodyFilter,
 				matches,
+				{ loopId },
 			);
 		} else {
 			const total = matches.reduce((s, m) => s + m.tokens_full, 0);
 			const paths = matches.map((m) => m.path).join(", ");
 			const body =
 				matches.length > 0 ? `${paths} ${total} tokens` : `${target} not found`;
-			await store.upsert(runId, turn, entry.resultPath, body, "read");
+			await store.upsert(runId, turn, entry.resultPath, body, "read", {
+				loopId,
+			});
 		}
 	}
 
