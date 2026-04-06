@@ -20,12 +20,16 @@ const DIAG_DIR = join(tmpdir(), "rummy_test_diag");
 async function cleanOldTestDbs() {
 	const dir = tmpdir();
 	const entries = await fs.readdir(dir);
-	const stale = entries.filter((f) => f.startsWith("rummy_test_") && f.endsWith(".db"));
-	await Promise.all(stale.flatMap((f) => [
-		fs.unlink(join(dir, f)).catch(() => {}),
-		fs.unlink(join(dir, `${f}-shm`)).catch(() => {}),
-		fs.unlink(join(dir, `${f}-wal`)).catch(() => {}),
-	]));
+	const stale = entries.filter(
+		(f) => f.startsWith("rummy_test_") && f.endsWith(".db"),
+	);
+	await Promise.all(
+		stale.flatMap((f) => [
+			fs.unlink(join(dir, f)).catch(() => {}),
+			fs.unlink(join(dir, `${f}-shm`)).catch(() => {}),
+			fs.unlink(join(dir, `${f}-wal`)).catch(() => {}),
+		]),
+	);
 	await fs.rm(DIAG_DIR, { recursive: true, force: true });
 	await fs.mkdir(DIAG_DIR, { recursive: true });
 }

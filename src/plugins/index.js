@@ -105,7 +105,9 @@ function resolvePlugin(packageName) {
 
 async function importPlugin(packageName) {
 	const dir = resolvePlugin(packageName);
-	const pkg = JSON.parse((await import("node:fs")).readFileSync(join(dir, "package.json"), "utf8"));
+	const pkg = JSON.parse(
+		(await import("node:fs")).readFileSync(join(dir, "package.json"), "utf8"),
+	);
 	const entry = pkg.exports?.["."] || pkg.main || "index.js";
 	return import(pathToFileURL(join(dir, entry)).href);
 }

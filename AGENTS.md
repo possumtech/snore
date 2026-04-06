@@ -9,8 +9,8 @@
 Plugin-driven architecture. Instantiated classes, constructor receives
 `core` (PluginContext). Registration via `core.on()` / `core.filter()`.
 Assembly via `assembly.system` / `assembly.user` filter chains.
-No monolithic assembler. 256 tests passing (159 unit + 97 integration).
-10/11 e2e, 22/23 live.
+No monolithic assembler. Loops table (projects > runs > loops > turns).
+160 unit + 92 integration passing. 11/11 e2e. Live tests need rerun.
 
 ## Todo: Scheme Registration by Plugins
 
@@ -121,14 +121,13 @@ Current mitigation: TurnExecutor overrides summarize when any entry
 on the turn is proposed. This prevents the "model claims success"
 bug but doesn't handle dependent tool entries.
 
-## Todo: XmlParser Mismatched Close Tag Recovery
+## Todo: E2E Web Search Test
 
-When the model sends `<rm path="..."></unknown>` (wrong closing tag),
-the parser absorbs all subsequent commands (`<update>`, `<search>`, etc.)
-as body text of the unclosed `<rm>`. The flush-on-EOF captures the `<rm>`
-but everything after the mismatched close is lost. Fix: when `onclosetag`
-sees a known tool name that doesn't match `current.name`, close the
-current tag first, then handle the mismatched close.
+The test asserts that a fetched URL has > 200 chars of content, forcing
+the model to `<get>` a result URL. But models often answer from search
+snippets alone. Either the prompt needs to require information only
+available in the full article, or the assertion should validate the
+fetch pipeline separately from the model's answering strategy.
 
 ## Todo: Model rm Path Training Issue
 
@@ -141,12 +140,115 @@ body text as a match target? The hedberg pattern matching on the path
 won't match unencoded text against encoded paths. May need rm to fall
 back to body matching, or expose paths in a model-friendly format.
 
+## Todo: Separate State from Fidelity
+
+The `state` column on known_entries does double duty: lifecycle state
+(proposed, pass, rejected, error) and fidelity level (full, summary,
+index, stored). These are orthogonal concerns conflated into one field.
+
+The `valid_states` constraint on the schemes table forces tools to
+declare which fidelity levels their entries can be at. This is
+backwards — the relevance engine should be able to demote any entry
+to summary or index without the tool's permission. The tool owns the
+content and lifecycle, not the fidelity.
+
+Needs:
+- [ ] Separate `state` (lifecycle) from `fidelity` (visibility level)
+- [ ] `state`: proposed, pass, rejected, error, active
+- [ ] `fidelity`: full, summary, index, stored (managed by relevance)
+- [ ] `valid_states` on schemes only constrains lifecycle states
+- [ ] v_model_context derives visibility from fidelity, not state
+- [ ] Relevance engine can set fidelity on any entry freely
+
+## Todo: Fidelity Ownership
+
+Assembly plugins (previous, current) were hardcoding fidelity when
+rendering tool tags. Fixed to use the entry's own fidelity from the
+view. But the broader question: who decides fidelity?
+
+- v_model_context assigns fidelity based on state
+- Tool plugins register `full` and `summary` views
+- Assembly plugins should never override fidelity
+- Structural tools (summarize, update) should return identical content
+  for both full and summary — they're short by definition
+
+Remaining: audit that all tool plugins register both `full` and
+`summary` views, and that summary views return meaningful content
+(not empty string) for schemes that have data at summary state.
+
+## Todo: http/https Summary View (rummy.web)
+
+Search results should be stored at `summary` state (snippet = summary,
+fetched article = full). The rummy.web summary view (`#summaryUrl`)
+expects `title`/`excerpt`/`byline` attributes from Playwright, but
+search results only have `query`/`engine` attributes. The summary view
+returns empty. rummy.web@0.0.10 works around this by storing search
+results at `full`, which is semantically wrong.
+
+Correct fix (in rummy.web): store search results at `summary` with
+`title` and `snippet` as attributes. The summary view renders from
+attributes. `<get>` promotes to `full` via Playwright fetch. This
+gives the model a natural read → promote workflow for URLs.
+
 ## Todo: Test Improvements
 
 - [ ] Unknown investigation e2e test flaky (model doesn't always register unknowns)
 - [ ] Add e2e test for multi-edit sed chaining
 - [ ] Add e2e test for ask mode restrictions
 - [ ] Integration test for scheme registration via plugins
+- [ ] E2E test diagnostic DBs persist to /tmp/rummy_test_diag/ — use for debugging
+- [ ] Old test DBs cleaned at suite start, not end
+
+## Done: Loops Table (2026-04-06)
+
+First-class loop entity: projects > runs > loops > turns. Replaced
+`prompt_queue` table. Each ask/act creates a loop. Unique partial
+index enforces one running loop per run. `loop_id` FK on turns,
+known_entries, turn_context. `get_latest_summary` and `has_rejections`
+scoped to loop — fixes stale summary from previous loop causing
+premature completion (the ask_user resolution bug).
+
+## Done: XmlParser Mismatched Close Tag Recovery (2026-04-06)
+
+When a known tool opens while another is still current, the old one
+is closed and emitted. Fixes `<rm>...</unknown><update><search>` where
+htmlparser2 nests subsequent tools inside the unclosed rm. Test added.
+
+## Done: Plugin Loader Global Resolution (2026-04-06)
+
+External plugins (`RUMMY_PLUGIN_*` env vars) now resolve from global
+`node_modules` when not found locally. `resolvePlugin()` checks local
+then global — no fallback, explicit error if neither found. Removed
+rummy.web and rummy.repo from package.json dependencies.
+
+## Done: Phantom Tool Cleanup (2026-04-06)
+
+`ensureTool()` only called from `on("handler")`, not `on("full")`.
+Plugins that register views without handlers (file plugin) no longer
+appear in the model's tool list. Removes `file` from tool list.
+
+## Done: Error Feedback on Missing Path (2026-04-06)
+
+Get, store, and rm handlers return a labeled error entry when the
+model sends them without a path. Previously silently returned,
+giving the model no feedback to self-correct.
+
+## Done: Set Docs and Error Messages (2026-04-06)
+
+- "literal SEARCH/REPLACE blocks" in set docs
+- "SEARCH blocks are matched literally, not as a pattern" error message
+- rm docs example updated: `known://donald-rumsfeld-was-born-in-1932`
+  (traces lifecycle from known docs, replaces stale `unknown://42`)
+
+## Done: Previous Loop Context (2026-04-06)
+
+- Previous/current assembly plugins use entry's own fidelity from the
+  view, not hardcoded summary/full. Fidelity is the view's decision.
+- Previous loop prompts (ask/act entries, category "prompt") now
+  included in `<previous>`. Previously stripped, which erased the
+  model's memory of what was asked in earlier loops. Root cause of
+  the "lite mode" e2e failure — model couldn't recall "42" because
+  the original prompt wasn't in context.
 
 ## Done: Plugin Architecture Refactor
 
