@@ -17,7 +17,7 @@ SELECT path, body, attributes, turn
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND state = 'proposed';
+	AND status = 202;
 
 -- PREP: has_rejections
 SELECT COUNT(*) AS count
@@ -25,18 +25,18 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND loop_id = :loop_id
-	AND state = 'rejected';
+	AND status = 403;
 
 -- PREP: has_accepted_actions
 SELECT COUNT(*) AS count
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND state = 'pass'
+	AND status = 200
 	AND scheme IN ('set', 'sh', 'rm', 'mv', 'cp');
 
 -- PREP: get_file_entries
-SELECT path, state, hash, updated_at
+SELECT path, status, fidelity, hash, updated_at
 FROM known_entries
 WHERE
 	run_id = :run_id

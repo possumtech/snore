@@ -22,8 +22,8 @@ describe("Mode enforcement in ask mode", () => {
 		RUN_ID = seed.runId;
 
 		// Seed some entries for the model to target
-		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");
-		await store.upsert(RUN_ID, 1, "known://note", "test note", "full");
+		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", 200);
+		await store.upsert(RUN_ID, 1, "known://note", "test note", 200);
 	});
 
 	after(async () => {

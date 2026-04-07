@@ -131,7 +131,7 @@ export default class TurnExecutor {
 				ordinal: row.ordinal,
 				path: row.path,
 				fidelity: row.fidelity,
-				state: row.state,
+				status: row.status,
 				body: projectedBody ?? "",
 				tokens: countTokens(projectedBody ?? ""),
 				attributes: row.attributes,
@@ -259,7 +259,7 @@ export default class TurnExecutor {
 				turn,
 				summaryPath,
 				summaryText,
-				"summary",
+				200,
 				{ loopId: currentLoopId },
 			);
 		} else if (updateText) {
@@ -273,7 +273,7 @@ export default class TurnExecutor {
 				turn,
 				updatePath,
 				updateText,
-				"info",
+				200,
 				{ loopId: currentLoopId },
 			);
 		}
@@ -297,8 +297,8 @@ export default class TurnExecutor {
 				run_id: currentRunId,
 				path: entry.resultPath || entry.path,
 			});
-			if (row?.state === "error") hasErrors = true;
-			if (row?.state === "proposed") hasProposed = true;
+			if (row?.status >= 400) hasErrors = true;
+			if (row?.status === 202) hasProposed = true;
 		}
 
 		// Errors override summarize — the model thinks it's done but it's not
@@ -411,14 +411,9 @@ export default class TurnExecutor {
 				"unknown",
 				cmd.body,
 			);
-			await this.#knownStore.upsert(
-				runId,
-				turn,
-				unknownPath,
-				cmd.body,
-				"full",
-				{ loopId },
-			);
+			await this.#knownStore.upsert(runId, turn, unknownPath, cmd.body, 200, {
+				loopId,
+			});
 			return {
 				scheme,
 				path: unknownPath,
@@ -441,7 +436,7 @@ export default class TurnExecutor {
 			if (!cmd.body) return null;
 			const knownPath =
 				cmd.path || (await this.#knownStore.slugPath(runId, "known", cmd.body));
-			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, "full", {
+			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, 200, {
 				loopId,
 			});
 			return {
@@ -453,10 +448,9 @@ export default class TurnExecutor {
 			};
 		}
 
-		// Record the entry
+		// Record the entry — 200 OK, handlers change status during dispatch
 		const body = cmd.body || cmd.command || cmd.question || "";
-		const state = this.#initialState(scheme);
-		await this.#knownStore.upsert(runId, turn, resultPath, body, state, {
+		await this.#knownStore.upsert(runId, turn, resultPath, body, 200, {
 			attributes,
 			loopId,
 		});
@@ -466,16 +460,8 @@ export default class TurnExecutor {
 			path: resultPath,
 			body,
 			attributes,
-			state,
+			status: 200,
 			resultPath,
 		};
-	}
-
-	/**
-	 * Initial state for a recorded command entry.
-	 * All entries start at "full". Handlers change state during dispatch.
-	 */
-	#initialState(_scheme) {
-		return "full";
 	}
 }

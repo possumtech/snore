@@ -11,22 +11,17 @@ export default class Prompt {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
-			await store.upsert(runId, turn, `prompt://${turn}`, "", "info", {
+			await store.upsert(runId, turn, `prompt://${turn}`, "", 200, {
 				attributes: { mode },
 				loopId,
 			});
-			await store.upsert(runId, turn, `${mode}://${turn}`, prompt, "info", {
+			await store.upsert(runId, turn, `${mode}://${turn}`, prompt, 200, {
 				loopId,
 			});
 		} else {
-			await store.upsert(
-				runId,
-				turn,
-				`progress://${turn}`,
-				prompt || "",
-				"info",
-				{ loopId },
-			);
+			await store.upsert(runId, turn, `progress://${turn}`, prompt || "", 200, {
+				loopId,
+			});
 		}
 	}
 

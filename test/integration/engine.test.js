@@ -41,8 +41,8 @@ describe("Engine integration", () => {
 
 	describe("context materialization", () => {
 		it("materializes entries into turn_context", async () => {
-			await store.upsert(RUN_ID, 1, "src/small.js", pad(100), "full");
-			await store.upsert(RUN_ID, 1, "known://note", "short", "full");
+			await store.upsert(RUN_ID, 1, "src/small.js", pad(100), 200);
+			await store.upsert(RUN_ID, 1, "known://note", "short", 200);
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -86,7 +86,7 @@ describe("Engine integration", () => {
 
 	describe("tokens accounting", () => {
 		it("promote restores tokens to tokens_full", async () => {
-			await store.upsert(RUN_ID, 1, "known://test_entry", pad(200), "full");
+			await store.upsert(RUN_ID, 1, "known://test_entry", pad(200), 200);
 			await store.demote(RUN_ID, "known://test_entry");
 
 			const demoted = await store.getEntriesByPattern(
@@ -117,7 +117,8 @@ describe("Engine integration", () => {
 
 	describe("symbol file fidelity via VIEW", () => {
 		it("files at state index have index fidelity", async () => {
-			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), "index", {
+			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), 200, {
+				fidelity: "index",
 				attributes: { symbols: "function foo()" },
 			});
 
@@ -136,18 +137,14 @@ describe("Engine integration", () => {
 			assert.strictEqual(
 				demoted.fidelity,
 				"index",
-				"index state should have index fidelity",
+				"index fidelity should be preserved",
 			);
 		});
 
 		it("summary files have summary fidelity with body passed through", async () => {
-			await store.upsert(
-				RUN_ID,
-				3,
-				"src/active.js",
-				"function bar() {}",
-				"summary",
-			);
+			await store.upsert(RUN_ID, 3, "src/active.js", "function bar() {}", 200, {
+				fidelity: "summary",
+			});
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,

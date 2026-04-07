@@ -79,7 +79,7 @@ function assertContains(text, substring, label) {
 async function acceptAll(client, result) {
 	let current = result;
 	let resolves = 0;
-	while (current.status === "proposed" && resolves < 15) {
+	while (current.status === 202 && resolves < 15) {
 		for (const p of current.proposed) {
 			if (resolves >= 15) break;
 			current = await client.call("run/resolve", {
@@ -159,7 +159,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
 		});
-		await client.assertRun(r, "completed", "factual");
+		await client.assertRun(r, 200, "factual");
 		assertContains(await lastResponse(tdb.db, r.run), "phoenix", "factual");
 	});
 
@@ -171,7 +171,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"Search the web for when mass Effect 1 was released. Save the release year as a known entry. Then tell me: what year, what database does this project use, and what is the project codename?",
 		});
-		await client.assertRun(r, "completed", "research");
+		await client.assertRun(r, 200, "research");
 		const resp = await lastResponse(tdb.db, r.run);
 		assertContains(resp, "phoenix", "research-codename");
 
@@ -189,16 +189,15 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});
-		await client.assertRun(r, ["completed", "proposed"], "edit");
-		if (r.status === "proposed") await acceptAll(client, r);
+		await client.assertRun(r, [200, 202], "edit");
+		if (r.status === 202) await acceptAll(client, r);
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({
 			run_id: runRow.id,
 		});
 		const writes = entries.filter(
-			(e) =>
-				e.scheme === "set" && (e.state === "pass" || e.state === "proposed"),
+			(e) => e.scheme === "set" && (e.status === 200 || e.status === 202),
 		);
 		assert.ok(writes.length > 0, "should have a write result");
 	});
@@ -212,7 +211,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
 		});
-		await client.assertRun(r1, "completed", "coherence-1");
+		await client.assertRun(r1, 200, "coherence-1");
 		assertContains(
 			await lastResponse(tdb.db, r1.run),
 			"phoenix",
@@ -225,7 +224,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"What port does src/app.js listen on? Reply ONLY with the number.",
 			run: r1.run,
 		});
-		await client.assertRun(r2, "completed", "coherence-2");
+		await client.assertRun(r2, 200, "coherence-2");
 		assertContains(await lastResponse(tdb.db, r2.run), "8080", "coherence-2");
 	});
 
@@ -237,7 +236,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What test framework does this project use?",
 		});
-		await client.assertRun(r, "completed", "unknowns");
+		await client.assertRun(r, 200, "unknowns");
 		const entries = await allEntries(tdb.db, r.run);
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
 		assert.ok(unknowns.length > 0, "should have registered unknowns");
@@ -251,7 +250,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt: "Remember the number 42. Reply with just 'OK'.",
 			noContext: true,
 		});
-		await client.assertRun(r1, "completed", "lite-1");
+		await client.assertRun(r1, 200, "lite-1");
 
 		const r2 = await client.call("ask", {
 			model,
@@ -259,7 +258,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"What number did I tell you to remember? Reply with just the number.",
 			run: r1.run,
 		});
-		await client.assertRun(r2, "completed", "lite-2");
+		await client.assertRun(r2, 200, "lite-2");
 		assertContains(await lastResponse(tdb.db, r2.run), "42", "lite-recall");
 	});
 
@@ -289,16 +288,13 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 
 		const result = await askPromise;
 		assert.ok(
-			["aborted", "completed", "failed"].includes(result.status),
+			[499, 200, 500].includes(result.status),
 			`expected terminal status, got ${result.status}`,
 		);
 
 		if (runAlias) {
 			const runRow = await tdb.db.get_run_by_alias.get({ alias: runAlias });
-			assert.ok(
-				runRow.status !== "running",
-				"run should not be stuck at running",
-			);
+			assert.ok(runRow.status !== 102, "run should not be stuck at running");
 		}
 
 		client.removeListener("run/progress", captureRun);
@@ -311,11 +307,11 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt: "Delete the file notes.md from the project.",
 		});
-		await client.assertRun(r1, ["completed", "proposed"], "reject-1");
+		await client.assertRun(r1, [200, 202], "reject-1");
 
-		if (r1.status === "proposed") {
+		if (r1.status === 202) {
 			let current = r1;
-			while (current.status === "proposed") {
+			while (current.status === 202) {
 				const next = current.proposed[0];
 				current = await client.call("run/resolve", {
 					run: r1.run,
@@ -334,7 +330,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt: "What does notes.md contain? Reply with its content.",
 			run: r1.run,
 		});
-		await client.assertRun(r2, "completed", "reject-verify");
+		await client.assertRun(r2, 200, "reject-verify");
 		assertContains(
 			await lastResponse(tdb.db, r2.run),
 			"phoenix",
@@ -349,7 +345,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				'Search the web for "Mitch Hedberg death date" and tell me when he died.',
 		});
-		await client.assertRun(r, "completed", "search");
+		await client.assertRun(r, 200, "search");
 		assertContains(await lastResponse(tdb.db, r.run), "2005", "search-year");
 		const entries = await allEntries(tdb.db, r.run);
 		const searchResults = entries.filter(

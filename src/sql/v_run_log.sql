@@ -4,8 +4,8 @@ SELECT
 	ke.run_id
 	, ke.path
 	, ke.body
-	, ke.state AS status
-	, COALESCE(ke.scheme, ke.state) AS tool
+	, ke.status
+	, COALESCE(ke.scheme, 'file') AS tool
 	, COALESCE(
 		json_extract(ke.attributes, '$.command')
 		, json_extract(ke.attributes, '$.file')
@@ -17,7 +17,7 @@ FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.scheme IS NOT NULL
-	AND ke.state != 'proposed'
+	AND ke.status != 202
 	AND s.category NOT IN ('knowledge', 'file')
 	AND ke.scheme NOT IN ('system', 'reasoning', 'model', 'content')
 ORDER BY ke.id;

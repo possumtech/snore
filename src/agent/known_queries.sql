@@ -1,5 +1,5 @@
 -- PREP: get_known_entries
-SELECT path, scheme, state, body, turn, hash, attributes
+SELECT path, scheme, status, fidelity, body, turn, hash, attributes
 FROM known_entries
 WHERE run_id = :run_id
 ORDER BY path;
@@ -18,7 +18,7 @@ WHERE
 ORDER BY id;
 
 -- PREP: get_turn_audit
-SELECT path, scheme, state, turn, body, attributes
+SELECT path, scheme, status, fidelity, turn, body, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -63,7 +63,7 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_history
-SELECT ke.path, ke.state AS status, ke.body, ke.attributes, ke.turn
+SELECT ke.path, ke.status, ke.body, ke.attributes, ke.turn
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE

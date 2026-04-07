@@ -5,7 +5,7 @@ export default class Summarize {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({ validStates: ["summary"], category: "structural" });
+		core.registerScheme({ category: "structural" });
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");

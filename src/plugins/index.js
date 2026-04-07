@@ -48,14 +48,11 @@ const AUDIT_SCHEMES = [
  */
 export async function initPlugins(db, store, hooks) {
 	for (const name of AUDIT_SCHEMES) {
-		const scheme = {
+		await db.upsert_scheme.run({
 			name,
-			fidelity: ["ask", "act", "progress"].includes(name) ? "full" : "null",
 			model_visible: ["ask", "act", "progress"].includes(name) ? 1 : 0,
-			valid_states: JSON.stringify(["info"]),
 			category: "audit",
-		};
-		await db.upsert_scheme.run(scheme);
+		});
 	}
 
 	for (const ctx of instances.values()) {
@@ -78,16 +75,7 @@ export async function initPlugins(db, store, hooks) {
 			if (registered.has(toolName)) continue;
 			await db.upsert_scheme.run({
 				name: toolName,
-				fidelity: "full",
 				model_visible: 1,
-				valid_states: JSON.stringify([
-					"full",
-					"proposed",
-					"pass",
-					"rejected",
-					"error",
-					"info",
-				]),
 				category: "result",
 			});
 		}

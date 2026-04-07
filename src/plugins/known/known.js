@@ -5,11 +5,7 @@ export default class Known {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({
-			fidelity: "turn",
-			validStates: ["full", "stored"],
-			category: "knowledge",
-		});
+		core.registerScheme({ category: "knowledge" });
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
@@ -22,7 +18,7 @@ export default class Known {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId } = rummy;
 		const target = entry.attributes.path || entry.resultPath;
-		await store.upsert(runId, turn, target, entry.body, "full");
+		await store.upsert(runId, turn, target, entry.body, 200);
 	}
 
 	full(entry) {
@@ -47,11 +43,11 @@ export default class Known {
 
 function renderKnownTag(entry) {
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
-	const state = entry.state ? ` state="${entry.state}"` : "";
+	const status = entry.status ? ` status="${entry.status}"` : "";
 
 	if (entry.body) {
-		return `<known path="${entry.path}"${state}${tokens}>${entry.body}</known>`;
+		return `<known path="${entry.path}"${status}${tokens}>${entry.body}</known>`;
 	}
 
-	return `<known path="${entry.path}"${state}${tokens}/>`;
+	return `<known path="${entry.path}"${status}${tokens}/>`;
 }

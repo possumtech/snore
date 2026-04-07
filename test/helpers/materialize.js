@@ -14,11 +14,12 @@ export default async function materialize(
 	if (systemPrompt) {
 		await db.insert_turn_context.run({
 			run_id: runId,
+			loop_id: null,
 			turn,
 			ordinal: 0,
 			path: "system://prompt",
 			fidelity: "full",
-			state: "info",
+			status: 200,
 			body: systemPrompt,
 			tokens: countTokens(systemPrompt),
 			attributes: null,
@@ -30,11 +31,12 @@ export default async function materialize(
 	for (const row of rows) {
 		await db.insert_turn_context.run({
 			run_id: runId,
+			loop_id: null,
 			turn,
 			ordinal: row.ordinal,
 			path: row.path,
 			fidelity: row.fidelity,
-			state: row.state,
+			status: row.status,
 			body: row.body,
 			tokens: row.tokens,
 			attributes: row.attributes,

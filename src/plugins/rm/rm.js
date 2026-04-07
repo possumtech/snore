@@ -5,9 +5,7 @@ export default class Rm {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({
-			validStates: ["full", "proposed", "pass", "rejected", "error", "pattern"],
-		});
+		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
@@ -21,7 +19,7 @@ export default class Rm {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.upsert(runId, turn, entry.resultPath, "", "error", {
+			await store.upsert(runId, turn, entry.resultPath, "", 400, {
 				attributes: { error: "path is required" },
 				loopId,
 			});
@@ -36,13 +34,13 @@ export default class Rm {
 		for (const match of matches) {
 			const resultPath = `rm://${match.path}`;
 			if (match.scheme === null) {
-				await store.upsert(runId, turn, resultPath, match.path, "proposed", {
+				await store.upsert(runId, turn, resultPath, match.path, 202, {
 					attributes: { path: match.path },
 					loopId,
 				});
 			} else {
 				await store.remove(runId, match.path);
-				await store.upsert(runId, turn, resultPath, match.path, "pass", {
+				await store.upsert(runId, turn, resultPath, match.path, 200, {
 					attributes: { path: match.path },
 					loopId,
 				});

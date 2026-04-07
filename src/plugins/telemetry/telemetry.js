@@ -83,18 +83,18 @@ export default class Telemetry {
 		const { entries: store, runId, loopId } = rummy;
 
 		// assistant://N — the model's raw response
-		await store.upsert(runId, turn, `assistant://${turn}`, content, "info", {
+		await store.upsert(runId, turn, `assistant://${turn}`, content, 200, {
 			loopId,
 		});
 
 		// system://N, user://N — assembled messages as audit
 		if (systemMsg) {
-			await store.upsert(runId, turn, `system://${turn}`, systemMsg, "info", {
+			await store.upsert(runId, turn, `system://${turn}`, systemMsg, 200, {
 				loopId,
 			});
 		}
 		if (userMsg) {
-			await store.upsert(runId, turn, `user://${turn}`, userMsg, "info", {
+			await store.upsert(runId, turn, `user://${turn}`, userMsg, 200, {
 				loopId,
 			});
 		}
@@ -111,7 +111,7 @@ export default class Telemetry {
 				usage: result.usage || null,
 				model: result.model || null,
 			}),
-			"info",
+			200,
 			{ loopId },
 		);
 
@@ -122,14 +122,14 @@ export default class Telemetry {
 				turn,
 				`reasoning://${turn}`,
 				responseMessage.reasoning_content,
-				"info",
+				200,
 				{ loopId },
 			);
 		}
 
 		// content://N — unparsed text
 		if (unparsed) {
-			await store.upsert(runId, turn, `content://${turn}`, unparsed, "info", {
+			await store.upsert(runId, turn, `content://${turn}`, unparsed, 200, {
 				loopId,
 			});
 		}

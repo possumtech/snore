@@ -170,7 +170,7 @@ export default class Rpc {
 					await rummy.set({
 						path: params.path,
 						body: params.body,
-						state: params.state || "full",
+						status: params.status || 200,
 						attributes: params.attributes,
 					});
 				} else {
@@ -186,7 +186,7 @@ export default class Rpc {
 				run: "string — run alias",
 				path: "string — entry path",
 				body: "string? — entry content",
-				state: "string? — entry state (default: full)",
+				status: "number? — HTTP status code (default: 200)",
 				attributes: "object? — JSON attributes",
 			},
 			requiresInit: true,
@@ -228,7 +228,7 @@ export default class Rpc {
 				return entries.map((e) => ({
 					path: e.path,
 					scheme: e.scheme,
-					state: e.state,
+					status: e.status,
 					tokens: e.tokens_full,
 				}));
 			},
@@ -556,7 +556,7 @@ async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 	const store = rummy.entries;
 	const resultPath = await store.dedup(rummy.runId, scheme, path);
 
-	await store.upsert(rummy.runId, rummy.sequence, resultPath, body, "full", {
+	await store.upsert(rummy.runId, rummy.sequence, resultPath, body, 200, {
 		attributes: attributes,
 		loopId: rummy.loopId,
 	});
@@ -566,7 +566,7 @@ async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 		path: resultPath,
 		body: body,
 		attributes: attributes,
-		state: "full",
+		status: 200,
 		resultPath,
 	};
 

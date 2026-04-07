@@ -9,9 +9,7 @@ export default class Set {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({
-			validStates: ["full", "proposed", "pass", "rejected", "error", "pattern"],
-		});
+		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
@@ -57,7 +55,7 @@ export default class Set {
 		if (scheme === null) {
 			const udiff = generatePatch(target, "", entry.body || "");
 			const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
-			await store.upsert(runId, turn, entry.resultPath, "", "proposed", {
+			await store.upsert(runId, turn, entry.resultPath, "", 202, {
 				attributes: { file: target, patch: udiff, merge },
 				loopId,
 			});
@@ -84,7 +82,7 @@ export default class Set {
 				{ loopId },
 			);
 		} else {
-			await store.upsert(runId, turn, target, entry.body, "full", { loopId });
+			await store.upsert(runId, turn, target, entry.body, 200, { loopId });
 		}
 	}
 
@@ -110,7 +108,7 @@ export default class Set {
 		const matches = await store.getEntriesByPattern(runId, target, attrs.body);
 
 		if (matches.length === 0) {
-			await store.upsert(runId, turn, entry.resultPath, "", "error", {
+			await store.upsert(runId, turn, entry.resultPath, "", 404, {
 				attributes: { file: target, error: `${target} not found in context` },
 				loopId,
 			});
@@ -124,7 +122,7 @@ export default class Set {
 				const existingAttrs = await rummy.getAttributes(canonicalPath);
 				const revisions = existingAttrs?.revisions || [];
 				revisions.push(revision);
-				await store.upsert(runId, turn, canonicalPath, "", "full", {
+				await store.upsert(runId, turn, canonicalPath, "", 200, {
 					attributes: { file: match.path, revisions },
 					loopId,
 				});
@@ -137,7 +135,7 @@ export default class Set {
 			const { patch, searchText, replaceText, warning, error } =
 				Set.#applyRevision(match.body, attrs);
 
-			const state = error ? "error" : "pass";
+			const status = error ? 409 : 200;
 			const resultPath = `set://${match.path}`;
 			const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
 			const merge =
@@ -147,7 +145,7 @@ export default class Set {
 			const beforeTokens = match.tokens_full || 0;
 			const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
 
-			await store.upsert(runId, turn, resultPath, match.body, state, {
+			await store.upsert(runId, turn, resultPath, match.body, status, {
 				attributes: {
 					file: match.path,
 					patch: udiff,
@@ -160,8 +158,8 @@ export default class Set {
 				loopId,
 			});
 
-			if (state === "pass" && patch) {
-				await store.upsert(runId, turn, match.path, patch, match.state, {
+			if (status === 200 && patch) {
+				await store.upsert(runId, turn, match.path, patch, match.status, {
 					loopId,
 				});
 			}
@@ -205,7 +203,7 @@ export default class Set {
 				}
 			}
 
-			const state = lastError ? "error" : "proposed";
+			const state = lastError ? 409 : 202;
 			const udiff =
 				current !== original
 					? generatePatch(filePath, original, current)

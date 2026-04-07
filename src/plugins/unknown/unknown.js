@@ -6,7 +6,6 @@ export default class Unknown {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({
-			validStates: ["full", "stored"],
 			category: "knowledge",
 		});
 		core.on("full", this.full.bind(this));

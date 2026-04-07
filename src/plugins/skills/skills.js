@@ -8,7 +8,6 @@ export default class Skills {
 		this.#core = core;
 		core.registerScheme({
 			name: "skill",
-			validStates: ["full", "stored"],
 			category: "knowledge",
 		});
 		const r = core.hooks.rpc.registry;
@@ -28,7 +27,7 @@ export default class Skills {
 					runRow.next_turn,
 					`skill://${params.name}`,
 					body,
-					"full",
+					200,
 					{
 						attributes: {
 							name: params.name,
@@ -84,10 +83,10 @@ export default class Skills {
 				);
 				return entries.map((e) => ({
 					name: e.path.replace("skill://", ""),
-					state: e.state,
+					status: e.status,
 				}));
 			},
-			description: "List skills active on a run. Returns [{ name, state }].",
+			description: "List skills active on a run. Returns [{ name, status }].",
 			params: { run: "string — run alias" },
 			requiresInit: true,
 		});

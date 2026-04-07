@@ -1,34 +1,31 @@
 -- INIT: create_v_model_context
 CREATE VIEW IF NOT EXISTS v_model_context AS
 WITH
-classified AS (
+visible AS (
 	SELECT
 		ke.run_id
 		, ke.id
 		, ke.path
 		, ke.body
 		, ke.scheme
-		, ke.state
+		, ke.status
+		, ke.fidelity
 		, ke.turn
 		, ke.updated_at
 		, ke.attributes
 		, ke.tokens AS tokens_full
 		, CASE
-			-- Proposed entries hidden until resolved
-			WHEN ke.state = 'proposed' THEN NULL
+			-- Stored entries not in context
+			WHEN ke.fidelity = 'stored' THEN NULL
+			-- 202 Accepted (proposed) hidden until resolved
+			WHEN ke.status = 202 THEN NULL
 			-- Audit schemes (model_visible = 0) hidden
 			WHEN s.model_visible = 0 THEN NULL
-			-- State IS fidelity for visible entries
-			WHEN ke.state IN ('full', 'summary', 'index') THEN ke.state
-			-- Stored entries hidden (retrievable via <read>)
-			WHEN ke.state = 'stored' THEN NULL
-			-- Result/structural states are visible at full fidelity
-			WHEN ke.state IN ('pass', 'error', 'warn', 'pattern', 'read', 'info', 'summary') THEN 'full'
-			ELSE NULL
-		END AS fidelity
+			-- Everything else visible at its fidelity
+			ELSE ke.fidelity
+		END AS visible_fidelity
 	FROM known_entries AS ke
 	JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
-	WHERE ke.state NOT IN ('proposed')
 ),
 projected AS (
 	SELECT
@@ -36,21 +33,21 @@ projected AS (
 		, id
 		, path
 		, scheme
-		, state
-		, fidelity
+		, status
+		, visible_fidelity AS fidelity
 		, turn
 		, updated_at
 		, attributes
 		, CASE
-			WHEN fidelity IN ('full', 'summary') THEN body
+			WHEN visible_fidelity IN ('full', 'summary') THEN body
 			ELSE ''
 		END AS body
 		, CASE
-			WHEN scheme IS NULL AND state IN ('full', 'summary') THEN 'file'
+			WHEN scheme IS NULL AND visible_fidelity IN ('full', 'summary') THEN 'file'
 			WHEN scheme IS NULL THEN 'file_index'
-			WHEN scheme IN ('http', 'https') AND state IN ('full', 'summary') THEN 'file'
+			WHEN scheme IN ('http', 'https') AND visible_fidelity IN ('full', 'summary') THEN 'file'
 			WHEN scheme IN ('http', 'https') THEN 'file_index'
-			WHEN scheme IN ('known', 'skill') AND state = 'full' THEN 'known'
+			WHEN scheme IN ('known', 'skill') AND visible_fidelity = 'full' THEN 'known'
 			WHEN scheme IN ('known', 'skill') THEN 'known_index'
 			WHEN scheme = 'unknown' THEN 'unknown'
 			WHEN scheme IN ('ask', 'act', 'progress') THEN 'prompt'
@@ -59,15 +56,15 @@ projected AS (
 			WHEN scheme = 'tool' THEN 'tool'
 			ELSE 'result'
 		END AS category
-	FROM classified
-	WHERE fidelity IS NOT NULL
+	FROM visible
+	WHERE visible_fidelity IS NOT NULL
 )
 SELECT
 	run_id
 	, path
 	, scheme
 	, fidelity
-	, state
+	, status
 	, body
 	, attributes
 	, category
@@ -88,7 +85,7 @@ SELECT
 				ELSE 6
 			END
 			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
-			, CASE state
+			, CASE fidelity
 				WHEN 'index' THEN 0
 				WHEN 'summary' THEN 1
 				ELSE 2

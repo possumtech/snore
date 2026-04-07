@@ -104,13 +104,13 @@ describe("E2E: RPC Methods", () => {
 		// Give it time to start, then abort
 		await new Promise((r) => setTimeout(r, 1000));
 		const runs = await client.call("getRuns");
-		const active = runs.find((r) => r.status === "running");
+		const active = runs.find((r) => r.status === 102);
 		if (active) {
 			const result = await client.call("run/abort", { run: active.run });
 			assert.strictEqual(result.status, "ok");
 			const after = await client.call("getRuns");
 			const aborted = after.find((r) => r.run === active.run);
-			assert.strictEqual(aborted.status, "aborted");
+			assert.strictEqual(aborted.status, 499);
 		}
 		await askPromise.catch(() => {});
 	});
@@ -124,7 +124,7 @@ describe("E2E: RPC Methods", () => {
 		});
 
 		assert.ok(
-			["completed", "running", "proposed"].includes(injectResult.status),
+			[200, 102, 202].includes(injectResult.status),
 			`Expected valid status, got ${injectResult.status}`,
 		);
 	});

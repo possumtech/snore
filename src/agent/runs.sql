@@ -80,11 +80,11 @@ RETURNING next_turn - 1 AS turn;
 
 -- PREP: fork_known_entries
 INSERT INTO known_entries (
-	run_id, loop_id, turn, path, body, state
+	run_id, loop_id, turn, path, body, status, fidelity
 	, hash, attributes, tokens, tokens_full, refs, write_count
 )
 SELECT
-	:new_run_id, NULL, turn, path, body, state
+	:new_run_id, NULL, turn, path, body, status, fidelity
 	, hash, attributes, tokens, tokens_full, refs, write_count
 FROM known_entries
 WHERE run_id = :parent_run_id;
@@ -94,7 +94,7 @@ SELECT r.id
 FROM runs AS r
 WHERE
 	r.project_id = :project_id
-	AND r.status IN ('queued', 'running', 'proposed');
+	AND r.status IN (100, 102, 202);
 
 -- PREP: get_latest_run
 SELECT r.id
@@ -110,5 +110,5 @@ WHERE r.project_id = :project_id;
 
 -- PREP: abort_stuck_runs
 UPDATE runs
-SET status = 'aborted'
-WHERE status IN ('running', 'queued');
+SET status = 499
+WHERE status IN (100, 102);

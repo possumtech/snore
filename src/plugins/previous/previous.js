@@ -11,7 +11,9 @@ export default class Previous {
 
 		const entries = ctx.rows.filter(
 			(r) =>
-				(r.category === "result" || r.category === "structural" || r.category === "prompt") &&
+				(r.category === "result" ||
+					r.category === "structural" ||
+					r.category === "prompt") &&
 				r.source_turn < ctx.loopStartTurn,
 		);
 		if (entries.length === 0) return content;
@@ -30,7 +32,7 @@ async function renderToolTag(entry, core) {
 			: entry.attributes;
 
 	const path = `${entry.scheme}://${attrs?.path || attrs?.file || attrs?.command || ""}`;
-	const status = entry.state ? ` status="${entry.state}"` : "";
+	const status = entry.status ? ` status="${entry.status}"` : "";
 
 	let body;
 	try {

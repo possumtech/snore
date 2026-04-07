@@ -11,13 +11,13 @@ RETURNING next_loop - 1 AS sequence;
 
 -- PREP: claim_next_loop
 UPDATE loops
-SET status = 'running'
+SET status = 102
 WHERE
 	id = (
 		SELECT
 			id
 		FROM loops
-		WHERE run_id = :run_id AND status = 'pending'
+		WHERE run_id = :run_id AND status = 100
 		ORDER BY id
 		LIMIT 1
 	)
@@ -30,24 +30,24 @@ WHERE id = :id;
 
 -- PREP: abort_active_loop
 UPDATE loops
-SET status = 'aborted'
-WHERE run_id = :run_id AND status = 'running';
+SET status = 499
+WHERE run_id = :run_id AND status = 102;
 
 -- PREP: get_pending_loops
 SELECT id, sequence, mode, model, prompt, status, created_at
 FROM loops
-WHERE run_id = :run_id AND status IN ('pending', 'running')
+WHERE run_id = :run_id AND status IN (100, 102)
 ORDER BY id;
 
 -- PREP: reset_active_loops
 UPDATE loops
-SET status = 'pending'
-WHERE status = 'running';
+SET status = 100
+WHERE status = 102;
 
 -- PREP: get_current_loop
 SELECT id, sequence, mode, model, prompt, status
 FROM loops
-WHERE run_id = :run_id AND status = 'running'
+WHERE run_id = :run_id AND status = 102
 LIMIT 1;
 
 -- PREP: get_loop_by_id
@@ -58,6 +58,6 @@ WHERE id = :id;
 -- PREP: get_latest_completed_loop
 SELECT id, sequence, mode, status
 FROM loops
-WHERE run_id = :run_id AND status IN ('completed', 'failed')
+WHERE run_id = :run_id AND status IN (200, 500)
 ORDER BY id DESC
 LIMIT 1;

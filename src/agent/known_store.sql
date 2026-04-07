@@ -1,17 +1,19 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, loop_id, turn, path, body, state, hash, attributes
-	, tokens, tokens_full, updated_at
+	run_id, loop_id, turn, path, body, status, fidelity, hash
+	, attributes, tokens, tokens_full, updated_at
 )
 VALUES (
-	:run_id, :loop_id, :turn, :path, :body, :state, :hash, COALESCE(:attributes, '{}')
+	:run_id, :loop_id, :turn, :path, :body, :status, :fidelity, :hash
+	, COALESCE(:attributes, '{}')
 	, countTokens(:body)
 	, countTokens(:body)
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
 ON CONFLICT (run_id, path) DO UPDATE SET
 	body = excluded.body
-	, state = excluded.state
+	, status = excluded.status
+	, fidelity = excluded.fidelity
 	, hash = COALESCE(excluded.hash, known_entries.hash)
 	, attributes = COALESCE(excluded.attributes, known_entries.attributes)
 	, loop_id = excluded.loop_id
@@ -44,17 +46,17 @@ WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 -- PREP: resolve_known_entry
 UPDATE known_entries
 SET
-	state = :state
+	status = :status
 	, body = :body
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
--- PREP: set_file_state
+-- PREP: set_file_fidelity
 UPDATE known_entries
 SET
-	state = :state
+	fidelity = :fidelity
 	, tokens = CASE
-		WHEN :state = 'summary' THEN countTokens(body)
+		WHEN :fidelity = 'summary' THEN countTokens(body)
 		ELSE tokens_full
 	END
 	, updated_at = CURRENT_TIMESTAMP
@@ -63,7 +65,7 @@ WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 -- PREP: promote_path
 UPDATE known_entries
 SET
-	state = 'full'
+	fidelity = 'full'
 	, turn = :turn
 	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
@@ -72,7 +74,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: demote_path
 UPDATE known_entries
 SET
-	state = 'stored'
+	fidelity = 'stored'
 	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
@@ -83,12 +85,12 @@ FROM known_entries
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_entry_state
-SELECT state, scheme, turn
+SELECT status, fidelity, scheme, turn
 FROM known_entries
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_file_states_by_pattern
-SELECT path, state, turn
+SELECT path, status, fidelity, turn
 FROM known_entries
 WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL
 ORDER BY path;
@@ -108,7 +110,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: promote_by_pattern
 UPDATE known_entries
 SET
-	state = 'full'
+	fidelity = 'full'
 	, turn = :turn
 	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
@@ -120,7 +122,7 @@ WHERE
 -- PREP: demote_by_pattern
 UPDATE known_entries
 SET
-	state = 'stored'
+	fidelity = 'stored'
 	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
@@ -129,7 +131,7 @@ WHERE
 	AND (:body IS NULL OR hedsearch(:body, body));
 
 -- PREP: get_entries_by_pattern
-SELECT path, body, scheme, state, tokens_full, attributes
+SELECT path, body, scheme, status, fidelity, tokens_full, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id

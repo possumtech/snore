@@ -13,21 +13,15 @@ describe("Pattern operations integration", () => {
 		RUN_ID = seed.runId;
 
 		// Seed files
-		await store.upsert(RUN_ID, 0, "src/app.js", "const app = 1;", "full");
-		await store.upsert(
-			RUN_ID,
-			0,
-			"src/config.js",
-			"const port = 3000;",
-			"full",
-		);
-		await store.upsert(RUN_ID, 0, "src/utils.js", "// TODO: refactor", "full");
-		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "full");
+		await store.upsert(RUN_ID, 0, "src/app.js", "const app = 1;", 200);
+		await store.upsert(RUN_ID, 0, "src/config.js", "const port = 3000;", 200);
+		await store.upsert(RUN_ID, 0, "src/utils.js", "// TODO: refactor", 200);
+		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", 200);
 
 		// Seed knowledge
-		await store.upsert(RUN_ID, 0, "known://auth_flow", "OAuth2 PKCE", "full");
-		await store.upsert(RUN_ID, 0, "known://auth_secret", "hunter2", "full");
-		await store.upsert(RUN_ID, 0, "known://db_type", "SQLite", "full");
+		await store.upsert(RUN_ID, 0, "known://auth_flow", "OAuth2 PKCE", 200);
+		await store.upsert(RUN_ID, 0, "known://auth_secret", "hunter2", 200);
+		await store.upsert(RUN_ID, 0, "known://db_type", "SQLite", 200);
 	});
 
 	after(async () => {
@@ -118,7 +112,7 @@ describe("Pattern operations integration", () => {
 				path: "src/app.js",
 			});
 			assert.strictEqual(utils.turn, 7);
-			assert.strictEqual(app.state, "stored");
+			assert.strictEqual(app.fidelity, "stored");
 		});
 	});
 
@@ -132,15 +126,15 @@ describe("Pattern operations integration", () => {
 					run_id: RUN_ID,
 					path: m.path,
 				});
-				assert.strictEqual(row.state, "stored");
+				assert.strictEqual(row.fidelity, "stored");
 			}
 		});
 	});
 
 	describe("deleteByPattern", () => {
 		it("deletes matching entries", async () => {
-			await store.upsert(RUN_ID, 0, "known://temp_a", "x", "full");
-			await store.upsert(RUN_ID, 0, "known://temp_b", "y", "full");
+			await store.upsert(RUN_ID, 0, "known://temp_a", "x", 200);
+			await store.upsert(RUN_ID, 0, "known://temp_b", "y", 200);
 
 			await store.deleteByPattern(RUN_ID, "known://temp_*", null);
 
@@ -153,8 +147,8 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("deletes with value filter", async () => {
-			await store.upsert(RUN_ID, 0, "known://cache_a", "stale", "full");
-			await store.upsert(RUN_ID, 0, "known://cache_b", "fresh", "full");
+			await store.upsert(RUN_ID, 0, "known://cache_a", "stale", 200);
+			await store.upsert(RUN_ID, 0, "known://cache_b", "fresh", 200);
 
 			await store.deleteByPattern(RUN_ID, "known://cache_*", "stale");
 
@@ -170,8 +164,8 @@ describe("Pattern operations integration", () => {
 
 	describe("updateBodyByPattern", () => {
 		it("bulk updates matching values", async () => {
-			await store.upsert(RUN_ID, 0, "known://ver_a", "v1", "full");
-			await store.upsert(RUN_ID, 0, "known://ver_b", "v1", "full");
+			await store.upsert(RUN_ID, 0, "known://ver_a", "v1", 200);
+			await store.upsert(RUN_ID, 0, "known://ver_b", "v1", 200);
 
 			await store.updateBodyByPattern(RUN_ID, "known://ver_*", null, "v2");
 
@@ -182,8 +176,8 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("updates with value filter", async () => {
-			await store.upsert(RUN_ID, 0, "known://status_a", "stale", "full");
-			await store.upsert(RUN_ID, 0, "known://status_b", "fresh", "full");
+			await store.upsert(RUN_ID, 0, "known://status_a", "stale", 200);
+			await store.upsert(RUN_ID, 0, "known://status_b", "fresh", 200);
 
 			await store.updateBodyByPattern(
 				RUN_ID,
@@ -206,7 +200,7 @@ describe("Pattern operations integration", () => {
 				1,
 				"search://1",
 				"1. SQLite WAL mode overview\n2. Write-Ahead Logging explained",
-				"info",
+				200,
 			);
 
 			const matches = await store.getEntriesByPattern(
@@ -227,7 +221,7 @@ describe("Pattern operations integration", () => {
 				1,
 				"src/sr_test.js",
 				"const host = 'localhost';\nconst port = 3000;\n",
-				"full",
+				200,
 			);
 
 			const entries = await store.getEntriesByPattern(

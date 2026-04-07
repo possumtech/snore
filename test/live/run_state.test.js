@@ -54,7 +54,7 @@ describe("E2E: run/state notification shape", () => {
 		assert.ok(state.run, "run alias");
 		assert.ok(typeof state.turn === "number", "turn is number");
 		assert.ok(
-			["running", "proposed", "completed"].includes(state.status),
+			[102, 202, 200].includes(state.status),
 			`valid status: ${state.status}`,
 		);
 		assert.ok(typeof state.summary === "string", "summary is string");
@@ -125,7 +125,7 @@ describe("E2E: run/state notification shape", () => {
 			prompt: "Run the command: echo hello",
 		});
 
-		if (result.status === "proposed") {
+		if (result.status === 202) {
 			const state = states.at(-1);
 			assert.ok(state.proposed.length > 0, "should have proposed entries");
 			for (const p of state.proposed) {

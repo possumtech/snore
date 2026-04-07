@@ -38,31 +38,31 @@ describe("Tool visibility: v_model_context content projection", () => {
 		// Every tool result needs content the model can understand —
 		// what the tool did and what happened.
 		const contentSchemes = [
-			{ name: "set", state: "pass" },
-			{ name: "sh", state: "pass" },
-			{ name: "env", state: "pass" },
-			{ name: "rm", state: "pass" },
-			{ name: "ask_user", state: "pass" },
-			{ name: "mv", state: "pass" },
-			{ name: "cp", state: "pass" },
-			{ name: "search", state: "info" },
-			{ name: "set", state: "pattern" },
+			{ name: "set", status: 200 },
+			{ name: "sh", status: 200 },
+			{ name: "env", status: 200 },
+			{ name: "rm", status: 200 },
+			{ name: "ask_user", status: 200 },
+			{ name: "mv", status: 200 },
+			{ name: "cp", status: 200 },
+			{ name: "search", status: 200 },
+			{ name: "set", status: 200 },
 		];
 
 		// For each result scheme, insert an entry with known content
-		for (const { name: scheme, state } of contentSchemes) {
+		for (const { name: scheme, status } of contentSchemes) {
 			await store.upsert(
 				RUN_ID,
 				TURN,
 				`${scheme}://${scheme}_test`,
 				`${MARKER}_${scheme}`,
-				state,
+				status,
 				{ attributes: { tool: scheme, target: "test" } },
 			);
 		}
 
 		// Also insert user prompt so engine has something to work with
-		await store.upsert(RUN_ID, TURN, `ask://${TURN}`, "test question", "info");
+		await store.upsert(RUN_ID, TURN, `ask://${TURN}`, "test question", 200);
 
 		// Materialize turn_context
 		await materialize(tdb.db, {

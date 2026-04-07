@@ -119,7 +119,7 @@ export default class AgentLoop {
 		if (runInfo.blocked) {
 			return {
 				run: runInfo.alias,
-				status: "proposed",
+				status: 202,
 				remainingCount: runInfo.proposed.length,
 				proposed: runInfo.proposed,
 			};
@@ -138,7 +138,7 @@ export default class AgentLoop {
 		});
 
 		if (this.#activeRuns.has(currentRunId)) {
-			return { run: currentAlias, status: "queued" };
+			return { run: currentAlias, status: 100 };
 		}
 
 		return this.#drainQueue(
@@ -174,15 +174,15 @@ export default class AgentLoop {
 
 			await this.#db.complete_loop.run({
 				id: loop.id,
-				status: result.status === "proposed" ? "proposed" : result.status,
+				status: result.status === 202 ? 202 : result.status,
 				result: JSON.stringify(result),
 			});
 
-			if (result.status === "proposed") return result;
+			if (result.status === 202) return result;
 		}
 
 		const runRow = await this.#db.get_run_by_alias.get({ alias: currentAlias });
-		return { run: currentAlias, status: runRow?.status || "completed" };
+		return { run: currentAlias, status: runRow?.status ?? 200 };
 	}
 
 	async #executeLoop({
@@ -199,10 +199,10 @@ export default class AgentLoop {
 		hook,
 	}) {
 		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
-		if (runRow.status !== "running") {
+		if (runRow.status !== 102) {
 			await this.#db.update_run_status.run({
 				id: currentRunId,
-				status: "running",
+				status: 102,
 			});
 		}
 
@@ -224,11 +224,11 @@ export default class AgentLoop {
 				if (controller.signal.aborted) {
 					await this.#db.update_run_status.run({
 						id: currentRunId,
-						status: "aborted",
+						status: 499,
 					});
 					const out = {
 						run: currentAlias,
-						status: "aborted",
+						status: 499,
 						turn: loopIteration,
 					};
 					await hook.completed.emit({ projectId, ...out });
@@ -271,14 +271,14 @@ export default class AgentLoop {
 				const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 
 				const latestSummary = history
-					.filter((e) => e.status === "summary")
+					.filter((e) => e.status === 200 && e.path?.startsWith("summarize://"))
 					.at(-1);
 
 				await this.#hooks.run.state.emit({
 					projectId,
 					run: currentAlias,
 					turn: result.turn,
-					status: unresolved.length > 0 ? "proposed" : "running",
+					status: unresolved.length > 0 ? 202 : 102,
 					summary: latestSummary?.body || "",
 					history,
 					unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
@@ -307,11 +307,11 @@ export default class AgentLoop {
 				if (unresolved.length > 0) {
 					await this.#db.update_run_status.run({
 						id: currentRunId,
-						status: "proposed",
+						status: 202,
 					});
 					const out = {
 						run: currentAlias,
-						status: "proposed",
+						status: 202,
 						turn: result.turn,
 						proposed: unresolved,
 					};
@@ -330,11 +330,11 @@ export default class AgentLoop {
 				if (!repetition.continue) {
 					await this.#db.update_run_status.run({
 						id: currentRunId,
-						status: "completed",
+						status: 200,
 					});
 					const out = {
 						run: currentAlias,
-						status: "completed",
+						status: 200,
 						turn: result.turn,
 						reason: repetition.reason,
 					};
@@ -347,11 +347,11 @@ export default class AgentLoop {
 
 				await this.#db.update_run_status.run({
 					id: currentRunId,
-					status: "completed",
+					status: 200,
 				});
 				const out = {
 					run: currentAlias,
-					status: "completed",
+					status: 200,
 					turn: result.turn,
 				};
 				await hook.completed.emit({ projectId, ...out });
@@ -360,11 +360,11 @@ export default class AgentLoop {
 
 			await this.#db.update_run_status.run({
 				id: currentRunId,
-				status: "completed",
+				status: 200,
 			});
 			const out = {
 				run: currentAlias,
-				status: "completed",
+				status: 200,
 				turn: loopIteration,
 			};
 			await hook.completed.emit({ projectId, ...out });
@@ -373,15 +373,15 @@ export default class AgentLoop {
 			if (controller.signal.aborted) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
-					status: "aborted",
+					status: 499,
 				});
-				return { run: currentAlias, status: "aborted", turn: loopIteration };
+				return { run: currentAlias, status: 499, turn: loopIteration };
 			}
 			console.warn(`[RUMMY] Run failed: ${err.message}`);
 			console.warn(`[RUMMY] Stack: ${err.stack}`);
 			await this.#db.update_run_status.run({
 				id: currentRunId,
-				status: "failed",
+				status: 500,
 			});
 			try {
 				await this.#knownStore.upsert(
@@ -389,13 +389,13 @@ export default class AgentLoop {
 					loopIteration,
 					`error://${loopIteration}`,
 					`${err.message}\n${err.stack}`,
-					"info",
+					500,
 					{ loopId: currentLoopId },
 				);
 			} catch {}
 			const out = {
 				run: currentAlias,
-				status: "failed",
+				status: 500,
 				turn: loopIteration,
 				error: err.message,
 			};
@@ -422,14 +422,14 @@ export default class AgentLoop {
 				attrs,
 				output,
 			);
-			const state = action === "error" ? "error" : "pass";
-			await this.#knownStore.resolve(runId, path, state, resolvedBody);
+			const status = action === "error" ? 500 : 200;
+			await this.#knownStore.resolve(runId, path, status, resolvedBody);
 
 			// Store answer in attributes for ask_user
 			if (path.startsWith("ask_user://") && output) {
 				const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 					.next_turn;
-				await this.#knownStore.upsert(runId, turn, path, resolvedBody, state, {
+				await this.#knownStore.upsert(runId, turn, path, resolvedBody, status, {
 					attributes: { ...attrs, answer: output },
 				});
 			}
@@ -448,12 +448,7 @@ export default class AgentLoop {
 				}
 			}
 		} else if (action === "reject") {
-			await this.#knownStore.resolve(
-				runId,
-				path,
-				"rejected",
-				output || "rejected",
-			);
+			await this.#knownStore.resolve(runId, path, 403, output || "rejected");
 		} else {
 			throw new Error(msg("error.resolution_invalid", { action }));
 		}
@@ -462,7 +457,7 @@ export default class AgentLoop {
 		if (unresolved.length > 0) {
 			return {
 				run: runAlias,
-				status: "proposed",
+				status: 202,
 				remainingCount: unresolved.length,
 				proposed: unresolved,
 			};
@@ -476,11 +471,11 @@ export default class AgentLoop {
 			if (currentLoop)
 				await this.#db.complete_loop.run({
 					id: loopId,
-					status: "completed",
+					status: 200,
 					result: null,
 				});
-			await this.#db.update_run_status.run({ id: runId, status: "completed" });
-			return { run: runAlias, status: "completed" };
+			await this.#db.update_run_status.run({ id: runId, status: 200 });
+			return { run: runAlias, status: 200 };
 		}
 
 		const hasSummary = await this.#db.get_latest_summary.get({
@@ -491,11 +486,11 @@ export default class AgentLoop {
 			if (currentLoop)
 				await this.#db.complete_loop.run({
 					id: loopId,
-					status: "completed",
+					status: 200,
 					result: null,
 				});
-			await this.#db.update_run_status.run({ id: runId, status: "completed" });
-			return { run: runAlias, status: "completed" };
+			await this.#db.update_run_status.run({ id: runId, status: 200 });
+			return { run: runAlias, status: 200 };
 		}
 
 		// No summary and no rejections in this loop — resume it
@@ -546,7 +541,7 @@ export default class AgentLoop {
 			nextTurn,
 			`prompt://${nextTurn}`,
 			"",
-			"info",
+			200,
 			{ attributes: { mode: "ask" } },
 		);
 		await this.#knownStore.upsert(
@@ -554,7 +549,7 @@ export default class AgentLoop {
 			nextTurn,
 			`ask://${nextTurn}`,
 			message,
-			"info",
+			200,
 		);
 
 		if (this.#activeRuns.has(runRow.id)) {

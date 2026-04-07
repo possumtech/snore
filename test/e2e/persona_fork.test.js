@@ -52,7 +52,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 			persona: "You are a grumpy senior Python developer.",
 		});
 
-		assert.strictEqual(result.status, "completed");
+		assert.strictEqual(result.status, 200);
 
 		// Verify persona stored on the run
 		const runDetail = await client.call("getRun", { run: result.run });
@@ -67,7 +67,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 			model,
 			prompt: "What does the hello function do in main.py?",
 		});
-		assert.strictEqual(run1.status, "completed");
+		assert.strictEqual(run1.status, 200);
 
 		const parentRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
 		const parentEntries = await tdb.db.get_known_entries.all({

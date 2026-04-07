@@ -208,7 +208,7 @@ describe("ContextAssembler", () => {
 					path: "set://app.js",
 					scheme: "set",
 					fidelity: "full",
-					state: "pass",
+					status: 200,
 					body: "",
 					tokens: 0,
 					attributes: JSON.stringify({ file: "app.js" }),
@@ -220,7 +220,7 @@ describe("ContextAssembler", () => {
 					path: "summarize://done",
 					scheme: "summarize",
 					fidelity: "full",
-					state: "summary",
+					status: 200,
 					body: "Fixed it",
 					tokens: 2,
 					attributes: null,
@@ -235,7 +235,7 @@ describe("ContextAssembler", () => {
 			);
 			const user = messages[1].content;
 
-			assert.ok(user.includes('status="pass"'), "pass result has status");
+			assert.ok(user.includes('status="200"'), "pass result has status");
 			assert.ok(user.includes("Fixed it"), "summary renders");
 			assert.ok(user.includes("<current>"), "results in current block");
 			assert.ok(user.includes("<tool path="), "tool tags in current");

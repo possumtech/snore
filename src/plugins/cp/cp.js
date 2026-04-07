@@ -6,9 +6,7 @@ export default class Cp {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({
-			validStates: ["full", "proposed", "pass", "rejected", "error", "pattern"],
-		});
+		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
@@ -34,13 +32,13 @@ export default class Cp {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
-			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
+			await store.upsert(runId, turn, entry.resultPath, body, 202, {
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, "full", { loopId });
-			await store.upsert(runId, turn, entry.resultPath, body, "pass", {
+			await store.upsert(runId, turn, to, source, 200, { loopId });
+			await store.upsert(runId, turn, entry.resultPath, body, 200, {
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,
 			});

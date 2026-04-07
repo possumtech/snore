@@ -4,13 +4,12 @@ PRAGMA mmap_size = $mmap_size;
 -- INIT: initial_schema
 
 -- Scheme registry: single source of truth for all scheme metadata.
--- fidelity: 'full' = always visible, 'turn' = visible when turn>0, 'null' = never visible.
--- valid_states: JSON array of allowed state values for this scheme.
+-- Status codes are HTTP: 2xx success, 3xx redirect, 4xx model error, 5xx system error.
+-- No valid_states — HTTP semantics are universal.
+-- No fidelity — entries don't decide their own importance.
 CREATE TABLE IF NOT EXISTS schemes (
 	name TEXT PRIMARY KEY
-	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'turn', 'null'))
 	, model_visible BOOLEAN NOT NULL DEFAULT 1
-	, valid_states TEXT NOT NULL
 	, category TEXT
 );
 
@@ -37,15 +36,14 @@ CREATE TABLE IF NOT EXISTS models (
 );
 
 -- Runs: execution units belonging to a project.
--- Each run has its own config (temperature, persona, context_limit).
+-- Status uses HTTP codes: 100=queued, 102=running, 200=completed,
+-- 202=proposed, 500=failed, 499=aborted.
 CREATE TABLE IF NOT EXISTS runs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, parent_run_id INTEGER REFERENCES runs (id) ON DELETE SET NULL
 	, model TEXT
-	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
-		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
-	)
+	, status INTEGER NOT NULL DEFAULT 100 CHECK (status BETWEEN 100 AND 599)
 	, alias TEXT NOT NULL UNIQUE
 	, temperature REAL CHECK (
 		temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
@@ -61,7 +59,8 @@ CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias);
 CREATE INDEX IF NOT EXISTS idx_runs_project ON runs (project_id);
 
 -- Loops: execution units within a run. Each ask/act call creates a loop.
--- A loop consists of one or more turns. At most one loop per run may be running.
+-- Status: 100=pending, 102=running, 200=completed, 202=proposed,
+-- 500=failed, 499=aborted.
 CREATE TABLE IF NOT EXISTS loops (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
@@ -69,9 +68,7 @@ CREATE TABLE IF NOT EXISTS loops (
 	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
 	, model TEXT
 	, prompt TEXT NOT NULL DEFAULT ''
-	, status TEXT NOT NULL DEFAULT 'pending' CHECK (
-		status IN ('pending', 'running', 'proposed', 'completed', 'failed', 'aborted')
-	)
+	, status INTEGER NOT NULL DEFAULT 100 CHECK (status BETWEEN 100 AND 599)
 	, config JSON
 	, result JSON
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -80,7 +77,7 @@ CREATE TABLE IF NOT EXISTS loops (
 CREATE INDEX IF NOT EXISTS idx_loops_run ON loops (run_id);
 -- Enforce at most one running loop per run.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_loops_one_active
-ON loops (run_id) WHERE status = 'running';
+ON loops (run_id) WHERE status = 102;
 
 -- Turns: usage stats and sequencing (operational, not model-facing)
 CREATE TABLE IF NOT EXISTS turns (
@@ -114,7 +111,8 @@ ON file_constraints (project_id);
 -- Known K/V Store: the unified state machine.
 -- Files, knowledge, tool results, audit — everything is a keyed entry.
 -- scheme: derived from path via schemeOf(). Generated column.
--- State validated by trigger against schemes.valid_states.
+-- status: HTTP status code (2xx success, 4xx model error, 5xx system error).
+-- fidelity: visibility level, independently managed by relevance engine.
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
@@ -123,7 +121,10 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, path TEXT NOT NULL
 	, body TEXT NOT NULL DEFAULT ''
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
-	, state TEXT NOT NULL
+	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
+	, fidelity TEXT NOT NULL DEFAULT 'full' CHECK (
+		fidelity IN ('full', 'summary', 'index', 'stored')
+	)
 	, hash TEXT
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
@@ -135,43 +136,14 @@ CREATE TABLE IF NOT EXISTS known_entries (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_path
 ON known_entries (run_id, path);
-CREATE INDEX IF NOT EXISTS idx_known_entries_scheme_state
-ON known_entries (run_id, scheme, state);
+CREATE INDEX IF NOT EXISTS idx_known_entries_scheme_status
+ON known_entries (run_id, scheme, status);
 CREATE INDEX IF NOT EXISTS idx_known_entries_turn
 ON known_entries (run_id, turn);
 
--- Validate state against schemes.valid_states on insert.
-CREATE TRIGGER IF NOT EXISTS trg_known_entry_state_insert
-BEFORE INSERT ON known_entries
-FOR EACH ROW
-BEGIN
-	SELECT RAISE(ABORT, 'invalid state for scheme')
-	WHERE NOT EXISTS (
-		SELECT 1
-		FROM schemes AS s, json_each(s.valid_states) AS j
-		WHERE
-			s.name = COALESCE(schemeOf(NEW.path), 'file')
-			AND j.value = NEW.state
-	);
-END;
+-- No state validation triggers — HTTP status codes are universal.
 
--- Validate state against schemes.valid_states on update.
-CREATE TRIGGER IF NOT EXISTS trg_known_entry_state_update
-BEFORE UPDATE OF state ON known_entries
-FOR EACH ROW
-WHEN OLD.state != NEW.state
-BEGIN
-	SELECT RAISE(ABORT, 'invalid state for scheme')
-	WHERE NOT EXISTS (
-		SELECT 1
-		FROM schemes AS s, json_each(s.valid_states) AS j
-		WHERE
-			s.name = COALESCE(schemeOf(NEW.path), 'file')
-			AND j.value = NEW.state
-	);
-END;
-
--- UNRESOLVED VIEW: all entries awaiting user action
+-- UNRESOLVED VIEW: all entries awaiting user action (202 Accepted)
 CREATE VIEW IF NOT EXISTS v_unresolved AS
 SELECT
 	run_id
@@ -180,7 +152,7 @@ SELECT
 	, attributes
 	, turn
 FROM known_entries
-WHERE state = 'proposed';
+WHERE status = 202;
 
 -- Turn context: materialized snapshot of what the model sees each turn.
 -- known_entries is the warehouse. turn_context is the shipment.
@@ -192,8 +164,8 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, ordinal INTEGER NOT NULL CHECK (ordinal >= 0)
 	, path TEXT NOT NULL
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
+	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
 	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'summary', 'index'))
-	, state TEXT NOT NULL DEFAULT 'full'
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
@@ -203,8 +175,8 @@ CREATE TABLE IF NOT EXISTS turn_context (
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn
 ON turn_context (run_id, turn);
 
--- Enforce valid run state transitions.
--- completed → running: continuation (new turn on finished run)
+-- Enforce valid run state transitions (HTTP status codes).
+-- 100=queued, 102=running, 200=completed, 202=proposed, 499=aborted, 500=failed.
 CREATE TRIGGER IF NOT EXISTS trg_run_state_transition
 BEFORE UPDATE OF status ON runs
 FOR EACH ROW
@@ -212,12 +184,12 @@ WHEN OLD.status != NEW.status
 BEGIN
 	SELECT RAISE(ABORT, 'invalid run state transition')
 	WHERE NOT (
-		(OLD.status = 'queued' AND NEW.status IN ('running', 'aborted'))
-		OR (OLD.status = 'running' AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
-		OR (OLD.status = 'proposed' AND NEW.status IN ('running', 'completed', 'aborted'))
-		OR (OLD.status = 'completed' AND NEW.status IN ('running', 'aborted'))
-		OR (OLD.status = 'failed' AND NEW.status IN ('running', 'aborted'))
-		OR (OLD.status = 'aborted' AND NEW.status IN ('running'))
+		(OLD.status = 100 AND NEW.status IN (102, 499))
+		OR (OLD.status = 102 AND NEW.status IN (200, 202, 500, 499))
+		OR (OLD.status = 202 AND NEW.status IN (102, 200, 499))
+		OR (OLD.status = 200 AND NEW.status IN (102, 499))
+		OR (OLD.status = 500 AND NEW.status IN (102, 499))
+		OR (OLD.status = 499 AND NEW.status IN (102))
 	);
 END;
 

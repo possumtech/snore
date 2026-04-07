@@ -17,7 +17,7 @@ export default class Sh {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
+		await store.upsert(runId, turn, entry.resultPath, entry.body, 202, {
 			attributes: entry.attributes,
 			loopId,
 		});

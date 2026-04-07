@@ -17,7 +17,7 @@ export default class Instructions {
 	async onTurnStarted({ rummy }) {
 		const { entries: store, sequence: turn, runId } = rummy;
 		const runRow = await rummy.db.get_run_by_id.get({ id: runId });
-		await store.upsert(runId, turn, "instructions://system", "", "info", {
+		await store.upsert(runId, turn, "instructions://system", "", 200, {
 			attributes: { persona: runRow?.persona || null },
 		});
 	}

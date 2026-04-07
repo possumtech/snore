@@ -48,18 +48,10 @@ export default class PluginContext {
 		return this.#schemes;
 	}
 
-	registerScheme({
-		name,
-		fidelity = "full",
-		modelVisible = 1,
-		validStates = ["full", "proposed", "pass", "rejected", "error"],
-		category = "result",
-	} = {}) {
+	registerScheme({ name, modelVisible = 1, category = "result" } = {}) {
 		this.#schemes.push({
 			name: name || this.#name,
-			fidelity,
 			model_visible: modelVisible,
-			valid_states: JSON.stringify(validStates),
 			category,
 		});
 	}

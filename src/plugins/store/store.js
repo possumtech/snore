@@ -6,7 +6,7 @@ export default class Store {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({ validStates: ["full", "stored", "pattern"] });
+		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
@@ -20,7 +20,7 @@ export default class Store {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.upsert(runId, turn, entry.resultPath, "", "error", {
+			await store.upsert(runId, turn, entry.resultPath, "", 400, {
 				attributes: { error: "path is required" },
 				loopId,
 			});
@@ -46,7 +46,8 @@ export default class Store {
 			const paths = matches.map((m) => m.path).join(", ");
 			const body =
 				matches.length > 0 ? `${paths} stored` : `${target} not found`;
-			await store.upsert(runId, turn, entry.resultPath, body, "stored", {
+			await store.upsert(runId, turn, entry.resultPath, body, 200, {
+				fidelity: "stored",
 				loopId,
 			});
 		}

@@ -18,13 +18,17 @@ describe("turn_context distribution bucket correctness", () => {
 		RUN_ID = seed.runId;
 
 		// Populate known_entries
-		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");
-		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", "index");
-		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", "full");
-		await store.upsert(RUN_ID, 1, "search://1", "search results", "info");
-		await store.upsert(RUN_ID, 1, "summarize://1", "did a thing", "summary");
-		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
-		await store.upsert(RUN_ID, 1, "ask://1", "test question", "info");
+		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", 200);
+		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", 200, {
+			fidelity: "index",
+		});
+		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", 200);
+		await store.upsert(RUN_ID, 1, "search://1", "search results", 200);
+		await store.upsert(RUN_ID, 1, "summarize://1", "did a thing", 200, {
+			fidelity: "summary",
+		});
+		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", 200);
+		await store.upsert(RUN_ID, 1, "ask://1", "test question", 200);
 
 		// Materialize turn_context
 		await materialize(tdb.db, {

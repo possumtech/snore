@@ -61,8 +61,14 @@ export default class KnownStore {
 		turn,
 		path,
 		body,
-		state,
-		{ attributes = null, hash = null, updatedAt = null, loopId = null } = {},
+		status,
+		{
+			fidelity = "full",
+			attributes = null,
+			hash = null,
+			updatedAt = null,
+			loopId = null,
+		} = {},
 	) {
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
@@ -70,7 +76,8 @@ export default class KnownStore {
 			turn,
 			path: KnownStore.normalizePath(path),
 			body,
-			state,
+			status,
+			fidelity,
 			hash,
 			attributes: attributes ? JSON.stringify(attributes) : null,
 			updated_at: updatedAt,
@@ -85,14 +92,14 @@ export default class KnownStore {
 		});
 	}
 
-	async setFileState(runId, pattern, state) {
-		const result = await this.#db.set_file_state.run({
+	async setFileFidelity(runId, pattern, fidelity) {
+		const result = await this.#db.set_file_fidelity.run({
 			run_id: runId,
 			pattern,
-			state,
+			fidelity,
 		});
 		if (result.changes === 0) {
-			await this.upsert(runId, 0, pattern, "", state);
+			await this.upsert(runId, 0, pattern, "", 200, { fidelity });
 		}
 	}
 
@@ -165,11 +172,11 @@ export default class KnownStore {
 		});
 	}
 
-	async resolve(runId, path, state, body) {
+	async resolve(runId, path, status, body) {
 		await this.#db.resolve_known_entry.run({
 			run_id: runId,
 			path: KnownStore.normalizePath(path),
-			state,
+			status,
 			body,
 		});
 	}

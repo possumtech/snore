@@ -89,7 +89,7 @@ export default class RummyContext {
 
 	// --- Tool methods (same operations the model uses) ---
 
-	async set({ path, body, state = "full", attributes } = {}) {
+	async set({ path, body, status = 200, attributes } = {}) {
 		if (!path) {
 			const slugify = (await import("../sql/functions/slugify.js")).default;
 			const base = slugify(body || "");
@@ -100,7 +100,7 @@ export default class RummyContext {
 			this.sequence,
 			path,
 			body || "",
-			state,
+			status,
 			{ attributes, loopId: this.loopId },
 		);
 		return path;
@@ -121,7 +121,7 @@ export default class RummyContext {
 	async mv(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, "full", {
+		await this.entries.upsert(this.runId, this.sequence, to, body, 200, {
 			loopId: this.loopId,
 		});
 		await this.entries.remove(this.runId, from);
@@ -130,7 +130,7 @@ export default class RummyContext {
 	async cp(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, "full", {
+		await this.entries.upsert(this.runId, this.sequence, to, body, 200, {
 			loopId: this.loopId,
 		});
 	}
@@ -145,9 +145,9 @@ export default class RummyContext {
 		return this.entries.getAttributes(this.runId, path);
 	}
 
-	async getState(path) {
+	async getStatus(path) {
 		const row = await this.entries.getState(this.runId, path);
-		return row?.state ?? null;
+		return row?.status ?? null;
 	}
 
 	async getEntry(path) {
@@ -169,7 +169,7 @@ export default class RummyContext {
 
 	async log(message) {
 		const path = `content://${Date.now()}`;
-		await this.entries.upsert(this.runId, this.sequence, path, message, "info");
+		await this.entries.upsert(this.runId, this.sequence, path, message, 200);
 	}
 
 	// --- Node tree methods ---
