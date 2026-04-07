@@ -171,7 +171,7 @@ export default class TurnExecutor {
 				(sum, m) => sum + countTokens(m.content || ""),
 				0,
 			);
-			const ceiling = contextSize * 0.95;
+			const ceiling = contextSize * 0.80;
 			if (assembledTokens > ceiling) {
 				const candidates = rows
 					.filter(
