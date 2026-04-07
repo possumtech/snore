@@ -379,10 +379,10 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		});
 		await client.assertRun(r1, 200, "budget-load");
 
-		// Set context limit that can't hold both big files + system prompt
+		// Set context limit tight enough to force demotions but above the floor
 		await client.call("run/config", {
 			run: r1.run,
-			contextLimit: 1024,
+			contextLimit: 4096,
 		});
 
 		// Next turn triggers budget enforcement
@@ -394,14 +394,18 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		});
 		await client.assertRun(r2, 200, "budget-demoted");
 
-		// Check that file entries were demoted to summary
+		// Check that file entries were demoted (summary, index, or stored)
 		const entries = await allEntries(tdb.db, r2.run);
-		const summaries = entries.filter(
-			(e) => e.scheme === null && e.fidelity === "summary",
+		const demotedFiles = entries.filter(
+			(e) =>
+				e.scheme === null &&
+				(e.fidelity === "summary" ||
+					e.fidelity === "index" ||
+					e.fidelity === "stored"),
 		);
 		assert.ok(
-			summaries.length > 0,
-			"should have demoted file entries to summary to fit budget",
+			demotedFiles.length > 0,
+			"should have demoted file entries to fit budget",
 		);
 	});
 

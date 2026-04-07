@@ -1,4 +1,4 @@
-import { countTokens } from "../../agent/tokens.js";
+import { countTokens } from "./tokens.js";
 
 /**
  * Budget cascade: guarantees materialized context fits within the model's

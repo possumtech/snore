@@ -241,8 +241,6 @@ export default class TurnExecutor {
 		// Every command becomes an entry. No execution yet.
 
 		const recorded = [];
-		let summaryText = null;
-		let updateText = null;
 
 		// Track budget headroom for 413 rejection during recording
 		const budgetCeiling = contextSize ? contextSize * 0.95 : null;
@@ -264,58 +262,11 @@ export default class TurnExecutor {
 				budgetRemaining,
 			);
 			if (!entry) continue;
+			recorded.push(entry);
 
-			if (entry.scheme === "summarize") summaryText = entry.body;
-			else if (entry.scheme === "update") updateText = entry.body;
-			else recorded.push(entry);
-
-			// Deduct from remaining budget
 			if (entry.body && budgetCeiling) {
 				budgetRemaining -= countTokens(entry.body);
 			}
-		}
-
-		// If model sent both, summary wins
-		if (summaryText && updateText) updateText = null;
-
-		// If model sent neither, heal from content
-		let statusHealed = false;
-		if (!summaryText && !updateText) {
-			const healed = ResponseHealer.healStatus(content, commands);
-			summaryText = healed.summaryText;
-			updateText = healed.updateText;
-			statusHealed = true;
-		}
-
-		// Record healed status
-		if (summaryText) {
-			const summaryPath = await this.#knownStore.slugPath(
-				currentRunId,
-				"summarize",
-				summaryText,
-			);
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				summaryPath,
-				summaryText,
-				200,
-				{ loopId: currentLoopId },
-			);
-		} else if (updateText) {
-			const updatePath = await this.#knownStore.slugPath(
-				currentRunId,
-				"update",
-				updateText,
-			);
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				updatePath,
-				updateText,
-				200,
-				{ loopId: currentLoopId },
-			);
 		}
 
 		// --- PHASE 2: DISPATCH ---
@@ -379,16 +330,24 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Errors override summarize — the model thinks it's done but it's not
-		if (hasErrors && summaryText) {
-			summaryText = null;
-			updateText = "Tool errors detected — retry or investigate.";
-		}
+		// Extract summary/update from dispatched entries.
+		// If they were 409'd by a preceding proposal/error, they won't
+		// be in dispatched — summaryText stays null, healer treats as stall.
+		const summaryEntry = dispatched.find((e) => e.scheme === "summarize");
+		const updateEntry = dispatched.find((e) => e.scheme === "update");
+		let summaryText = summaryEntry?.body || null;
+		let updateText = updateEntry?.body || null;
 
-		// Proposals override summarize — outcome unknown until user resolves
-		if (hasProposed && summaryText) {
-			summaryText = null;
-			updateText = "Awaiting approval for proposed changes.";
+		// If model sent both, summary wins
+		if (summaryText && updateText) updateText = null;
+
+		// If model sent neither, heal from content
+		let statusHealed = false;
+		if (!summaryText && !updateText) {
+			const healed = ResponseHealer.healStatus(content, commands);
+			summaryText = healed.summaryText;
+			updateText = healed.updateText;
+			statusHealed = true;
 		}
 
 		// --- Classify for return value ---
@@ -475,9 +434,13 @@ export default class TurnExecutor {
 
 		const scheme = cmd.name;
 
-		// Structural tags — record and return (no handler dispatch)
+		// Structural tags — recorded like any other entry
 		if (scheme === "summarize" || scheme === "update") {
-			return { scheme, body: cmd.body, resultPath: null, attributes: null };
+			const statusPath = await this.#knownStore.slugPath(runId, scheme, cmd.body);
+			await this.#knownStore.upsert(runId, turn, statusPath, cmd.body, 200, {
+				loopId,
+			});
+			return { scheme, body: cmd.body, path: statusPath, resultPath: statusPath, attributes: null };
 		}
 
 		// Unknown — deduplicated, sticky
