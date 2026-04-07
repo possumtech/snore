@@ -156,17 +156,26 @@ receipt entries accumulate. Low priority.
 
 ## Done: Session 2026-04-06/07 (continued)
 
+- **`<store>` tool removed**: Fidelity control via `<set>` attributes:
+  `stored`, `summary`, `index`, `full`. Direct-to-storage writes:
+  `<set path="..." stored>content</set>`. 10 tools → 9.
+- **`summary="..."` attribute**: Model-authored descriptions (<= 80 chars)
+  persist across fidelity changes. Rendered as header in all views:
+  `# <set summary="..."/>`. Falls back in ToolRegistry when no summary
+  view is registered. The model describes files as it reads them —
+  no janitorial pass needed.
+- **Tool tags in previous/current**: Results render as `<set path="...">`
+  not `<tool path="set://...">`. The history teaches the invocation syntax.
+- **Native tool call normalization**: Qwen, OpenAI, Anthropic, Mistral
+  formats silently translated to rummy XML in XmlParser.
 - **Skill plugin**: Class renamed `Skill`, turn 0 for init-time writes.
+  Persona extracted to own plugin (`persona/persona.js`).
 - **XmlParser → Hedberg**: JSON edit parsing moved to `hedberg/normalize.js`.
-  `resolveCommand` delegates all format detection to hedberg functions.
-- **Native tool call normalization**: Qwen `<|tool_call>` and OpenAI
-  `function_call` JSON silently translated to rummy XML in XmlParser.
 - **Repetition detection**: Update text fingerprinting (same 3 turns =
   force-complete). Known entry dedup (80-char prefix match reuses path).
 - **File scheme documented**: NULL scheme exception explained in file.js.
-- **ResponseHealer**: Already clean 134 lines. No split needed.
-- **TurnExecutor thinning**: Already done — audit writes in telemetry plugin.
 - **Scheme registration**: All tool plugins register. Audit schemes bootstrapped.
+- **URI length cap**: 2048 chars max on known_entries.path.
 
 ## Done: Session 2026-04-06/07
 

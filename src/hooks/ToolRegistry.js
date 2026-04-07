@@ -46,7 +46,7 @@ export default class ToolRegistry {
 				? JSON.parse(entry.attributes)
 				: entry.attributes;
 		const summaryText =
-			typeof attrs?.summary === "string" ? attrs.summary : null;
+			typeof attrs?.summary === "string" ? attrs.summary.slice(0, 80) : null;
 		const summaryHeader = summaryText
 			? `# <set summary="${summaryText}"/>`
 			: null;

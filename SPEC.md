@@ -330,13 +330,17 @@ Each turn:
    - Prompt plugin (priority 300) → `<ask>`/`<act>` section
 9. Store as `system://N` and `user://N` audit entries
 
-The VIEW determines visibility. State IS fidelity:
+The VIEW determines visibility from `fidelity` and `status`:
 - `full` → body visible
-- `summary` → body visible
+- `summary` → summary visible (model-authored `summary` attribute if set)
 - `index` → path listed, no content
-- `stored` → invisible
-- `proposed` → invisible (pending client)
+- `stored` → invisible (retrievable via `<get>`)
+- `status = 202` → invisible (proposed, pending client)
 - `model_visible = 0` → invisible (audit, tool, instructions)
+
+Model controls fidelity via `<set>` attributes: `stored`, `summary`,
+`index`, `full`. The `summary="..."` attribute attaches a description
+(<= 80 chars) that persists across fidelity changes.
 
 ### 4.5 progress:// as Entry
 

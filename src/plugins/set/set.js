@@ -36,8 +36,9 @@ export default class Set {
 						: null;
 		if (fidelityAttr && attrs.path) {
 			const target = attrs.path;
-			const summaryText =
+			const rawSummary =
 				typeof attrs.summary === "string" ? attrs.summary : null;
+			const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 			const matches = await store.getEntriesByPattern(
 				runId,
 				target,
