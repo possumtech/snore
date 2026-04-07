@@ -1,5 +1,5 @@
-import BudgetCascade from "./BudgetCascade.js";
 import RummyContext from "../hooks/RummyContext.js";
+import BudgetCascade from "./BudgetCascade.js";
 import ContextAssembler from "./ContextAssembler.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
@@ -195,11 +195,70 @@ export default class TurnExecutor {
 
 		// Call LLM
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
-		const rawResult = await this.#llmProvider.completion(
-			filteredMessages,
-			requestedModel,
-			{ temperature: options?.temperature, signal },
-		);
+		let rawResult;
+		try {
+			rawResult = await this.#llmProvider.completion(
+				filteredMessages,
+				requestedModel,
+				{ temperature: options?.temperature, signal },
+			);
+		} catch (err) {
+			if (!err.message?.includes("exceed")) throw err;
+
+			// Emergency retry — cascade missed due to tokenizer mismatch.
+			// Demote largest remaining full entries one at a time until it fits.
+			console.warn("[RUMMY] Context overflow from LLM — emergency demotion");
+			for (let attempt = 0; attempt < 10; attempt++) {
+				const candidate = rows
+					.filter(
+						(r) =>
+							r.fidelity === "full" &&
+							r.tokens > 0 &&
+							r.category !== "prompt" &&
+							!demoted.includes(r.path),
+					)
+					.toSorted((a, b) => b.tokens - a.tokens)[0];
+
+				if (!candidate) throw err;
+				await this.#knownStore.setFidelity(
+					currentRunId,
+					candidate.path,
+					"summary",
+				);
+				demoted.push(candidate.path);
+
+				await this.#rematerialize(currentRunId, currentLoopId, turn);
+				rows = await this.#db.get_turn_context.all({
+					run_id: currentRunId,
+					turn,
+				});
+				messages = await ContextAssembler.assembleFromTurnContext(
+					rows,
+					{ type: mode, systemPrompt, contextSize, demoted },
+					this.#hooks,
+				);
+				filteredMessages = await this.#hooks.llm.messages.filter(messages, {
+					model: requestedModel,
+					projectId,
+					runId: currentRunId,
+				});
+
+				try {
+					rawResult = await this.#llmProvider.completion(
+						filteredMessages,
+						requestedModel,
+						{ temperature: options?.temperature, signal },
+					);
+					console.warn(
+						`[RUMMY] Emergency demotion: ${attempt + 1} entries demoted. Retry succeeded.`,
+					);
+					break;
+				} catch (retryErr) {
+					if (!retryErr.message?.includes("exceed")) throw retryErr;
+				}
+			}
+			if (!rawResult) throw err;
+		}
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,
 			projectId,
@@ -242,11 +301,11 @@ export default class TurnExecutor {
 
 		const recorded = [];
 
-		// Track budget headroom for 413 rejection during recording
+		// Track budget headroom for 413 rejection during recording.
+		// Use assembled message tokens (includes system prompt overhead).
 		const budgetCeiling = contextSize ? contextSize * 0.95 : null;
 		const currentBudgetUsed = budgetCeiling
-			? (await this.#db.get_turn_budget.get({ run_id: currentRunId, turn }))
-					?.total ?? 0
+			? messages.reduce((sum, m) => sum + countTokens(m.content || ""), 0)
 			: 0;
 		let budgetRemaining = budgetCeiling
 			? budgetCeiling - currentBudgetUsed
@@ -436,11 +495,21 @@ export default class TurnExecutor {
 
 		// Structural tags — recorded like any other entry
 		if (scheme === "summarize" || scheme === "update") {
-			const statusPath = await this.#knownStore.slugPath(runId, scheme, cmd.body);
+			const statusPath = await this.#knownStore.slugPath(
+				runId,
+				scheme,
+				cmd.body,
+			);
 			await this.#knownStore.upsert(runId, turn, statusPath, cmd.body, 200, {
 				loopId,
 			});
-			return { scheme, body: cmd.body, path: statusPath, resultPath: statusPath, attributes: null };
+			return {
+				scheme,
+				body: cmd.body,
+				path: statusPath,
+				resultPath: statusPath,
+				attributes: null,
+			};
 		}
 
 		// Unknown — deduplicated, sticky
@@ -479,13 +548,27 @@ export default class TurnExecutor {
 			// Budget gate: reject if this entry would exceed context budget
 			const entryTokens = countTokens(cmd.body);
 			if (entryTokens > budgetRemaining) {
-				const rejectPath = await this.#knownStore.slugPath(runId, scheme, cmd.body);
-				await this.#knownStore.upsert(
-					runId, turn, rejectPath,
-					`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
-					413, { loopId },
+				const rejectPath = await this.#knownStore.slugPath(
+					runId,
+					scheme,
+					cmd.body,
 				);
-				return { scheme, path: rejectPath, body: "", resultPath: rejectPath, attributes, status: 413 };
+				await this.#knownStore.upsert(
+					runId,
+					turn,
+					rejectPath,
+					`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
+					413,
+					{ loopId },
+				);
+				return {
+					scheme,
+					path: rejectPath,
+					body: "",
+					resultPath: rejectPath,
+					attributes,
+					status: 413,
+				};
 			}
 
 			let knownPath = cmd.path;
@@ -518,11 +601,21 @@ export default class TurnExecutor {
 		const entryTokens = countTokens(body);
 		if (body && entryTokens > budgetRemaining) {
 			await this.#knownStore.upsert(
-				runId, turn, resultPath,
+				runId,
+				turn,
+				resultPath,
 				`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
-				413, { attributes, loopId },
+				413,
+				{ attributes, loopId },
 			);
-			return { scheme, path: resultPath, body: "", attributes, status: 413, resultPath };
+			return {
+				scheme,
+				path: resultPath,
+				body: "",
+				attributes,
+				status: 413,
+				resultPath,
+			};
 		}
 
 		// Record the entry — 200 OK, handlers change status during dispatch

@@ -11,7 +11,6 @@ import { countTokens } from "./tokens.js";
  */
 
 const DEMOTION_ORDER = {
-	prompt: 0,
 	result: 0,
 	structural: 0,
 	file: 1,
@@ -179,7 +178,10 @@ export default class BudgetCascade {
 	async #createStashEntries(runId, turn, loopId) {
 		const entries = await this.#db.get_known_entries.all({ run_id: runId });
 		const stored = entries.filter(
-			(e) => e.fidelity === "stored" && e.status === 200 && !e.path?.startsWith("known://stash_"),
+			(e) =>
+				e.fidelity === "stored" &&
+				e.status === 200 &&
+				!e.path?.startsWith("known://stash_"),
 		);
 
 		const byScheme = {};

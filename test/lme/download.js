@@ -20,10 +20,7 @@ const DATA_DIR = join(__dirname, "data");
 const REPO = "xiaowu0162/longmemeval-cleaned";
 const BASE_URL = `https://huggingface.co/datasets/${REPO}/resolve/main`;
 
-const DEFAULT_SPLITS = [
-	"longmemeval_s_cleaned",
-	"longmemeval_oracle",
-];
+const DEFAULT_SPLITS = ["longmemeval_s_cleaned", "longmemeval_oracle"];
 const ALL_SPLITS = [
 	"longmemeval_s_cleaned",
 	"longmemeval_m_cleaned",
@@ -56,7 +53,8 @@ async function downloadSplit(split) {
 	const raw = await res.text();
 	const rows = JSON.parse(raw);
 
-	if (!Array.isArray(rows)) throw new Error(`${split}: expected array, got ${typeof rows}`);
+	if (!Array.isArray(rows))
+		throw new Error(`${split}: expected array, got ${typeof rows}`);
 
 	const ndjson = `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`;
 	await fs.writeFile(outPath, ndjson);

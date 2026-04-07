@@ -81,7 +81,11 @@ function chunkContext(context, size) {
 async function resolveAll(client, result) {
 	let current = result;
 	let resolves = 0;
-	while (current.status === 202 && current.proposed?.length > 0 && resolves < 50) {
+	while (
+		current.status === 202 &&
+		current.proposed?.length > 0 &&
+		resolves < 50
+	) {
 		for (const p of current.proposed) {
 			if (resolves >= 50) break;
 			current = await client.call("run/resolve", {

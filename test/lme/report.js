@@ -95,7 +95,9 @@ export function printReport(results) {
 		console.log(`Failed Questions (${failures.length}):`);
 		console.log("─".repeat(58));
 		for (const f of failures.slice(0, 30)) {
-			console.log(`  [${f.split}:${f.row}] (${f.type}) Q: ${f.question.slice(0, 60)}`);
+			console.log(
+				`  [${f.split}:${f.row}] (${f.type}) Q: ${f.question.slice(0, 60)}`,
+			);
 			console.log(`    Expected: ${f.answers?.[0]?.slice(0, 60) ?? "?"}`);
 			console.log(`    Got:      ${f.response?.slice(0, 60) ?? "(empty)"}`);
 		}

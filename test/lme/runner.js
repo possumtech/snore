@@ -71,10 +71,14 @@ function loadSplit(split) {
 /**
  * Format a single session as readable text with timestamp.
  */
-function formatSession(session, date) {
-	const header = date ? `[Session: ${date}]` : `[Session: ${session.session_id}]`;
-	const turns = session.turns
-		.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
+function formatSession(session, date, sessionId) {
+	const header = date ? `[Session: ${date}]` : `[Session: ${sessionId}]`;
+	const keys = Object.keys(session).sort((a, b) => Number(a) - Number(b));
+	const turns = keys
+		.map((k) => {
+			const t = session[k];
+			return `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`;
+		})
 		.join("\n");
 	return `${header}\n${turns}\n\n`;
 }
@@ -83,12 +87,12 @@ function formatSession(session, date) {
  * Chunk sessions into text blocks, respecting session boundaries.
  * Sessions are never split mid-conversation.
  */
-function chunkSessions(sessions, dates, maxSize) {
+function chunkSessions(sessions, dates, sessionIds, maxSize) {
 	const chunks = [];
 	let current = "";
 
 	for (let i = 0; i < sessions.length; i++) {
-		const text = formatSession(sessions[i], dates?.[i]);
+		const text = formatSession(sessions[i], dates?.[i], sessionIds?.[i]);
 		if (current.length + text.length > maxSize && current.length > 0) {
 			chunks.push(current);
 			current = "";
@@ -102,7 +106,11 @@ function chunkSessions(sessions, dates, maxSize) {
 async function resolveAll(client, result) {
 	let current = result;
 	let resolves = 0;
-	while (current.status === 202 && current.proposed?.length > 0 && resolves < 50) {
+	while (
+		current.status === 202 &&
+		current.proposed?.length > 0 &&
+		resolves < 50
+	) {
 		for (const p of current.proposed) {
 			if (resolves >= 50) break;
 			current = await client.call("run/resolve", {
@@ -155,7 +163,9 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 		"<summarize>[your answer]</summarize>",
 		"",
 		question,
-	].filter(Boolean).join("\n");
+	]
+		.filter(Boolean)
+		.join("\n");
 
 	let r = await client.call("ask", { model, prompt, run });
 	if (r.status === 202) r = await resolveAll(client, r);
@@ -207,23 +217,32 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const chunks = chunkSessions(
 		row.haystack_sessions,
 		row.haystack_dates,
+		row.haystack_session_ids,
 		CHUNK_SIZE,
 	);
 	await ingestContext(client, model, run, chunks);
 
-	const answer = typeof row.answer === "string" ? row.answer : String(row.answer);
+	const answer =
+		typeof row.answer === "string" ? row.answer : String(row.answer);
 	const validAnswers = [answer];
 	const response = await askQuestion(
-		client, db, model, run, row.question, row.question_date,
+		client,
+		db,
+		model,
+		run,
+		row.question,
+		row.question_date,
 	);
 	const { pass, matched } = evaluate(response, validAnswers);
-	const questionResults = [{
-		question: row.question,
-		response,
-		answers: validAnswers,
-		pass,
-		matched,
-	}];
+	const questionResults = [
+		{
+			question: row.question,
+			response,
+			answers: validAnswers,
+			pass,
+			matched,
+		},
+	];
 
 	const endTime = Date.now();
 	const score = scoreRow(questionResults);
@@ -304,7 +323,9 @@ async function main() {
 
 			if (TYPE_FILTER) {
 				rows = rows.filter((r) => r.question_type === TYPE_FILTER);
-				console.log(`  Filtered to ${rows.length} rows of type: ${TYPE_FILTER}`);
+				console.log(
+					`  Filtered to ${rows.length} rows of type: ${TYPE_FILTER}`,
+				);
 			}
 
 			const start = rowRange?.start ?? 0;
