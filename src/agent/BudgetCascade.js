@@ -2,15 +2,21 @@ import { countTokens } from "./tokens.js";
 
 /**
  * Budget cascade: guarantees materialized context fits within the model's
- * context window. Four tiers, each strictly smaller than the previous.
+ * context window. Context overflow is structurally impossible.
  *
- * Tier 1: full → summary
- * Tier 2: summary → index
- * Tier 3: index → stored, replaced by per-scheme stash entries (at index fidelity)
- * Tier 4: hard error — system prompt + stashes don't fit
+ * Each tier uses iterative halving — demote the oldest half of eligible
+ * entries, re-render, re-measure. Repeat until budget met or tier exhausted.
+ * Most recent entries survive longest. In conflict-resolution scenarios,
+ * later entries are authoritative.
+ *
+ * Tier 1: full → summary (halving spiral)
+ * Tier 2: summary → index (halving spiral)
+ * Tier 3: index → stash (halving spiral)
+ * Tier 4: hard error
  */
 
 const DEMOTION_ORDER = {
+	prompt: 0,
 	result: 0,
 	structural: 0,
 	file: 1,
@@ -46,15 +52,6 @@ export default class BudgetCascade {
 	/**
 	 * Enforce budget on assembled messages. Demotes entries through the
 	 * cascade until the context fits. Returns { messages, rows, demoted }.
-	 *
-	 * @param {object} opts
-	 * @param {number} opts.contextSize - model's context window
-	 * @param {number} opts.runId
-	 * @param {number} opts.loopId
-	 * @param {number} opts.turn
-	 * @param {object[]} opts.messages - assembled messages
-	 * @param {object[]} opts.rows - turn_context rows
-	 * @param {Function} opts.rematerialize - async fn to rematerialize and reassemble
 	 */
 	async enforce({
 		contextSize,
@@ -80,86 +77,69 @@ export default class BudgetCascade {
 			assembledTokens = measureMessages(currentMessages);
 		};
 
-		// Tier 1: Full → summary
-		if (assembledTokens > ceiling) {
-			const candidates = sortByDemotionPriority(
-				currentRows.filter(
-					(r) =>
-						r.fidelity === "full" &&
-						r.tokens > 0 &&
-						DEMOTION_ORDER[r.category] !== undefined,
+		// Tier 1: Full → summary (halving spiral)
+		await this.#halvingSpiral({
+			ceiling,
+			assembledTokens: () => assembledTokens,
+			refresh,
+			demoted,
+			runId,
+			fidelityFrom: "full",
+			fidelityTo: "summary",
+			tier: 1,
+			getCandidates: () =>
+				sortByDemotionPriority(
+					currentRows.filter(
+						(r) =>
+							r.fidelity === "full" &&
+							r.tokens > 0 &&
+							DEMOTION_ORDER[r.category] !== undefined,
+					),
 				),
-			);
-			const target = (assembledTokens - ceiling) * 1.1;
-			let accumulated = 0;
-			for (const entry of candidates) {
-				if (accumulated >= target) break;
-				await this.#knownStore.setFidelity(runId, entry.path, "summary");
-				accumulated += entry.tokens;
-				demoted.push(entry.path);
-			}
-			if (demoted.length > 0) {
-				await refresh();
-				console.warn(
-					`[RUMMY] Budget tier 1: ${demoted.length} full→summary (${assembledTokens}/${contextSize} tokens)`,
-				);
-			}
-		}
+		});
 
-		// Tier 2: Summary → index
-		if (assembledTokens > ceiling) {
-			const candidates = sortByDemotionPriority(
-				currentRows.filter(
-					(r) =>
-						r.fidelity === "summary" &&
-						r.tokens > 0 &&
-						DEMOTION_ORDER[r.category] !== undefined,
+		// Tier 2: Summary → index (halving spiral)
+		await this.#halvingSpiral({
+			ceiling,
+			assembledTokens: () => assembledTokens,
+			refresh,
+			demoted,
+			runId,
+			fidelityFrom: "summary",
+			fidelityTo: "index",
+			tier: 2,
+			getCandidates: () =>
+				sortByDemotionPriority(
+					currentRows.filter(
+						(r) =>
+							r.fidelity === "summary" &&
+							r.tokens > 0 &&
+							DEMOTION_ORDER[r.category] !== undefined,
+					),
 				),
-			);
-			const target = (assembledTokens - ceiling) * 1.1;
-			let accumulated = 0;
-			const tier2 = [];
-			for (const entry of candidates) {
-				if (accumulated >= target) break;
-				await this.#knownStore.setFidelity(runId, entry.path, "index");
-				accumulated += entry.tokens;
-				tier2.push(entry.path);
-				demoted.push(entry.path);
-			}
-			if (tier2.length > 0) {
-				await refresh();
-				console.warn(
-					`[RUMMY] Budget tier 2: ${tier2.length} summary→index (${assembledTokens}/${contextSize} tokens)`,
-				);
-			}
-		}
+		});
 
-		// Tier 3: Index → stored, replaced by per-scheme stash entries at index fidelity
-		if (assembledTokens > ceiling) {
-			const candidates = sortByDemotionPriority(
-				currentRows.filter(
-					(r) =>
-						r.fidelity === "index" &&
-						DEMOTION_ORDER[r.category] !== undefined &&
-						!r.path?.startsWith("known://stash_"),
+		// Tier 3: Index → stash (halving spiral)
+		await this.#stashSpiral({
+			ceiling,
+			assembledTokens: () => assembledTokens,
+			refresh,
+			demoted,
+			runId,
+			turn,
+			loopId,
+			getCandidates: () =>
+				sortByDemotionPriority(
+					currentRows.filter(
+						(r) =>
+							r.fidelity === "index" &&
+							DEMOTION_ORDER[r.category] !== undefined &&
+							!r.path?.startsWith("known://stash_"),
+					),
 				),
-			);
-			const tier3 = [];
-			for (const entry of candidates) {
-				await this.#knownStore.setFidelity(runId, entry.path, "stored");
-				tier3.push(entry.path);
-				demoted.push(entry.path);
-			}
-			if (tier3.length > 0) {
-				await this.#createStashEntries(runId, turn, loopId);
-				await refresh();
-				console.warn(
-					`[RUMMY] Budget tier 3: ${tier3.length} index→stashed (${assembledTokens}/${contextSize} tokens)`,
-				);
-			}
-		}
+		});
 
-		// Tier 4: Hard error — system prompt + stashes don't fit
+		// Tier 4: Hard error
 		if (assembledTokens > ceiling) {
 			throw new Error(
 				`Context floor (${assembledTokens} tokens) exceeds model limit (${contextSize}). ` +
@@ -168,6 +148,82 @@ export default class BudgetCascade {
 		}
 
 		return { messages: currentMessages, rows: currentRows, demoted };
+	}
+
+	/**
+	 * Iterative halving: demote oldest half of eligible entries,
+	 * re-render, re-measure. Repeat until budget met or nothing left.
+	 */
+	async #halvingSpiral({
+		ceiling,
+		assembledTokens,
+		refresh,
+		demoted,
+		runId,
+		fidelityFrom,
+		fidelityTo,
+		tier,
+		getCandidates,
+	}) {
+		let iteration = 0;
+		while (assembledTokens() > ceiling) {
+			const candidates = getCandidates();
+			if (candidates.length === 0) break;
+
+			const half = Math.max(1, Math.ceil(candidates.length / 2));
+			const toDemote = candidates.slice(0, half);
+			const batch = [];
+
+			for (const entry of toDemote) {
+				await this.#knownStore.setFidelity(runId, entry.path, fidelityTo);
+				batch.push(entry.path);
+				demoted.push(entry.path);
+			}
+
+			await refresh();
+			iteration++;
+			console.warn(
+				`[RUMMY] Budget tier ${tier}: ${batch.length} ${fidelityFrom}→${fidelityTo} (${assembledTokens()}/${ceiling | 0} tokens, pass ${iteration})`,
+			);
+		}
+	}
+
+	/**
+	 * Stash spiral: like halving, but stashed entries get collapsed
+	 * into per-scheme stash entries at index fidelity.
+	 */
+	async #stashSpiral({
+		ceiling,
+		assembledTokens,
+		refresh,
+		demoted,
+		runId,
+		turn,
+		loopId,
+		getCandidates,
+	}) {
+		let iteration = 0;
+		while (assembledTokens() > ceiling) {
+			const candidates = getCandidates();
+			if (candidates.length === 0) break;
+
+			const half = Math.max(1, Math.ceil(candidates.length / 2));
+			const toDemote = candidates.slice(0, half);
+			const batch = [];
+
+			for (const entry of toDemote) {
+				await this.#knownStore.setFidelity(runId, entry.path, "stored");
+				batch.push(entry.path);
+				demoted.push(entry.path);
+			}
+
+			await this.#createStashEntries(runId, turn, loopId);
+			await refresh();
+			iteration++;
+			console.warn(
+				`[RUMMY] Budget tier 3: ${batch.length} index→stashed (${assembledTokens()}/${ceiling | 0} tokens, pass ${iteration})`,
+			);
+		}
 	}
 
 	/**

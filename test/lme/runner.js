@@ -190,6 +190,41 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 	return "";
 }
 
+async function judgeAnswer(client, db, model, question, expected, response) {
+	const prompt = [
+		"You are a strict evaluator. Does the response correctly answer the question?",
+		"",
+		`Question: ${question}`,
+		`Expected answer: ${expected}`,
+		`Actual response: ${response}`,
+		"",
+		"<summarize>YES or NO, then a one-sentence reason</summarize>",
+	].join("\n");
+
+	let r = await client.call("ask", { model, prompt, noContext: true });
+	if (r.status === 202) r = await resolveAll(client, r);
+	if (r.status >= 500) return { pass: false, reason: "judge call failed" };
+
+	const alias = r.run;
+	const dbRun = await db.get_run_by_alias.get({ alias });
+	let judgeText = "";
+	if (dbRun) {
+		const entries = await db.get_known_entries.all({ run_id: dbRun.id });
+		const summary = entries.find((e) => e.scheme === "summarize");
+		if (summary?.body) judgeText = summary.body;
+		if (!judgeText) {
+			const asst = entries
+				.filter((e) => e.scheme === "assistant")
+				.toSorted((a, b) => b.turn - a.turn)[0];
+			if (asst?.body) judgeText = asst.body.replace(/<[^>]+>/g, " ").trim();
+		}
+	}
+
+	const normalized = judgeText.toLowerCase().trim();
+	const pass = normalized.startsWith("yes");
+	return { pass, reason: judgeText.slice(0, 200) };
+}
+
 async function runRow(client, db, model, split, rowIndex, row) {
 	const questionType = row.question_type || "unknown";
 	const sessionCount = row.haystack_sessions?.length ?? 0;
@@ -233,14 +268,32 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		row.question,
 		row.question_date,
 	);
-	const { pass, matched } = evaluate(response, validAnswers);
+	let { pass, matched } = evaluate(response, validAnswers);
+	let matchType = pass ? "exact" : null;
+	let judgeReason = null;
+
+	if (!pass && response) {
+		const verdict = await judgeAnswer(
+			client, db, model, row.question, answer, response,
+		);
+		if (verdict.pass) {
+			pass = true;
+			matchType = "judged";
+			judgeReason = verdict.reason;
+		} else {
+			judgeReason = verdict.reason;
+		}
+	}
+
 	const questionResults = [
 		{
 			question: row.question,
 			response,
 			answers: validAnswers,
 			pass,
+			matchType,
 			matched,
+			judgeReason,
 		},
 	];
 
@@ -251,8 +304,9 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const usage = await db.get_run_usage.get({ run_id: runRow2.id });
 
 	const mark = pass ? "✓" : "✗";
+	const matchLabel = matchType === "judged" ? " (judged)" : "";
 	console.log(
-		`    ${mark} ${(score.accuracy * 100).toFixed(0)}% — ${((endTime - startTime) / 1000).toFixed(0)}s`,
+		`    ${mark}${matchLabel} ${(score.accuracy * 100).toFixed(0)}% — ${((endTime - startTime) / 1000).toFixed(0)}s`,
 	);
 
 	return {

@@ -63,9 +63,12 @@ export function printReport(results) {
 		totalQuestions > 0
 			? ((totalPassed / totalQuestions) * 100).toFixed(1)
 			: "0.0";
+	const exactCount = results.flatMap((r) => r.questions).filter((q) => q.matchType === "exact").length;
+	const judgedCount = results.flatMap((r) => r.questions).filter((q) => q.matchType === "judged").length;
 	console.log(
 		`  Accuracy:    ${overallPct}% (${totalPassed}/${totalQuestions})`,
 	);
+	console.log(`  Exact:       ${exactCount}  Judged: ${judgedCount}`);
 	console.log(`  Rows:        ${results.length}`);
 	console.log(`  Duration:    ${(totalDurationMs / 1000).toFixed(1)}s`);
 	console.log("");
@@ -100,6 +103,7 @@ export function printReport(results) {
 			);
 			console.log(`    Expected: ${f.answers?.[0]?.slice(0, 60) ?? "?"}`);
 			console.log(`    Got:      ${f.response?.slice(0, 60) ?? "(empty)"}`);
+			if (f.judgeReason) console.log(`    Judge:    ${f.judgeReason.slice(0, 60)}`);
 		}
 		if (failures.length > 30) {
 			console.log(`  ... and ${failures.length - 30} more`);

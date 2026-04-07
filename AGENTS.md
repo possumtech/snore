@@ -35,36 +35,78 @@ content) + user prompt (`<ask>`/`<act>` tag) + progress block.
 ### Cascade
 
 Each tier is a deterministic transformation that strictly reduces token count.
-Applied in order until re-render verifies budget is met. Batch demotion —
-estimate which entries to demote in one pass (target 110% of excess), re-render
-once to verify. Second pass if math was off, but rare.
+Within each tier, demotion proceeds by **iterative halving** — demote the
+oldest half of eligible entries, re-render and re-measure. If still over
+budget, demote the oldest half of what remains. Repeat until the tier's
+budget target is met or no eligible entries remain, then advance to the
+next tier.
 
-**Tier 1: Full → summary.** Collapse full entries to summary (symbols +
-contextual description) by demotion priority (scheme tier, then oldest first).
+Halving preserves the most recent entries at the highest fidelity. In
+conflict-resolution scenarios, later entries are authoritative — the model
+keeps the facts most likely to be correct.
 
-**Tier 2: Summary → index.** Collapse summaries to bare paths. Path-only
-entries cost ~5 tokens each.
+Demotion priority within each tier: prompts/results/structural first
+(tier 0), then files (tier 1), then knowns (tier 2), then unknowns
+(tier 3). Within each priority, oldest entries demote first.
 
-**Tier 3: Index → stash.** Collapse all index entries per scheme into a single
-stash entry — a list of paths. `known://stash` contains
-`auth_flow, session_store, db_adapter, ...`. Hundred entries become one.
+**Tier 1: Full → summary (halving spiral).**
+1. Sort eligible full entries by demotion priority (oldest first).
+2. Demote the oldest half to summary. Re-render, re-measure.
+3. Still over? Demote the oldest half of remaining full entries. Re-render.
+4. Repeat until budget met or no full entries remain.
+
+For files, summary = symbols + contextual description.
+For known entries, summary = path visible, body hidden. The fact is still
+retrievable via `<get>` but not on the desk.
+
+**Tier 2: Summary → index (halving spiral).**
+1. Sort eligible summary entries by demotion priority (oldest first).
+2. Demote the oldest half to index (bare path, ~5 tokens). Re-render.
+3. Still over? Demote the oldest half of remaining summaries. Re-render.
+4. Repeat until budget met or no summary entries remain.
+
+**Tier 3: Index → stash (halving spiral).**
+1. Sort eligible index entries by demotion priority (oldest first).
+2. Stash the oldest half — move to stored, create per-scheme stash entry
+   at index fidelity containing the full URI list. Re-render.
+3. Still over? Stash the oldest half of remaining index entries. Re-render.
+4. Repeat until budget met or no index entries remain.
+
+Stash entries are created at **index fidelity** — the model sees
+`known://stash_file`, `known://stash_known` as path labels. To see
+the contents (the list of stashed URIs), the model promotes the stash
+to full with `<get path="known://stash_known"/>`.
+
+The stash body must include every URI of every stashed entry for that
+scheme. If the model cannot see the stash, those entries are orphaned.
 
 **Tier 4: Hard error.** Floor + stashes don't fit. Configuration error —
 the model's context window is too small to operate. Reject at run creation.
+
+### 413 Budget Gate
+
+Before the cascade runs, entry recording checks remaining budget headroom.
+Any entry whose body would exceed remaining context budget is rejected with
+HTTP 413 and a feedback message: "Context budget exceeded (X tokens, Y
+remaining)." The model sees the rejection on the next turn and can adapt
+by filing old entries with `<set stored/>` or removing them with `<rm>`.
+
+The 413 gate prevents unbounded growth during a turn. The cascade handles
+aggregate overflow after all entries are recorded and dispatched.
 
 ### Implementation
 
 1. Materialize all candidates from `v_model_context`
 2. Render full message through assembly filter chain
 3. Measure assembled tokens via `countTokens()` on final strings
-4. If over budget: batch-demote tier 1 candidates, re-render, re-measure
-5. If still over: tier 2, re-render, re-measure
-6. Continue through tiers until budget met
-7. Never subtract estimated savings — always re-render and re-measure
+4. If over budget: begin tier 1 halving spiral
+5. If still over after tier 1 exhausted: begin tier 2 halving spiral
+6. If still over after tier 2 exhausted: begin tier 3 halving spiral
+7. If still over after tier 3 exhausted: hard error
+8. Never subtract estimated savings — always re-render and re-measure
 
 The re-render is cheap (string concatenation). The LLM call is expensive.
-Spending 5ms on 3 re-renders to guarantee no $0.05 wasted 500 error is
-the correct tradeoff.
+Multiple re-renders to guarantee no wasted 500 error is the correct tradeoff.
 
 ### Token Accounting
 
