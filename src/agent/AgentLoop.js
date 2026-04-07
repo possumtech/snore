@@ -292,10 +292,12 @@ export default class AgentLoop {
 						model: result.model,
 						temperature: result.temperature,
 						context_size: result.contextSize,
-						context_tokens: (await this.#db.get_turn_budget.get({
-							run_id: currentRunId,
-							turn: result.turn,
-						})).total,
+						context_tokens: (
+							await this.#db.get_turn_budget.get({
+								run_id: currentRunId,
+								turn: result.turn,
+							})
+						).total,
 						prompt_tokens: runUsage.prompt_tokens,
 						cached_tokens: runUsage.cached_tokens,
 						completion_tokens: runUsage.completion_tokens,

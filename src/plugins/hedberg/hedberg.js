@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { parseEditContent } from "./edits.js";
 import HeuristicMatcher, { generatePatch } from "./matcher.js";
 import { normalizeAttrs } from "./normalize.js";
@@ -34,10 +33,8 @@ export default class Hedberg {
 			generatePatch,
 		};
 
-		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
-		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n\n${docs}` : docs,
-		);
+		// Patterns documentation distributed to individual tool docs.
+		// Hedberg has no model-facing docs of its own.
 	}
 
 	/**

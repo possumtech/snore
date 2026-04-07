@@ -30,7 +30,11 @@ export default class Get {
 		const normalized = KnownStore.normalizePath(target);
 		const bodyFilter = entry.attributes.body || null;
 		const isPattern = bodyFilter || normalized.includes("*");
-		const matches = await store.getEntriesByPattern(runId, normalized, bodyFilter);
+		const matches = await store.getEntriesByPattern(
+			runId,
+			normalized,
+			bodyFilter,
+		);
 		await store.promoteByPattern(runId, normalized, bodyFilter, turn);
 
 		if (isPattern) {

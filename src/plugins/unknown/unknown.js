@@ -24,7 +24,9 @@ export default class Unknown {
 		const entries = ctx.rows.filter((r) => r.category === "unknown");
 		if (entries.length === 0) return content;
 
-		const lines = entries.map((u) => `<unknown path="${u.path}">${u.body}</unknown>`);
+		const lines = entries.map(
+			(u) => `<unknown path="${u.path}">${u.body}</unknown>`,
+		);
 		return `${content}\n\n<unknowns>\n${lines.join("\n")}\n</unknowns>`;
 	}
 }
