@@ -39,18 +39,30 @@ export default class ToolRegistry {
 					`Every tool must define how its entries appear in the model view.`,
 			);
 		}
+
+		// Model-authored summary — prepended as header when present
+		const attrs =
+			typeof entry.attributes === "string"
+				? JSON.parse(entry.attributes)
+				: entry.attributes;
+		const summaryText =
+			typeof attrs?.summary === "string" ? attrs.summary : null;
+		const summaryHeader = summaryText
+			? `# <set summary="${summaryText}"/>`
+			: null;
+
 		const fidelity = entry.fidelity || "full";
 		const fn = fidelityMap.get(fidelity);
 		if (!fn) {
-			// Fall back on model-authored summary attribute
-			const attrs =
-				typeof entry.attributes === "string"
-					? JSON.parse(entry.attributes)
-					: entry.attributes;
-			if (typeof attrs?.summary === "string") return attrs.summary;
-			return "";
+			// No view for this fidelity — use summary attribute alone
+			return summaryHeader || "";
 		}
-		return await fn(entry);
+
+		const viewContent = await fn(entry);
+		if (summaryHeader && viewContent) {
+			return `${summaryHeader}\n${viewContent}`;
+		}
+		return viewContent || summaryHeader || "";
 	}
 
 	hasView(scheme) {
