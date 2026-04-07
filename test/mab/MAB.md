@@ -74,7 +74,72 @@ test/mab/results/2026-04-07T12-30-00-000Z/
 
 Results are appended incrementally to `results.ndjson` so partial runs survive crashes.
 
-## Auditing a Run
+## Diagnostic Audit
+
+The audit runner (`audit.js`) steps through questions one at a time with
+full database access after each, producing a per-question diagnostic report.
+
+```bash
+# Ingest + all questions for Conflict_Resolution row 0
+node --env-file-if-exists=.env.example --env-file-if-exists=.env \
+  --env-file-if-exists=.env.test test/mab/audit.js
+
+# Single question (after ingest)
+node ... test/mab/audit.js --question 3
+
+# Range
+node ... test/mab/audit.js --question 0-9
+
+# Ingest only (inspect the database before asking questions)
+node ... test/mab/audit.js --ingest-only
+```
+
+Output: `test/mab/results/audit_<timestamp>/MAB_AUDIT.md` + database.
+
+### Report Format
+
+Each question gets its own section:
+
+```markdown
+### Q1: What is the country of citizenship of the spouse of the author of Our Mutual Friend?
+**Status:** FAIL
+**Expected:** Belgium
+**Got:** United Kingdom
+**Turns used:** 3
+**Context at question time:** 42 full, 30 summary, 80 index, 12 stored
+
+**Model reasoning:**
+(full chain-of-thought from the model's reasoning_content)
+
+**Diagnosis:** Model resolved author conflict to Charles Dickens (entry 107)
+instead of Charles Darwin (entry 146, later). The conflict override was not
+applied because entry 107 was at full fidelity (visible) while entry 146
+was demoted to summary (path only, body not visible).
+
+**Recommendation:** Budget cascade should preserve later entries over earlier
+ones when both are in the same scheme, not just by turn number.
+```
+
+### Diagnosis Rules
+
+The diagnosis for each failed question MUST be one of:
+
+1. **Context problem** — necessary facts were demoted out of context.
+   Recommendation: adjust cascade priority, fidelity, or budget.
+2. **Prompt problem** — model misunderstood the task or used wrong tools.
+   Recommendation: adjust question prompt or system prompt.
+3. **Ingestion problem** — facts were never saved during ingestion.
+   Recommendation: adjust ingestion prompt or chunk size.
+4. **Reasoning problem** — model had the facts but chained wrong.
+   Recommendation: describe what went wrong. If the model had every
+   necessary fact and still answered wrong, state that clearly.
+5. **Unknown** — unable to determine root cause from available data.
+   State what was checked and what remains unclear.
+
+The diagnosis CANNOT be "model drift" or "model limitation." If the model
+failed, something in the context, prompt, or design allowed it to fail.
+
+## Auditing a Run (Quick)
 
 ### Quick: check the report
 

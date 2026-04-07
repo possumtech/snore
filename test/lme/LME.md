@@ -2,6 +2,14 @@
 
 Live benchmark of Rummy's long-term memory against the [LongMemEval](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) dataset (ICLR 2025).
 
+## How to run the LME test
+
+1. Download the dataset: `npm run test:lme:get`
+2. Run rows incrementally: `npm run test:lme -- --split longmemeval_oracle --row 0`
+3. After each row, inspect the database in the timestamped `test/lme/results/` directory
+4. Record findings in `test/lme/REPORT.md` — one section per row with question, expected answer, actual response, context/budget analysis from the DB, and a conclusion identifying the root cause (evaluator, budget, ingestion, architecture)
+5. Do NOT assume model failure. Rule out context assembly, budget cascade, fidelity state, token accounting, and prompt construction before attributing a failure to the model.
+
 ## Setup
 
 ```bash

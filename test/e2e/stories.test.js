@@ -409,6 +409,69 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
+	// Story 9c: Budget cascade under heavy known entry load.
+	// Ingest many facts, shrink the context, verify the model can still
+	// answer from surviving knowns. Tests the halving spiral end-to-end.
+	it(
+		"budget cascade preserves recent knowns under pressure",
+		{ timeout: TIMEOUT },
+		async () => {
+			// First: teach the model a fact via a known entry
+			let r1 = await client.call("ask", {
+				model,
+				prompt:
+					'Save this as a known entry: <known>The speed of light is 299792458 meters per second</known>. Reply with <update>saved</update>.',
+				noContext: true,
+			});
+			if (r1.status === 202) r1 = await acceptAll(client, r1);
+			await client.assertRun(r1, 200, "cascade-save");
+
+			// Load several large files to pressure the budget
+			const bigContent = `// ${"x".repeat(3000)}\n`;
+			await fs.writeFile(join(projectRoot, "src/pressure1.js"), bigContent);
+			await fs.writeFile(join(projectRoot, "src/pressure2.js"), bigContent);
+			await fs.writeFile(join(projectRoot, "src/pressure3.js"), bigContent);
+			await client.call("get", { path: "src/pressure1.js", persist: true });
+			await client.call("get", { path: "src/pressure2.js", persist: true });
+			await client.call("get", { path: "src/pressure3.js", persist: true });
+
+			// Shrink context to force cascade
+			await client.call("run/config", {
+				run: r1.run,
+				contextLimit: 4096,
+			});
+
+			// Ask about the fact — cascade should preserve it while demoting files
+			let r2 = await client.call("ask", {
+				model,
+				prompt:
+					"What is the speed of light in meters per second? Reply ONLY with the number.",
+				run: r1.run,
+			});
+			if (r2.status === 202) r2 = await acceptAll(client, r2);
+			await client.assertRun(r2, [200, 202], "cascade-answer");
+
+			// The known entry should have survived (full or at least visible)
+			const entries = await allEntries(tdb.db, r2.run);
+			const lightEntry = entries.find(
+				(e) => e.scheme === "known" && e.body?.includes("299792458"),
+			);
+			assert.ok(lightEntry, "speed of light known entry should still exist");
+
+			// Files should have been demoted
+			const demotedFiles = entries.filter(
+				(e) =>
+					e.scheme === null &&
+					e.path.includes("pressure") &&
+					e.fidelity !== "full",
+			);
+			assert.ok(
+				demotedFiles.length > 0,
+				"pressure files should have been demoted",
+			);
+		},
+	);
+
 	// Story 10: Web search — model searches, gets results, answers from them.
 	it("autonomous web search", { timeout: TIMEOUT }, async () => {
 		const r = await client.call("ask", {
