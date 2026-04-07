@@ -149,7 +149,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	// Rename to a descriptive alias for easy DB inspection
 	const mabAlias = `mab_${splitAbbrev}_${rowIndex}`;
 	try {
-		await client.call("run/rename", { run, newAlias: mabAlias });
+		await client.call("run/rename", { run, name: mabAlias });
 		run = mabAlias;
 	} catch {}
 

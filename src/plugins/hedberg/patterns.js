@@ -197,11 +197,25 @@ function compile(pattern) {
 		case "literal":
 			return { type, pattern };
 		case "glob": {
-			// Escape parens — picomatch treats them as extglob even with noextglob
 			const escaped = pattern.replace(/([()])/g, "\\$1");
-			const opts = { dot: true, nobrace: true, noextglob: true };
-			const isMatch = picomatch(escaped, opts);
-			const picoRe = picomatch.makeRe(escaped, opts);
+			// Scheme paths have no directory structure — * matches everything
+			const opts = escaped.includes("://")
+				? {
+						dot: true,
+						nobrace: true,
+						noextglob: true,
+						bash: false,
+						regex: true,
+					}
+				: { dot: true, nobrace: true, noextglob: true };
+
+			// For scheme paths, convert single * after :// to ** so it crosses "/"
+			const prepared = escaped.includes("://")
+				? escaped.replace(/:\/\/\*(?!\*)/, "://**")
+				: escaped;
+
+			const isMatch = picomatch(prepared, opts);
+			const picoRe = picomatch.makeRe(prepared, opts);
 			return { type, isMatch, searchRe: picoRe };
 		}
 		case "regex": {
