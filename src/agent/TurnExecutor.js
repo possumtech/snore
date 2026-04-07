@@ -32,6 +32,7 @@ export default class TurnExecutor {
 		requestedModel,
 		loopPrompt,
 		noContext,
+		noInteraction,
 		contextSize,
 		options,
 		signal,
@@ -75,6 +76,7 @@ export default class TurnExecutor {
 				loopId: currentLoopId,
 				turnId: turnRow.id,
 				noContext,
+				noInteraction,
 				contextSize,
 				systemPrompt: null,
 				loopPrompt,
@@ -158,7 +160,7 @@ export default class TurnExecutor {
 		});
 		let messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			{ type: mode, systemPrompt, contextSize, demoted },
+			{ type: mode, systemPrompt, contextSize, demoted, noInteraction },
 			this.#hooks,
 		);
 
@@ -177,7 +179,7 @@ export default class TurnExecutor {
 				});
 				messages = await ContextAssembler.assembleFromTurnContext(
 					rows,
-					{ type: mode, systemPrompt, contextSize, demoted },
+					{ type: mode, systemPrompt, contextSize, demoted, noInteraction },
 					this.#hooks,
 				);
 				return { messages, rows };
@@ -234,7 +236,7 @@ export default class TurnExecutor {
 				});
 				messages = await ContextAssembler.assembleFromTurnContext(
 					rows,
-					{ type: mode, systemPrompt, contextSize, demoted },
+					{ type: mode, systemPrompt, contextSize, demoted, noInteraction },
 					this.#hooks,
 				);
 				filteredMessages = await this.#hooks.llm.messages.filter(messages, {

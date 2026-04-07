@@ -33,11 +33,12 @@ export default class Prompt {
 
 		const mode = promptEntry?.scheme || ctx.type;
 		const body = promptEntry?.body || "";
-		const tools = this.#core.hooks.tools.namesForMode(mode).join(", ");
-		const warn =
-			mode === "ask"
-				? ' warn="File and system modification prohibited on this turn."'
-				: "";
+		let toolNames = this.#core.hooks.tools.namesForMode(mode);
+		if (ctx.noInteraction) {
+			toolNames = toolNames.filter((t) => t !== "ask_user");
+		}
+		const tools = toolNames.join(", ");
+		const warn = mode === "ask" ? ' warn="File editing disallowed."' : "";
 
 		return `${content}<${mode} tools="${tools}"${warn}>${body}</${mode}>`;
 	}

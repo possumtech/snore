@@ -59,6 +59,10 @@ export default class RummyContext {
 		return this.#context.noContext === true;
 	}
 
+	get noInteraction() {
+		return this.#context.noInteraction === true;
+	}
+
 	get contextSize() {
 		return this.#context.contextSize || null;
 	}

@@ -113,6 +113,7 @@ export default class AgentLoop {
 			throw new Error(msg("error.project_not_found", { projectId }));
 
 		const noContext = options?.noContext === true;
+		const noInteraction = options?.noInteraction === true;
 		const requestedModel = model;
 
 		const runInfo = await this.#ensureRun(projectId, model, run, options);
@@ -134,7 +135,11 @@ export default class AgentLoop {
 			mode,
 			model: requestedModel,
 			prompt: prompt || "",
-			config: JSON.stringify({ noContext, temperature: options?.temperature }),
+			config: JSON.stringify({
+				noContext,
+				noInteraction,
+				temperature: options?.temperature,
+			}),
 		});
 
 		if (this.#activeRuns.has(currentRunId)) {
@@ -168,6 +173,7 @@ export default class AgentLoop {
 				requestedModel: loop.model,
 				prompt: loop.prompt,
 				noContext: loopConfig.noContext || false,
+				noInteraction: loopConfig.noInteraction || false,
 				options: { ...options, temperature: loopConfig.temperature },
 				hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
 			});
@@ -195,6 +201,7 @@ export default class AgentLoop {
 		requestedModel,
 		prompt,
 		noContext,
+		noInteraction,
 		options,
 		hook,
 	}) {
@@ -256,6 +263,7 @@ export default class AgentLoop {
 					requestedModel,
 					loopPrompt: turnPrompt,
 					noContext,
+					noInteraction,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal: controller.signal,

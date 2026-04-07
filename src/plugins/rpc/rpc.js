@@ -284,6 +284,7 @@ export default class Rpc {
 						persona: params.persona ?? null,
 						contextLimit: params.contextLimit,
 						noContext: params.noContext,
+						noInteraction: params.noInteraction,
 						fork: params.fork,
 					},
 				);
@@ -298,6 +299,7 @@ export default class Rpc {
 				persona: "string?",
 				contextLimit: "number?",
 				noContext: "boolean?",
+				noInteraction: "boolean? — disable ask_user tool",
 				fork: "boolean?",
 			},
 			requiresInit: true,
@@ -316,6 +318,7 @@ export default class Rpc {
 						persona: params.persona ?? null,
 						contextLimit: params.contextLimit,
 						noContext: params.noContext,
+						noInteraction: params.noInteraction,
 						fork: params.fork,
 					},
 				);
@@ -330,6 +333,7 @@ export default class Rpc {
 				persona: "string?",
 				contextLimit: "number?",
 				noContext: "boolean?",
+				noInteraction: "boolean? — disable ask_user tool",
 				fork: "boolean?",
 			},
 			requiresInit: true,
