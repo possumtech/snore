@@ -149,81 +149,154 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Assemble messages from projected system prompt + materialized turn_context
+		// --- BUDGET CASCADE ---
+		// Materialize → render → measure → demote batch → repeat.
+		// Four tiers: full→summary, summary→index, index→stash, hard error.
+		// Always re-render and re-measure. Never trust estimated savings.
+
 		let rows = await this.#db.get_turn_context.all({
 			run_id: currentRunId,
 			turn,
 		});
+		const assembleOpts = () => ({
+			type: mode,
+			systemPrompt,
+			contextSize,
+			demoted,
+		});
 		let messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			{
-				type: mode,
-				systemPrompt,
-				contextSize,
-				demoted,
-			},
+			assembleOpts(),
 			this.#hooks,
 		);
 
-		// Budget check on assembled messages (includes system prompt)
-		if (contextSize && demoted.length === 0) {
-			const assembledTokens = messages.reduce(
-				(sum, m) => sum + countTokens(m.content || ""),
-				0,
-			);
+		if (contextSize) {
 			const ceiling = contextSize * 0.95;
+			const measure = (msgs) =>
+				msgs.reduce((sum, m) => sum + countTokens(m.content || ""), 0);
+
+			// Demotion priority: files/results first, then knowns, then unknowns.
+			// Within each tier, oldest first. Model memory demoted last.
+			const DEMOTION_ORDER = {
+				prompt: 0,
+				result: 0,
+				structural: 0,
+				file: 1,
+				file_index: 1,
+				file_summary: 1,
+				known: 2,
+				known_index: 2,
+				unknown: 3,
+			};
+			const sortCandidates = (list) =>
+				list.toSorted((a, b) => {
+					const tierA = DEMOTION_ORDER[a.category] ?? 99;
+					const tierB = DEMOTION_ORDER[b.category] ?? 99;
+					if (tierA !== tierB) return tierA - tierB;
+					return a.source_turn - b.source_turn;
+				});
+
+			const remeasure = async () => {
+				await this.#rematerialize(currentRunId, currentLoopId, turn);
+				rows = await this.#db.get_turn_context.all({
+					run_id: currentRunId,
+					turn,
+				});
+				messages = await ContextAssembler.assembleFromTurnContext(
+					rows,
+					assembleOpts(),
+					this.#hooks,
+				);
+				return measure(messages);
+			};
+
+			let assembledTokens = measure(messages);
+
+			// Tier 1: Full → summary
 			if (assembledTokens > ceiling) {
-				// Demotion priority: files/results first, then knowns, then unknowns.
-				// Within each tier, oldest first. Model memory demoted last.
-				const DEMOTION_ORDER = {
-					file: 0,
-					file_index: 0,
-					result: 1,
-					known: 2,
-					known_index: 2,
-					unknown: 3,
-				};
-				const candidates = rows
-					.filter(
+				const candidates = sortCandidates(
+					rows.filter(
 						(r) =>
 							r.fidelity === "full" &&
 							r.tokens > 0 &&
 							DEMOTION_ORDER[r.category] !== undefined,
-					)
-					.toSorted((a, b) => {
-						const tierA = DEMOTION_ORDER[a.category] ?? 99;
-						const tierB = DEMOTION_ORDER[b.category] ?? 99;
-						if (tierA !== tierB) return tierA - tierB;
-						return a.source_turn - b.source_turn;
-					});
-
-				let excess = assembledTokens - ceiling;
+					),
+				);
+				const target = (assembledTokens - ceiling) * 1.1;
+				let accumulated = 0;
 				for (const entry of candidates) {
-					if (excess <= 0) break;
-					await this.#knownStore.setFidelity(
-						currentRunId,
-						entry.path,
-						"summary",
-					);
-					excess -= entry.tokens;
+					if (accumulated >= target) break;
+					await this.#knownStore.setFidelity(currentRunId, entry.path, "summary");
+					accumulated += entry.tokens;
 					demoted.push(entry.path);
 				}
-
 				if (demoted.length > 0) {
-					await this.#rematerialize(currentRunId, currentLoopId, turn);
-					rows = await this.#db.get_turn_context.all({
-						run_id: currentRunId,
-						turn,
-					});
-					messages = await ContextAssembler.assembleFromTurnContext(
-						rows,
-						{ type: mode, systemPrompt, contextSize, demoted },
-						this.#hooks,
-					);
+					assembledTokens = await remeasure();
 					console.warn(
-						`[RUMMY] Budget exceeded: demoted ${demoted.length} entries to fit ${contextSize} token limit`,
+						`[RUMMY] Budget tier 1: ${demoted.length} full→summary (${assembledTokens}/${contextSize} tokens)`,
 					);
 				}
+			}
+
+			// Tier 2: Summary → index (path only)
+			if (assembledTokens > ceiling) {
+				const candidates = sortCandidates(
+					rows.filter(
+						(r) =>
+							r.fidelity === "summary" &&
+							r.tokens > 0 &&
+							DEMOTION_ORDER[r.category] !== undefined,
+					),
+				);
+				const target = (assembledTokens - ceiling) * 1.1;
+				let accumulated = 0;
+				const tier2 = [];
+				for (const entry of candidates) {
+					if (accumulated >= target) break;
+					await this.#knownStore.setFidelity(currentRunId, entry.path, "index");
+					accumulated += entry.tokens;
+					tier2.push(entry.path);
+					demoted.push(entry.path);
+				}
+				if (tier2.length > 0) {
+					assembledTokens = await remeasure();
+					console.warn(
+						`[RUMMY] Budget tier 2: ${tier2.length} summary→index (${assembledTokens}/${contextSize} tokens)`,
+					);
+				}
+			}
+
+			// Tier 3: Index → stored (invisible) — collapse to stash entries
+			if (assembledTokens > ceiling) {
+				const candidates = sortCandidates(
+					rows.filter(
+						(r) =>
+							r.fidelity === "index" &&
+							DEMOTION_ORDER[r.category] !== undefined,
+					),
+				);
+				const tier3 = [];
+				for (const entry of candidates) {
+					await this.#knownStore.setFidelity(currentRunId, entry.path, "stored");
+					tier3.push(entry.path);
+					demoted.push(entry.path);
+				}
+				if (tier3.length > 0) {
+					// Create stash entries — one per scheme with stored content
+					await this.#stashStoredEntries(currentRunId, turn, currentLoopId);
+					assembledTokens = await remeasure();
+					console.warn(
+						`[RUMMY] Budget tier 3: ${tier3.length} index→stashed (${assembledTokens}/${contextSize} tokens)`,
+					);
+				}
+			}
+
+			// Tier 4: Hard error — floor doesn't fit
+			if (assembledTokens > ceiling) {
+				throw new Error(
+					`Context floor (${assembledTokens} tokens) exceeds model limit (${contextSize}). ` +
+						"Reduce system prompt size or use a model with a larger context window.",
+				);
 			}
 		}
 
@@ -233,85 +306,13 @@ export default class TurnExecutor {
 			runId: currentRunId,
 		});
 
-		// Call LLM — retry once on context overflow after emergency demotion
+		// Call LLM
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
-		let rawResult;
-		try {
-			rawResult = await this.#llmProvider.completion(
-				filteredMessages,
-				requestedModel,
-				{ temperature: options?.temperature, signal },
-			);
-		} catch (err) {
-			if (!err.message?.includes("exceed")) throw err;
-
-			// Emergency demotion — demote largest entries one at a time until it fits
-			console.warn("[RUMMY] Context overflow from LLM — emergency demotion");
-			const DEMOTION_ORDER = {
-				file: 0,
-				file_index: 0,
-				result: 1,
-				known: 2,
-				known_index: 2,
-				unknown: 3,
-			};
-
-			for (let attempt = 0; attempt < 10; attempt++) {
-				const candidate = rows
-					.filter(
-						(r) =>
-							r.fidelity === "full" &&
-							r.tokens > 0 &&
-							DEMOTION_ORDER[r.category] !== undefined &&
-							!demoted.includes(r.path),
-					)
-					.toSorted((a, b) => {
-						const tierA = DEMOTION_ORDER[a.category] ?? 99;
-						const tierB = DEMOTION_ORDER[b.category] ?? 99;
-						if (tierA !== tierB) return tierA - tierB;
-						return b.tokens - a.tokens;
-					})[0];
-
-				if (!candidate) throw err;
-				await this.#knownStore.setFidelity(
-					currentRunId,
-					candidate.path,
-					"summary",
-				);
-				demoted.push(candidate.path);
-
-				await this.#rematerialize(currentRunId, currentLoopId, turn);
-				rows = await this.#db.get_turn_context.all({
-					run_id: currentRunId,
-					turn,
-				});
-				messages = await ContextAssembler.assembleFromTurnContext(
-					rows,
-					{ type: mode, systemPrompt, contextSize, demoted },
-					this.#hooks,
-				);
-				filteredMessages = await this.#hooks.llm.messages.filter(messages, {
-					model: requestedModel,
-					projectId,
-					runId: currentRunId,
-				});
-
-				try {
-					rawResult = await this.#llmProvider.completion(
-						filteredMessages,
-						requestedModel,
-						{ temperature: options?.temperature, signal },
-					);
-					console.warn(
-						`[RUMMY] Emergency demotion: ${attempt + 1} entries demoted. Retry succeeded.`,
-					);
-					break;
-				} catch (retryErr) {
-					if (!retryErr.message?.includes("exceed")) throw retryErr;
-				}
-			}
-			if (!rawResult) throw err;
-		}
+		const rawResult = await this.#llmProvider.completion(
+			filteredMessages,
+			requestedModel,
+			{ temperature: options?.temperature, signal },
+		);
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,
 			projectId,
@@ -356,6 +357,16 @@ export default class TurnExecutor {
 		let summaryText = null;
 		let updateText = null;
 
+		// Track budget headroom for 413 rejection during recording
+		const budgetCeiling = contextSize ? contextSize * 0.95 : null;
+		const currentBudgetUsed = budgetCeiling
+			? (await this.#db.get_turn_budget.get({ run_id: currentRunId, turn }))
+					?.total ?? 0
+			: 0;
+		let budgetRemaining = budgetCeiling
+			? budgetCeiling - currentBudgetUsed
+			: Infinity;
+
 		for (const cmd of commands) {
 			const entry = await this.#record(
 				currentRunId,
@@ -363,12 +374,18 @@ export default class TurnExecutor {
 				turn,
 				mode,
 				cmd,
+				budgetRemaining,
 			);
 			if (!entry) continue;
 
 			if (entry.scheme === "summarize") summaryText = entry.body;
 			else if (entry.scheme === "update") updateText = entry.body;
 			else recorded.push(entry);
+
+			// Deduct from remaining budget
+			if (entry.body && budgetCeiling) {
+				budgetRemaining -= countTokens(entry.body);
+			}
 		}
 
 		// If model sent both, summary wins
@@ -537,7 +554,7 @@ export default class TurnExecutor {
 	 * Record a parsed command as a known_entries row.
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
-	async #record(runId, loopId, turn, mode, cmd) {
+	async #record(runId, loopId, turn, mode, cmd, budgetRemaining = Infinity) {
 		// Mode enforcement — reject prohibited commands in ask mode
 		if (mode === "ask") {
 			if (cmd.name === "sh") {
@@ -608,6 +625,19 @@ export default class TurnExecutor {
 		// known tool or naked write → known:// slug from body
 		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
 			if (!cmd.body) return null;
+
+			// Budget gate: reject if this entry would exceed context budget
+			const entryTokens = countTokens(cmd.body);
+			if (entryTokens > budgetRemaining) {
+				const rejectPath = await this.#knownStore.slugPath(runId, scheme, cmd.body);
+				await this.#knownStore.upsert(
+					runId, turn, rejectPath,
+					`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
+					413, { loopId },
+				);
+				return { scheme, path: rejectPath, body: "", resultPath: rejectPath, attributes, status: 413 };
+			}
+
 			let knownPath = cmd.path;
 			if (!knownPath) {
 				// Dedup: if an existing known entry shares the same first 80 chars, reuse it
@@ -633,8 +663,19 @@ export default class TurnExecutor {
 			};
 		}
 
-		// Record the entry — 200 OK, handlers change status during dispatch
+		// Budget gate: reject if this entry would exceed context budget
 		const body = cmd.body || cmd.command || cmd.question || "";
+		const entryTokens = countTokens(body);
+		if (body && entryTokens > budgetRemaining) {
+			await this.#knownStore.upsert(
+				runId, turn, resultPath,
+				`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
+				413, { attributes, loopId },
+			);
+			return { scheme, path: resultPath, body: "", attributes, status: 413, resultPath };
+		}
+
+		// Record the entry — 200 OK, handlers change status during dispatch
 		await this.#knownStore.upsert(runId, turn, resultPath, body, 200, {
 			attributes,
 			loopId,
@@ -648,6 +689,32 @@ export default class TurnExecutor {
 			status: 200,
 			resultPath,
 		};
+	}
+
+	/**
+	 * Collapse all stored entries into per-scheme stash entries.
+	 * A stash entry is a known:// entry containing a comma-separated
+	 * list of paths for entries that were demoted to stored fidelity.
+	 * Gives the model awareness of what's in the filing cabinet.
+	 */
+	async #stashStoredEntries(runId, turn, loopId) {
+		const entries = await this.#db.get_known_entries.all({ run_id: runId });
+		const stored = entries.filter((e) => e.fidelity === "stored" && e.status === 200);
+
+		const byScheme = {};
+		for (const entry of stored) {
+			const scheme = entry.scheme || "file";
+			byScheme[scheme] ??= [];
+			byScheme[scheme].push(entry.path);
+		}
+
+		for (const [scheme, paths] of Object.entries(byScheme)) {
+			const stashPath = `known://stash_${scheme}`;
+			const body = paths.join(", ");
+			await this.#knownStore.upsert(runId, turn, stashPath, body, 200, {
+				loopId,
+			});
+		}
 	}
 
 	async #rematerialize(runId, loopId, turn) {

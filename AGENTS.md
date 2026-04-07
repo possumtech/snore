@@ -19,6 +19,66 @@ multiplier for cross-model safety. Glob matching via picomatch.
 flaky — model sends ask_user instead of investigating). Live tests
 need rerun.
 
+## Todo: Budget Cascade — Context Guarantee
+
+The budget engine must guarantee that materialized context never exceeds the
+model's context window. Context overflow is structurally impossible.
+
+### Floor
+
+The irreducible minimum context. Validated at run creation — if the model's
+context can't hold the floor, reject the run before the first turn.
+
+Floor = system prompt + tool docs + stash entries (one per scheme with stored
+content) + user prompt (`<ask>`/`<act>` tag) + progress block.
+
+### Cascade
+
+Each tier is a deterministic transformation that strictly reduces token count.
+Applied in order until re-render verifies budget is met. Batch demotion —
+estimate which entries to demote in one pass (target 110% of excess), re-render
+once to verify. Second pass if math was off, but rare.
+
+**Tier 1: Full → summary.** Collapse full entries to summary (symbols +
+contextual description) by demotion priority (scheme tier, then oldest first).
+
+**Tier 2: Summary → index.** Collapse summaries to bare paths. Path-only
+entries cost ~5 tokens each.
+
+**Tier 3: Index → stash.** Collapse all index entries per scheme into a single
+stash entry — a list of paths. `known://stash` contains
+`auth_flow, session_store, db_adapter, ...`. Hundred entries become one.
+
+**Tier 4: Hard error.** Floor + stashes don't fit. Configuration error —
+the model's context window is too small to operate. Reject at run creation.
+
+### Implementation
+
+1. Materialize all candidates from `v_model_context`
+2. Render full message through assembly filter chain
+3. Measure assembled tokens via `countTokens()` on final strings
+4. If over budget: batch-demote tier 1 candidates, re-render, re-measure
+5. If still over: tier 2, re-render, re-measure
+6. Continue through tiers until budget met
+7. Never subtract estimated savings — always re-render and re-measure
+
+The re-render is cheap (string concatenation). The LLM call is expensive.
+Spending 5ms on 3 re-renders to guarantee no $0.05 wasted 500 error is
+the correct tradeoff.
+
+### Token Accounting
+
+Single source of truth: `countTokens()` on the final assembled message
+strings. No estimates, no per-entry overhead calculations, no disconnect
+between what's measured and what's sent. The assembled message IS the
+measurement.
+
+Entry-level `tokens` column in `known_entries` and `turn_context` used
+only for demotion candidate estimation (which entries to batch-demote).
+Never used as the authority on whether the budget is met.
+
+---
+
 ## Todo: Proposal Lifecycle — Remaining Work
 
 Sequential dispatch implemented: commands execute one at a time.
