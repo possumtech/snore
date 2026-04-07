@@ -42,7 +42,9 @@
 		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/e2e -name '*.test.js')",
 		"test:live": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js')",
 		"test:mab:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/download.js",
-		"test:mab": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js"
+		"test:mab": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js",
+		"test:lme:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/download.js",
+		"test:lme": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/runner.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

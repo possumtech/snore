@@ -1,6 +1,8 @@
 # Benchmark data and results
 test/mab/data/
 test/mab/results/
+test/lme/data/
+test/lme/results/
 
 # Logs
 logs

@@ -1,3 +1,4 @@
+import BudgetCascade from "./BudgetCascade.js";
 import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import KnownStore from "./KnownStore.js";
@@ -11,12 +12,14 @@ export default class TurnExecutor {
 	#llmProvider;
 	#hooks;
 	#knownStore;
+	#budgetCascade;
 
 	constructor(db, llmProvider, hooks, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
+		this.#budgetCascade = new BudgetCascade(db, knownStore);
 	}
 
 	async execute({
@@ -149,54 +152,24 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// --- BUDGET CASCADE ---
-		// Materialize → render → measure → demote batch → repeat.
-		// Four tiers: full→summary, summary→index, index→stash, hard error.
-		// Always re-render and re-measure. Never trust estimated savings.
-
 		let rows = await this.#db.get_turn_context.all({
 			run_id: currentRunId,
 			turn,
 		});
-		const assembleOpts = () => ({
-			type: mode,
-			systemPrompt,
-			contextSize,
-			demoted,
-		});
 		let messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			assembleOpts(),
+			{ type: mode, systemPrompt, contextSize, demoted },
 			this.#hooks,
 		);
 
-		if (contextSize) {
-			const ceiling = contextSize * 0.95;
-			const measure = (msgs) =>
-				msgs.reduce((sum, m) => sum + countTokens(m.content || ""), 0);
-
-			// Demotion priority: files/results first, then knowns, then unknowns.
-			// Within each tier, oldest first. Model memory demoted last.
-			const DEMOTION_ORDER = {
-				prompt: 0,
-				result: 0,
-				structural: 0,
-				file: 1,
-				file_index: 1,
-				file_summary: 1,
-				known: 2,
-				known_index: 2,
-				unknown: 3,
-			};
-			const sortCandidates = (list) =>
-				list.toSorted((a, b) => {
-					const tierA = DEMOTION_ORDER[a.category] ?? 99;
-					const tierB = DEMOTION_ORDER[b.category] ?? 99;
-					if (tierA !== tierB) return tierA - tierB;
-					return a.source_turn - b.source_turn;
-				});
-
-			const remeasure = async () => {
+		const budgetResult = await this.#budgetCascade.enforce({
+			contextSize,
+			runId: currentRunId,
+			loopId: currentLoopId,
+			turn,
+			messages,
+			rows,
+			rematerialize: async () => {
 				await this.#rematerialize(currentRunId, currentLoopId, turn);
 				rows = await this.#db.get_turn_context.all({
 					run_id: currentRunId,
@@ -204,101 +177,15 @@ export default class TurnExecutor {
 				});
 				messages = await ContextAssembler.assembleFromTurnContext(
 					rows,
-					assembleOpts(),
+					{ type: mode, systemPrompt, contextSize, demoted },
 					this.#hooks,
 				);
-				return measure(messages);
-			};
-
-			let assembledTokens = measure(messages);
-
-			// Tier 1: Full → summary
-			if (assembledTokens > ceiling) {
-				const candidates = sortCandidates(
-					rows.filter(
-						(r) =>
-							r.fidelity === "full" &&
-							r.tokens > 0 &&
-							DEMOTION_ORDER[r.category] !== undefined,
-					),
-				);
-				const target = (assembledTokens - ceiling) * 1.1;
-				let accumulated = 0;
-				for (const entry of candidates) {
-					if (accumulated >= target) break;
-					await this.#knownStore.setFidelity(currentRunId, entry.path, "summary");
-					accumulated += entry.tokens;
-					demoted.push(entry.path);
-				}
-				if (demoted.length > 0) {
-					assembledTokens = await remeasure();
-					console.warn(
-						`[RUMMY] Budget tier 1: ${demoted.length} full→summary (${assembledTokens}/${contextSize} tokens)`,
-					);
-				}
-			}
-
-			// Tier 2: Summary → index (path only)
-			if (assembledTokens > ceiling) {
-				const candidates = sortCandidates(
-					rows.filter(
-						(r) =>
-							r.fidelity === "summary" &&
-							r.tokens > 0 &&
-							DEMOTION_ORDER[r.category] !== undefined,
-					),
-				);
-				const target = (assembledTokens - ceiling) * 1.1;
-				let accumulated = 0;
-				const tier2 = [];
-				for (const entry of candidates) {
-					if (accumulated >= target) break;
-					await this.#knownStore.setFidelity(currentRunId, entry.path, "index");
-					accumulated += entry.tokens;
-					tier2.push(entry.path);
-					demoted.push(entry.path);
-				}
-				if (tier2.length > 0) {
-					assembledTokens = await remeasure();
-					console.warn(
-						`[RUMMY] Budget tier 2: ${tier2.length} summary→index (${assembledTokens}/${contextSize} tokens)`,
-					);
-				}
-			}
-
-			// Tier 3: Index → stored (invisible) — collapse to stash entries
-			if (assembledTokens > ceiling) {
-				const candidates = sortCandidates(
-					rows.filter(
-						(r) =>
-							r.fidelity === "index" &&
-							DEMOTION_ORDER[r.category] !== undefined,
-					),
-				);
-				const tier3 = [];
-				for (const entry of candidates) {
-					await this.#knownStore.setFidelity(currentRunId, entry.path, "stored");
-					tier3.push(entry.path);
-					demoted.push(entry.path);
-				}
-				if (tier3.length > 0) {
-					// Create stash entries — one per scheme with stored content
-					await this.#stashStoredEntries(currentRunId, turn, currentLoopId);
-					assembledTokens = await remeasure();
-					console.warn(
-						`[RUMMY] Budget tier 3: ${tier3.length} index→stashed (${assembledTokens}/${contextSize} tokens)`,
-					);
-				}
-			}
-
-			// Tier 4: Hard error — floor doesn't fit
-			if (assembledTokens > ceiling) {
-				throw new Error(
-					`Context floor (${assembledTokens} tokens) exceeds model limit (${contextSize}). ` +
-						"Reduce system prompt size or use a model with a larger context window.",
-				);
-			}
-		}
+				return { messages, rows };
+			},
+		});
+		messages = budgetResult.messages;
+		rows = budgetResult.rows;
+		demoted.push(...budgetResult.demoted);
 
 		let filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
@@ -689,32 +576,6 @@ export default class TurnExecutor {
 			status: 200,
 			resultPath,
 		};
-	}
-
-	/**
-	 * Collapse all stored entries into per-scheme stash entries.
-	 * A stash entry is a known:// entry containing a comma-separated
-	 * list of paths for entries that were demoted to stored fidelity.
-	 * Gives the model awareness of what's in the filing cabinet.
-	 */
-	async #stashStoredEntries(runId, turn, loopId) {
-		const entries = await this.#db.get_known_entries.all({ run_id: runId });
-		const stored = entries.filter((e) => e.fidelity === "stored" && e.status === 200);
-
-		const byScheme = {};
-		for (const entry of stored) {
-			const scheme = entry.scheme || "file";
-			byScheme[scheme] ??= [];
-			byScheme[scheme].push(entry.path);
-		}
-
-		for (const [scheme, paths] of Object.entries(byScheme)) {
-			const stashPath = `known://stash_${scheme}`;
-			const body = paths.join(", ");
-			await this.#knownStore.upsert(runId, turn, stashPath, body, 200, {
-				loopId,
-			});
-		}
 	}
 
 	async #rematerialize(runId, loopId, turn) {

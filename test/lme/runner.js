@@ -1,16 +1,17 @@
 /**
- * MemoryAgentBench runner for Rummy.
+ * LongMemEval runner for Rummy.
  *
- * Runs live agent sessions against the MAB dataset.
- * Each benchmark row: create a run, feed context chunks
- * via ask prompts, then quiz the agent on each question.
+ * Runs live agent sessions against the LongMemEval dataset.
+ * Each benchmark row: create a run, feed conversation history
+ * via ask prompts, then quiz the agent on the question.
  *
  * Usage:
- *   node test/mab/runner.js                           # all splits
- *   node test/mab/runner.js --split Accurate_Retrieval # one split
- *   node test/mab/runner.js --split Accurate_Retrieval --row 0  # one row
- *   node test/mab/runner.js --row 0-4                  # row range
- *   node test/mab/runner.js --chunk-size 4000          # chars per chunk
+ *   node test/lme/runner.js                                    # all rows
+ *   node test/lme/runner.js --split longmemeval_s_cleaned      # specific split
+ *   node test/lme/runner.js --row 0                            # single row
+ *   node test/lme/runner.js --row 0-4                          # row range
+ *   node test/lme/runner.js --chunk-size 4000                  # chars per chunk
+ *   node test/lme/runner.js --type knowledge-update            # filter by question type
  */
 import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -27,12 +28,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "data");
 const RESULTS_DIR = join(__dirname, "results");
 
-const ALL_SPLITS = [
-	"Accurate_Retrieval",
-	"Test_Time_Learning",
-	"Long_Range_Understanding",
-	"Conflict_Resolution",
-];
+const DEFAULT_SPLITS = ["longmemeval_s_cleaned"];
 
 const { values: args } = parseArgs({
 	options: {
@@ -40,12 +36,14 @@ const { values: args } = parseArgs({
 		row: { type: "string" },
 		"chunk-size": { type: "string", default: "4000" },
 		model: { type: "string" },
+		type: { type: "string" },
 	},
 	strict: false,
 });
 
 const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
+const TYPE_FILTER = args.type || null;
 const _TIMEOUT = 600_000;
 
 function parseRowRange(spec) {
@@ -61,7 +59,7 @@ function parseRowRange(spec) {
 function loadSplit(split) {
 	const path = join(DATA_DIR, `${split}.ndjson`);
 	if (!existsSync(path))
-		throw new Error(`Missing data: ${path}\nRun: npm run test:mab:get`);
+		throw new Error(`Missing data: ${path}\nRun: npm run test:lme:get`);
 	const content = readFileSync(path, "utf8");
 	return content
 		.trim()
@@ -70,11 +68,34 @@ function loadSplit(split) {
 		.map((line) => JSON.parse(line));
 }
 
-function chunkContext(context, size) {
+/**
+ * Format a single session as readable text with timestamp.
+ */
+function formatSession(session, date) {
+	const header = date ? `[Session: ${date}]` : `[Session: ${session.session_id}]`;
+	const turns = session.turns
+		.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
+		.join("\n");
+	return `${header}\n${turns}\n\n`;
+}
+
+/**
+ * Chunk sessions into text blocks, respecting session boundaries.
+ * Sessions are never split mid-conversation.
+ */
+function chunkSessions(sessions, dates, maxSize) {
 	const chunks = [];
-	for (let i = 0; i < context.length; i += size) {
-		chunks.push(context.slice(i, i + size));
+	let current = "";
+
+	for (let i = 0; i < sessions.length; i++) {
+		const text = formatSession(sessions[i], dates?.[i]);
+		if (current.length + text.length > maxSize && current.length > 0) {
+			chunks.push(current);
+			current = "";
+		}
+		current += text;
 	}
+	if (current) chunks.push(current);
 	return chunks;
 }
 
@@ -104,8 +125,8 @@ async function ingestContext(client, model, run, chunks) {
 		const total = chunks.length;
 		const prompt = [
 			`Memory ingestion — chunk ${chunkNum} of ${total}.`,
-			"Read and remember the key facts in this text.",
-			"Use <known> to save important information.",
+			"Read and remember the key facts from these conversation sessions.",
+			"Use <known> to save important information (personal details, preferences, events, relationships).",
 			"Use <update> when done (do NOT use <summarize>).",
 			"",
 			chunks[i],
@@ -123,39 +144,36 @@ async function ingestContext(client, model, run, chunks) {
 	console.log(`    ingested ${chunks.length} chunks                `);
 }
 
-async function askQuestion(client, db, model, run, question) {
-	// Snapshot turn count before asking
+async function askQuestion(client, db, model, run, question, questionDate) {
 	const preRun = await db.get_run_by_alias.get({ alias: run });
 	const turnBefore = preRun.next_turn;
 
+	const dateLine = questionDate ? `(Current date: ${questionDate})` : "";
 	const prompt = [
 		"Answer this question from memory.",
+		dateLine,
 		"<summarize>[your answer]</summarize>",
 		"",
 		question,
-	].join("\n");
+	].filter(Boolean).join("\n");
 
 	let r = await client.call("ask", { model, prompt, run });
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status >= 500) return "";
 
-	// Extract answer from entries created after turnBefore
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
 	const newEntries = entries.filter((e) => e.turn >= turnBefore);
 
-	// 1. Summarize entry from the question's turns
 	const summary = newEntries.find((e) => e.scheme === "summarize");
 	if (summary?.body) return summary.body;
 
-	// 2. Raw assistant response — strip XML tags for evaluation
 	const assistant = newEntries
 		.filter((e) => e.scheme === "assistant")
 		.toSorted((a, b) => b.turn - a.turn)[0];
 	if (assistant?.body) return assistant.body.replace(/<[^>]+>/g, " ").trim();
 
-	// 3. Content (unparsed text)
 	const content = newEntries.find((e) => e.scheme === "content");
 	if (content?.body) return content.body;
 
@@ -163,69 +181,66 @@ async function askQuestion(client, db, model, run, question) {
 }
 
 async function runRow(client, db, model, split, rowIndex, row) {
-	const source = row.metadata?.source || "unknown";
+	const questionType = row.question_type || "unknown";
+	const sessionCount = row.haystack_sessions?.length ?? 0;
 	console.log(
-		`\n  [${split}:${rowIndex}] source=${source} context=${row.context.length} chars, ${row.questions.length} questions`,
+		`\n  [${split}:${rowIndex}] type=${questionType} sessions=${sessionCount} q=${row.question_id}`,
 	);
 
 	const startTime = Date.now();
 
-	// Create a fresh run for this benchmark row
-	const splitAbbrev = split.replace(/_/g, "").slice(0, 4).toLowerCase();
+	const splitAbbrev = split.replace(/longmemeval_|_cleaned/g, "").slice(0, 4);
 	const initR = await client.call("ask", {
 		model,
 		prompt:
-			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
+			"You are being evaluated on long-term memory. Incoming conversation history follows. Use <known> to save facts about the user. Reply with <update>ready</update>.",
 		noContext: true,
 	});
 	let run = initR.run;
 
-	// Rename to a descriptive alias for easy DB inspection
-	const mabAlias = `mab_${splitAbbrev}_${rowIndex}`;
+	const lmeAlias = `lme_${splitAbbrev}_${rowIndex}`;
 	try {
-		await client.call("run/rename", { run, name: mabAlias });
-		run = mabAlias;
+		await client.call("run/rename", { run, name: lmeAlias });
+		run = lmeAlias;
 	} catch {}
 
-	// Ingest context in chunks
-	const chunks = chunkContext(row.context, CHUNK_SIZE);
+	const chunks = chunkSessions(
+		row.haystack_sessions,
+		row.haystack_dates,
+		CHUNK_SIZE,
+	);
 	await ingestContext(client, model, run, chunks);
 
-	// Ask each question
-	const questionResults = [];
-	for (let qi = 0; qi < row.questions.length; qi++) {
-		const question = row.questions[qi];
-		const validAnswers = row.answers[qi] || [];
-
-		const response = await askQuestion(client, db, model, run, question);
-		const { pass, matched } = evaluate(response, validAnswers);
-		questionResults.push({
-			question,
-			response,
-			answers: validAnswers,
-			pass,
-			matched,
-		});
-
-		const mark = pass ? "✓" : "✗";
-		process.stdout.write(`    ${mark} ${qi + 1}/${row.questions.length}\r`);
-	}
+	const answer = typeof row.answer === "string" ? row.answer : String(row.answer);
+	const validAnswers = [answer];
+	const response = await askQuestion(
+		client, db, model, run, row.question, row.question_date,
+	);
+	const { pass, matched } = evaluate(response, validAnswers);
+	const questionResults = [{
+		question: row.question,
+		response,
+		answers: validAnswers,
+		pass,
+		matched,
+	}];
 
 	const endTime = Date.now();
 	const score = scoreRow(questionResults);
 
-	// Gather usage from the run
 	const runRow2 = await db.get_run_by_alias.get({ alias: run });
 	const usage = await db.get_run_usage.get({ run_id: runRow2.id });
 
+	const mark = pass ? "✓" : "✗";
 	console.log(
-		`    ${score.passed}/${score.total} correct (${(score.accuracy * 100).toFixed(1)}%) — ${((endTime - startTime) / 1000).toFixed(0)}s`,
+		`    ${mark} ${(score.accuracy * 100).toFixed(0)}% — ${((endTime - startTime) / 1000).toFixed(0)}s`,
 	);
 
 	return {
 		split,
 		rowIndex,
-		source,
+		questionId: row.question_id,
+		questionType,
 		score,
 		usage: {
 			prompt_tokens: usage?.prompt_tokens ?? 0,
@@ -243,40 +258,38 @@ async function main() {
 		process.exit(1);
 	}
 
-	const splits = args.split ? [args.split] : ALL_SPLITS;
+	const splits = args.split ? [args.split] : DEFAULT_SPLITS;
 	const rowRange = parseRowRange(args.row);
 
-	console.log(`MemoryAgentBench Runner`);
+	console.log(`LongMemEval Runner`);
 	console.log(`Model: ${MODEL}`);
 	console.log(`Chunk size: ${CHUNK_SIZE} chars`);
 	console.log(`Splits: ${splits.join(", ")}`);
 	if (rowRange) console.log(`Rows: ${rowRange.start}-${rowRange.end}`);
+	if (TYPE_FILTER) console.log(`Type filter: ${TYPE_FILTER}`);
 
-	// Verify data exists
 	for (const split of splits) {
 		const path = join(DATA_DIR, `${split}.ndjson`);
 		if (!existsSync(path)) {
-			console.error(`Missing: ${path}\nRun: npm run test:mab:get`);
+			console.error(`Missing: ${path}\nRun: npm run test:lme:get`);
 			process.exit(1);
 		}
 	}
 
-	// Start test infrastructure
 	await fs.mkdir(RESULTS_DIR, { recursive: true });
-	await fs.mkdir("/tmp/rummy-mab", { recursive: true });
+	await fs.mkdir("/tmp/rummy-lme", { recursive: true });
 
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const runDir = join(RESULTS_DIR, timestamp);
 	await fs.mkdir(runDir, { recursive: true });
 
-	// Point RUMMY_HOME at the results dir so last_run.txt lands there
 	process.env.RUMMY_HOME = runDir;
 
-	const tdb = await TestDb.create("mab");
+	const tdb = await TestDb.create("lme");
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
-	await client.call("init", { name: "MAB", projectRoot: "/tmp/rummy-mab" });
+	await client.call("init", { name: "LME", projectRoot: "/tmp/rummy-lme" });
 
 	const allResults = [];
 	const resultsPath = join(runDir, "results.ndjson");
@@ -287,7 +300,13 @@ async function main() {
 			console.log(`Split: ${split}`);
 			console.log(`${"═".repeat(58)}`);
 
-			const rows = loadSplit(split);
+			let rows = loadSplit(split);
+
+			if (TYPE_FILTER) {
+				rows = rows.filter((r) => r.question_type === TYPE_FILTER);
+				console.log(`  Filtered to ${rows.length} rows of type: ${TYPE_FILTER}`);
+			}
+
 			const start = rowRange?.start ?? 0;
 			const end = Math.min(rowRange?.end ?? rows.length - 1, rows.length - 1);
 
@@ -295,7 +314,6 @@ async function main() {
 				const result = await runRow(client, tdb.db, MODEL, split, i, rows[i]);
 				allResults.push(result);
 
-				// Append incrementally so partial results survive crashes
 				await fs.appendFile(resultsPath, `${JSON.stringify(result)}\n`);
 			}
 		}
@@ -303,18 +321,16 @@ async function main() {
 		await client?.close();
 		await tserver?.stop();
 
-		// Preserve the database — copy the db + WAL/SHM before cleanup closes it
-		const dbDest = join(runDir, "mab.db");
+		const dbDest = join(runDir, "lme.db");
 		await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
 		await fs.copyFile(`${tdb.dbPath}-wal`, `${dbDest}-wal`).catch(() => {});
 		await fs.copyFile(`${tdb.dbPath}-shm`, `${dbDest}-shm`).catch(() => {});
 		await tdb.cleanup();
 	}
 
-	// Print report
 	printReport(allResults);
 	console.log(`\nResults:  ${resultsPath}`);
-	console.log(`Database: ${join(runDir, "mab.db")}`);
+	console.log(`Database: ${join(runDir, "lme.db")}`);
 	console.log(`Run log:  ${join(runDir, "last_run.txt")}`);
 }
 
