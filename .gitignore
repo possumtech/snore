@@ -1,3 +1,7 @@
+# Benchmark data and results
+test/mab/data/
+test/mab/results/
+
 # Logs
 logs
 *.log

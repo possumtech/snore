@@ -40,7 +40,9 @@
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --experimental-test-coverage --test-coverage-lines=70 --test-coverage-branches=70 --test-coverage-functions=70 --test-concurrency=1 --test $(find src -name '*.test.js')",
 		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test $(find test/integration -name '*.test.js')",
 		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/e2e -name '*.test.js')",
-		"test:live": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js')"
+		"test:live": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js')",
+		"test:mab:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/download.js",
+		"test:mab": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

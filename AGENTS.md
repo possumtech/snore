@@ -38,21 +38,18 @@ twice. The overhead is minimal (promotion is idempotent) but
 receipt entries accumulate. Low priority.
 
 
-## Todo: Server-Side Disk Writes for Headless Clients
-
-rummy.nvim handles disk writes on resolve. Headless/API clients
-don't. The server needs optional disk writes on accept:
-set → write patched file, rm → delete file, mv/cp → filesystem
-operation, sh/env → execute command.
 
 
 
 ## Todo: Test Improvements
 
-- [ ] E2E test diagnostic DBs persist to /tmp/rummy_test_diag/
-- [ ] Add e2e test for multi-edit sed chaining
-- [ ] Add e2e test for ask mode restrictions
-- [ ] Integration test for scheme registration via plugins
+- [x] E2E test diagnostic DBs persist to /tmp/rummy_test_diag/
+- [x] Integration test for scheme registration via plugins (8 tests)
+- [x] Ask mode restrictions (already covered in mode_enforcement.test.js)
+- [x] Sed chaining (already covered in XmlParser.test.js)
+- [ ] Fix set handler integration tests (path normalization mismatch
+  between test setup `set://src%2F...` and handler's `set://src/...`)
+- [ ] Live tests need rerun for HTTP status code migration
 
 ## Done: Session 2026-04-06/07 (continued)
 

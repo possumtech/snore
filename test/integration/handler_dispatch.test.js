@@ -273,7 +273,7 @@ describe("Handler dispatch", () => {
 	});
 
 	describe("env handler", () => {
-		it("sets entry to pass", async () => {
+		it("sets entry to proposed", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const resultPath = await store.slugPath(RUN_ID, "env", "node --version");
 			await store.upsert(RUN_ID, 1, resultPath, "node --version", 200, {
@@ -295,7 +295,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: resultPath,
 			});
-			assert.strictEqual(row.status, 200, "env entry set to pass");
+			assert.strictEqual(row.status, 202, "env entry set to proposed");
 		});
 	});
 
