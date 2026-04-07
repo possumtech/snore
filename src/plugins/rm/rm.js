@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import KnownStore from "../../agent/KnownStore.js";
 
 export default class Rm {
 	#core;
@@ -25,11 +26,20 @@ export default class Rm {
 			});
 			return;
 		}
+		const normalized = KnownStore.normalizePath(target);
 		const matches = await store.getEntriesByPattern(
 			runId,
-			target,
+			normalized,
 			entry.attributes.body,
 		);
+
+		if (matches.length === 0) {
+			await store.upsert(runId, turn, entry.resultPath, "", 404, {
+				attributes: { path: target, error: `${target} not found` },
+				loopId,
+			});
+			return;
+		}
 
 		for (const match of matches) {
 			const resultPath = `rm://${match.path}`;

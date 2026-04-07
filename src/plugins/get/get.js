@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import KnownStore from "../../agent/KnownStore.js";
 import { storePatternResult } from "../helpers.js";
 
 export default class Get {
@@ -26,10 +27,11 @@ export default class Get {
 			});
 			return;
 		}
+		const normalized = KnownStore.normalizePath(target);
 		const bodyFilter = entry.attributes.body || null;
-		const isPattern = bodyFilter || target.includes("*");
-		const matches = await store.getEntriesByPattern(runId, target, bodyFilter);
-		await store.promoteByPattern(runId, target, bodyFilter, turn);
+		const isPattern = bodyFilter || normalized.includes("*");
+		const matches = await store.getEntriesByPattern(runId, normalized, bodyFilter);
+		await store.promoteByPattern(runId, normalized, bodyFilter, turn);
 
 		if (isPattern) {
 			await storePatternResult(
