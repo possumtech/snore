@@ -182,7 +182,9 @@ object is the same shape at every tier.
 | `getRuns`, `getModels`, `getEntries` | — | ✓ | ✓ |
 | `on()`, `filter()`, db/store access | — | — | ✓ |
 
-Model tier restrictions enforced by mode (ask removes act-only tools).
+Model tier restrictions enforced by unified `resolveForLoop(mode, flags)`.
+Ask mode excludes `sh`. Flags: `noInteraction` excludes `ask_user`,
+`noWeb` excludes `search`, `noBench` excludes `ask_user`/`env`/`sh`.
 Client tier requires project init. Plugin tier has no restrictions.
 
 ### 3.2 Dispatch Path
@@ -194,6 +196,14 @@ Model:  XmlParser → { name, path, ... } → #record() → dispatch(scheme, ent
 Client: JSON-RPC  → { method, params }   → #record() → dispatch(scheme, entry, rummy)
 Plugin: rummy.rm({ path })               → #record() → dispatch(scheme, entry, rummy)
 ```
+
+**Lifecycle/action split:** Commands are classified as lifecycle signals
+(`summarize`, `update`, `unknown`, `known`) or action commands (everything
+else). Lifecycle signals always dispatch — they are state declarations that
+cannot be 409'd by sequential dispatch. Action commands dispatch sequentially;
+a 202 proposal or error aborts subsequent actions. If the model sends
+`<summarize>` but actions in the same turn failed, the summarize is
+overridden to an update (the model's assertion that it's done is false).
 
 ### 3.3 Plugin Convention
 
@@ -620,20 +630,30 @@ The model picks its preferred edit format. The parser understands all of them:
 
 ## 9. Response Healing
 
-The server never throws on model output. Recovery order:
+The server never throws on model output. "Model behavior" is never an
+acceptable explanation. Recovery order:
 
 1. Can we recover? Extract the data and continue.
 2. Can we warn? Log structured warnings.
 3. Did our structure cause this? Check formatting, prompts.
-4. Model drift is the LAST answer.
 
 Termination protocol:
 - `<summarize>` → run terminates
+- `<summarize>` + failed actions → overridden to `<update>` (continue)
 - `<update>` → run continues
 - Both → summarize wins
-- Neither + tools → stall counter
+- Neither + investigation tools → stall counter (RUMMY_MAX_STALLS)
+- Neither + action-only tools → healed to summarize
 - Neither + plain text → healed to summarize
-- Repeated commands → loop detection
+- Repeated commands → loop detection (RUMMY_MAX_REPETITIONS)
+- Repeated update text → stall (RUMMY_MAX_UPDATE_REPEATS)
+
+Format normalization:
+- Gemma `\`\`\`tool_code` fences → stripped before parsing
+- Qwen `<|tool_call>` format → normalized to XML
+- OpenAI function_call JSON → normalized to XML
+- Mistral `[TOOL_CALLS]` → normalized to XML
+- Sed alternate delimiters (`s|old|new|`) → parsed like `s/old/new/`
 
 ---
 
@@ -670,11 +690,13 @@ See [PLUGINS.md](PLUGINS.md) for the hedberg pattern type reference.
 
 ```env
 RUMMY_HOME=~/.rummy
-RUMMY_MAX_TURNS=15
+RUMMY_MAX_TURNS=99
 RUMMY_MAX_STALLS=3
 RUMMY_MAX_REPETITIONS=3
+RUMMY_MAX_UPDATE_REPEATS=3
 RUMMY_RETENTION_DAYS=31
-RUMMY_TEMPERATURE=0.7
+RUMMY_TEMPERATURE=0.5
+RUMMY_DEBUG=false
 RUMMY_DEBUG=false
 ```
 

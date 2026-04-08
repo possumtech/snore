@@ -321,7 +321,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const r = await client.call("ask", {
 			model,
 			prompt:
-				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What test framework does this project use?",
+				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What database does this project use?",
 			noInteraction: true,
 		});
 		await client.assertRun(r, [200, 202], "unknowns");

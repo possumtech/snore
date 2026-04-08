@@ -566,7 +566,10 @@ export default class TurnExecutor {
 		// Unknown — deduplicated, sticky
 		if (scheme === "unknown") {
 			const existingValues = await this.#knownStore.getUnknownValues(runId);
-			if (existingValues.has(cmd.body)) return null;
+			if (existingValues.has(cmd.body)) {
+				console.warn(`[RUMMY] Unknown deduped: "${cmd.body.slice(0, 60)}"`);
+				return null;
+			}
 			const unknownPath = await this.#knownStore.slugPath(
 				runId,
 				"unknown",
