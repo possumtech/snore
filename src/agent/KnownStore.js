@@ -193,6 +193,10 @@ export default class KnownStore {
 		return this.#db.get_results.all({ run_id: runId });
 	}
 
+	async getEntries(runId) {
+		return this.#db.get_known_entries.all({ run_id: runId });
+	}
+
 	async getFileEntries(runId) {
 		return this.#db.get_file_entries.all({ run_id: runId });
 	}

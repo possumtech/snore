@@ -6,6 +6,5 @@ Example: <get path="src/*.js" preview>TODO</get> (find files containing TODO)
 Example: <get path="known://*">auth</get> (recall stored knowledge by matching keyword or pattern)
 * Paths accept globs: `src/**/*.js`, `known://api_*`
 * Adding `preview` shows matches without loading into context
-* Filter by content: <get path="pattern">search text</get>
-* Use "known://" paths to recall stored information
-* When irrelevant, use <set path="..." stored/> to archive from context
+* YOU MAY Filter by content: <get path="[pattern]">[matching literal text or pattern]</get>
+* YOU MAY use <set path="..." fidelity="index"/> to archive content.

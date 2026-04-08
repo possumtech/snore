@@ -1,4 +1,4 @@
 ## <update>[Brief update]</update>
-* Describe the current state
-* DO NOT use if done
-* Keep brief (<= 80 characters)
+* YOU MUST describe the current state
+* YOU MUST NOT use if done
+* YOU MUST keep brief (<= 80 characters)

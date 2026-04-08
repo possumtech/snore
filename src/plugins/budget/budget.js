@@ -77,11 +77,18 @@ export default class Budget {
 		let currentMessages = messages;
 		let currentRows = rows;
 
+		console.warn(
+			`[RUMMY] Budget enforce: ${assembledTokens} tokens, ceiling ${ceiling | 0} (contextSize ${contextSize}), ${rows.length} rows`,
+		);
+
 		const refresh = async () => {
 			const result = await rematerialize();
 			currentMessages = result.messages;
 			currentRows = result.rows;
 			assembledTokens = measureMessages(currentMessages);
+			console.warn(
+				`[RUMMY] Budget refresh: ${assembledTokens} tokens, ${currentRows.length} rows`,
+			);
 		};
 
 		// Tier 1: Full → summary (halving spiral)
@@ -149,6 +156,15 @@ export default class Budget {
 
 		// Tier 4: Hard error
 		if (assembledTokens > ceiling) {
+			const floorBreakdown = currentRows
+				.filter((r) => r.tokens > 0)
+				.toSorted((a, b) => b.tokens - a.tokens)
+				.slice(0, 10)
+				.map((r) => `  ${r.path} (${r.fidelity}, ${r.tokens} tok)`)
+				.join("\n");
+			console.warn(
+				`[RUMMY] Budget tier 4 HARD ERROR: ${assembledTokens} tokens > ${ceiling | 0} ceiling\nLargest rows:\n${floorBreakdown}`,
+			);
 			throw new Error(
 				`Context floor (${assembledTokens} tokens) exceeds model limit (${contextSize}). ` +
 					"Reduce system prompt size or use a model with a larger context window.",
@@ -254,9 +270,7 @@ export default class Budget {
 	 * so only the stash path is visible — the model promotes to full to see contents.
 	 */
 	async #createStashEntries(runId, turn, loopId) {
-		const entries = await this.#core.db.get_known_entries.all({
-			run_id: runId,
-		});
+		const entries = await this.#store.getEntries(runId);
 		const stored = entries.filter(
 			(e) =>
 				e.fidelity === "stored" &&

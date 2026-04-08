@@ -1,4 +1,5 @@
 ## <summarize>[Answer or summary]</summarize>
-* Describe the final state
-* ONLY use if done
-* Keep brief (<= 80 characters)
+* YOU MUST describe the final state
+* YOU MUST use if done
+* YOU MUST keep brief (<= 80 characters)
+

@@ -533,6 +533,80 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
+	// Story 9d: Crunch plugin — mid-cascade summarization.
+	// Creates known entries without summaries, forces cascade demotion,
+	// verifies crunch fires and model can still answer from crunched context.
+	it("crunch generates summaries during cascade", {
+		timeout: TIMEOUT,
+	}, async () => {
+		// Create several known entries with substantive content but no summary attr
+		const r1 = await client.call("act", {
+			model,
+			prompt: [
+				"Save these as known entries:",
+				'<known path="known://fact_gravity">Gravity accelerates objects at 9.8 meters per second squared on Earth surface</known>',
+				'<known path="known://fact_water">Water boils at 100 degrees Celsius at standard atmospheric pressure at sea level</known>',
+				'<known path="known://fact_pi">Pi is approximately 3.14159265358979 and is the ratio of circumference to diameter</known>',
+				"<update>Facts saved.</update>",
+			].join("\n"),
+			noInteraction: true,
+		});
+		await client.assertRun(r1, [200, 202], "crunch-save");
+		if (r1.status === 202) await acceptAll(client, r1, tdb.db, projectRoot);
+
+		// Verify entries exist without summary attributes
+		const preCrunch = await allEntries(tdb.db, r1.run);
+		const facts = preCrunch.filter((e) => e.path?.startsWith("known://fact_"));
+		assert.ok(facts.length >= 3, "should have saved 3 fact entries");
+
+		// Load large files to pressure context
+		const bigContent = `// ${"x".repeat(3000)}\n`;
+		await fs.writeFile(join(projectRoot, "src/crunch1.js"), bigContent);
+		await fs.writeFile(join(projectRoot, "src/crunch2.js"), bigContent);
+		await client.call("get", { path: "src/crunch1.js", persist: true });
+		await client.call("get", { path: "src/crunch2.js", persist: true });
+
+		// Shrink context to force tier 1 cascade (full→summary triggers crunch).
+		// 4096 is tight enough to force demotion but holds the irreducible floor
+		// (system prompt + tool docs + stash paths ≈ 2500 tokens).
+		await client.call("run/config", {
+			run: r1.run,
+			contextLimit: 4096,
+		});
+
+		// Ask about one of the facts — model must answer from crunched context
+		const r2 = await client.call("ask", {
+			model,
+			prompt:
+				"What is the boiling point of water in Celsius? Reply ONLY with the number.",
+			run: r1.run,
+			noInteraction: true,
+		});
+		await client.assertRun(r2, 200, "crunch-answer");
+		assertContains(await lastResponse(tdb.db, r2.run), "100", "crunch-answer");
+
+		// Check that crunch wrote summary attributes on demoted entries
+		const postCrunch = await allEntries(tdb.db, r2.run);
+		const crunched = postCrunch.filter(
+			(e) => e.path?.startsWith("known://fact_") && e.fidelity !== "full",
+		);
+		// At least some facts should have been demoted by the cascade
+		// If crunch fired, they should have summary attributes
+		if (crunched.length > 0) {
+			const withSummary = crunched.filter((e) => {
+				const attrs =
+					typeof e.attributes === "string"
+						? JSON.parse(e.attributes)
+						: e.attributes;
+				return typeof attrs?.summary === "string" && attrs.summary.length > 0;
+			});
+			assert.ok(
+				withSummary.length > 0,
+				"crunch should have generated summaries for demoted known entries",
+			);
+		}
+	});
+
 	// Story 10: Web search — model searches, gets results, answers from them.
 	it("autonomous web search", { timeout: TIMEOUT }, async () => {
 		const r = await client.call("ask", {

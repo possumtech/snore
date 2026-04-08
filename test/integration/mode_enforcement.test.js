@@ -111,3 +111,46 @@ describe("Mode enforcement in ask mode", () => {
 		assert.ok(!commands[0]._rejected, "known:// mv should be allowed");
 	});
 });
+
+describe("noInteraction and noWeb flag enforcement", () => {
+	let tdb;
+
+	before(async () => {
+		tdb = await TestDb.create();
+	});
+
+	after(async () => {
+		await tdb.cleanup();
+	});
+
+	it("noInteraction removes ask_user from tool set", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("ask", {
+			noInteraction: true,
+		});
+		assert.ok(!tools.has("ask_user"), "ask_user should be excluded");
+		assert.ok(tools.has("get"), "get should still be available");
+		assert.ok(tools.has("set"), "set should still be available");
+	});
+
+	it("noWeb removes search from tool set", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("ask", { noWeb: true });
+		assert.ok(!tools.has("search"), "search should be excluded");
+		assert.ok(tools.has("get"), "get should still be available");
+	});
+
+	it("both flags together remove both tools", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("ask", {
+			noInteraction: true,
+			noWeb: true,
+		});
+		assert.ok(!tools.has("ask_user"), "ask_user excluded");
+		assert.ok(!tools.has("search"), "search excluded");
+		assert.ok(tools.has("known"), "known still available");
+	});
+
+	it("no flags keeps all tools", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("ask");
+		assert.ok(tools.has("ask_user"), "ask_user available by default");
+		assert.ok(tools.has("search"), "search available by default");
+	});
+});

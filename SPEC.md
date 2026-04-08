@@ -87,6 +87,11 @@ request), 403 (rejected), 404 (not found), 409 (conflict), 413 (too
 large), 500 (error). Fidelity managed independently: full, summary,
 index, stored.
 
+**Bare file paths** have `scheme IS NULL`. The `file` scheme entry in the
+schemes table enables JOINs via `COALESCE(scheme, 'file')`. The `file://`
+prefix is stripped silently by hedberg normalization — bare paths are the
+convention.
+
 **Skills** (`skill://`): `full` or `stored`. Rendered in system message.
 
 **Tools** (`tool://`): `full`, `model_visible = 0`. Internal plugin metadata.
@@ -461,8 +466,8 @@ Without `persist`, operations dispatch through the handler chain.
 | Method | Params |
 |--------|--------|
 | `startRun` | `{ model, temperature?, persona?, contextLimit? }` |
-| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, fork? }` |
-| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, fork? }` |
+| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, noInteraction?, noWeb?, fork? }` |
+| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, noInteraction?, noWeb?, fork? }` |
 | `run/resolve` | `{ run, resolution: { path, action, output? } }` |
 | `run/abort` | `{ run }` |
 | `run/rename` | `{ run, name }` |
@@ -470,6 +475,8 @@ Without `persist`, operations dispatch through the handler chain.
 | `run/config` | `{ run, temperature?, persona?, contextLimit?, model? }` |
 
 `model` is required on `ask`, `act`, and `startRun`. No default.
+`noInteraction` removes `ask_user` from the tool list.
+`noWeb` removes `search` from the tool list.
 
 #### Queries
 
