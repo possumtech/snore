@@ -627,16 +627,30 @@ export default class TurnExecutor {
 
 			let knownPath = cmd.path;
 			if (!knownPath) {
-				// Dedup: if an existing known entry shares the same first 80 chars, reuse it
-				const prefix = cmd.body.slice(0, 80);
-				const existing = await this.#knownStore.getEntriesByPattern(
+				knownPath = await this.#knownStore.slugPath(
 					runId,
-					"known://*",
-					prefix,
+					"known",
+					cmd.body,
 				);
-				knownPath =
-					existing[0]?.path ||
-					(await this.#knownStore.slugPath(runId, "known", cmd.body));
+			}
+			// Dedup: if this exact path already exists, update rather than duplicate
+			const existing = await this.#knownStore.getEntriesByPattern(
+				runId,
+				knownPath,
+				null,
+			);
+			if (existing.length > 0) {
+				// Path exists — update body and turn, skip creating a new entry
+				await this.#knownStore.upsert(runId, turn, existing[0].path, cmd.body || existing[0].body, 200, {
+					loopId,
+				});
+				return {
+					scheme: "known",
+					path: existing[0].path,
+					body: cmd.body || existing[0].body,
+					resultPath: existing[0].path,
+					attributes,
+				};
 			}
 			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, 200, {
 				loopId,

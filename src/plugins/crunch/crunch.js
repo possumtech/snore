@@ -1,6 +1,6 @@
 const SYSTEM_PROMPT =
 	"Compress each entry to comma-separated searchable keywords (≤80 chars). " +
-	"One line per entry. Format: path → keyword1, keyword2, keyword3";
+	"One line per entry. Format: N → keyword1, keyword2, keyword3";
 
 const DEBUG = process.env.RUMMY_DEBUG === "true";
 
@@ -23,8 +23,12 @@ export default class Crunch {
 		);
 
 		for (const batch of batches) {
+			// Numbered index — LLM echoes back numbers, we map to paths
 			const userLines = batch
-				.map((e) => `${e.path}: ${(e.body || "").slice(0, 200)}`)
+				.map((e, i) => {
+					const content = e.body || decodeURIComponent(e.path.replace(/^known:\/\//, ""));
+					return `${i}: ${content.slice(0, 200)}`;
+				})
 				.join("\n");
 
 			const messages = [
@@ -68,8 +72,8 @@ export function batchEntries(entries, maxChars) {
 	let currentSize = 0;
 
 	for (const entry of entries) {
-		// path + truncated body (200 chars max in the prompt) + overhead
-		const size = (entry.path?.length ?? 0) + Math.min(entry.body?.length ?? 0, 200) + 10;
+		const content = entry.body || entry.path || "";
+		const size = Math.min(content.length, 200) + 10;
 		if (currentSize + size > maxChars && current.length > 0) {
 			batches.push(current);
 			current = [];
@@ -85,27 +89,22 @@ export function batchEntries(entries, maxChars) {
 export function parseSummaries(response, entries) {
 	if (!response) return [];
 
-	const pathSet = new Set(entries.map((e) => e.path));
 	const results = [];
 
 	for (const line of response.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed) continue;
 
-		// Accept multiple separator formats: →, ->, :, |
-		const sep = trimmed.match(/\s*(?:→|->|:\s|\|)\s*/);
-		if (!sep) continue;
+		// Match: N → keywords  or  N -> keywords  or  N: keywords
+		const match = trimmed.match(/^(\d+)\s*(?:→|->|:)\s*(.+)/);
+		if (!match) continue;
 
-		const path = trimmed.slice(0, sep.index).trim();
-		const summary = trimmed
-			.slice(sep.index + sep[0].length)
-			.trim()
-			.slice(0, 80);
+		const index = Number.parseInt(match[1], 10);
+		const summary = match[2].trim().slice(0, 80);
 
-		if (!summary) continue;
-		if (!pathSet.has(path)) continue;
+		if (!summary || index < 0 || index >= entries.length) continue;
 
-		results.push({ path, summary });
+		results.push({ path: entries[index].path, summary });
 	}
 
 	return results;

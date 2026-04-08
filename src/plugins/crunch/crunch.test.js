@@ -8,10 +8,10 @@ describe("Crunch parseSummaries", () => {
 		{ path: "known://deploy", body: "Deploys to AWS ECS" },
 	];
 
-	it("parses valid multi-line response", () => {
+	it("parses valid multi-line response with numbered index", () => {
 		const response = [
-			"known://api_config → OAuth2 PKCE, 30d refresh, 100 req/min",
-			"known://deploy → AWS ECS us-west-2, GH Actions CI",
+			"0 → OAuth2 PKCE, 30d refresh, 100 req/min",
+			"1 → AWS ECS us-west-2, GH Actions CI",
 		].join("\n");
 
 		const results = parseSummaries(response, entries);
@@ -24,11 +24,19 @@ describe("Crunch parseSummaries", () => {
 		assert.strictEqual(results[1].path, "known://deploy");
 	});
 
-	it("skips lines without arrow separator", () => {
+	it("accepts -> and : as separators", () => {
+		const results1 = parseSummaries("0 -> OAuth2 config", entries);
+		assert.strictEqual(results1.length, 1);
+
+		const results2 = parseSummaries("0: OAuth2 config", entries);
+		assert.strictEqual(results2.length, 1);
+	});
+
+	it("skips lines without valid format", () => {
 		const response = [
-			"known://api_config → OAuth2 PKCE",
-			"This line has no arrow",
-			"known://deploy → AWS ECS",
+			"0 → OAuth2 PKCE",
+			"This line has no number",
+			"1 → AWS ECS",
 		].join("\n");
 
 		const results = parseSummaries(response, entries);
@@ -37,15 +45,15 @@ describe("Crunch parseSummaries", () => {
 
 	it("truncates summaries over 80 chars", () => {
 		const long = "a".repeat(120);
-		const response = `known://api_config → ${long}`;
+		const response = `0 → ${long}`;
 
 		const results = parseSummaries(response, entries);
 		assert.strictEqual(results.length, 1);
 		assert.strictEqual(results[0].summary.length, 80);
 	});
 
-	it("skips paths not in entries", () => {
-		const response = "known://unknown_path → some keywords";
+	it("skips out-of-range indices", () => {
+		const response = "5 → some keywords";
 
 		const results = parseSummaries(response, entries);
 		assert.strictEqual(results.length, 0);
@@ -56,8 +64,8 @@ describe("Crunch parseSummaries", () => {
 		assert.strictEqual(parseSummaries(null, entries).length, 0);
 	});
 
-	it("skips lines with empty summary after arrow", () => {
-		const response = "known://api_config → ";
+	it("skips lines with empty summary after separator", () => {
+		const response = "0 → ";
 
 		const results = parseSummaries(response, entries);
 		assert.strictEqual(results.length, 0);
@@ -66,9 +74,9 @@ describe("Crunch parseSummaries", () => {
 	it("handles blank lines in response", () => {
 		const response = [
 			"",
-			"known://api_config → OAuth2 config",
+			"0 → OAuth2 config",
 			"",
-			"known://deploy → ECS deploy",
+			"1 → ECS deploy",
 			"",
 		].join("\n");
 
@@ -107,5 +115,14 @@ describe("Crunch batchEntries", () => {
 		const batches = batchEntries(entries, 1000);
 		assert.strictEqual(batches.length, 1);
 		assert.strictEqual(batches[0].length, 1);
+	});
+
+	it("uses path when body is empty", () => {
+		const entries = [
+			{ path: "known://fact_about_something", body: "" },
+			{ path: "known://another_fact", body: "" },
+		];
+		const batches = batchEntries(entries, 10_000);
+		assert.strictEqual(batches.length, 1);
 	});
 });

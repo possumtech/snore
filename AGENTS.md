@@ -131,6 +131,29 @@ Never used as the authority on whether the budget is met.
 
 ---
 
+## Bug: Known Entry Dedup (HIGH PRIORITY)
+
+`#record` for `known` entries creates a unique slug path every time via
+`slugPath`. No content dedup. When the model re-saves the same fact across
+continuation turns (common during ingestion), duplicates accumulate.
+MAB benchmark showed 8.8x duplication (2309 entries for 262 unique facts).
+
+Fix: dedup known entries by body content within a run, same as `unknown`
+does with `getUnknownValues`. If a known entry with the same body already
+exists in the run, skip or update rather than creating a new path.
+
+## Bug: Crunch Parser Path Mismatch
+
+The crunch LLM receives entry paths and echoes them back in its response.
+But it shortens them — `known://319` instead of the full
+`known://319.%20Bernard%20Arnault%20is%20a%20citizen%20of%20France.`.
+`parseSummaries` requires exact path match against `pathSet`, so summaries
+don't get written. MAB showed "wrote 0/40 summaries" repeatedly.
+
+Fix: either send the full path to the crunch LLM (may be too long), or
+use prefix/fuzzy matching in the parser, or send a numbered index and
+map back to paths after parsing.
+
 ## Todo: Proposal Lifecycle — Remaining Work
 
 Sequential dispatch implemented: commands execute one at a time.
