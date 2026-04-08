@@ -38,7 +38,7 @@ export default class Crunch {
 			const result = await complete(messages);
 			response = result?.choices?.[0]?.message?.content ?? "";
 		} catch (err) {
-			console.warn(`[RUMMY] Crunch: summarization failed: ${err.message}`);
+			console.warn(`[RUMMY] Crunch: summarization failed: ${err.message}\n${err.stack}`);
 			return;
 		}
 

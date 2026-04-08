@@ -10,9 +10,10 @@ export default class Known {
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
-		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n${docs}` : docs,
-		);
+		core.filter("instructions.toolDocs", async (docsMap) => {
+			docsMap.known = docs;
+			return docsMap;
+		});
 	}
 
 	async handler(entry, rummy) {

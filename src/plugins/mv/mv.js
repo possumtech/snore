@@ -11,9 +11,10 @@ export default class Mv {
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
-		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n${docs}` : docs,
-		);
+		core.filter("instructions.toolDocs", async (docsMap) => {
+			docsMap.mv = docs;
+			return docsMap;
+		});
 	}
 
 	async handler(entry, rummy) {

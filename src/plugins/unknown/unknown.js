@@ -11,9 +11,10 @@ export default class Unknown {
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
-		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n${docs}` : docs,
-		);
+		core.filter("instructions.toolDocs", async (docsMap) => {
+			docsMap.unknown = docs;
+			return docsMap;
+		});
 	}
 
 	full(entry) {
