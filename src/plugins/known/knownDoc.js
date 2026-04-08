@@ -25,8 +25,8 @@ const LINES = [
     "Teaches WHY summaries matter. The model learns that summary text is what remains visible after budget pressure demotes the entry.",
   ],
   [
-    "* YOU MUST sort and save all information, ideas, and plans in their own entries.",
-    "Critical behavioral constraint. Without this, models assume they'll remember across turns.",
+    "* YOU MUST sort and save all new information, ideas, and plans in their own <known> entries",
+    "Critical behavioral constraint. 'new' prevents re-saving known facts. Without this, models assume they'll remember across turns.",
   ],
 ];
 

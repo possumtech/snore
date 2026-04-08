@@ -41,10 +41,16 @@ export default class Progress {
 
 		if (ctx.demoted?.length > 0) {
 			parts.push(
-				`⚠ ${ctx.demoted.length} entries auto-crunched. Summaries may be lossy — <get> to verify.`,
+				`⚠ ${ctx.demoted.length} entries auto-compressed. Summaries may be lossy — <get> to verify.`,
 			);
 		} else if (pct > 75) {
-			parts.push("Context high — <rm> or <set stored/> unneeded entries.");
+			parts.push(
+				'Context above 75%. YOU MUST summarize enough entries to free space or entries will be auto-compressed:\n<set path="known://..." fidelity="summary" summary="keyword1, keyword2, keyword3"/>\nRestore with <set path="known://..." fidelity="full"/>',
+			);
+		} else if (pct > 50) {
+			parts.push(
+				'Context above 50%. YOU MAY summarize entries to free space:\n<set path="known://..." fidelity="summary" summary="keyword1, keyword2, keyword3"/>\nRestore with <set path="known://..." fidelity="full"/>',
+			);
 		}
 
 		if (hasCurrent) {
