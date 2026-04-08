@@ -324,9 +324,14 @@ export default class TurnExecutor {
 		});
 
 		// --- PHASE 1: RECORD ---
-		// Every command becomes an entry. No execution yet.
+		// Split lifecycle signals from action commands.
+		// Lifecycle signals (summarize, update, unknown, known) are state
+		// declarations — always recorded, never 409'd by sequential dispatch.
+		const LIFECYCLE = new Set(["summarize", "update", "unknown", "known"]);
 
 		const recorded = [];
+		const lifecycle = [];
+		const actions = [];
 
 		// Track budget headroom for 413 rejection during recording.
 		// Use assembled message tokens (includes system prompt overhead).
@@ -350,20 +355,31 @@ export default class TurnExecutor {
 			if (!entry) continue;
 			recorded.push(entry);
 
+			if (LIFECYCLE.has(entry.scheme)) {
+				lifecycle.push(entry);
+			} else {
+				actions.push(entry);
+			}
+
 			if (entry.body && budgetCeiling) {
 				budgetRemaining -= countTokens(entry.body);
 			}
 		}
 
 		// --- PHASE 2: DISPATCH ---
-		// Sequential execution. Stop on proposal or error — abort the rest.
+		// Lifecycle signals first — always dispatched, never aborted.
+		for (const entry of lifecycle) {
+			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			await this.#hooks.entry.created.emit(entry);
+		}
 
+		// Action commands: sequential, stop on proposal or error.
 		let hasErrors = false;
 		let hasProposed = false;
 		let abortAfter = null;
-		const dispatched = [];
+		const dispatched = [...lifecycle];
 
-		for (const entry of recorded) {
+		for (const entry of actions) {
 			if (abortAfter) {
 				await this.#knownStore.upsert(
 					currentRunId,
@@ -399,14 +415,14 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Materialize proposals only if we dispatched without early abort
+		// Materialize proposals only if we dispatched actions
 		if (!abortAfter || hasProposed) {
 			await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
 		}
 
 		// Recheck after materialization (set handler may create proposals)
 		if (!hasProposed && !hasErrors) {
-			for (const entry of dispatched) {
+			for (const entry of actions) {
 				const row = await this.#db.get_entry_state.get({
 					run_id: currentRunId,
 					path: entry.resultPath || entry.path,
@@ -416,16 +432,24 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Extract summary/update from dispatched entries.
-		// If they were 409'd by a preceding proposal/error, they won't
-		// be in dispatched — summaryText stays null, healer treats as stall.
-		const summaryEntry = dispatched.find((e) => e.scheme === "summarize");
-		const updateEntry = dispatched.find((e) => e.scheme === "update");
+		// Lifecycle signals are always available — never 409'd.
+		const summaryEntry = lifecycle.find((e) => e.scheme === "summarize");
+		const updateEntry = lifecycle.find((e) => e.scheme === "update");
 		let summaryText = summaryEntry?.body || null;
 		let updateText = updateEntry?.body || null;
 
 		// If model sent both, summary wins
 		if (summaryText && updateText) updateText = null;
+
+		// If model says "done" but actions failed, override — the model's
+		// assertion that it's done is false if it failed to do what it tried.
+		if (summaryText && hasErrors) {
+			console.warn(
+				"[RUMMY] Overriding <summarize> — actions in this turn failed. Continuing.",
+			);
+			updateText = summaryText;
+			summaryText = null;
+		}
 
 		// If model sent neither, heal from content
 		let statusHealed = false;
