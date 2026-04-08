@@ -11,6 +11,9 @@ export default class Progress {
 		const contextSize = ctx.contextSize || 0;
 		const pct = contextSize ? Math.round((usedTokens / contextSize) * 100) : 0;
 
+		const knownCount = ctx.rows.filter(
+			(r) => r.category === "known" || r.category === "known_index",
+		).length;
 		const unknownCount = ctx.rows.filter(
 			(r) => r.category === "unknown",
 		).length;
@@ -26,11 +29,14 @@ export default class Progress {
 		const tokenInfo = contextSize
 			? `${usedTokens} of ${contextSize} tokens (${pct}%)`
 			: "";
+		const knownInfo = `${knownCount} known${knownCount !== 1 ? "s" : ""}`;
 		const unknownInfo =
 			unknownCount > 0
 				? `${unknownCount} unknown${unknownCount > 1 ? "s" : ""} remaining`
 				: "0 unknowns";
-		const status = [tokenInfo, unknownInfo].filter(Boolean).join(" · ");
+		const status = [tokenInfo, knownInfo, unknownInfo]
+			.filter(Boolean)
+			.join(" · ");
 		if (status) parts.push(status);
 
 		if (ctx.demoted?.length > 0) {

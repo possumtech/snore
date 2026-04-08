@@ -189,6 +189,8 @@ export default class TurnExecutor {
 					entries,
 					runId: currentRunId,
 					model: requestedModel,
+					store: this.#knownStore,
+					contextSize,
 					complete: async (msgs) =>
 						this.#llmProvider.completion(msgs, requestedModel),
 				});

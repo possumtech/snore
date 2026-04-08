@@ -103,7 +103,8 @@ async function ingest(client, db, model, run, chunks) {
 			prompt,
 			run,
 			noContext: true,
-			noInteraction: true, noWeb: true,
+			noInteraction: true,
+			noWeb: true,
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		console.log(`  ingested chunk ${i + 1}/${chunks.length}`);
@@ -278,7 +279,8 @@ async function main() {
 		prompt:
 			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
 		noContext: true,
-		noInteraction: true, noWeb: true,
+		noInteraction: true,
+		noWeb: true,
 	});
 	let run = initR.run;
 	const mabAlias = `mab_audit_${ROW_IDX}`;

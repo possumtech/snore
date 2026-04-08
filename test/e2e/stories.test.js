@@ -90,12 +90,15 @@ async function acceptAll(client, result, db, projectRoot) {
 					const entries = await db.get_known_entries.all({ run_id: runRow.id });
 					const setEntry = entries.find((e) => e.path === p.path);
 					if (setEntry) {
-						const attrs = typeof setEntry.attributes === "string"
-							? JSON.parse(setEntry.attributes)
-							: setEntry.attributes;
+						const attrs =
+							typeof setEntry.attributes === "string"
+								? JSON.parse(setEntry.attributes)
+								: setEntry.attributes;
 						if (attrs?.file && attrs?.merge) {
 							const filePath = join(projectRoot, attrs.file);
-							const content = await fs.readFile(filePath, "utf8").catch(() => "");
+							const content = await fs
+								.readFile(filePath, "utf8")
+								.catch(() => "");
 							const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH\n)/);
 							let patched = content;
 							for (const block of blocks) {
@@ -117,9 +120,10 @@ async function acceptAll(client, result, db, projectRoot) {
 					const entries = await db.get_known_entries.all({ run_id: runRow.id });
 					const rmEntry = entries.find((e) => e.path === p.path);
 					if (rmEntry) {
-						const attrs = typeof rmEntry.attributes === "string"
-							? JSON.parse(rmEntry.attributes)
-							: rmEntry.attributes;
+						const attrs =
+							typeof rmEntry.attributes === "string"
+								? JSON.parse(rmEntry.attributes)
+								: rmEntry.attributes;
 						if (attrs?.path) {
 							await fs.unlink(join(projectRoot, attrs.path)).catch(() => {});
 						}
@@ -409,12 +413,12 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			.stat(join(projectRoot, "notes.md"))
 			.then(() => true)
 			.catch(() => false);
-		assert.ok(fileExists, "reject-survive: notes.md should still exist on disk");
-
-		const content = await fs.readFile(
-			join(projectRoot, "notes.md"),
-			"utf8",
+		assert.ok(
+			fileExists,
+			"reject-survive: notes.md should still exist on disk",
 		);
+
+		const content = await fs.readFile(join(projectRoot, "notes.md"), "utf8");
 		assertContains(content, "phoenix", "reject-survive");
 	});
 
@@ -479,7 +483,8 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"Save this as a known entry: <known>The speed of light is 299792458 meters per second</known>. Reply with <update>saved</update>.",
 			noContext: true,
 		});
-		if (r1.status === 202) r1 = await acceptAll(client, r1, tdb.db, projectRoot);
+		if (r1.status === 202)
+			r1 = await acceptAll(client, r1, tdb.db, projectRoot);
 		await client.assertRun(r1, 200, "cascade-save");
 
 		// Load several large files to pressure the budget
@@ -504,7 +509,8 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"What is the speed of light in meters per second? Reply ONLY with the number.",
 			run: r1.run,
 		});
-		if (r2.status === 202) r2 = await acceptAll(client, r2, tdb.db, projectRoot);
+		if (r2.status === 202)
+			r2 = await acceptAll(client, r2, tdb.db, projectRoot);
 		await client.assertRun(r2, [200, 202], "cascade-answer");
 
 		// The known entry should have survived (full or at least visible)

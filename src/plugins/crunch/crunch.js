@@ -10,52 +10,70 @@ export default class Crunch {
 	constructor(core) {
 		this.#core = core;
 		core.on("cascade.summarize", this.#handleSummarize.bind(this));
-		console.warn("[RUMMY] Crunch plugin registered");
 	}
 
-	async #handleSummarize({ entries, runId, model, complete }) {
-		console.warn(`[RUMMY] Crunch: handler invoked, ${entries?.length ?? 0} entries`);
-		if (!entries?.length || !complete) return;
+	async #handleSummarize({ entries, runId, store, contextSize, complete }) {
+		if (!entries?.length || !complete || !store) return;
 
-		const store = this.#core.entries;
-		if (!store) return;
+		const maxChars = contextSize ? Math.floor(contextSize * 3) : 100_000;
+		const batches = batchEntries(entries, maxChars);
 
-		const userLines = entries
-			.map((e) => `<entry path="${e.path}">${e.body}</entry>`)
-			.join("\n");
+		for (const batch of batches) {
+			const userLines = batch
+				.map((e) => `<entry path="${e.path}">${e.body || ""}</entry>`)
+				.join("\n");
 
-		const messages = [
-			{ role: "system", content: SYSTEM_PROMPT },
-			{ role: "user", content: userLines },
-		];
+			const messages = [
+				{ role: "system", content: SYSTEM_PROMPT },
+				{ role: "user", content: userLines },
+			];
 
-		if (DEBUG) {
-			console.warn(`[RUMMY] Crunch: summarizing ${entries.length} entries`);
-			console.warn(`[RUMMY] Crunch: prompt:\n${userLines}`);
-		}
-
-		let response;
-		try {
-			const result = await complete(messages);
-			response = result?.choices?.[0]?.message?.content ?? "";
-		} catch (err) {
-			console.warn(`[RUMMY] Crunch: summarization failed: ${err.message}\n${err.stack}`);
-			return;
-		}
-
-		if (DEBUG) {
-			console.warn(`[RUMMY] Crunch: response:\n${response}`);
-		}
-
-		const summaries = parseSummaries(response, entries);
-
-		for (const { path, summary } of summaries) {
-			await store.setAttributes(runId, path, { summary });
 			if (DEBUG) {
-				console.warn(`[RUMMY] Crunch: wrote summary for ${path}: ${summary}`);
+				console.warn(`[RUMMY] Crunch: summarizing ${batch.length} entries`);
+			}
+
+			let response;
+			try {
+				const result = await complete(messages);
+				response = result?.choices?.[0]?.message?.content ?? "";
+			} catch (err) {
+				console.warn(`[RUMMY] Crunch: summarization failed: ${err.message}`);
+				continue;
+			}
+
+			if (DEBUG) {
+				console.warn(`[RUMMY] Crunch: response:\n${response}`);
+			}
+
+			const summaries = parseSummaries(response, batch);
+
+			for (const { path, summary } of summaries) {
+				await store.setAttributes(runId, path, { summary });
+				if (DEBUG) {
+					console.warn(`[RUMMY] Crunch: wrote summary for ${path}: ${summary}`);
+				}
 			}
 		}
 	}
+}
+
+export function batchEntries(entries, maxChars) {
+	const batches = [];
+	let current = [];
+	let currentSize = 0;
+
+	for (const entry of entries) {
+		const size = (entry.path?.length ?? 0) + (entry.body?.length ?? 0) + 30;
+		if (currentSize + size > maxChars && current.length > 0) {
+			batches.push(current);
+			current = [];
+			currentSize = 0;
+		}
+		current.push(entry);
+		currentSize += size;
+	}
+	if (current.length > 0) batches.push(current);
+	return batches;
 }
 
 export function parseSummaries(response, entries) {

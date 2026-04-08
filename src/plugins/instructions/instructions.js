@@ -39,7 +39,10 @@ export default class Instructions {
 			{},
 			{ toolSet: activeTools },
 		);
-		const docsText = Object.values(toolDocs).join("\n\n");
+		const docsText = Object.entries(toolDocs)
+			.filter(([key]) => activeTools.has(key))
+			.map(([, value]) => value)
+			.join("\n\n");
 		if (docsText) prompt += `\n\n${docsText}`;
 		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;

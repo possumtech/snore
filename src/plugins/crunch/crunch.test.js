@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseSummaries } from "./crunch.js";
+import { batchEntries, parseSummaries } from "./crunch.js";
 
 describe("Crunch parseSummaries", () => {
 	const entries = [
@@ -74,5 +74,38 @@ describe("Crunch parseSummaries", () => {
 
 		const results = parseSummaries(response, entries);
 		assert.strictEqual(results.length, 2);
+	});
+});
+
+describe("Crunch batchEntries", () => {
+	it("fits small entries in one batch", () => {
+		const entries = [
+			{ path: "known://a", body: "short" },
+			{ path: "known://b", body: "also short" },
+		];
+		const batches = batchEntries(entries, 10_000);
+		assert.strictEqual(batches.length, 1);
+		assert.strictEqual(batches[0].length, 2);
+	});
+
+	it("splits large entries into multiple batches", () => {
+		const entries = Array.from({ length: 20 }, (_, i) => ({
+			path: `known://entry_${i}`,
+			body: "x".repeat(400),
+		}));
+		const batches = batchEntries(entries, 2000);
+		assert.ok(
+			batches.length > 1,
+			`expected multiple batches, got ${batches.length}`,
+		);
+		const total = batches.reduce((s, b) => s + b.length, 0);
+		assert.strictEqual(total, 20);
+	});
+
+	it("handles single oversized entry", () => {
+		const entries = [{ path: "known://big", body: "x".repeat(50_000) }];
+		const batches = batchEntries(entries, 1000);
+		assert.strictEqual(batches.length, 1);
+		assert.strictEqual(batches[0].length, 1);
 	});
 });

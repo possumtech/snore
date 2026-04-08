@@ -44,7 +44,6 @@ const { values: args } = parseArgs({
 const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
 const TYPE_FILTER = args.type || null;
-const _TIMEOUT = 600_000;
 
 function parseRowRange(spec) {
 	if (!spec) return null;
