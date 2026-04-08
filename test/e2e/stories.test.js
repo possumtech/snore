@@ -207,6 +207,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
+			noInteraction: true,
 		});
 		await client.assertRun(r, 200, "factual");
 		assertContains(await lastResponse(tdb.db, r.run), "phoenix", "factual");
@@ -219,6 +220,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt:
 				"Search the web for when Mass Effect 1 was released. Save the release year as a known entry. Tell me the year.",
+			noInteraction: true,
 		});
 		await client.assertRun(r, 200, "research");
 		assertContains(await lastResponse(tdb.db, r.run), "2007", "research-year");
@@ -279,6 +281,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				'Read src/app.js. Does it contain "error handler configured"? One word answer: yes or no.',
 			run: r1.run,
+			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "edit-verify");
 		assertContains(await lastResponse(tdb.db, r2.run), "yes", "edit-visible");
@@ -292,6 +295,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
+			noInteraction: true,
 		});
 		await client.assertRun(r1, 200, "coherence-1");
 		assertContains(
@@ -305,6 +309,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"What port does src/app.js listen on? Reply ONLY with the number.",
 			run: r1.run,
+			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "coherence-2");
 		assertContains(await lastResponse(tdb.db, r2.run), "8080", "coherence-2");
