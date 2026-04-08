@@ -72,7 +72,29 @@ export default class OpenRouterClient {
 		return data;
 	}
 
-	async getContextSize(_model) {
-		return Number(process.env.RUMMY_CONTEXT_SIZE) || DEFAULT_CONTEXT_SIZE;
+	#contextCache = new Map();
+
+	async getContextSize(model) {
+		if (process.env.RUMMY_CONTEXT_SIZE)
+			return Number(process.env.RUMMY_CONTEXT_SIZE);
+
+		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
+
+		try {
+			const res = await fetch(`${this.#baseUrl}/models`, {
+				headers: { Authorization: `Bearer ${this.#apiKey}` },
+				signal: AbortSignal.timeout(5000),
+			});
+			if (res.ok) {
+				const data = await res.json();
+				const entry = data.data?.find((m) => m.id === model);
+				if (entry?.context_length) {
+					this.#contextCache.set(model, entry.context_length);
+					return entry.context_length;
+				}
+			}
+		} catch {}
+
+		return DEFAULT_CONTEXT_SIZE;
 	}
 }

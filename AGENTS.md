@@ -12,12 +12,25 @@ Assembly via `assembly.system` / `assembly.user` filter chains.
 No monolithic assembler. Loops table (projects > runs > loops > turns).
 HTTP status codes throughout (entries, runs, loops, client RPC).
 9 model tools (store removed — fidelity control via set attributes).
-Budget enforcement demotes oldest full entries to summary when context
-exceeds 95% of the model's window. Token estimation via tiktoken * 2x
-multiplier for cross-model safety. Glob matching via picomatch.
-160 unit + 92 integration passing. 12/13 e2e (unknown investigation
-flaky — model sends ask_user instead of investigating). Live tests
-need rerun.
+Budget cascade (BudgetCascade.js) with halving spiral through 3 tiers.
+Crunch plugin for mid-cascade summarization. Token estimation via
+tiktoken * 2x multiplier. Glob matching via picomatch.
+`noInteraction` and `noWeb` flags for benchmark/headless usage.
+`summary="..."` attribute on entries for model-authored descriptions.
+`<knowns>` tags use entry scheme names (`<file>`, `<known>`, `<https>`).
+173 unit + 112 integration passing. 12/14 e2e (file edit assertions).
+MAB and LME benchmark runners built. Live tests need rerun.
+
+### Architecture Notes
+
+**Budget is a plugin.** `src/plugins/budget/budget.js` registers
+`hooks.budget.enforce()`. TurnExecutor delegates through the hook.
+Crunch plugin subscribes to `cascade.summarize` for mid-cascade
+summarization.
+
+**toolDocs filter uses docsMap pattern.** Each plugin writes to a
+keyed object (`docsMap.set = docs`). Instructions plugin filters by
+`activeTools` set — enables selective inclusion for noInteraction/noWeb.
 
 ## Todo: Budget Cascade — Context Guarantee
 

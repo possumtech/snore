@@ -231,7 +231,9 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 	}
 
 	const normalized = judgeText.toLowerCase().trim();
-	const pass = normalized.startsWith("yes");
+	const yesIdx = normalized.search(/\byes\b/);
+	const noIdx = normalized.search(/\bno\b/);
+	const pass = yesIdx !== -1 && (noIdx === -1 || yesIdx < noIdx);
 	return { pass, reason: judgeText.slice(0, 200) };
 }
 
@@ -375,6 +377,7 @@ async function main() {
 	process.env.RUMMY_HOME = runDir;
 
 	const tdb = await TestDb.create("lme");
+	const dbDest = join(runDir, "lme.db");
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
@@ -412,7 +415,7 @@ async function main() {
 		await client?.close();
 		await tserver?.stop();
 
-		const dbDest = join(runDir, "lme.db");
+		// Copy DB before cleanup destroys the temp files
 		await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
 		await fs.copyFile(`${tdb.dbPath}-wal`, `${dbDest}-wal`).catch(() => {});
 		await fs.copyFile(`${tdb.dbPath}-shm`, `${dbDest}-shm`).catch(() => {});

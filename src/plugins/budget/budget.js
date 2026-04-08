@@ -1,7 +1,7 @@
-import { countTokens } from "./tokens.js";
+import { countTokens } from "../../agent/tokens.js";
 
 /**
- * Budget cascade: guarantees materialized context fits within the model's
+ * Budget plugin: guarantees materialized context fits within the model's
  * context window. Context overflow is structurally impossible.
  *
  * Each tier uses iterative halving — demote the oldest half of eligible
@@ -44,13 +44,13 @@ function measureMessages(messages) {
 	return messages.reduce((sum, m) => sum + countTokens(m.content || ""), 0);
 }
 
-export default class BudgetCascade {
-	#db;
-	#knownStore;
+export default class Budget {
+	#core;
+	#store;
 
-	constructor(db, knownStore) {
-		this.#db = db;
-		this.#knownStore = knownStore;
+	constructor(core) {
+		this.#core = core;
+		core.hooks.budget = { enforce: this.enforce.bind(this) };
 	}
 
 	/**
@@ -66,7 +66,9 @@ export default class BudgetCascade {
 		rows,
 		rematerialize,
 		summarize,
+		store,
 	}) {
+		this.#store = store;
 		if (!contextSize) return { messages, rows, demoted: [] };
 
 		const ceiling = contextSize * 0.95;
@@ -182,7 +184,7 @@ export default class BudgetCascade {
 			const batch = [];
 
 			for (const entry of toDemote) {
-				await this.#knownStore.setFidelity(runId, entry.path, fidelityTo);
+				await this.#store.setFidelity(runId, entry.path, fidelityTo);
 				batch.push(entry.path);
 				demoted.push(entry.path);
 			}
@@ -232,7 +234,7 @@ export default class BudgetCascade {
 			const batch = [];
 
 			for (const entry of toDemote) {
-				await this.#knownStore.setFidelity(runId, entry.path, "stored");
+				await this.#store.setFidelity(runId, entry.path, "stored");
 				batch.push(entry.path);
 				demoted.push(entry.path);
 			}
@@ -252,7 +254,9 @@ export default class BudgetCascade {
 	 * so only the stash path is visible — the model promotes to full to see contents.
 	 */
 	async #createStashEntries(runId, turn, loopId) {
-		const entries = await this.#db.get_known_entries.all({ run_id: runId });
+		const entries = await this.#core.db.get_known_entries.all({
+			run_id: runId,
+		});
 		const stored = entries.filter(
 			(e) =>
 				e.fidelity === "stored" &&
@@ -270,7 +274,7 @@ export default class BudgetCascade {
 		for (const [scheme, paths] of Object.entries(byScheme)) {
 			const stashPath = `known://stash_${scheme}`;
 			const body = paths.join("\n");
-			await this.#knownStore.upsert(runId, turn, stashPath, body, 200, {
+			await this.#store.upsert(runId, turn, stashPath, body, 200, {
 				fidelity: "index",
 				loopId,
 			});

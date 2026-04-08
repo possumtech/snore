@@ -1,6 +1,5 @@
 import assert from "node:assert";
 import { after, before, beforeEach, describe, it } from "node:test";
-import BudgetCascade from "../../src/agent/BudgetCascade.js";
 import KnownStore from "../../src/agent/KnownStore.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
@@ -15,7 +14,7 @@ describe("Budget cascade — halving spiral", () => {
 	before(async () => {
 		tdb = await TestDb.create("budget_cascade");
 		store = new KnownStore(tdb.db);
-		cascade = new BudgetCascade(tdb.db, store);
+		cascade = tdb.hooks.budget;
 		const seed = await tdb.seedRun({ alias: "budget_1" });
 		RUN_ID = seed.runId;
 	});
@@ -47,6 +46,7 @@ describe("Budget cascade — halving spiral", () => {
 
 		return cascade.enforce({
 			contextSize,
+			store,
 			runId: RUN_ID,
 			loopId: null,
 			turn,
@@ -283,6 +283,7 @@ describe("Budget cascade — halving spiral", () => {
 
 		await cascade.enforce({
 			contextSize: 2500,
+			store,
 			runId: RUN_ID,
 			loopId: null,
 			turn,
@@ -340,6 +341,7 @@ describe("Budget cascade — halving spiral", () => {
 
 		await cascade.enforce({
 			contextSize: 2500,
+			store,
 			runId: RUN_ID,
 			loopId: null,
 			turn,

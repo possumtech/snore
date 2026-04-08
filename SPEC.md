@@ -345,7 +345,7 @@ Model controls fidelity via `<set>` attributes: `stored`, `summary`,
 ### 4.5 Budget Cascade
 
 Context overflow is structurally impossible. After materialization, the
-`BudgetCascade` enforces a ceiling of 95% of the model's context window.
+budget plugin (`src/plugins/budget/`) enforces a ceiling of 95% of the model's context window.
 If assembled tokens exceed the ceiling, entries are demoted through three
 tiers using an iterative halving spiral.
 

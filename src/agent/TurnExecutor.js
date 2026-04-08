@@ -1,5 +1,4 @@
 import RummyContext from "../hooks/RummyContext.js";
-import BudgetCascade from "./BudgetCascade.js";
 import ContextAssembler from "./ContextAssembler.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
@@ -12,14 +11,12 @@ export default class TurnExecutor {
 	#llmProvider;
 	#hooks;
 	#knownStore;
-	#budgetCascade;
 
 	constructor(db, llmProvider, hooks, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
-		this.#budgetCascade = new BudgetCascade(db, knownStore);
 	}
 
 	async execute({
@@ -164,8 +161,9 @@ export default class TurnExecutor {
 			this.#hooks,
 		);
 
-		const budgetResult = await this.#budgetCascade.enforce({
+		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
+			store: this.#knownStore,
 			runId: currentRunId,
 			loopId: currentLoopId,
 			turn,

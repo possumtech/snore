@@ -61,7 +61,10 @@ export default class TestDb {
 			"../../src/plugins",
 		);
 		await registerPlugins([pluginsDir], hooks);
-		await initPlugins(db, null, hooks);
+		const store = new (await import("../../src/agent/KnownStore.js")).default(
+			db,
+		);
+		await initPlugins(db, store, hooks);
 		return new TestDb(db, dbPath, hooks, suiteName);
 	}
 

@@ -153,7 +153,13 @@ async function auditQuestion(
 
 	const prompt = question;
 
-	let r = await client.call("ask", { model, prompt, run, noInteraction: true });
+	let r = await client.call("ask", {
+		model,
+		prompt,
+		run,
+		noInteraction: true,
+		noWeb: true,
+	});
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	// Get entries from this question's turns
