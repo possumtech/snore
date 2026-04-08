@@ -99,11 +99,11 @@ async function acceptAll(client, result, db, projectRoot) {
 							const content = await fs
 								.readFile(filePath, "utf8")
 								.catch(() => "");
-							const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH\n)/);
+							const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
 							let patched = content;
 							for (const block of blocks) {
 								const match = block.match(
-									/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/,
+									/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
 								);
 								if (match) patched = patched.replace(match[1], match[2]);
 							}
@@ -338,6 +338,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt: "Remember the number 42. Reply with just 'OK'.",
 			noContext: true,
+			noInteraction: true,
 		});
 		await client.assertRun(r1, 200, "lite-1");
 
@@ -346,6 +347,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"What number did I tell you to remember? Reply with just the number.",
 			run: r1.run,
+			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "lite-2");
 		assertContains(await lastResponse(tdb.db, r2.run), "42", "lite-recall");
@@ -442,6 +444,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const r1 = await client.call("ask", {
 			model,
 			prompt: "Reply with OK.",
+			noInteraction: true,
 		});
 		await client.assertRun(r1, 200, "budget-load");
 
@@ -466,6 +469,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
 			run: r1.run,
+			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "budget-demoted");
 
@@ -496,6 +500,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"Save this as a known entry: <known>The speed of light is 299792458 meters per second</known>. Reply with <update>saved</update>.",
 			noContext: true,
+			noInteraction: true,
 		});
 		if (r1.status === 202)
 			r1 = await acceptAll(client, r1, tdb.db, projectRoot);
@@ -531,6 +536,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"What is the speed of light in meters per second? Reply ONLY with the number.",
 			run: r1.run,
+			noInteraction: true,
 		});
 		if (r2.status === 202)
 			r2 = await acceptAll(client, r2, tdb.db, projectRoot);
@@ -644,6 +650,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt:
 				'Search the web for "Mitch Hedberg death date" and tell me when he died.',
+			noInteraction: true,
 		});
 		await client.assertRun(r, 200, "search");
 		assertContains(await lastResponse(tdb.db, r.run), "2005", "search-year");

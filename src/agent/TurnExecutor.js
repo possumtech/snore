@@ -207,68 +207,84 @@ export default class TurnExecutor {
 		// Call LLM
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
 		let rawResult;
-		try {
-			rawResult = await this.#llmProvider.completion(
-				filteredMessages,
-				requestedModel,
-				{ temperature: options?.temperature, signal },
+		const isTransient = (e) =>
+			/\b(503|429|timeout|ECONNREFUSED|ECONNRESET|unavailable)\b/i.test(
+				e.message,
 			);
-		} catch (err) {
-			if (!err.message?.includes("exceed")) throw err;
 
-			// Emergency retry — cascade missed due to tokenizer mismatch.
-			// Demote largest remaining full entries one at a time until it fits.
-			console.warn("[RUMMY] Context overflow from LLM — emergency demotion");
-			for (let attempt = 0; attempt < 10; attempt++) {
-				const candidate = rows
-					.filter(
-						(r) =>
-							r.fidelity === "full" &&
-							r.tokens > 0 &&
-							r.category !== "prompt" &&
-							!demoted.includes(r.path),
-					)
-					.toSorted((a, b) => b.tokens - a.tokens)[0];
-
-				if (!candidate) throw err;
-				await this.#knownStore.setFidelity(
-					currentRunId,
-					candidate.path,
-					"summary",
+		for (let llmAttempt = 0; ; llmAttempt++) {
+			try {
+				rawResult = await this.#llmProvider.completion(
+					filteredMessages,
+					requestedModel,
+					{ temperature: options?.temperature, signal },
 				);
-				demoted.push(candidate.path);
-
-				await this.#rematerialize(currentRunId, currentLoopId, turn);
-				rows = await this.#db.get_turn_context.all({
-					run_id: currentRunId,
-					turn,
-				});
-				messages = await ContextAssembler.assembleFromTurnContext(
-					rows,
-					{ type: mode, systemPrompt, contextSize, demoted, toolSet },
-					this.#hooks,
-				);
-				filteredMessages = await this.#hooks.llm.messages.filter(messages, {
-					model: requestedModel,
-					projectId,
-					runId: currentRunId,
-				});
-
-				try {
-					rawResult = await this.#llmProvider.completion(
-						filteredMessages,
-						requestedModel,
-						{ temperature: options?.temperature, signal },
-					);
+				break;
+			} catch (err) {
+				if (isTransient(err) && llmAttempt < 3) {
+					const delay = 1000 * 2 ** llmAttempt;
 					console.warn(
-						`[RUMMY] Emergency demotion: ${attempt + 1} entries demoted. Retry succeeded.`,
+						`[RUMMY] Transient LLM error (attempt ${llmAttempt + 1}/3): ${err.message.slice(0, 120)}. Retrying in ${delay}ms.`,
 					);
-					break;
-				} catch (retryErr) {
-					if (!retryErr.message?.includes("exceed")) throw retryErr;
+					await new Promise((r) => setTimeout(r, delay));
+					continue;
 				}
+				if (!err.message?.includes("exceed")) throw err;
+
+				// Emergency retry — cascade missed due to tokenizer mismatch.
+				// Demote largest remaining full entries one at a time until it fits.
+				console.warn("[RUMMY] Context overflow from LLM — emergency demotion");
+				for (let attempt = 0; attempt < 10; attempt++) {
+					const candidate = rows
+						.filter(
+							(r) =>
+								r.fidelity === "full" &&
+								r.tokens > 0 &&
+								r.category !== "prompt" &&
+								!demoted.includes(r.path),
+						)
+						.toSorted((a, b) => b.tokens - a.tokens)[0];
+
+					if (!candidate) throw err;
+					await this.#knownStore.setFidelity(
+						currentRunId,
+						candidate.path,
+						"summary",
+					);
+					demoted.push(candidate.path);
+
+					await this.#rematerialize(currentRunId, currentLoopId, turn);
+					rows = await this.#db.get_turn_context.all({
+						run_id: currentRunId,
+						turn,
+					});
+					messages = await ContextAssembler.assembleFromTurnContext(
+						rows,
+						{ type: mode, systemPrompt, contextSize, demoted, toolSet },
+						this.#hooks,
+					);
+					filteredMessages = await this.#hooks.llm.messages.filter(messages, {
+						model: requestedModel,
+						projectId,
+						runId: currentRunId,
+					});
+
+					try {
+						rawResult = await this.#llmProvider.completion(
+							filteredMessages,
+							requestedModel,
+							{ temperature: options?.temperature, signal },
+						);
+						console.warn(
+							`[RUMMY] Emergency demotion: ${attempt + 1} entries demoted. Retry succeeded.`,
+						);
+						break;
+					} catch (retryErr) {
+						if (!retryErr.message?.includes("exceed")) throw retryErr;
+					}
+				}
+				if (!rawResult) throw err;
 			}
-			if (!rawResult) throw err;
 		}
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,
