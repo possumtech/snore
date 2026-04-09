@@ -15,16 +15,11 @@ export default class File {
 	constructor(core) {
 		this.#core = core;
 		// "file" scheme covers bare paths (scheme IS NULL in DB)
-		core.registerScheme({ category: "file" });
-		core.registerScheme({ name: "http", category: "file" });
-		core.registerScheme({ name: "https", category: "file" });
+		core.registerScheme({ category: "data" });
+		core.registerScheme({ name: "http", category: "data" });
+		core.registerScheme({ name: "https", category: "data" });
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
-
-		// Identity projections for schemes that just pass through body
-		for (const scheme of ["known", "skill", "ask", "act", "progress"]) {
-			core.hooks.tools.onView(scheme, (entry) => entry.body);
-		}
 	}
 
 	full(entry) {

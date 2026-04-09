@@ -16,11 +16,7 @@ export default class Progress {
 
 		// Fidelity distribution across known/file entries
 		const entries = ctx.rows.filter(
-			(r) =>
-				r.category === "known" ||
-				r.category === "known_index" ||
-				r.category === "file" ||
-				r.category === "file_index",
+			(r) => r.category === "data",
 		);
 		const fullEntries = entries.filter((r) => r.fidelity === "full");
 		const summaryEntries = entries.filter((r) => r.fidelity === "summary");
@@ -41,7 +37,7 @@ export default class Progress {
 
 		const hasCurrent = ctx.rows.some(
 			(r) =>
-				(r.category === "result" || r.category === "structural") &&
+				r.category === "logging" &&
 				r.source_turn >= ctx.loopStartTurn,
 		);
 

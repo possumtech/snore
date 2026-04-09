@@ -160,19 +160,27 @@ describe("PLUGINS.md Spec Compliance", () => {
 			);
 		});
 
-		it("§7.2 run lifecycle hooks exist", () => {
+		it("§7.2 run and loop lifecycle hooks exist", () => {
+			assert.ok(tdb.hooks.run.created, "run.created exists");
 			assert.ok(tdb.hooks.ask.started, "ask.started exists");
 			assert.ok(tdb.hooks.ask.completed, "ask.completed exists");
 			assert.ok(tdb.hooks.act.started, "act.started exists");
 			assert.ok(tdb.hooks.act.completed, "act.completed exists");
 			assert.ok(tdb.hooks.run.progress, "run.progress exists");
 			assert.ok(tdb.hooks.run.state, "run.state exists");
+			assert.ok(tdb.hooks.loop.started, "loop.started exists");
+			assert.ok(tdb.hooks.loop.completed, "loop.completed exists");
 		});
 
 		it("§7.3 turn pipeline hooks exist", () => {
 			assert.ok(tdb.hooks.turn.started, "turn.started exists");
 			assert.ok(tdb.hooks.turn.response, "turn.response exists");
 			assert.ok(tdb.hooks.turn.proposing, "turn.proposing exists");
+			assert.ok(tdb.hooks.turn.completed, "turn.completed exists");
+			assert.ok(
+				tdb.hooks.context.materialized,
+				"context.materialized exists",
+			);
 			assert.ok(tdb.hooks.assembly.system, "assembly.system exists");
 			assert.ok(tdb.hooks.assembly.user, "assembly.user exists");
 			assert.ok(tdb.hooks.llm.messages, "llm.messages exists");
@@ -185,8 +193,11 @@ describe("PLUGINS.md Spec Compliance", () => {
 		});
 
 		it("§7.4 entry event hooks exist", () => {
+			assert.ok(tdb.hooks.entry.recording, "entry.recording exists");
 			assert.ok(tdb.hooks.entry.created, "entry.created exists");
 			assert.ok(tdb.hooks.entry.changed, "entry.changed exists");
+			assert.ok(tdb.hooks.tool.before, "tool.before exists");
+			assert.ok(tdb.hooks.tool.after, "tool.after exists");
 		});
 
 		it("§7.5 budget hook exists", () => {

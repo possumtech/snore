@@ -48,7 +48,7 @@ export default class PluginContext {
 		return this.#schemes;
 	}
 
-	registerScheme({ name, modelVisible = 1, category = "result" } = {}) {
+	registerScheme({ name, modelVisible = 1, category = "logging" } = {}) {
 		this.#schemes.push({
 			name: name || this.#name,
 			model_visible: modelVisible,

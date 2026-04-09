@@ -30,10 +30,6 @@ export async function registerPlugins(dirs = [], hooks) {
 const AUDIT_SCHEMES = [
 	"instructions",
 	"system",
-	"prompt",
-	"ask",
-	"act",
-	"progress",
 	"reasoning",
 	"model",
 	"error",
@@ -41,6 +37,8 @@ const AUDIT_SCHEMES = [
 	"assistant",
 	"content",
 ];
+
+const PROMPT_SCHEMES = ["prompt", "progress"];
 
 /**
  * After DB is ready, inject db and store into all PluginContext instances,
@@ -50,8 +48,15 @@ export async function initPlugins(db, store, hooks) {
 	for (const name of AUDIT_SCHEMES) {
 		await db.upsert_scheme.run({
 			name,
-			model_visible: ["ask", "act", "progress"].includes(name) ? 1 : 0,
+			model_visible: 0,
 			category: "audit",
+		});
+	}
+	for (const name of PROMPT_SCHEMES) {
+		await db.upsert_scheme.run({
+			name,
+			model_visible: 1,
+			category: "prompt",
 		});
 	}
 
@@ -70,13 +75,14 @@ export async function initPlugins(db, store, hooks) {
 			for (const s of ctx.schemes) registered.add(s.name);
 		}
 		for (const name of AUDIT_SCHEMES) registered.add(name);
+		for (const name of PROMPT_SCHEMES) registered.add(name);
 
 		for (const toolName of hooks.tools.names) {
 			if (registered.has(toolName)) continue;
 			await db.upsert_scheme.run({
 				name: toolName,
 				model_visible: 1,
-				category: "result",
+				category: "logging",
 			});
 		}
 	}

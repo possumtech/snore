@@ -39,6 +39,7 @@ export default function createHooks(debug = false) {
 			},
 		},
 		run: {
+			created: createEvent("run.created"),
 			started: createEvent("run.started"),
 			progress: createEvent("run.progress"),
 			state: createEvent("run.state"),
@@ -47,10 +48,15 @@ export default function createHooks(debug = false) {
 				completed: createEvent("run.step.completed"),
 			},
 		},
+		loop: {
+			started: createEvent("loop.started"),
+			completed: createEvent("loop.completed"),
+		},
 		turn: {
 			started: createEvent("turn.started"),
 			response: createEvent("turn.response"),
 			proposing: createEvent("turn.proposing"),
+			completed: createEvent("turn.completed"),
 		},
 		assembly: {
 			system: createFilter("assembly.system"),
@@ -80,8 +86,16 @@ export default function createHooks(debug = false) {
 			tools: createFilter("prompt.tools"),
 		},
 		entry: {
+			recording: createFilter("entry.recording"),
 			created: createEvent("entry.created"),
 			changed: createEvent("entry.changed"),
+		},
+		tool: {
+			before: createEvent("tool.before"),
+			after: createEvent("tool.after"),
+		},
+		context: {
+			materialized: createEvent("context.materialized"),
 		},
 		action: {},
 		ui: {

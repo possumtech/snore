@@ -144,6 +144,12 @@ export default class TurnExecutor {
 
 		const demoted = [];
 
+		await this.#hooks.context.materialized.emit({
+			runId: currentRunId,
+			turn,
+			rowCount: viewRows.length,
+		});
+
 		await this.#hooks.run.progress.emit({
 			projectId,
 			run: currentAlias,
@@ -309,7 +315,9 @@ export default class TurnExecutor {
 		// --- PHASE 2: DISPATCH ---
 		// Lifecycle signals first — always dispatched, never aborted.
 		for (const entry of lifecycle) {
+			await this.#hooks.tool.before.emit({ entry, rummy });
 			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 		}
 
@@ -338,7 +346,9 @@ export default class TurnExecutor {
 				continue;
 			}
 
+			await this.#hooks.tool.before.emit({ entry, rummy });
 			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 			dispatched.push(entry);
 
@@ -426,7 +436,7 @@ export default class TurnExecutor {
 
 		const askUserEntry = recorded.find((e) => e.scheme === "ask_user");
 
-		return {
+		const turnResult = {
 			turn,
 			turnId: turnRow.id,
 			actionCalls,
@@ -446,6 +456,10 @@ export default class TurnExecutor {
 			assembledTokens,
 			usage: result.usage,
 		};
+
+		await this.#hooks.turn.completed.emit(turnResult);
+
+		return turnResult;
 	}
 
 	/**
@@ -654,19 +668,26 @@ export default class TurnExecutor {
 			};
 		}
 
+		// Filter: plugins can validate/transform before recording
+		const filtered = await this.#hooks.entry.recording.filter(
+			{ scheme, path: resultPath, body, attributes, status: 200 },
+			{ runId, turn, loopId },
+		);
+		if (filtered.status >= 400) return filtered;
+
 		// Record the entry — 200 OK, handlers change status during dispatch
-		await this.#knownStore.upsert(runId, turn, resultPath, body, 200, {
-			attributes,
+		await this.#knownStore.upsert(runId, turn, filtered.path, filtered.body, 200, {
+			attributes: filtered.attributes,
 			loopId,
 		});
 
 		return {
-			scheme,
-			path: resultPath,
-			body,
-			attributes,
+			scheme: filtered.scheme,
+			path: filtered.path,
+			body: filtered.body,
+			attributes: filtered.attributes,
 			status: 200,
-			resultPath,
+			resultPath: filtered.path,
 		};
 	}
 

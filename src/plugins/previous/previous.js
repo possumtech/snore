@@ -11,9 +11,7 @@ export default class Previous {
 
 		const entries = ctx.rows.filter(
 			(r) =>
-				(r.category === "result" ||
-					r.category === "structural" ||
-					r.category === "prompt") &&
+				(r.category === "logging" || r.category === "prompt") &&
 				r.source_turn < ctx.loopStartTurn,
 		);
 		if (entries.length === 0) return content;

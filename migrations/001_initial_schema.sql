@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
-	, category TEXT NOT NULL DEFAULT 'result'
+	, category TEXT NOT NULL DEFAULT 'logging'
 	, source_turn INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn

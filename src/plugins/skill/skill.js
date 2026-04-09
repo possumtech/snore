@@ -8,8 +8,10 @@ export default class Skill {
 		this.#core = core;
 		core.registerScheme({
 			name: "skill",
-			category: "knowledge",
+			category: "data",
 		});
+		core.hooks.tools.onView("skill", (entry) => entry.body);
+
 		const r = core.hooks.rpc.registry;
 
 		r.register("skill/add", {

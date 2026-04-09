@@ -9,7 +9,7 @@ export default class Current {
 	async assembleCurrent(content, ctx) {
 		const entries = ctx.rows.filter(
 			(r) =>
-				(r.category === "result" || r.category === "structural") &&
+				r.category === "logging" &&
 				r.source_turn >= ctx.loopStartTurn,
 		);
 		if (entries.length === 0) return content;

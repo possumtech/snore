@@ -351,16 +351,19 @@ All hooks are async.
 | `project.init.started` | event | Before project DB upsert |
 | `project.init.completed` | event | After project created |
 
-### §7.2 Run Lifecycle
+### §7.2 Run & Loop Lifecycle
 
 | Hook | Type | When |
 |------|------|------|
+| `run.created` | event | Run just created in DB |
 | `ask.started` | event | Run requested in ask mode |
 | `act.started` | event | Run requested in act mode |
+| `loop.started` | event | Loop execution beginning |
 | `run.config` | filter | Before run config applied |
 | `run.progress` | event | Status change (thinking, processing) |
 | `run.state` | event | After each turn — full state snapshot |
 | `run.step.completed` | event | Turn resolved, no proposals pending |
+| `loop.completed` | event | Loop execution finished (any exit path) |
 | `ask.completed` | event | Ask run finished |
 | `act.completed` | event | Act run finished |
 
@@ -371,26 +374,36 @@ Hooks fire in this order every turn:
 | # | Hook | Type | When |
 |---|------|------|------|
 | 1 | `turn.started` | event | Plugins write prompt/progress/instructions entries |
-| 2 | `assembly.system` | filter | Build system message from entries |
-| 3 | `assembly.user` | filter | Build user message from entries |
-| 4 | `budget.enforce` | hook | Measure assembled tokens, 413 if over |
-| 5 | `llm.messages` | filter | Transform messages before LLM call |
-| 6 | `llm.request.started` | event | LLM call about to fire |
-| 7 | `llm.response` | filter | Transform raw LLM response |
-| 8 | `llm.request.completed` | event | LLM call finished |
-| 9 | `turn.response` | event | Plugins write audit entries |
-| 10 | Lifecycle dispatch | — | summarize/update/known/unknown always dispatch |
-| 11 | Action dispatch | — | get/set/rm/mv/cp/sh/env/search sequential |
-| 12 | `entry.created` | event | After each new entry dispatched |
-| 13 | `entry.changed` | event | After entry content, fidelity, or status modified |
-| 14 | `turn.proposing` | event | All dispatches done — materialize proposals |
+| 2 | `context.materialized` | event | turn_context populated from v_model_context |
+| 3 | `assembly.system` | filter | Build system message from entries |
+| 4 | `assembly.user` | filter | Build user message from entries |
+| 5 | `budget.enforce` | hook | Measure assembled tokens, 413 if over |
+| 6 | `llm.messages` | filter | Transform messages before LLM call |
+| 7 | `llm.request.started` | event | LLM call about to fire |
+| 8 | `llm.response` | filter | Transform raw LLM response |
+| 9 | `llm.request.completed` | event | LLM call finished |
+| 10 | `turn.response` | event | Plugins write audit entries |
+| 11 | `entry.recording` | filter | Before each entry is stored (validate/transform) |
+| 12 | `tool.before` | event | Before tool handler dispatch |
+| 13 | Tool handler dispatch | — | Lifecycle always, actions sequential |
+| 14 | `tool.after` | event | After tool handler dispatch |
+| 15 | `entry.created` | event | After each new entry dispatched |
+| 16 | `entry.changed` | event | After entry content, fidelity, or status modified |
+| 17 | `turn.proposing` | event | All dispatches done — materialize proposals |
+| 18 | `turn.completed` | event | Turn fully resolved with final status |
 
 ### §7.4 Entry Events
 
 | Hook | Type | When |
 |------|------|------|
+| `entry.recording` | filter | Before entry stored. Return `{ status: 4xx }` to reject. |
 | `entry.created` | event | New entry added during dispatch |
 | `entry.changed` | event | Entry content, fidelity, or status modified |
+
+`entry.recording` is a filter — plugins can validate, transform, or
+reject entries before they hit the store. Payload:
+`{ scheme, path, body, attributes, status }`. Return the object
+(modified or not). Set `status >= 400` to reject.
 
 `entry.changed` fires on any mutation to an existing entry — body
 update, fidelity change, status change, attribute update. Payload:

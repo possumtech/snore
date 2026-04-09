@@ -43,18 +43,13 @@ projected AS (
 			ELSE ''
 		END AS body
 		, CASE
-			WHEN scheme IS NULL AND visible_fidelity IN ('full', 'summary') THEN 'file'
-			WHEN scheme IS NULL THEN 'file_index'
-			WHEN scheme IN ('http', 'https') AND visible_fidelity IN ('full', 'summary') THEN 'file'
-			WHEN scheme IN ('http', 'https') THEN 'file_index'
-			WHEN scheme IN ('known', 'skill') AND visible_fidelity = 'full' THEN 'known'
-			WHEN scheme IN ('known', 'skill') THEN 'known_index'
+			WHEN scheme IS NULL THEN 'data'
+			WHEN scheme IN ('http', 'https') THEN 'data'
+			WHEN scheme IN ('known', 'skill') THEN 'data'
 			WHEN scheme = 'unknown' THEN 'unknown'
-			WHEN scheme IN ('ask', 'act', 'progress') THEN 'prompt'
-			WHEN scheme = 'summarize' THEN 'structural'
-			WHEN scheme = 'update' THEN 'structural'
+			WHEN scheme = 'prompt' THEN 'prompt'
 			WHEN scheme = 'tool' THEN 'tool'
-			ELSE 'result'
+			ELSE 'logging'
 		END AS category
 	FROM visible
 	WHERE visible_fidelity IS NOT NULL
@@ -74,15 +69,11 @@ SELECT
 		ORDER BY
 			CASE category
 				WHEN 'tool' THEN 1
-				WHEN 'known' THEN 2
-				WHEN 'known_index' THEN 2
-				WHEN 'file_index' THEN 2
-				WHEN 'file' THEN 2
-				WHEN 'result' THEN 3
-				WHEN 'structural' THEN 4
-				WHEN 'unknown' THEN 5
-				WHEN 'prompt' THEN 6
-				ELSE 6
+				WHEN 'data' THEN 2
+				WHEN 'logging' THEN 3
+				WHEN 'unknown' THEN 4
+				WHEN 'prompt' THEN 5
+				ELSE 5
 			END
 			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
 			, CASE fidelity

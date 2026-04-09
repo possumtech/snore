@@ -54,6 +54,7 @@ export default class AgentLoop {
 				new_run_id: runRow.id,
 				parent_run_id: existingRun.id,
 			});
+			await this.#hooks.run.created.emit({ runId: runRow.id, alias, forkedFrom: existingRun.id });
 			return { runId: runRow.id, alias };
 		}
 
@@ -87,6 +88,7 @@ export default class AgentLoop {
 			persona: options?.persona ?? null,
 			context_limit: options?.contextLimit ?? null,
 		});
+		await this.#hooks.run.created.emit({ runId: runRow.id, alias });
 		return { runId: runRow.id, alias };
 	}
 
@@ -250,6 +252,13 @@ export default class AgentLoop {
 		this.#activeRuns.set(currentRunId, controller);
 
 		let lastAssembledTokens = 0;
+
+		await this.#hooks.loop.started.emit({
+			runId: currentRunId,
+			loopId: currentLoopId,
+			mode,
+			prompt,
+		});
 
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
@@ -454,6 +463,12 @@ export default class AgentLoop {
 			return out;
 		} finally {
 			this.#activeRuns.delete(currentRunId);
+			await this.#hooks.loop.completed.emit({
+				runId: currentRunId,
+				loopId: currentLoopId,
+				mode,
+				turns: loopIteration,
+			}).catch(() => {});
 		}
 	}
 

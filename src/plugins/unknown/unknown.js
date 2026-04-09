@@ -7,7 +7,7 @@ export default class Unknown {
 		this.#core = core;
 		core.ensureTool();
 		core.registerScheme({
-			category: "knowledge",
+			category: "unknown",
 		});
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);

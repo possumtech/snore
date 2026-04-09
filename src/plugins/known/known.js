@@ -5,7 +5,7 @@ export default class Known {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({ category: "knowledge" });
+		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
@@ -27,11 +27,7 @@ export default class Known {
 
 	async assembleKnown(content, ctx) {
 		const entries = ctx.rows.filter(
-			(r) =>
-				r.category === "file" ||
-				r.category === "file_index" ||
-				r.category === "known" ||
-				r.category === "known_index",
+			(r) => r.category === "data",
 		);
 		if (entries.length === 0) return content;
 
