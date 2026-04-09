@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import PluginContext from "../hooks/PluginContext.js";
 
@@ -111,7 +111,9 @@ async function loadEnvPlugins(hooks) {
 		if (!key.startsWith("RUMMY_PLUGIN_") || !value) continue;
 		const name = key.replace("RUMMY_PLUGIN_", "").toLowerCase();
 		try {
-			const { default: Plugin } = await importPlugin(value);
+			const { default: Plugin } = isAbsolute(value)
+				? await importAbsolute(value)
+				: await importPlugin(value);
 			if (typeof Plugin?.register === "function") {
 				await Plugin.register(hooks);
 			} else if (typeof Plugin === "function") {
@@ -124,6 +126,19 @@ async function loadEnvPlugins(hooks) {
 			console.warn(`[RUMMY] Plugin ${name} (${value}): ${err.message}`);
 		}
 	}
+}
+
+async function importAbsolute(dir) {
+	const pkgPath = join(dir, "package.json");
+	if (!existsSync(pkgPath)) {
+		// Bare .js file
+		return import(pathToFileURL(dir).href);
+	}
+	const pkg = JSON.parse(
+		(await import("node:fs")).readFileSync(pkgPath, "utf8"),
+	);
+	const entry = pkg.exports?.["."] || pkg.main || "index.js";
+	return import(pathToFileURL(join(dir, entry)).href);
 }
 
 async function scanDir(dir, hooks, isRoot = false) {
