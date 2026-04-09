@@ -4,6 +4,64 @@ Every `<tag>` the model sees is a plugin. Every scheme is registered by
 its owner. Every operation — model, client, plugin — flows through the
 same tool handler. No exceptions without documentation in EXCEPTIONS.md.
 
+## §0 Quickstart
+
+A complete tool plugin in four parts: register, handle, render, document.
+
+```js
+// src/plugins/ping/ping.js
+import docs from "./pingDoc.js";
+
+export default class Ping {
+    #core;
+
+    constructor(core) {
+        this.#core = core;
+        core.ensureTool();
+        core.registerScheme({ category: "result" });
+        core.on("handler", this.handler.bind(this));
+        core.on("full", this.full.bind(this));
+        core.filter("instructions.toolDocs", async (docsMap) => {
+            docsMap.ping = docs;
+            return docsMap;
+        });
+    }
+
+    async handler(entry, rummy) {
+        const now = new Date().toISOString();
+        await rummy.set({
+            path: entry.resultPath,
+            body: `pong ${now}`,
+            status: 200,
+            attributes: { path: entry.path },
+        });
+    }
+
+    full(entry) {
+        return entry.body;
+    }
+}
+```
+
+```js
+// src/plugins/ping/pingDoc.js
+const LINES = [
+    ["## ping",
+        "Header — model sees this as the tool name"],
+    ["<ping/>",
+        "Simplest invocation — no path, no body"],
+    ["* Returns server timestamp",
+        "One-line description of what the tool does"],
+];
+export default LINES.map(([text]) => text).join("\n");
+```
+
+Install external plugins via npm + env var:
+
+```env
+RUMMY_PLUGIN_PING=@myorg/rummy.ping
+```
+
 ## §1 Plugin Contract
 
 A plugin is a directory under `src/plugins/` containing a `.js` file
@@ -97,28 +155,65 @@ sensible result-type scheme.
 
 ### §3.3 core.on(event, callback, priority?)
 
-| Event | Purpose |
-|-------|---------|
-| `"handler"` | Tool handler — called when model/client invokes this tool |
-| `"full"` | Full fidelity projection — what the model sees at full |
-| `"summary"` | Summary fidelity projection — what the model sees at summary |
-| `"turn.started"` | Turn beginning — write prompt/progress/instructions entries |
-| `"turn.response"` | LLM responded — write audit entries, commit usage |
-| `"turn.proposing"` | All dispatches done — materialize file edit proposals |
-| `"entry.created"` | Entry created during dispatch |
-| `"entry.changed"` | Entry content, fidelity, or status modified |
-| Any `"dotted.name"` | Resolves to the matching hook in the hook tree |
+| Event | Payload | Purpose |
+|-------|---------|---------|
+| `"handler"` | `(entry, rummy)` | Tool handler — called when model/client invokes this tool |
+| `"full"` | `(entry)` | Full fidelity projection — what the model sees at full |
+| `"summary"` | `(entry)` | Summary fidelity projection — what the model sees at summary |
+| `"turn.started"` | `(ctx)` | Turn beginning — write prompt/progress/instructions entries |
+| `"turn.response"` | `(result, rummy)` | LLM responded — write audit entries, commit usage |
+| `"turn.proposing"` | `(rummy)` | All dispatches done — materialize file edit proposals |
+| `"entry.created"` | `({ runId, path, scheme })` | Entry created during dispatch |
+| `"entry.changed"` | `({ runId, path, changeType })` | Entry content, fidelity, or status modified |
+| Any `"dotted.name"` | varies | Resolves to the matching hook in the hook tree |
+
+```js
+// One-liner examples
+core.on("handler", async (entry, rummy) => { /* tool logic */ });
+core.on("full", (entry) => entry.body);
+core.on("summary", (entry) => entry.body?.slice(0, 200));
+core.on("turn.started", async (ctx) => { /* write entries */ });
+core.on("turn.response", async (result, rummy) => { /* audit */ });
+core.on("entry.changed", ({ runId, path, changeType }) => { /* react */ });
+```
 
 ### §3.4 core.filter(name, callback, priority?)
 
-| Filter | Purpose |
-|--------|---------|
-| `"instructions.toolDocs"` | Add tool documentation (docsMap pattern) |
-| `"assembly.system"` | Contribute to system message |
-| `"assembly.user"` | Contribute to user message |
-| `"llm.messages"` | Transform final messages before LLM call |
-| `"llm.response"` | Transform LLM response |
-| Any `"dotted.name"` | Resolves to the matching filter in the hook tree |
+| Filter | Signature | Purpose |
+|--------|-----------|---------|
+| `"instructions.toolDocs"` | `(docsMap) → docsMap` | Add tool documentation (docsMap pattern) |
+| `"assembly.system"` | `(content, ctx) → content` | Contribute to system message |
+| `"assembly.user"` | `(content, ctx) → content` | Contribute to user message |
+| `"llm.messages"` | `(messages) → messages` | Transform final messages before LLM call |
+| `"llm.response"` | `(response) → response` | Transform LLM response |
+| Any `"dotted.name"` | varies | Resolves to the matching filter in the hook tree |
+
+```js
+// One-liner examples
+core.filter("assembly.system", async (content, ctx) => {
+    return `${content}\n<mytag>${myData}</mytag>`;
+}, 400);
+core.filter("assembly.user", async (content, ctx) => {
+    return `${content}\n<status>${myStatus}</status>`;
+}, 150);
+core.filter("instructions.toolDocs", async (docsMap) => {
+    docsMap.mytool = docs;
+    return docsMap;
+});
+```
+
+The `ctx` object passed to assembly filters:
+
+```js
+ctx = {
+    rows,              // turn_context rows (materialized entries)
+    loopStartTurn,     // First turn of current loop
+    type,              // "ask" or "act"
+    tools,             // Set of active tool names
+    contextSize,       // Model context window size
+    lastContextTokens, // Assembled tokens from previous turn
+}
+```
 
 ### §3.5 Tool Docs
 
@@ -384,33 +479,64 @@ to the same PluginContext API as bundled plugins.
 
 ## §11 RPC Methods
 
-Client-facing JSON-RPC methods. All tool methods go through the
-same handler chain as model commands.
+Client-facing JSON-RPC 2.0 over WebSocket. All tool methods go through
+the same handler chain as model commands.
 
-### §11.1 Tool Methods (Unified API)
+### §11.1 Wire Format
+
+```json
+// Request
+{ "jsonrpc": "2.0", "id": 1, "method": "get", "params": { "path": "src/app.js", "run": "my_run" } }
+
+// Success response
+{ "jsonrpc": "2.0", "id": 1, "result": { "path": "src/app.js", "status": 200 } }
+
+// Error response
+{ "jsonrpc": "2.0", "id": 1, "error": { "code": -32600, "message": "Missing required param: path" } }
+
+// Notification (server → client, no id)
+{ "jsonrpc": "2.0", "method": "run/state", "params": { "run": "my_run", "status": 200 } }
+```
+
+### §11.2 Tool Methods (Unified API)
 
 | Method | Params | Notes |
 |--------|--------|-------|
 | `get` | `{ path, run, persist?, readonly? }` | `persist` sets file constraint (see EXCEPTIONS.md) |
 | `set` | `{ path, body, run, status?, attributes? }` | |
 | `rm` | `{ path, run }` | |
+| `store` | `{ path, run?, persist?, ignore?, clear? }` | File constraints only — not a model tool |
+| `getEntries` | `{ pattern?, body?, run?, limit?, offset? }` | Query entries |
 
-### §11.2 Run Management
+### §11.3 Run Management
 
 | Method | Params | Notes |
 |--------|--------|-------|
+| `startRun` | `{ model, temperature?, persona?, contextLimit? }` | Create run without prompt |
 | `ask` | `{ model, prompt, run?, noInteraction?, noWeb?, noRepo? }` | |
 | `act` | `{ model, prompt, run?, noInteraction?, noWeb?, noRepo? }` | |
 | `run/resolve` | `{ run, resolution }` | Accept/reject proposals |
 | `run/abort` | `{ run }` | Cancel active run |
-| `run/config` | `{ run, contextLimit?, persona? }` | Update run settings |
+| `run/config` | `{ run, contextLimit?, persona?, model? }` | Update run settings |
 | `run/rename` | `{ run, name }` | Change run alias |
+| `run/inject` | `{ run, message }` | Inject message into active turn |
 
-### §11.3 Project Management
+### §11.4 Project Management
 
 | Method | Params | Notes |
 |--------|--------|-------|
 | `init` | `{ name, projectRoot }` | Initialize project |
 | `addModel` | `{ alias, actual, contextLength? }` | Register model |
+| `removeModel` | `{ alias }` | Remove model |
 | `getRuns` | `{ limit?, offset? }` | List runs |
+| `getRun` | `{ run }` | Get single run details |
 | `getModels` | `{}` | List models |
+
+### §11.5 Notifications (server → client)
+
+| Method | Payload |
+|--------|---------|
+| `run/state` | `{ run, status, turn, entries, ... }` |
+| `run/progress` | `{ run, status }` |
+| `ui/render` | `{ text }` |
+| `ui/notify` | `{ message }` |

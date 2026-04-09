@@ -267,15 +267,169 @@ describe("PLUGINS.md Spec Compliance", () => {
 		});
 	});
 
-	// TODO sections — tests to implement during refactoring:
-	//
-	// §2.2 client get goes through same handler as model get
-	// §2.3 budget enforcement applies equally to both tiers
-	// §4.1 tool verbs on RummyContext work
-	// §4.2 query methods on RummyContext work
-	// §6 hedberg utilities accessible via core.hooks.hedberg
-	// §7.4 entry.changed fires on fidelity/status/body mutations
-	// §7.5 budget.enforce returns 413 with overflow on over-budget
-	// §8 full entry lifecycle from creation to visibility
-	// §11.1 all RPC tool methods go through tool handlers
+	// §4 Two Objects
+	describe("§4 Two Objects", () => {
+		it("§4.1 tool verbs on RummyContext work", async () => {
+			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_1" });
+			const RummyContext = (
+				await import("../../src/hooks/RummyContext.js")
+			).default;
+			const KnownStore = (
+				await import("../../src/agent/KnownStore.js")
+			).default;
+			const store = new KnownStore(tdb.db);
+			const rummy = new RummyContext(
+				{ children: [] },
+				{
+					db: tdb.db,
+					store,
+					runId,
+					projectId,
+					sequence: 1,
+					loopId: null,
+				},
+			);
+
+			// set
+			const path = await rummy.set({
+				path: "known://verb_test",
+				body: "hello",
+			});
+			assert.strictEqual(path, "known://verb_test");
+
+			// getBody (query)
+			const body = await rummy.getBody("known://verb_test");
+			assert.strictEqual(body, "hello");
+
+			// rm
+			await rummy.rm("known://verb_test");
+			const gone = await rummy.getBody("known://verb_test");
+			assert.strictEqual(gone, null);
+		});
+
+		it("§4.2 query methods on RummyContext work", async () => {
+			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_2" });
+			const RummyContext = (
+				await import("../../src/hooks/RummyContext.js")
+			).default;
+			const KnownStore = (
+				await import("../../src/agent/KnownStore.js")
+			).default;
+			const store = new KnownStore(tdb.db);
+			const rummy = new RummyContext(
+				{ children: [] },
+				{
+					db: tdb.db,
+					store,
+					runId,
+					projectId,
+					sequence: 1,
+					loopId: null,
+				},
+			);
+
+			await rummy.set({
+				path: "known://query_a",
+				body: "alpha",
+				attributes: { tag: "test" },
+			});
+			await rummy.set({ path: "known://query_b", body: "beta" });
+
+			// getEntries
+			const entries = await rummy.getEntries("known://*");
+			assert.ok(entries.length >= 2, "getEntries returns matches");
+
+			// getAttributes
+			const attrs = await rummy.getAttributes("known://query_a");
+			assert.strictEqual(attrs.tag, "test");
+
+			// getStatus
+			const status = await rummy.getStatus("known://query_a");
+			assert.strictEqual(status, 200);
+
+			// getEntry
+			const entry = await rummy.getEntry("known://query_a");
+			assert.ok(entry);
+			assert.strictEqual(entry.body, "alpha");
+		});
+	});
+
+	// §6 Hedberg
+	describe("§6 Hedberg", () => {
+		it("§6.1 hedberg utilities accessible via core.hooks.hedberg", () => {
+			const h = tdb.hooks.hedberg;
+			assert.ok(h, "hedberg object exists on hooks");
+			assert.strictEqual(typeof h.match, "function", "match");
+			assert.strictEqual(typeof h.search, "function", "search");
+			assert.strictEqual(typeof h.replace, "function", "replace");
+			assert.strictEqual(typeof h.parseSed, "function", "parseSed");
+			assert.strictEqual(typeof h.parseEdits, "function", "parseEdits");
+			assert.strictEqual(
+				typeof h.normalizeAttrs,
+				"function",
+				"normalizeAttrs",
+			);
+			assert.strictEqual(
+				typeof h.generatePatch,
+				"function",
+				"generatePatch",
+			);
+		});
+	});
+
+	// §7.5 Budget enforce
+	describe("§7.5 Budget Enforce", () => {
+		it("§7.5.1 budget.enforce returns 413 with overflow on over-budget", async () => {
+			const bigMessage = "x".repeat(100000);
+			const result = await tdb.hooks.budget.enforce({
+				contextSize: 1000,
+				messages: [{ role: "system", content: bigMessage }],
+				rows: [],
+			});
+			assert.strictEqual(result.status, 413);
+			assert.ok(result.overflow > 0, "overflow is positive");
+			assert.ok(result.assembledTokens > 1000, "assembled exceeds ceiling");
+		});
+
+		it("§7.5.2 budget.enforce returns 200 when under budget", async () => {
+			const result = await tdb.hooks.budget.enforce({
+				contextSize: 100000,
+				messages: [{ role: "system", content: "small" }],
+				rows: [],
+			});
+			assert.strictEqual(result.status, 200);
+		});
+	});
+
+	// §8 Full Entry Lifecycle
+	describe("§8 Full Entry Lifecycle", () => {
+		it("§8.2 entry visible in v_model_context after creation", async () => {
+			const { runId } = await tdb.seedRun({ alias: "spec_8_2" });
+			const KnownStore = (
+				await import("../../src/agent/KnownStore.js")
+			).default;
+			const store = new KnownStore(tdb.db);
+			await store.upsert(runId, 1, "known://lifecycle_vis", "visible", 200);
+
+			const rows = await tdb.db.get_model_context.all({ run_id: runId });
+			const row = rows.find((r) => r.path === "known://lifecycle_vis");
+			assert.ok(row, "entry appears in v_model_context");
+			assert.strictEqual(row.fidelity, "full");
+		});
+
+		it("§8.3 stored fidelity hides from v_model_context", async () => {
+			const { runId } = await tdb.seedRun({ alias: "spec_8_3" });
+			const KnownStore = (
+				await import("../../src/agent/KnownStore.js")
+			).default;
+			const store = new KnownStore(tdb.db);
+			await store.upsert(runId, 1, "known://lifecycle_stored", "hidden", 200, {
+				fidelity: "stored",
+			});
+
+			const rows = await tdb.db.get_model_context.all({ run_id: runId });
+			const row = rows.find((r) => r.path === "known://lifecycle_stored");
+			assert.ok(!row, "stored entry not in v_model_context");
+		});
+	});
 });

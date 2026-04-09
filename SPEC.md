@@ -42,7 +42,8 @@ body, attributes, and state.
 
 ```sql
 known_entries (
-    id, run_id, turn, path, body, scheme, state, hash,
+    id, run_id, loop_id, turn, path, body, scheme,
+    status INTEGER, fidelity TEXT, hash,
     attributes, tokens, tokens_full, refs, write_count,
     created_at, updated_at
 )
@@ -50,65 +51,50 @@ known_entries (
 
 | Column | Purpose |
 |--------|---------|
-| `path` | Entry identity. Bare paths (`src/app.js`) or URIs (`known://auth`) |
+| `path` | Entry identity. Bare paths (`src/app.js`) or URIs (`known://auth`). Max 2048 chars. |
 | `body` | Tag body text. File content, tool output, skill docs. |
 | `attributes` | Tag attributes as JSON. Handler-private workspace. `CHECK (json_valid)` |
 | `scheme` | Generated from path via `schemeOf()`. Drives dispatch and view routing |
-| `state` | Lifecycle stage. Determines model visibility |
+| `status` | HTTP status code (200, 202, 400, 413, etc.) |
+| `fidelity` | Visibility level: full, summary, index, stored |
 | `hash` | SHA-256 for file change detection |
-| `tokens` | Context cost at current state |
+| `tokens` | Display-only token count at current fidelity. NEVER used for budget. |
 | `tokens_full` | Cost of raw body at full fidelity |
 | `turn` | Freshness — when was this entry last touched |
 
-### 1.2 Schemes & States
+### 1.2 Schemes, Status & Fidelity
+
+Every entry has two independent dimensions: **status** (HTTP integer)
+and **fidelity** (visibility level). These are separate concerns.
+
+**Status** (lifecycle): 200 (OK), 202 (proposed), 400 (bad request),
+404 (not found), 409 (conflict), 413 (too large), 499 (aborted),
+500 (error).
+
+**Fidelity** (visibility): `full` (body visible), `summary`
+(model-authored summary), `index` (path only), `stored` (invisible,
+retrievable via `<get>`).
 
 Paths use URI scheme syntax. Bare paths (no `://`) are files.
 
-**Files** (`scheme IS NULL`):
+| Scheme | Category | Description |
+|--------|----------|-------------|
+| `NULL` (bare path) | file | File content. JOINs via `COALESCE(scheme, 'file')`. `file://` prefix stripped by hedberg. |
+| `known://` | knowledge | Model-registered knowledge. One fact per entry. |
+| `unknown://` | knowledge | Unresolved questions. |
+| `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | result | Tool result entries. |
+| `skill://` | knowledge | Skill docs. Rendered in system message. |
+| `tool://` | structural | Internal plugin metadata. `model_visible = 0`. |
+| `http://`, `https://` | result | Web content. |
+| `summarize://`, `update://` | structural | Lifecycle signals. |
+| `system://`, `prompt://`, `ask://`, `act://`, `progress://`, `reasoning://`, `model://`, `error://`, `user://`, `assistant://`, `content://` | structural | Audit entries. `model_visible = 0`. |
 
-| State | Model sees |
-|-------|-----------|
-| `full` | File content in code fence |
-| `index` | Path listed in File Index |
-| `stored` | Invisible, retrievable via `<get>` |
+### 1.3 Scheme Registry
 
-**Knowledge** (`known://`, `unknown://`):
-
-| State | Model sees |
-|-------|-----------|
-| `full` | Key — value in bullet list |
-| `stored` | Key listed, no value |
-
-**Tool results** (`set://`, `sh://`, `env://`, `rm://`, `ask_user://`,
-`mv://`, `cp://`, `search://`, `get://`):
-
-All entries use HTTP status codes: 200 (OK), 202 (proposed), 400 (bad
-request), 403 (rejected), 404 (not found), 409 (conflict), 413 (too
-large), 500 (error). Fidelity managed independently: full, summary,
-index, stored.
-
-**Bare file paths** have `scheme IS NULL`. The `file` scheme entry in the
-schemes table enables JOINs via `COALESCE(scheme, 'file')`. The `file://`
-prefix is stripped silently by hedberg normalization — bare paths are the
-convention.
-
-**Skills** (`skill://`): `full` or `stored`. Rendered in system message.
-
-**Tools** (`tool://`): `full`, `model_visible = 0`. Internal plugin metadata.
-
-**URLs** (`http://`, `https://`): `full`, `summary`, `stored`.
-
-**Structural** (`summarize://`, `update://`): Status signals.
-
-**Audit** (`system://`, `prompt://`, `ask://`, `act://`, `progress://`,
-`reasoning://`, `model://`, `error://`, `user://`, `assistant://`,
-`content://`): `info` state, `model_visible = 0` (hidden from model).
-
-### 1.3 State Validation
-
-The `schemes` table is a bootstrap registry — 30 rows of static config.
-INSERT/UPDATE triggers validate state against `schemes.valid_states`.
-Plugins cannot bypass this (circular dependency prevents schemes as entries).
+The `schemes` table is a bootstrap registry — static rows of
+`(name, model_visible, category)`. Plugins register their scheme
+via `core.registerScheme()` in the constructor. The `model_visible`
+flag controls whether entries appear in `v_model_context`.
 
 ### 1.4 UPSERT Semantics
 
@@ -124,13 +110,20 @@ The K/V store is the memory. Relational tables are the skeleton.
 ```sql
 projects (id, name UNIQUE, project_root, config_path, created_at)
 models   (id, alias UNIQUE, actual, context_length, created_at)
-runs     (id, project_id, parent_run_id, model, alias UNIQUE, status,
-          temperature, persona, context_limit, next_turn, created_at)
-turns    (id, run_id, sequence, prompt_tokens, completion_tokens,
-          total_tokens, cost, created_at)
+runs     (id, project_id, parent_run_id, model, alias UNIQUE,
+          status INTEGER, temperature, persona, context_limit,
+          next_turn, next_loop, created_at)
+loops    (id, run_id, sequence, mode, model, prompt, status INTEGER,
+          config JSON, result JSON, created_at)
+turns    (id, run_id, loop_id, sequence, context_tokens,
+          reasoning_content, prompt_tokens, cached_tokens,
+          completion_tokens, reasoning_tokens, total_tokens, cost,
+          created_at)
 
 file_constraints (id, project_id, pattern, visibility, created_at)
-prompt_queue     (id, run_id, mode, model, prompt, config, status, result)
+turn_context     (id, run_id, loop_id, turn, ordinal, path, scheme,
+                  status, fidelity, body, tokens, attributes,
+                  category, source_turn)
 rpc_log          (id, project_id, method, rpc_id, params, result, error)
 ```
 
@@ -143,19 +136,22 @@ client picks for every run.
 
 ### 2.1 Run State Machine
 
+All status fields are HTTP integer codes:
+
 ```
-queued → running → proposed → running → completed
-                → completed
-                → failed → running
-                → aborted → running
+100 (queued) → 200 (running) → 202 (proposed) → 200 (running) → 200 (completed)
+                              → 200 (completed)
+                              → 500 (failed) → 200 (running)
+                              → 499 (aborted) → 200 (running)
 ```
 
 All terminal states allow transition back to `running`. Runs are long-lived.
 
-### 2.2 Prompt Queue
+### 2.2 Loops Table
 
-All prompts flow through `prompt_queue`. FIFO per run. One active at a time.
-Abort stops the current prompt; pending prompts survive.
+The loops table IS the prompt queue. Each `ask`/`act` creates a loop.
+FIFO per run (ordered by sequence). One active at a time. Abort stops
+the current loop; pending loops survive. Projects > runs > loops > turns.
 
 ---
 
@@ -176,7 +172,7 @@ object is the same shape at every tier.
 
 | Method | Model | Client | Plugin |
 |--------|-------|--------|--------|
-| `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env` | ✓ | ✓ | ✓ |
+| `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env`, `search` | ✓ | ✓ | ✓ |
 | `known`, `unknown`, `ask_user`, `summarize`, `update` | ✓ | ✓ | ✓ |
 | `ask`, `act`, `resolve`, `abort`, `startRun` | — | ✓ | ✓ |
 | `getRuns`, `getModels`, `getEntries` | — | ✓ | ✓ |
@@ -185,6 +181,8 @@ object is the same shape at every tier.
 Model tier restrictions enforced by unified `resolveForLoop(mode, flags)`.
 Ask mode excludes `sh`. Flags: `noInteraction` excludes `ask_user`,
 `noWeb` excludes `search`, `noBench` excludes `ask_user`/`env`/`sh`.
+13 model tools: get, set, known, unknown, env, sh, rm, cp, mv, search,
+summarize, update, ask_user.
 Client tier requires project init. Plugin tier has no restrictions.
 
 ### 3.2 Dispatch Path
@@ -264,9 +262,9 @@ Two messages per turn. System = stable truth. User = active task.
         [persona/]
         [skills/]
     [/instructions]
-    <knowledge>
+    <knowns>
         ...entries sorted by fidelity (index, summary, full), then by scheme
-    </knowledge>
+    </knowns>
     <previous>
         (pre-loop user prompt, model responses, agent warnings, and tools used, in order)
     </previous>
@@ -357,81 +355,35 @@ Model controls fidelity via `<set>` attributes: `stored`, `summary`,
 `index`, `full`. The `summary="..."` attribute attaches a description
 (<= 80 chars) that persists across fidelity changes.
 
-### 4.5 Budget Cascade
+### 4.5 Budget Enforcement
 
-Context overflow is structurally impossible. After materialization, the
-budget plugin (`src/plugins/budget/`) enforces a ceiling of 95% of the
-model's context window. If assembled tokens exceed the ceiling, entries
-are degraded through two phases: the crunch spiral and the death spiral.
+The model owns its context. The system enforces a hard ceiling and
+provides advisory warnings — it does not automatically manage entries.
 
-**Selection: fattest half of oldest half.** No scheme-based priority.
-Sort all candidates by `source_turn` ASC (oldest first), take the oldest
-half, then within that half sort by `tokens` DESC (fattest first) and
-take the fattest half. This selects 25% of entries per pass — the
-simultaneously oldest AND largest entries.
+**Pre-LLM check:** The budget plugin measures `countTokens()` on the
+assembled messages. If assembled tokens exceed the model's context
+window, the turn returns 413 without calling the LLM.
 
-**Protected categories:** `system`, `tool`, and `prompt` entries are
-exempt from crunching and stashing. Stash entries (`known://stash_*`)
-are also exempt.
+**Per-entry gate:** During recording, each entry's tokens are checked
+against a 95% ceiling minus current usage. Entries that would exceed
+the budget are rejected with 413 status and an error message telling
+the model to use `<set fidelity="stored">` or `<rm>`.
 
-**Crunch spiral** (graceful degradation):
-- Full entries → set to summary fidelity. The `summarize` callback fires
-  for entries without `attributes.summary` (see § 4.6).
-- Summary entries with summaries > 80 chars → summary text halved
-  deterministically (no LLM call). Repeated: 2000→1000→500→250→125→80.
-- Summary entries whose summaries shrink below 10 chars → index fidelity.
-- Repeat until under budget or no crunchable entries remain.
+**Size gate:** Known entries exceeding 500 tokens are rejected with
+413, forcing atomic entries.
 
-`ToolRegistry.view()` prepends `attributes.summary` above whatever the
-plugin's summary view returns. Files at summary fidelity render as:
-description line + symbols. All schemes benefit automatically.
+**Advisory warnings** (progress plugin):
+- 50%: "You may free space by lowering the fidelity of entries"
+- 75%: "YOU MUST free space... or the run will fail"
 
-**Death spiral** (last resort):
-- Sort remaining summary/index entries by `source_turn` ASC.
-- Stash the oldest half by scheme into `known://stash_<scheme>` index
-  entries. Stash body = newline-separated paths of stored entries.
-- Repeat until under budget or nothing left to stash.
+**Token math rule:** Budget decisions use ONLY assembled message token
+counts. The `tokens` column on `known_entries` is strictly for DISPLAY.
+See PLUGINS.md §7.5.
 
-**Crash:** If stashes + system prompt + tool docs don't fit, that's a
-configuration error — the model's context window is too small.
-
-**Callbacks:**
-- `rematerialize`: After each pass, re-queries `v_model_context`,
-  re-projects through view handlers, re-assembles messages.
-- `summarize`: During crunch spiral, fires for full→summary entries
-  missing `attributes.summary`. See § 4.6.
-
-### 4.6 Crunch: Mid-Cascade Summarization
-
-The **crunch plugin** (`src/plugins/crunch/`) subscribes to
-`cascade.summarize`. When the crunch spiral demotes full entries to
-summary and they lack summaries, it generates keyword descriptions.
-
-**Flow:**
-1. Crunch spiral selects entries for full→summary demotion
-2. Filters to entries missing `attributes.summary`
-3. Fires `summarize` callback with the batch
-4. Crunch plugin compresses each entry to ≤80 chars of keywords
-5. One LLM call per batch (direct, no run/loop overhead)
-6. Parses response: one line per entry, `path → keywords`
-7. Writes to `attributes.summary` via `KnownStore.setAttributes()`
-8. Cascade calls `rematerialize` — summaries render via ToolRegistry
-
-**Cost:** One LLM call per cascade invocation (not per halving pass).
-All unsummarized full entries are batched upfront before the halving
-spiral begins. After first crunch, entries have permanent summaries.
-Future cascades skip the call for those entries entirely.
-
-**Failure:** If the LLM call fails, entries are still demoted — they
-render with empty summaries. Logged as `[RUMMY] Crunch: summarization
-failed`.
-
-**Debug:** When `RUMMY_DEBUG=true`, full request/response logged.
-
-### 4.7 progress:// as Entry
-
-The continuation prompt is a `progress://N` entry. Plugins can modify its
-body before materialization.
+**`ToolRegistry.view()`** prepends `attributes.summary` above the
+plugin's summary view output at summary fidelity. The model authors
+summaries (<= 80 chars) via `<set summary="...">`. Summaries persist
+across fidelity changes.
 
 ---
 
@@ -476,8 +428,8 @@ Without `persist`, operations dispatch through the handler chain.
 | Method | Params |
 |--------|--------|
 | `startRun` | `{ model, temperature?, persona?, contextLimit? }` |
-| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, noInteraction?, noWeb?, fork? }` |
-| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noContext?, noInteraction?, noWeb?, fork? }` |
+| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noRepo?, noInteraction?, noWeb?, fork? }` |
+| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noRepo?, noInteraction?, noWeb?, fork? }` |
 | `run/resolve` | `{ run, resolution: { path, action, output? } }` |
 | `run/abort` | `{ run }` |
 | `run/rename` | `{ run, name }` |
@@ -485,6 +437,8 @@ Without `persist`, operations dispatch through the handler chain.
 | `run/config` | `{ run, temperature?, persona?, contextLimit?, model? }` |
 
 `model` is required on `ask`, `act`, and `startRun`. No default.
+`noRepo` disables default project/repo file scanning (files can still
+be added explicitly by the client).
 `noInteraction` removes `ask_user` from the tool list.
 `noWeb` removes `search` from the tool list.
 
@@ -696,7 +650,6 @@ RUMMY_MAX_REPETITIONS=3
 RUMMY_MAX_UPDATE_REPEATS=3
 RUMMY_RETENTION_DAYS=31
 RUMMY_TEMPERATURE=0.5
-RUMMY_DEBUG=false
 RUMMY_DEBUG=false
 ```
 

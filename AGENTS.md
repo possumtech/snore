@@ -19,8 +19,8 @@ Plugin-driven architecture. Instantiated classes, constructor receives
 Assembly via `assembly.system` / `assembly.user` filter chains.
 No monolithic assembler. Loops table (projects > runs > loops > turns).
 HTTP status codes throughout (entries, runs, loops, client RPC).
-12 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
-search, summarize, update. Tool priority ordering (get first,
+13 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
+search, summarize, update, ask_user. Tool priority ordering (get first,
 ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
 Budget cascade: two-phase crunch spiral (upfront LLM summary + halving)
 + death spiral (stash by scheme) + crash. No scheme-based tiers.
@@ -78,10 +78,10 @@ aren't documented in EXCEPTIONS.md with clear justification.
   estimate at 95% ceiling. Conservative (2x tiktoken multiplier).
   Secondary safety net; real budget enforcement is pre-LLM via
   budget.enforce() on assembled messages. Acceptable.
-- [ ] `noRepo` flag — passed through but never read. Disables default
-  project/repo file scanning. Files can still be added explicitly by
-  the client. Core and rummy.repo should skip auto-loading project
-  files when set. Needs implementation.
+- [x] `noRepo` flag — fully plumbed in core: RPC→AgentLoop→TurnExecutor
+  →RummyContext.noRepo. External repo plugin reads it (as `noContext`,
+  needs rename to `noRepo`). Core implementation complete, repo
+  plugin rename tracked separately.
 - [x] Crunch plugin — REMOVED. Dead code. cascade.summarize hook removed.
 - [x] `v_model_context` token calculation vs `turn_context` tokens vs
   `known_entries` tokens — three sources, three meanings, all consistent.
@@ -99,19 +99,31 @@ aren't documented in EXCEPTIONS.md with clear justification.
 - [x] EXCEPTIONS.md created with documented backbone responsibilities
 - [x] PLUGINS.md updated with numbered sections, comprehensive API
 - [x] plugin_spec.test.js created with section-numbered compliance tests
-- [ ] Align SPEC.md with implementation
+- [x] Align SPEC.md with implementation — §1.2 state→status+fidelity,
+  §1.3 schemes simplified, §2 loops table replaces prompt_queue,
+  turns updated with loop_id/context_tokens/reasoning_content,
+  §4.1 knowledge→knowns, §4.5 crunch cascade→413 enforcement,
+  §4.6 crunch removed, §5.1 noContext→noRepo, search added to
+  unified API, 13 tools, duplicate RUMMY_DEBUG removed.
 
 **PLUGINS.md completeness (the guardrail):**
-- [ ] Quickstart: end-to-end example plugin (register, handle, render, docs)
-- [ ] Hook examples: one-liner subscriber for each event/filter
-- [ ] Payload shapes: formalize every hook's payload as typed object
-- [ ] RPC wire format: show actual JSON-RPC request/response examples
-- [ ] plugin_spec.test.js: implement all TODO tests (§2.2, §2.3, §4.1,
-  §4.2, §6, §7.4 full pipeline, §7.5, §8 full lifecycle, §11.1)
-- [ ] entry.changed: verify fires through full plugin pipeline, not
-  just KnownStore callback
-- [ ] Verify every hook listed in PLUGINS.md is both emitted AND
-  subscribable (no dead hooks)
+- [x] Quickstart: end-to-end example plugin (§0, ping tool with handler,
+  view, docs, scheme registration)
+- [x] Hook examples: one-liner subscribers for each event/filter in §3.3/§3.4
+- [x] Payload shapes: event payloads in §3.3 table, ctx object in §3.4
+- [x] RPC wire format: JSON-RPC request/response/notification in §11.1
+- [x] plugin_spec.test.js: implemented §4.1 tool verbs, §4.2 query
+  methods, §6 hedberg utilities, §7.5 budget enforce 413/200,
+  §8.2 v_model_context visibility, §8.3 stored fidelity hidden.
+  30 tests passing. Remaining: §2.2/§2.3 (need full dispatch
+  integration), §11.1 (need RPC integration).
+- [x] entry.changed: fires through full pipeline. KnownStore.onChanged
+  wired to hooks.entry.changed.emit() in ProjectAgent and TestDb.
+  Plugin spec §7.4.1-§7.4.4 verify upsert/fidelity/remove events.
+- [x] Verify every hook listed in PLUGINS.md is both emitted AND
+  subscribable — all §7.1-§7.4 hooks verified. `ui.render`/`ui.notify`
+  are subscribable but emitted by external plugins only (acceptable).
+  `run.config` filter defined but never invoked (future use).
 
 **After refactoring is complete:**
 
