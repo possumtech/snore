@@ -61,7 +61,9 @@ export default class PluginContext {
 		});
 	}
 
-	static CATEGORIES = Object.freeze(new Set(["data", "logging", "unknown", "prompt"]));
+	static CATEGORIES = Object.freeze(
+		new Set(["data", "logging", "unknown", "prompt"]),
+	);
 
 	ensureTool() {
 		this.#hooks.tools.ensureTool(this.#name);

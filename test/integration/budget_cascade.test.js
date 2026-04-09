@@ -89,9 +89,6 @@ describe("Budget — ceiling check", () => {
 			await store.upsert(RUN_ID, i + 2, `known://b_${i}`, pad(50), 200);
 		}
 		const over = await assembleAndEnforce(100);
-		assert.ok(
-			over.assembledTokens > 0,
-			"413 should include assembledTokens",
-		);
+		assert.ok(over.assembledTokens > 0, "413 should include assembledTokens");
 	});
 });

@@ -66,7 +66,10 @@ describe("Message assembly", () => {
 		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes('<prompt mode="ask"'), "should have prompt tag with ask mode");
+		assert.ok(
+			user.content.includes('<prompt mode="ask"'),
+			"should have prompt tag with ask mode",
+		);
 		assert.ok(
 			user.content.includes("What is the port?"),
 			"should contain prompt text",
@@ -93,7 +96,10 @@ describe("Message assembly", () => {
 			hooks,
 		);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes('<prompt mode="act"'), "should have prompt tag with act mode");
+		assert.ok(
+			user.content.includes('<prompt mode="act"'),
+			"should have prompt tag with act mode",
+		);
 		assert.ok(user.content.includes("sh"), "act tools should include sh");
 	});
 

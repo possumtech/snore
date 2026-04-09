@@ -71,8 +71,7 @@ export default class TestDb {
 		const store = new (await import("../../src/agent/KnownStore.js")).default(
 			db,
 			{
-				onChanged: (event) =>
-					hooks.entry.changed.emit(event).catch(() => {}),
+				onChanged: (event) => hooks.entry.changed.emit(event).catch(() => {}),
 			},
 		);
 		await initPlugins(db, store, hooks);

@@ -15,9 +15,7 @@ export default class Progress {
 		const pct = contextSize ? Math.round((usedTokens / contextSize) * 100) : 0;
 
 		// Fidelity distribution across known/file entries
-		const entries = ctx.rows.filter(
-			(r) => r.category === "data",
-		);
+		const entries = ctx.rows.filter((r) => r.category === "data");
 		const fullEntries = entries.filter((r) => r.fidelity === "full");
 		const summaryEntries = entries.filter((r) => r.fidelity === "summary");
 		const indexEntries = entries.filter((r) => r.fidelity === "index");
@@ -26,19 +24,14 @@ export default class Progress {
 			(s, r) => s + (r.tokens || 0),
 			0,
 		);
-		const indexTokens = indexEntries.reduce(
-			(s, r) => s + (r.tokens || 0),
-			0,
-		);
+		const indexTokens = indexEntries.reduce((s, r) => s + (r.tokens || 0), 0);
 
 		const unknownCount = ctx.rows.filter(
 			(r) => r.category === "unknown",
 		).length;
 
 		const hasCurrent = ctx.rows.some(
-			(r) =>
-				r.category === "logging" &&
-				r.source_turn >= ctx.loopStartTurn,
+			(r) => r.category === "logging" && r.source_turn >= ctx.loopStartTurn,
 		);
 
 		const parts = [];
@@ -58,9 +51,7 @@ export default class Progress {
 				`${summaryEntries.length} summary (${summaryTokens} tok)`,
 			);
 		if (indexEntries.length > 0)
-			fidelityParts.push(
-				`${indexEntries.length} index (${indexTokens} tok)`,
-			);
+			fidelityParts.push(`${indexEntries.length} index (${indexTokens} tok)`);
 		if (fidelityParts.length > 0)
 			parts.push(`Entries: ${fidelityParts.join(" · ")}`);
 

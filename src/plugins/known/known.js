@@ -26,9 +26,7 @@ export default class Known {
 	}
 
 	async assembleKnown(content, ctx) {
-		const entries = ctx.rows.filter(
-			(r) => r.category === "data",
-		);
+		const entries = ctx.rows.filter((r) => r.category === "data");
 		if (entries.length === 0) return content;
 
 		// Rows arrive pre-sorted by SQL: skill → index → summary → full, then by recency

@@ -87,7 +87,8 @@ export default class RpcRegistry {
 			for (const name of this.#toolFallback.hooks.tools.names) {
 				if (methods[name]) continue;
 				const def = this.#resolveToolFallback(name);
-				if (def) methods[name] = { description: def.description, params: def.params };
+				if (def)
+					methods[name] = { description: def.description, params: def.params };
 			}
 		}
 		const notifications = {};

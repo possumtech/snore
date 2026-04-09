@@ -168,7 +168,14 @@ export default class TurnExecutor {
 
 		let messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			{ type: mode, systemPrompt, contextSize, demoted, toolSet, lastContextTokens },
+			{
+				type: mode,
+				systemPrompt,
+				contextSize,
+				demoted,
+				toolSet,
+				lastContextTokens,
+			},
 			this.#hooks,
 		);
 
@@ -179,10 +186,9 @@ export default class TurnExecutor {
 		});
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;
-		const assembledTokens = budgetResult.assembledTokens ?? messages.reduce(
-			(sum, m) => sum + countTokens(m.content),
-			0,
-		);
+		const assembledTokens =
+			budgetResult.assembledTokens ??
+			messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 
 		// Budget overflow — return 413 to caller without calling LLM
 		if (budgetResult.status === 413) {
@@ -196,7 +202,7 @@ export default class TurnExecutor {
 			};
 		}
 
-		let filteredMessages = await this.#hooks.llm.messages.filter(messages, {
+		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
 			projectId,
 			runId: currentRunId,
@@ -400,7 +406,6 @@ export default class TurnExecutor {
 			updateText = summaryText;
 			summaryText = null;
 		}
-
 
 		// If model sent neither, heal from content
 		let statusHealed = false;
@@ -609,11 +614,7 @@ export default class TurnExecutor {
 
 			let knownPath = cmd.path;
 			if (!knownPath) {
-				knownPath = await this.#knownStore.slugPath(
-					runId,
-					"known",
-					cmd.body,
-				);
+				knownPath = await this.#knownStore.slugPath(runId, "known", cmd.body);
 			}
 			// Dedup: if this exact path already exists, update rather than duplicate
 			const existing = await this.#knownStore.getEntriesByPattern(
@@ -623,9 +624,16 @@ export default class TurnExecutor {
 			);
 			if (existing.length > 0) {
 				// Path exists — update body and turn, skip creating a new entry
-				await this.#knownStore.upsert(runId, turn, existing[0].path, cmd.body || existing[0].body, 200, {
-					loopId,
-				});
+				await this.#knownStore.upsert(
+					runId,
+					turn,
+					existing[0].path,
+					cmd.body || existing[0].body,
+					200,
+					{
+						loopId,
+					},
+				);
 				return {
 					scheme: "known",
 					path: existing[0].path,
@@ -676,10 +684,17 @@ export default class TurnExecutor {
 		if (filtered.status >= 400) return filtered;
 
 		// Record the entry — 200 OK, handlers change status during dispatch
-		await this.#knownStore.upsert(runId, turn, filtered.path, filtered.body, 200, {
-			attributes: filtered.attributes,
-			loopId,
-		});
+		await this.#knownStore.upsert(
+			runId,
+			turn,
+			filtered.path,
+			filtered.body,
+			200,
+			{
+				attributes: filtered.attributes,
+				loopId,
+			},
+		);
 
 		return {
 			scheme: filtered.scheme,
@@ -690,8 +705,6 @@ export default class TurnExecutor {
 			resultPath: filtered.path,
 		};
 	}
-
-
 
 	async #rematerialize(runId, loopId, turn) {
 		await this.#db.clear_turn_context.run({ run_id: runId, turn });

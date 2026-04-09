@@ -54,7 +54,11 @@ export default class AgentLoop {
 				new_run_id: runRow.id,
 				parent_run_id: existingRun.id,
 			});
-			await this.#hooks.run.created.emit({ runId: runRow.id, alias, forkedFrom: existingRun.id });
+			await this.#hooks.run.created.emit({
+				runId: runRow.id,
+				alias,
+				forkedFrom: existingRun.id,
+			});
 			return { runId: runRow.id, alias };
 		}
 
@@ -251,7 +255,7 @@ export default class AgentLoop {
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
 
-		let lastAssembledTokens = 0;
+		let _lastAssembledTokens = 0;
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -313,7 +317,7 @@ export default class AgentLoop {
 					};
 				}
 
-				lastAssembledTokens = result.assembledTokens;
+				_lastAssembledTokens = result.assembledTokens;
 
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,
@@ -463,12 +467,14 @@ export default class AgentLoop {
 			return out;
 		} finally {
 			this.#activeRuns.delete(currentRunId);
-			await this.#hooks.loop.completed.emit({
-				runId: currentRunId,
-				loopId: currentLoopId,
-				mode,
-				turns: loopIteration,
-			}).catch(() => {});
+			await this.#hooks.loop.completed
+				.emit({
+					runId: currentRunId,
+					loopId: currentLoopId,
+					mode,
+					turns: loopIteration,
+				})
+				.catch(() => {});
 		}
 	}
 

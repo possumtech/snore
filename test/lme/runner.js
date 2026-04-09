@@ -86,7 +86,7 @@ function formatSession(session, date, sessionId) {
  * Chunk sessions into text blocks, respecting session boundaries.
  * Sessions are never split mid-conversation.
  */
-function chunkSessions(sessions, dates, sessionIds, maxSize) {
+function _chunkSessions(sessions, dates, sessionIds, maxSize) {
 	const chunks = [];
 	let current = "";
 
@@ -149,9 +149,7 @@ async function ingestSessions(client, model, run, sessions, dates, sessionIds) {
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
-			console.error(
-				`    session ${i + 1}/${total} REJECTED: context full`,
-			);
+			console.error(`    session ${i + 1}/${total} REJECTED: context full`);
 			break;
 		}
 		if (r.status >= 500) {

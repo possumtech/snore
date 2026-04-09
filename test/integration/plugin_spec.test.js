@@ -58,9 +58,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 	// §3 Registration
 	describe("§3 Registration", () => {
 		it("§3.0 CATEGORIES is frozen with exactly four roles", async () => {
-			const PluginContext = (
-				await import("../../src/hooks/PluginContext.js")
-			).default;
+			const PluginContext = (await import("../../src/hooks/PluginContext.js"))
+				.default;
 			const cats = PluginContext.CATEGORIES;
 			assert.ok(Object.isFrozen(cats), "CATEGORIES is frozen");
 			assert.strictEqual(cats.size, 4);
@@ -71,9 +70,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 		});
 
 		it("§3.0.1 registerScheme rejects invalid categories", async () => {
-			const PluginContext = (
-				await import("../../src/hooks/PluginContext.js")
-			).default;
+			const PluginContext = (await import("../../src/hooks/PluginContext.js"))
+				.default;
 			const ctx = new PluginContext("test_invalid", tdb.hooks);
 			assert.throws(
 				() => ctx.registerScheme({ category: "structural" }),
@@ -132,16 +130,17 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.ok(!Array.isArray(docsMap));
 			for (const [key, value] of Object.entries(docsMap)) {
 				assert.strictEqual(typeof key, "string", `key ${key} is string`);
-				assert.strictEqual(typeof value, "string", `value for ${key} is string`);
+				assert.strictEqual(
+					typeof value,
+					"string",
+					`value for ${key} is string`,
+				);
 			}
 		});
 
 		it("§3.7 full view registered for all tools with handlers", () => {
 			for (const tool of ["get", "set", "rm", "mv", "cp", "known"]) {
-				assert.ok(
-					tdb.hooks.tools.hasView(tool),
-					`${tool} has view registered`,
-				);
+				assert.ok(tdb.hooks.tools.hasView(tool), `${tool} has view registered`);
 			}
 		});
 	});
@@ -201,10 +200,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.ok(tdb.hooks.turn.response, "turn.response exists");
 			assert.ok(tdb.hooks.turn.proposing, "turn.proposing exists");
 			assert.ok(tdb.hooks.turn.completed, "turn.completed exists");
-			assert.ok(
-				tdb.hooks.context.materialized,
-				"context.materialized exists",
-			);
+			assert.ok(tdb.hooks.context.materialized, "context.materialized exists");
 			assert.ok(tdb.hooks.assembly.system, "assembly.system exists");
 			assert.ok(tdb.hooks.assembly.user, "assembly.user exists");
 			assert.ok(tdb.hooks.llm.messages, "llm.messages exists");
@@ -306,12 +302,10 @@ describe("PLUGINS.md Spec Compliance", () => {
 	describe("§4 Two Objects", () => {
 		it("§4.1 tool verbs on RummyContext work", async () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_1" });
-			const RummyContext = (
-				await import("../../src/hooks/RummyContext.js")
-			).default;
-			const KnownStore = (
-				await import("../../src/agent/KnownStore.js")
-			).default;
+			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
+				.default;
+			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+				.default;
 			const store = new KnownStore(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
@@ -344,12 +338,10 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 		it("§4.2 query methods on RummyContext work", async () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_2" });
-			const RummyContext = (
-				await import("../../src/hooks/RummyContext.js")
-			).default;
-			const KnownStore = (
-				await import("../../src/agent/KnownStore.js")
-			).default;
+			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
+				.default;
+			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+				.default;
 			const store = new KnownStore(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
@@ -399,16 +391,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.strictEqual(typeof h.replace, "function", "replace");
 			assert.strictEqual(typeof h.parseSed, "function", "parseSed");
 			assert.strictEqual(typeof h.parseEdits, "function", "parseEdits");
-			assert.strictEqual(
-				typeof h.normalizeAttrs,
-				"function",
-				"normalizeAttrs",
-			);
-			assert.strictEqual(
-				typeof h.generatePatch,
-				"function",
-				"generatePatch",
-			);
+			assert.strictEqual(typeof h.normalizeAttrs, "function", "normalizeAttrs");
+			assert.strictEqual(typeof h.generatePatch, "function", "generatePatch");
 		});
 	});
 
@@ -440,9 +424,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 	describe("§8 Full Entry Lifecycle", () => {
 		it("§8.2 entry visible in v_model_context after creation", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_2" });
-			const KnownStore = (
-				await import("../../src/agent/KnownStore.js")
-			).default;
+			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+				.default;
 			const store = new KnownStore(tdb.db);
 			await store.upsert(runId, 1, "known://lifecycle_vis", "visible", 200);
 
@@ -454,9 +437,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 		it("§8.3 stored fidelity hides from v_model_context", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_3" });
-			const KnownStore = (
-				await import("../../src/agent/KnownStore.js")
-			).default;
+			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+				.default;
 			const store = new KnownStore(tdb.db);
 			await store.upsert(runId, 1, "known://lifecycle_stored", "hidden", 200, {
 				fidelity: "stored",

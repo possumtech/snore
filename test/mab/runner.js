@@ -123,9 +123,7 @@ async function ingestContext(client, model, run, chunks) {
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
-			console.error(
-				`    chunk ${chunkNum}/${total} REJECTED: context full`,
-			);
+			console.error(`    chunk ${chunkNum}/${total} REJECTED: context full`);
 			break;
 		}
 		if (r.status >= 500) {
