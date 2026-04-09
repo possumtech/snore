@@ -43,8 +43,16 @@ Retrieval from stashed entries is the bottleneck.
   to recover at least half of your context before proceeding" as a
   dedicated turn before the real prompt. System-level, not runner.
 - [x] Entry size gate: known entries >500 tokens rejected with 413 + "Separate into multiple entries"
+- [x] reasoning_content as proper TEXT column on turns table
+- [x] Path encoding fix: dedup fully encodes target URIs
+- [ ] **TOKEN MATH (BLOCKING)**: One source of truth for context usage.
+  assembledTokens (measured from actual messages) is the only correct number.
+  Progress, housekeeping trigger, budget checks, and get tool 413 gate all
+  need to use it. Current state: progress uses turn_context tokens (wrong for
+  summary fidelity), housekeeping uses assembledTokens (correct but contradicts
+  progress), get_promoted_token_total uses known_entries tokens (wrong).
+  The model sees contradictory percentages and can't make rational decisions.
 - [ ] Body-content similarity dedup (catches paraphrases, not just exact paths)
-- [ ] Keyword-based stash grouping (inverted index, deferred)
 - [ ] Model ignores 75% progress warning — housekeeping prompt is the fix
 
 ### Architecture Notes

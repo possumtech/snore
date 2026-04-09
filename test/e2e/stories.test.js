@@ -611,8 +611,8 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			run_id: crunchRun.id,
 		});
 		const crunchLimit = Math.max(
-			6144,
-			Math.ceil((crunchCtx?.total || 6144) * 0.75),
+			8192,
+			Math.ceil((crunchCtx?.total || 8192) * 0.75),
 		);
 		await client.call("run/config", {
 			run: r1.run,
