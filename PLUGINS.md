@@ -391,11 +391,9 @@ same handler chain as model commands.
 
 | Method | Params | Notes |
 |--------|--------|-------|
-| `get` | `{ path, run }` | Same handler as model `<get>` |
-| `set` | `{ path, body, run }` | Same handler as model `<set>` |
-| `rm` | `{ path, run }` | Same handler as model `<rm>` |
-| `mv` | `{ path, to, run }` | Same handler as model `<mv>` |
-| `cp` | `{ path, to, run }` | Same handler as model `<cp>` |
+| `get` | `{ path, run, persist?, readonly? }` | `persist` sets file constraint (see EXCEPTIONS.md) |
+| `set` | `{ path, body, run, status?, attributes? }` | |
+| `rm` | `{ path, run }` | |
 
 ### §11.2 Run Management
 

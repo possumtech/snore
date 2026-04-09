@@ -59,9 +59,12 @@ aren't documented in EXCEPTIONS.md with clear justification.
 - [ ] RPC `get` with `persist: true` — calls `File.activate` directly,
   bypasses tool handler and budget. Must go through the same path as
   model `<get>`.
-- [ ] RPC `get` without `persist` — goes through `dispatchTool`. Verify
-  budget is checked.
-- [ ] RPC `set`, `rm`, `mv`, `cp` — verify all go through tool handlers
+- [x] RPC `get` without `persist` — goes through `dispatchTool`. Verified.
+- [ ] RPC `set` — scheme entries bypass tool handler (uses rummy.set()
+  directly). File entries go through dispatchTool. Inconsistent.
+- [x] RPC `rm` — goes through `dispatchTool`. Verified.
+- [ ] RPC `mv`, `cp` — no RPC handlers exist. PLUGINS.md lists them
+  but clients can't use them. Either implement or remove from docs.
 - [ ] `File.activate` / `File.ignore` / `File.drop` — direct DB calls,
   no tool handler, no budget check
 - [ ] `known_entries.tokens` vs assembled tokens — two different numbers,

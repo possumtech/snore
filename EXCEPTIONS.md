@@ -20,7 +20,18 @@ should go through the handler chain with budget checking.
   2. Entry promotion — moves to run initialization or repo plugin,
      goes through standard tool dispatch with budget enforcement
 
-### 2. Housekeeping loop in AgentLoop#drainQueue
+### 2. RPC `set` scheme entries bypass tool handler
+
+**What:** When `set` is called via RPC on a scheme path (e.g.,
+`known://...`), it uses `rummy.set()` which calls `store.upsert()`
+directly. File paths go through `dispatchTool()`.
+**Bypasses:** Tool handler chain for scheme entries.
+**Justification:** TBD — should scheme entries go through dispatchTool
+the same as file entries? The handler chain may apply transformations
+(hedberg parsing, patch generation) that aren't needed for direct
+scheme writes.
+
+### 3. Housekeeping loop in AgentLoop#drainQueue
 
 **What:** Budget 413 triggers housekeeping loop enqueue in backbone code.
 **Bypasses:** Plugin protocol — loop management is in AgentLoop, not a plugin.
