@@ -113,11 +113,20 @@ async function loadEnvPlugins(hooks) {
 		if (!key.startsWith("RUMMY_PLUGIN_") || !value) continue;
 		const name = key.replace("RUMMY_PLUGIN_", "").toLowerCase();
 		try {
-			const { default: Plugin } = isAbsolute(value)
-				? await importAbsolute(value)
-				: await importPlugin(value);
+			const importPromise = isAbsolute(value)
+				? importAbsolute(value)
+				: importPlugin(value);
+			const { default: Plugin } = await withTimeout(
+				importPromise,
+				PLUGIN_LOAD_TIMEOUT,
+				`Plugin import timed out: ${value}`,
+			);
 			if (typeof Plugin?.register === "function") {
-				await Plugin.register(hooks);
+				await withTimeout(
+					Plugin.register(hooks),
+					PLUGIN_LOAD_TIMEOUT,
+					`Plugin register timed out: ${value}`,
+				);
 			} else if (typeof Plugin === "function") {
 				const ctx = new PluginContext(name, hooks);
 				new Plugin(ctx);
@@ -195,13 +204,23 @@ async function scanDir(dir, hooks, isRoot = false) {
 	}
 }
 
+const PLUGIN_LOAD_TIMEOUT = 10000;
+
 async function loadPlugin(filePath, hooks) {
 	try {
 		const url = pathToFileURL(filePath).href;
-		const { default: Plugin } = await import(url);
+		const { default: Plugin } = await withTimeout(
+			import(url),
+			PLUGIN_LOAD_TIMEOUT,
+			`Plugin import timed out: ${filePath}`,
+		);
 
 		if (typeof Plugin?.register === "function") {
-			await Plugin.register(hooks);
+			await withTimeout(
+				Plugin.register(hooks),
+				PLUGIN_LOAD_TIMEOUT,
+				`Plugin register timed out: ${filePath}`,
+			);
 		} else if (typeof Plugin === "function") {
 			const name = basename(filePath, ".js");
 			const ctx = new PluginContext(name, hooks);
@@ -209,8 +228,17 @@ async function loadPlugin(filePath, hooks) {
 			instances.set(name, ctx);
 		}
 	} catch (err) {
-		if (process.env.RUMMY_DEBUG === "true") {
-			console.error(`[RUMMY] Plugin load failed at ${filePath}:`, err);
-		}
+		console.warn(
+			`[RUMMY] Plugin load failed: ${basename(filePath)} — ${err.message}`,
+		);
 	}
+}
+
+function withTimeout(promise, ms, message) {
+	return Promise.race([
+		promise,
+		new Promise((_, reject) =>
+			setTimeout(() => reject(new Error(message)), ms),
+		),
+	]);
 }
