@@ -26,7 +26,7 @@ export default class Unknown {
 		if (entries.length === 0) return content;
 
 		const lines = entries.map(
-			(u) => `<unknown path="${u.path}">${u.body}</unknown>`,
+			(u) => `<unknown path="${u.path}" turn="${u.source_turn || u.turn}">${u.body}</unknown>`,
 		);
 		return `${content}\n\n<unknowns>\n${lines.join("\n")}\n</unknowns>`;
 	}

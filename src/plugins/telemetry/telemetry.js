@@ -75,10 +75,8 @@ export default class Telemetry {
 		result,
 		responseMessage,
 		content,
-		commands,
 		unparsed,
 		assembledTokens,
-		contextSize,
 		systemMsg,
 		userMsg,
 	}) {

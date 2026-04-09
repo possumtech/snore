@@ -56,12 +56,15 @@ UPDATE known_entries
 SET
 	fidelity = :fidelity
 	, tokens = CASE
-		WHEN :fidelity = 'stored' THEN 0
-		WHEN :fidelity = 'index' THEN 0
-		WHEN :fidelity = 'summary' THEN COALESCE(
-			countTokens(json_extract(attributes, '$.summary')),
-			countTokens(substr(body, 1, 80))
-		)
+		WHEN :fidelity = 'stored'
+			THEN 0
+		WHEN :fidelity = 'index'
+			THEN 0
+		WHEN :fidelity = 'summary'
+			THEN COALESCE(
+				countTokens(json_extract(attributes, '$.summary')),
+				countTokens(substr(body, 1, 80))
+			)
 		ELSE tokens_full
 	END
 	, updated_at = CURRENT_TIMESTAMP
@@ -89,12 +92,15 @@ UPDATE known_entries
 SET
 	fidelity = :fidelity
 	, tokens = CASE
-		WHEN :fidelity = 'stored' THEN 0
-		WHEN :fidelity = 'index' THEN 0
-		WHEN :fidelity = 'summary' THEN COALESCE(
-			countTokens(json_extract(attributes, '$.summary')),
-			countTokens(substr(body, 1, 80))
-		)
+		WHEN :fidelity = 'stored'
+			THEN 0
+		WHEN :fidelity = 'index'
+			THEN 0
+		WHEN :fidelity = 'summary'
+			THEN COALESCE(
+				countTokens(json_extract(attributes, '$.summary')),
+				countTokens(substr(body, 1, 80))
+			)
 		ELSE countTokens(body)
 	END
 	, updated_at = CURRENT_TIMESTAMP
