@@ -29,7 +29,7 @@ describe("ContextAssembler", () => {
 					body: "JWT",
 					tokens: 1,
 					attributes: null,
-					category: "known",
+					category: "data",
 					source_turn: 1,
 				},
 				{
@@ -40,17 +40,17 @@ describe("ContextAssembler", () => {
 					body: "const x = 1;",
 					tokens: 5,
 					attributes: null,
-					category: "file",
+					category: "data",
 					source_turn: 1,
 				},
 				{
 					ordinal: 3,
-					path: "ask://1",
-					scheme: "ask",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "What does this do?",
 					tokens: 3,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "ask" }),
 					category: "prompt",
 					source_turn: 1,
 				},
@@ -68,7 +68,7 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[0].content.includes("const x = 1;"));
 			assert.ok(messages[0].content.includes("<known path="));
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<ask"));
+			assert.ok(messages[1].content.includes("<prompt"));
 			assert.ok(messages[1].content.includes("What does this do?"));
 		});
 
@@ -76,12 +76,12 @@ describe("ContextAssembler", () => {
 			const rows = [
 				{
 					ordinal: 1,
-					path: "ask://1",
-					scheme: "ask",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "The question",
 					tokens: 3,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "ask" }),
 					category: "prompt",
 					source_turn: 1,
 				},
@@ -94,7 +94,7 @@ describe("ContextAssembler", () => {
 					body: "file content",
 					tokens: 5,
 					attributes: JSON.stringify({ path: "file.js" }),
-					category: "result",
+					category: "logging",
 					source_turn: 1,
 				},
 			];
@@ -107,10 +107,10 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 			const currentPos = user.indexOf("<current>");
 			const progressPos = user.indexOf("<progress>");
-			const askPos = user.indexOf("<ask");
+			const promptPos = user.indexOf("<prompt");
 			assert.ok(currentPos < progressPos, "current before progress");
-			assert.ok(progressPos < askPos, "progress before ask");
-			assert.ok(user.endsWith("</ask>"), "ask is last");
+			assert.ok(progressPos < promptPos, "progress before prompt");
+			assert.ok(user.endsWith("</prompt>"), "prompt is last");
 		});
 
 		it("splits history into previous and current by loop boundary", async () => {
@@ -124,17 +124,17 @@ describe("ContextAssembler", () => {
 					body: "old result",
 					tokens: 5,
 					attributes: JSON.stringify({ path: "old.js" }),
-					category: "result",
+					category: "logging",
 					source_turn: 1,
 				},
 				{
 					ordinal: 2,
-					path: "ask://3",
-					scheme: "ask",
+					path: "prompt://3",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "New question",
 					tokens: 3,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "ask" }),
 					category: "prompt",
 					source_turn: 3,
 				},
@@ -147,7 +147,7 @@ describe("ContextAssembler", () => {
 					body: "new result",
 					tokens: 5,
 					attributes: JSON.stringify({ path: "new.js" }),
-					category: "result",
+					category: "logging",
 					source_turn: 3,
 				},
 			];
@@ -171,12 +171,12 @@ describe("ContextAssembler", () => {
 			const rows = [
 				{
 					ordinal: 1,
-					path: "act://1",
-					scheme: "act",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "Do the thing",
 					tokens: 3,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "act" }),
 					category: "prompt",
 					source_turn: 1,
 				},
@@ -194,12 +194,12 @@ describe("ContextAssembler", () => {
 			const rows = [
 				{
 					ordinal: 1,
-					path: "act://1",
-					scheme: "act",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "Fix it",
 					tokens: 2,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "act" }),
 					category: "prompt",
 					source_turn: 1,
 				},
@@ -212,7 +212,7 @@ describe("ContextAssembler", () => {
 					body: "",
 					tokens: 0,
 					attributes: JSON.stringify({ file: "app.js" }),
-					category: "result",
+					category: "logging",
 					source_turn: 1,
 				},
 				{
@@ -224,7 +224,7 @@ describe("ContextAssembler", () => {
 					body: "Fixed it",
 					tokens: 2,
 					attributes: null,
-					category: "structural",
+					category: "logging",
 					source_turn: 1,
 				},
 			];
@@ -268,7 +268,7 @@ describe("ContextAssembler", () => {
 					body: "const x = 1;",
 					tokens: 5,
 					attributes: null,
-					category: "file",
+					category: "data",
 					source_turn: 3,
 				},
 				{
@@ -279,7 +279,7 @@ describe("ContextAssembler", () => {
 					body: "const y = 2;",
 					tokens: 5,
 					attributes: null,
-					category: "file",
+					category: "data",
 					source_turn: 1,
 				},
 				{
@@ -290,7 +290,7 @@ describe("ContextAssembler", () => {
 					body: "JWT",
 					tokens: 1,
 					attributes: null,
-					category: "known",
+					category: "data",
 					source_turn: 2,
 				},
 			];
@@ -322,12 +322,12 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 2,
-					path: "act://1",
-					scheme: "act",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "Do it",
 					tokens: 2,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "act" }),
 					category: "prompt",
 					source_turn: 1,
 				},
@@ -347,12 +347,12 @@ describe("ContextAssembler", () => {
 			const rows = [
 				{
 					ordinal: 1,
-					path: "act://1",
-					scheme: "act",
+					path: "prompt://1",
+					scheme: "prompt",
 					fidelity: "full",
 					body: "Build it",
 					tokens: 2,
-					attributes: null,
+					attributes: JSON.stringify({ mode: "act" }),
 					category: "prompt",
 					source_turn: 1,
 				},
@@ -365,7 +365,7 @@ describe("ContextAssembler", () => {
 					body: "content",
 					tokens: 3,
 					attributes: JSON.stringify({ path: "file.js" }),
-					category: "result",
+					category: "logging",
 					source_turn: 1,
 				},
 			];

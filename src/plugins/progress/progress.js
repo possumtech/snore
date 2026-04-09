@@ -66,11 +66,11 @@ export default class Progress {
 
 		if (pct > 75) {
 			parts.push(
-				'Context above 75%. YOU MUST free space by lowering the fidelity of entries with large token sizes or the run will fail:\nExample: <set path="ask://1" fidelity="summary" summary="keyword1,keyword2,keyword3"/>\nRestore later: <set path="ask://1" fidelity="full"/>',
+				'Context above 75%. YOU MUST free space by lowering the fidelity of entries with large token sizes or the run will fail:\nExample: <set path="src/app.js" fidelity="summary" summary="keyword1,keyword2,keyword3"/>\nRestore later: <set path="src/app.js" fidelity="full"/>',
 			);
 		} else if (pct > 50) {
 			parts.push(
-				'Context above 50%. You may free space by lowering the fidelity of entries with large token sizes:\nExample: <set path="ask://1" fidelity="summary" summary="keyword1,keyword2,keyword3"/>\nRestore later: <set path="ask://1" fidelity="full"/>',
+				'Context above 50%. You may free space by lowering the fidelity of entries with large token sizes:\nExample: <set path="src/app.js" fidelity="summary" summary="keyword1,keyword2,keyword3"/>\nRestore later: <set path="src/app.js" fidelity="full"/>',
 			);
 		}
 

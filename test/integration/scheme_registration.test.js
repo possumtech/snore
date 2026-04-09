@@ -46,7 +46,7 @@ describe("Scheme registration via plugins", () => {
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "src/app.js");
 		assert.ok(entry, "bare path visible in model context");
-		assert.strictEqual(entry.category, "file");
+		assert.strictEqual(entry.category, "data");
 	});
 
 	it("known:// entries visible in model context", async () => {
@@ -54,7 +54,7 @@ describe("Scheme registration via plugins", () => {
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "known://test_fact");
 		assert.ok(entry, "known entry visible in model context");
-		assert.strictEqual(entry.category, "known");
+		assert.strictEqual(entry.category, "data");
 	});
 
 	it("unknown:// entries visible in model context", async () => {
@@ -93,10 +93,12 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("prompt entries visible in model context", async () => {
-		await store.upsert(runId, 1, "ask://1", "what is this?", 200);
+		await store.upsert(runId, 1, "prompt://1", "what is this?", 200, {
+			attributes: { mode: "ask" },
+		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
-		const entry = rows.find((r) => r.path === "ask://1");
-		assert.ok(entry, "ask prompt visible in model context");
+		const entry = rows.find((r) => r.path === "prompt://1");
+		assert.ok(entry, "prompt entry visible in model context");
 		assert.strictEqual(entry.category, "prompt");
 	});
 });

@@ -62,7 +62,9 @@ describe("Tool visibility: v_model_context content projection", () => {
 		}
 
 		// Also insert user prompt so engine has something to work with
-		await store.upsert(RUN_ID, TURN, `ask://${TURN}`, "test question", 200);
+		await store.upsert(RUN_ID, TURN, `prompt://${TURN}`, "test question", 200, {
+			attributes: { mode: "ask" },
+		});
 
 		// Materialize turn_context
 		await materialize(tdb.db, {

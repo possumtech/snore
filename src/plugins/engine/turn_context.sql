@@ -37,15 +37,10 @@ WHERE run_id = :run_id AND turn = :turn;
 -- PREP: get_turn_distribution
 SELECT
 	CASE category
-		WHEN 'file' THEN 'files'
-		WHEN 'file_symbols' THEN 'files'
-		WHEN 'file_index' THEN 'keys'
-		WHEN 'known' THEN 'known'
-		WHEN 'known_index' THEN 'keys'
-		WHEN 'unknown' THEN 'history'
-		WHEN 'result' THEN 'history'
-		WHEN 'prompt' THEN 'system'
-		WHEN 'system' THEN 'system'
+		WHEN 'data' THEN 'data'
+		WHEN 'logging' THEN 'logging'
+		WHEN 'unknown' THEN 'unknown'
+		WHEN 'prompt' THEN 'prompt'
 		ELSE 'system'
 	END AS bucket,
 	COALESCE(SUM(tokens), 0) AS tokens,

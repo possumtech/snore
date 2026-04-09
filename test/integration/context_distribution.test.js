@@ -28,7 +28,9 @@ describe("turn_context distribution bucket correctness", () => {
 			fidelity: "summary",
 		});
 		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", 200);
-		await store.upsert(RUN_ID, 1, "ask://1", "test question", 200);
+		await store.upsert(RUN_ID, 1, "prompt://1", "test question", 200, {
+			attributes: { mode: "ask" },
+		});
 
 		// Materialize turn_context
 		await materialize(tdb.db, {
@@ -42,45 +44,35 @@ describe("turn_context distribution bucket correctness", () => {
 		await tdb.cleanup();
 	});
 
-	it("files bucket includes promoted file entries", async () => {
+	it("data bucket includes files and known entries", async () => {
 		const dist = await tdb.db.get_turn_distribution.all({
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const files = dist.find((b) => b.bucket === "files");
-		assert.ok(files, "files bucket exists");
-		assert.ok(files.entries >= 1, "files bucket has entries");
-		assert.ok(files.tokens > 0, "files bucket has tokens");
+		const data = dist.find((b) => b.bucket === "data");
+		assert.ok(data, "data bucket exists");
+		assert.ok(data.entries >= 2, "data bucket has file + known entries");
+		assert.ok(data.tokens > 0, "data bucket has tokens");
 	});
 
-	it("keys bucket includes demoted file entries", async () => {
+	it("logging bucket includes result entries", async () => {
 		const dist = await tdb.db.get_turn_distribution.all({
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const keys = dist.find((b) => b.bucket === "keys");
-		assert.ok(keys, "keys bucket exists");
-		assert.ok(keys.entries >= 1, "keys bucket has entries");
+		const logging = dist.find((b) => b.bucket === "logging");
+		assert.ok(logging, "logging bucket exists");
+		assert.ok(logging.entries >= 1, "logging bucket has result entries");
 	});
 
-	it("known bucket includes promoted known entries", async () => {
+	it("unknown bucket includes unknown entries", async () => {
 		const dist = await tdb.db.get_turn_distribution.all({
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const known = dist.find((b) => b.bucket === "known");
-		assert.ok(known, "known bucket exists");
-		assert.ok(known.entries >= 1, "known bucket has entries");
-	});
-
-	it("history bucket includes result and unknown entries", async () => {
-		const dist = await tdb.db.get_turn_distribution.all({
-			run_id: RUN_ID,
-			turn: TURN,
-		});
-		const history = dist.find((b) => b.bucket === "history");
-		assert.ok(history, "history bucket exists");
-		assert.ok(history.entries >= 2, "history bucket has results + unknowns");
+		const unknown = dist.find((b) => b.bucket === "unknown");
+		assert.ok(unknown, "unknown bucket exists");
+		assert.ok(unknown.entries >= 1, "unknown bucket has entries");
 	});
 
 	it("system bucket includes system prompt", async () => {

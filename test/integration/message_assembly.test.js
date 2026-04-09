@@ -60,20 +60,24 @@ describe("Message assembly", () => {
 		await tdb.cleanup();
 	});
 
-	it("ask prompt renders as <ask> tag with tools", async () => {
-		await store.upsert(RUN_ID, TURN, "ask://1", "What is the port?", 200);
+	it("ask prompt renders as <prompt mode=ask> with tools", async () => {
+		await store.upsert(RUN_ID, TURN, "prompt://1", "What is the port?", 200, {
+			attributes: { mode: "ask" },
+		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("<ask tools="), "should have <ask> tag");
+		assert.ok(user.content.includes('<prompt mode="ask"'), "should have prompt tag with ask mode");
 		assert.ok(
 			user.content.includes("What is the port?"),
 			"should contain prompt text",
 		);
-		assert.ok(!user.content.includes("sh "), "ask tools should not include sh");
+		assert.ok(!user.content.includes("sh,"), "ask tools should not include sh");
 	});
 
-	it("act prompt renders as <act> tag with run tool", async () => {
-		await store.upsert(RUN_ID, TURN, "act://1", "Refactor the code", 200);
+	it("act prompt renders as <prompt mode=act> with sh tool", async () => {
+		await store.upsert(RUN_ID, TURN, "prompt://1", "Refactor the code", 200, {
+			attributes: { mode: "act" },
+		});
 		await materialize(tdb.db, {
 			runId: RUN_ID,
 			turn: TURN,
@@ -89,7 +93,7 @@ describe("Message assembly", () => {
 			hooks,
 		);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("<act tools="), "should have <act> tag");
+		assert.ok(user.content.includes('<prompt mode="act"'), "should have prompt tag with act mode");
 		assert.ok(user.content.includes("sh"), "act tools should include sh");
 	});
 

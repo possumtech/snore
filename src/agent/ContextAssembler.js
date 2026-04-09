@@ -18,8 +18,7 @@ export default class ContextAssembler {
 	) {
 		// Find loop boundary from active prompt
 		const promptEntry = rows.findLast(
-			(r) =>
-				r.category === "prompt" && (r.scheme === "ask" || r.scheme === "act"),
+			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
 		const loopStartTurn = promptEntry?.source_turn ?? 0;
 

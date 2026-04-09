@@ -606,16 +606,9 @@ export default class AgentLoop {
 			runRow.id,
 			nextTurn,
 			`prompt://${nextTurn}`,
-			"",
-			200,
-			{ attributes: { mode: "ask" } },
-		);
-		await this.#knownStore.upsert(
-			runRow.id,
-			nextTurn,
-			`ask://${nextTurn}`,
 			message,
 			200,
+			{ attributes: { mode: "ask" } },
 		);
 
 		if (this.#activeRuns.has(runRow.id)) {

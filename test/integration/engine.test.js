@@ -179,7 +179,7 @@ describe("Engine integration", () => {
 				body: "const x = 1;",
 				fidelity: "full",
 				attributes: { summary: "Utility module for X" },
-				category: "file",
+				category: "data",
 			});
 			// At full fidelity, summary is in the tag attribute, not the body
 			assert.ok(
@@ -202,7 +202,7 @@ describe("Engine integration", () => {
 				body: "const y = 2;",
 				fidelity: "summary",
 				attributes: { summary: "Helper for Y calculations" },
-				category: "file",
+				category: "data",
 			});
 			// File plugin summary view returns body; summary attr goes in tag
 			assert.ok(
