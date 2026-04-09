@@ -502,9 +502,11 @@ the same handler chain as model commands.
 
 | Method | Params | Notes |
 |--------|--------|-------|
-| `get` | `{ path, run, persist?, readonly? }` | `persist` sets file constraint (see EXCEPTIONS.md) |
-| `set` | `{ path, body, run, status?, attributes? }` | |
+| `get` | `{ path, run, persist?, readonly? }` | `persist` also sets file constraint |
+| `set` | `{ path, body, run, attributes? }` | All entries go through handler chain |
 | `rm` | `{ path, run }` | |
+| `mv` | `{ path, to, run }` | |
+| `cp` | `{ path, to, run }` | |
 | `store` | `{ path, run?, persist?, ignore?, clear? }` | File constraints only — not a model tool |
 | `getEntries` | `{ pattern?, body?, run?, limit?, offset? }` | Query entries |
 

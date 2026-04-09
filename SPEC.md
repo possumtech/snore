@@ -121,6 +121,7 @@ turns    (id, run_id, loop_id, sequence, context_tokens,
           created_at)
 
 file_constraints (id, project_id, pattern, visibility, created_at)
+  -- Project-level config. NOT tool dispatch. See §2.3.
 turn_context     (id, run_id, loop_id, turn, ordinal, path, scheme,
                   status, fidelity, body, tokens, attributes,
                   category, source_turn)
@@ -152,6 +153,23 @@ All terminal states allow transition back to `running`. Runs are long-lived.
 The loops table IS the prompt queue. Each `ask`/`act` creates a loop.
 FIFO per run (ordered by sequence). One active at a time. Abort stops
 the current loop; pending loops survive. Projects > runs > loops > turns.
+
+### 2.3 File Constraints
+
+The `file_constraints` table is project-level configuration — it
+defines which files a project cares about. This is backbone, not tool
+dispatch. Constraints have three visibilities: `active` (promoted to
+full), `readonly` (promoted but not editable), `ignore` (demoted).
+
+**Boundary:** Setting a constraint (`File.setConstraint`) is a
+project-config write. Promoting/demoting the matching entries is tool
+dispatch that goes through the handler chain with budget enforcement.
+These are separate operations: constraint persists across runs, entry
+promotion is scoped to a run and subject to the same budget rules as
+a model `<get>`.
+
+`store` RPC manages constraints directly — it is not a model tool.
+`get` RPC with `persist` sets the constraint AND dispatches promotion.
 
 ---
 
@@ -413,15 +431,17 @@ JSON-RPC 2.0 over WebSocket. `discover` returns the live catalog.
 
 | Method | Params |
 |--------|--------|
-| `get` | `{ path, run?, persist?, readonly? }` |
-| `store` | `{ path, run?, persist?, ignore?, clear? }` |
-| `set` | `{ run, path, body?, status?, fidelity?, attributes? }` |
+| `get` | `{ path, run, persist?, readonly? }` |
+| `set` | `{ run, path, body?, attributes? }` |
 | `rm` | `{ run, path }` |
+| `mv` | `{ run, path, to }` |
+| `cp` | `{ run, path, to }` |
+| `store` | `{ path, run?, persist?, ignore?, clear? }` |
 | `getEntries` | `{ pattern?, body?, run?, limit?, offset? }` |
 
-`persist` creates a project-level file constraint (operator privilege).
-`store` RPC handles file constraints only — not a model tool.
-Without `persist`, operations dispatch through the handler chain.
+All entry operations dispatch through the handler chain. `persist`
+on `get` also sets a project-level file constraint (operator privilege).
+`store` manages file constraints — not a model tool.
 
 #### Runs
 

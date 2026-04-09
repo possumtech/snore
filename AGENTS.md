@@ -35,7 +35,10 @@ Preamble: XML format, conclude every turn, summaries approximate.
 PLUGINS.md: third-party developer guide, §0-§11, quickstart, payloads,
 wire format. plugin_spec.test.js: 30 compliance tests. EXCEPTIONS.md:
 4 documented protocol violations. SPEC.md aligned with implementation.
-Paradigm audit: 22/26 complete, 4 remaining are justified exceptions.
+Paradigm audit: 26/26 complete. All protocol violations resolved.
+File.activate split into setConstraint (backbone) + dispatchTool
+(promotion). RPC set routes all entries through handler chain. RPC
+mv, cp implemented. Unified API: all three tiers, same interface.
 MAB benchmark: Conflict_Resolution row 0 = 1/100 (frontier = 7/100).
 
 ## Paradigm Refactoring — Unified Plugin Protocol
@@ -57,17 +60,19 @@ aren't documented in EXCEPTIONS.md with clear justification.
 5. Checklist progress here in AGENTS.md
 
 **Audit checklist:**
-- [ ] RPC `get` with `persist: true` — calls `File.activate` directly,
-  bypasses tool handler and budget. Must go through the same path as
-  model `<get>`.
+- [x] RPC `get` with `persist: true` — split into File.setConstraint
+  (project config, backbone) + dispatchTool (entry promotion, tool
+  handler chain with budget). `run` now required on all `get` RPC.
 - [x] RPC `get` without `persist` — goes through `dispatchTool`. Verified.
-- [ ] RPC `set` — scheme entries bypass tool handler (uses rummy.set()
-  directly). File entries go through dispatchTool. Inconsistent.
+- [x] RPC `set` — all entries (scheme and file) now go through
+  dispatchTool. No more dual path. KnownStore import removed.
 - [x] RPC `rm` — goes through `dispatchTool`. Verified.
-- [ ] RPC `mv`, `cp` — no RPC handlers exist. PLUGINS.md lists them
-  but clients can't use them. Either implement or remove from docs.
-- [ ] `File.activate` / `File.ignore` / `File.drop` — direct DB calls,
-  no tool handler, no budget check
+- [x] RPC `mv`, `cp` — implemented. Same dispatchTool pattern as rm.
+  Unified API: all three tiers have the same interface.
+- [x] `File.activate` / `File.ignore` / `File.drop` — replaced with
+  File.setConstraint + File.dropConstraint (project config only).
+  Entry promotion/demotion moved to tool dispatch. Boundary
+  documented in SPEC.md §2.3.
 - [x] `known_entries.tokens` vs assembled tokens — audited. Budget gate
   in TurnExecutor uses assembled tokens (correct). get.js uses
   tokens_full for incoming entries (correct — represents full-fidelity
@@ -126,23 +131,15 @@ aren't documented in EXCEPTIONS.md with clear justification.
   are subscribable but emitted by external plugins only (acceptable).
   `run.config` filter defined but never invoked (future use).
 
-**Remaining exceptions (documented in EXCEPTIONS.md):**
-- [ ] RPC `get` persist — File.activate bypasses tool handler for entry
-  promotion. Constraint write is legitimate backbone. Promotion should
-  dispatch through tool handler with budget. Fix: split File.activate
-  into setConstraint() (backbone) + promotion (tool dispatch).
-- [ ] RPC `set` scheme — scheme entries skip handler chain via
-  rummy.set() directly. Handler chain is a no-op for scheme entries
-  (no hedberg, no patches). May be correct behavior — document as
-  intentional or route through dispatch for future interceptability.
-- [ ] RPC `mv`, `cp` — no RPC handlers. Model has them, clients don't.
-  No proven need yet. Trivial to add when requested.
-- [ ] File.activate/ignore/drop — root cause of #1. Static methods do
-  direct DB writes + entry promotion/demotion. Constraint half is
-  backbone, promotion half should be tool dispatch. Design session
-  needed to define constraint-vs-entry boundary.
+**All audit items resolved. Protocol alignment complete.**
 
-**After protocol alignment is complete:**
+**Remaining exceptions (documented in EXCEPTIONS.md):**
+- TurnExecutor#record lifecycle/action split — justified architectural
+  boundary, not a protocol violation.
+- Token math multiple measurement points — strict rule documented in
+  PLUGINS.md §7.5, not a bug.
+
+**Future work:**
 
 ### Future: Budget Enforcement
 - Budget plugin: 413 on every tool use that would exceed context
