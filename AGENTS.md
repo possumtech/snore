@@ -67,24 +67,35 @@ aren't documented in EXCEPTIONS.md with clear justification.
   but clients can't use them. Either implement or remove from docs.
 - [ ] `File.activate` / `File.ignore` / `File.drop` — direct DB calls,
   no tool handler, no budget check
-- [ ] `known_entries.tokens` vs assembled tokens — two different numbers,
-  used interchangeably in multiple places
+- [x] `known_entries.tokens` vs assembled tokens — audited. Budget gate
+  in TurnExecutor uses assembled tokens (correct). get.js uses
+  tokens_full for incoming entries (correct — represents full-fidelity
+  cost) + get_last_context_tokens for current usage (correct).
+  Progress fallback uses row token sum (display only, acceptable).
+  Rule documented in PLUGINS.md §7.5.
 - [x] `get_promoted_token_total` query — REMOVED. Dead SQL, no callers.
-- [ ] TurnExecutor `#record` budget gate — uses `countTokens(cmd.body)`
-  estimate, not actual assembled measurement
+- [x] TurnExecutor `#record` budget gate — uses `countTokens(cmd.body)`
+  estimate at 95% ceiling. Conservative (2x tiktoken multiplier).
+  Secondary safety net; real budget enforcement is pre-LLM via
+  budget.enforce() on assembled messages. Acceptable.
 - [ ] `noRepo` flag — passed through but never read. Disables default
   project/repo file scanning. Files can still be added explicitly by
   the client. Core and rummy.repo should skip auto-loading project
   files when set. Needs implementation.
 - [x] Crunch plugin — REMOVED. Dead code. cascade.summarize hook removed.
-- [ ] `v_model_context` token calculation vs `turn_context` tokens vs
-  `known_entries` tokens — three sources, three meanings
+- [x] `v_model_context` token calculation vs `turn_context` tokens vs
+  `known_entries` tokens — three sources, three meanings, all consistent.
+  known_entries.tokens = display-only fidelity-aware counts.
+  turn_context.tokens = recalculated after projection (per-turn snapshot).
+  turns.context_tokens = assembled message tokens (ground truth).
+  No code uses view tokens for budget. Rule in PLUGINS.md §7.5.
 - [x] Housekeeping loop in `#drainQueue` — removed from backbone.
   413 retry with housekeeping enqueue remains (correct pattern).
 - [x] `summarize` 413 rejection in TurnExecutor — removed.
   Future: budget plugin handles via entry.changed hook.
-- [ ] Progress plugin token math — uses `ctx.lastContextTokens` from
-  previous turn, not current materialized state
+- [x] Progress plugin token math — uses `ctx.lastContextTokens` from
+  turns.context_tokens (assembled ground truth). Fallback to row token
+  sum only on turn 1 (no prior data). Display only, never budget.
 - [x] EXCEPTIONS.md created with documented backbone responsibilities
 - [x] PLUGINS.md updated with numbered sections, comprehensive API
 - [x] plugin_spec.test.js created with section-numbered compliance tests
