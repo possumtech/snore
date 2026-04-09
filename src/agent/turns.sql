@@ -6,7 +6,8 @@ RETURNING id, sequence;
 -- PREP: update_turn_stats
 UPDATE turns
 SET
-	prompt_tokens = :prompt_tokens
+	reasoning_content = :reasoning_content
+	, prompt_tokens = :prompt_tokens
 	, cached_tokens = :cached_tokens
 	, completion_tokens = :completion_tokens
 	, reasoning_tokens = :reasoning_tokens

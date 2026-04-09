@@ -630,6 +630,32 @@ export default class TurnExecutor {
 				};
 			}
 
+			// Size gate: reject entries > 500 tokens — force atomic entries
+			const MAX_ENTRY_TOKENS = 500;
+			if (scheme === "known" && entryTokens > MAX_ENTRY_TOKENS) {
+				const rejectPath = await this.#knownStore.slugPath(
+					runId,
+					scheme,
+					cmd.body,
+				);
+				await this.#knownStore.upsert(
+					runId,
+					turn,
+					rejectPath,
+					`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Separate the information, ideas, or plans carefully into multiple entries.`,
+					413,
+					{ loopId },
+				);
+				return {
+					scheme,
+					path: rejectPath,
+					body: "",
+					resultPath: rejectPath,
+					attributes,
+					status: 413,
+				};
+			}
+
 			let knownPath = cmd.path;
 			if (!knownPath) {
 				knownPath = await this.#knownStore.slugPath(

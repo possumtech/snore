@@ -149,6 +149,7 @@ export default class Telemetry {
 			0;
 		await rummy.db.update_turn_stats.run({
 			id: rummy.turnId,
+			reasoning_content: responseMessage?.reasoning_content || null,
 			prompt_tokens: usage.prompt_tokens ?? 0,
 			cached_tokens: cachedTokens ?? 0,
 			completion_tokens: usage.completion_tokens ?? 0,

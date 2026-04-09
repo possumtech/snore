@@ -331,7 +331,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const entries = await allEntries(tdb.db, r.run);
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
 		const rmUnknowns = entries.filter(
-			(e) => e.scheme === "rm" && e.path?.includes("unknown://"),
+			(e) => e.scheme === "rm" && decodeURIComponent(e.path).includes("unknown://"),
 		);
 		assert.ok(
 			unknowns.length > 0 || rmUnknowns.length > 0,

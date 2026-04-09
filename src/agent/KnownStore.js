@@ -31,10 +31,11 @@ export default class KnownStore {
 	}
 
 	async dedup(runId, scheme, target) {
-		const candidate = `${scheme}://${target}`;
+		const encodedTarget = encodeURIComponent(target);
+		const candidate = `${scheme}://${encodedTarget}`;
 		const existing = await this.#db.get_entry_body.get({
 			run_id: runId,
-			path: KnownStore.normalizePath(candidate),
+			path: candidate,
 		});
 		if (!existing) return candidate;
 		return `${candidate}_${Date.now()}`;

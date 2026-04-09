@@ -42,6 +42,7 @@ Retrieval from stashed entries is the bottleneck.
 - [ ] Auto-housekeeping prompt: when >75%, inject "Summarize your entries
   to recover at least half of your context before proceeding" as a
   dedicated turn before the real prompt. System-level, not runner.
+- [x] Entry size gate: known entries >500 tokens rejected with 413 + "Separate into multiple entries"
 - [ ] Body-content similarity dedup (catches paraphrases, not just exact paths)
 - [ ] Keyword-based stash grouping (inverted index, deferred)
 - [ ] Model ignores 75% progress warning — housekeeping prompt is the fix

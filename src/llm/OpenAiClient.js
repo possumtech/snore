@@ -49,6 +49,12 @@ export default class OpenAiClient {
 			);
 			msg.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
+
+			if (process.env.RUMMY_DEBUG === "true" && msg.reasoning_content) {
+				console.warn(
+					`[RUMMY] Reasoning (${msg.reasoning_content.length} chars): ${msg.reasoning_content.slice(0, 120)}`,
+				);
+			}
 		}
 
 		return data;
