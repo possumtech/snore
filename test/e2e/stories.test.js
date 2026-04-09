@@ -496,160 +496,38 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
-	// Story 9c: Budget cascade under heavy known entry load.
-	// Ingest many facts, shrink the context, verify the model can still
-	// answer from surviving knowns. Tests the halving spiral end-to-end.
-	it("budget cascade preserves recent knowns under pressure", {
+	// Story 9c: Budget ceiling — run fails when context exceeds limit.
+	// The model owns context management. The budget is the backstop.
+	it("budget crash when context exceeds limit", {
 		timeout: TIMEOUT,
 	}, async () => {
-		// First: teach the model a fact via a known entry
-		let r1 = await client.call("ask", {
-			model,
-			prompt:
-				"Save this as a known entry: <known>The speed of light is 299792458 meters per second</known>. Reply with <update>saved</update>.",
-			noContext: true,
-			noInteraction: true,
-		});
-		if (r1.status === 202)
-			r1 = await acceptAll(client, r1, tdb.db, projectRoot);
-		await client.assertRun(r1, 200, "cascade-save");
-
-		// Load several large files to pressure the budget
+		// Load large files to fill context
 		const bigContent = `// ${"x".repeat(3000)}\n`;
 		await fs.writeFile(join(projectRoot, "src/pressure1.js"), bigContent);
 		await fs.writeFile(join(projectRoot, "src/pressure2.js"), bigContent);
-		await fs.writeFile(join(projectRoot, "src/pressure3.js"), bigContent);
 		await client.call("get", { path: "src/pressure1.js", persist: true });
 		await client.call("get", { path: "src/pressure2.js", persist: true });
-		await client.call("get", { path: "src/pressure3.js", persist: true });
 
-		// Shrink context to force cascade.
-		// Measure current context and set limit to 75%.
-		const cascadeRun = await tdb.db.get_run_by_alias.get({ alias: r1.run });
-		const cascadeCtx = await tdb.db.get_promoted_token_total.get({
-			run_id: cascadeRun.id,
-		});
-		const cascadeLimit = Math.max(
-			6144,
-			Math.ceil((cascadeCtx?.total || 6144) * 0.75),
-		);
-		await client.call("run/config", {
-			run: r1.run,
-			contextLimit: cascadeLimit,
-		});
-
-		// Ask about the fact — cascade should preserve it while demoting files
-		let r2 = await client.call("ask", {
+		const r1 = await client.call("ask", {
 			model,
-			prompt:
-				"What is the speed of light in meters per second? Reply ONLY with the number.",
-			run: r1.run,
+			prompt: "Reply with OK.",
 			noInteraction: true,
 		});
-		if (r2.status === 202)
-			r2 = await acceptAll(client, r2, tdb.db, projectRoot);
-		await client.assertRun(r2, [200, 202], "cascade-answer");
+		await client.assertRun(r1, 200, "pressure-load");
 
-		// The known entry should have survived (full or at least visible)
-		const entries = await allEntries(tdb.db, r2.run);
-		const lightEntry = entries.find(
-			(e) => e.scheme === "known" && e.body?.includes("299792458"),
-		);
-		assert.ok(lightEntry, "speed of light known entry should still exist");
-
-		// Files should have been demoted
-		const demotedFiles = entries.filter(
-			(e) =>
-				e.scheme === null &&
-				e.path.includes("pressure") &&
-				e.fidelity !== "full",
-		);
-		assert.ok(
-			demotedFiles.length > 0,
-			"pressure files should have been demoted",
-		);
-	});
-
-	// Story 9d: Crunch plugin — mid-cascade summarization.
-	// Creates known entries without summaries, forces cascade demotion,
-	// verifies crunch fires and model can still answer from crunched context.
-	it("crunch generates summaries during cascade", {
-		timeout: TIMEOUT,
-	}, async () => {
-		// Create several known entries with substantive content but no summary attr
-		const r1 = await client.call("act", {
-			model,
-			prompt: [
-				"Save these as known entries:",
-				'<known path="known://fact_gravity">Gravity accelerates objects at 9.8 meters per second squared on Earth surface</known>',
-				'<known path="known://fact_water">Water boils at 100 degrees Celsius at standard atmospheric pressure at sea level</known>',
-				'<known path="known://fact_pi">Pi is approximately 3.14159265358979 and is the ratio of circumference to diameter</known>',
-				"<update>Facts saved.</update>",
-			].join("\n"),
-			noInteraction: true,
-		});
-		await client.assertRun(r1, [200, 202], "crunch-save");
-		if (r1.status === 202) await acceptAll(client, r1, tdb.db, projectRoot);
-
-		// Verify entries exist without summary attributes
-		const preCrunch = await allEntries(tdb.db, r1.run);
-		const facts = preCrunch.filter((e) => e.path?.startsWith("known://fact_"));
-		assert.ok(facts.length >= 3, "should have saved 3 fact entries");
-
-		// Load large files to pressure context
-		const bigContent = `// ${"x".repeat(3000)}\n`;
-		await fs.writeFile(join(projectRoot, "src/crunch1.js"), bigContent);
-		await fs.writeFile(join(projectRoot, "src/crunch2.js"), bigContent);
-		await client.call("get", { path: "src/crunch1.js", persist: true });
-		await client.call("get", { path: "src/crunch2.js", persist: true });
-
-		// Shrink context to force the crunch spiral (full→summary triggers crunch).
-		// Measure current context and set limit to 75% — forces demotion while
-		// holding the irreducible floor (system prompt + tool docs).
-		const crunchRun = await tdb.db.get_run_by_alias.get({ alias: r1.run });
-		const crunchCtx = await tdb.db.get_promoted_token_total.get({
-			run_id: crunchRun.id,
-		});
-		const crunchLimit = Math.max(
-			8192,
-			Math.ceil((crunchCtx?.total || 8192) * 0.75),
-		);
+		// Shrink context below the floor — should crash
 		await client.call("run/config", {
 			run: r1.run,
-			contextLimit: crunchLimit,
+			contextLimit: 1024,
 		});
 
-		// Ask about one of the facts — model must answer from crunched context
 		const r2 = await client.call("ask", {
 			model,
-			prompt:
-				"What is the boiling point of water in Celsius? Reply ONLY with the number.",
+			prompt: "Reply with OK.",
 			run: r1.run,
 			noInteraction: true,
 		});
-		await client.assertRun(r2, 200, "crunch-answer");
-		assertContains(await lastResponse(tdb.db, r2.run), "100", "crunch-answer");
-
-		// Check that crunch wrote summary attributes on demoted entries
-		const postCrunch = await allEntries(tdb.db, r2.run);
-		const crunched = postCrunch.filter(
-			(e) => e.path?.startsWith("known://fact_") && e.fidelity !== "full",
-		);
-		// At least some facts should have been demoted by the cascade
-		// If crunch fired, they should have summary attributes
-		if (crunched.length > 0) {
-			const withSummary = crunched.filter((e) => {
-				const attrs =
-					typeof e.attributes === "string"
-						? JSON.parse(e.attributes)
-						: e.attributes;
-				return typeof attrs?.summary === "string" && attrs.summary.length > 0;
-			});
-			assert.ok(
-				withSummary.length > 0,
-				"crunch should have generated summaries for demoted known entries",
-			);
-		}
+		await client.assertRun(r2, 500, "pressure-crash");
 	});
 
 	// Story 10: Web search — model searches, gets results, answers from them.

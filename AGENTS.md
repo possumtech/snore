@@ -45,13 +45,14 @@ Retrieval from stashed entries is the bottleneck.
 - [x] Entry size gate: known entries >500 tokens rejected with 413 + "Separate into multiple entries"
 - [x] reasoning_content as proper TEXT column on turns table
 - [x] Path encoding fix: dedup fully encodes target URIs
-- [ ] **TOKEN MATH (BLOCKING)**: One source of truth for context usage.
-  assembledTokens (measured from actual messages) is the only correct number.
-  Progress, housekeeping trigger, budget checks, and get tool 413 gate all
-  need to use it. Current state: progress uses turn_context tokens (wrong for
-  summary fidelity), housekeeping uses assembledTokens (correct but contradicts
-  progress), get_promoted_token_total uses known_entries tokens (wrong).
-  The model sees contradictory percentages and can't make rational decisions.
+- [x] **TOKEN MATH**: One source of truth. `turns.context_tokens` stores real
+  assembled token count. Progress, housekeeping, get 413 gate all read from it.
+- [x] **BUDGET SIMPLIFICATION**: Removed auto-crunch, death spiral, sidecar LLM.
+  Budget is now a ceiling check + crash. Model owns context management.
+- [ ] E2E: Housekeeping test — load entries past 75%, verify model compresses,
+  check reasoning_content for model decision-making
+- [ ] E2E: Budget strikeout test — model fails to compress after 3 housekeeping
+  attempts, run fails with budget crash
 - [ ] Body-content similarity dedup (catches paraphrases, not just exact paths)
 - [ ] Model ignores 75% progress warning — housekeeping prompt is the fix
 
