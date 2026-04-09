@@ -312,6 +312,12 @@ The budget plugin measures `countTokens()` on assembled messages —
 the actual content being sent to the LLM. No estimates, no DB token
 math. The assembled message IS the measurement.
 
+**DB tokens vs assembled tokens:** The `tokens` column on entries is
+strictly for DISPLAY — showing token counts in `<knowns>` tags so
+the model can reason about entry sizes. It is NEVER used for budget
+decisions. Budget math uses only assembled message token counts.
+These are two separate numbers that must never be conflated.
+
 ### §7.6 Client Notifications
 
 | Hook | Type | When |

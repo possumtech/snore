@@ -87,6 +87,18 @@ aren't documented in EXCEPTIONS.md with clear justification.
 - [x] plugin_spec.test.js created with section-numbered compliance tests
 - [ ] Align SPEC.md with implementation
 
+**PLUGINS.md completeness (the guardrail):**
+- [ ] Quickstart: end-to-end example plugin (register, handle, render, docs)
+- [ ] Hook examples: one-liner subscriber for each event/filter
+- [ ] Payload shapes: formalize every hook's payload as typed object
+- [ ] RPC wire format: show actual JSON-RPC request/response examples
+- [ ] plugin_spec.test.js: implement all TODO tests (§2.2, §2.3, §4.1,
+  §4.2, §6, §7.4 full pipeline, §7.5, §8 full lifecycle, §11.1)
+- [ ] entry.changed: verify fires through full plugin pipeline, not
+  just KnownStore callback
+- [ ] Verify every hook listed in PLUGINS.md is both emitted AND
+  subscribable (no dead hooks)
+
 **After refactoring is complete:**
 
 ### Future: Budget Enforcement
