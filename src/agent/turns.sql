@@ -6,7 +6,8 @@ RETURNING id, sequence;
 -- PREP: update_turn_stats
 UPDATE turns
 SET
-	reasoning_content = :reasoning_content
+	context_tokens = :context_tokens
+	, reasoning_content = :reasoning_content
 	, prompt_tokens = :prompt_tokens
 	, cached_tokens = :cached_tokens
 	, completion_tokens = :completion_tokens
@@ -25,6 +26,13 @@ SELECT
 	, COALESCE(SUM(cost), 0) AS cost
 FROM turns
 WHERE run_id = :run_id;
+
+-- PREP: get_last_context_tokens
+SELECT context_tokens
+FROM turns
+WHERE run_id = :run_id AND context_tokens > 0
+ORDER BY sequence DESC
+LIMIT 1;
 
 -- PREP: get_run_log
 SELECT ke.path, ke.status, ke.body, ke.attributes

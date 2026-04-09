@@ -12,6 +12,7 @@ export default class ContextAssembler {
 			contextSize = 0,
 			demoted = [],
 			toolSet = null,
+			lastContextTokens = 0,
 		} = {},
 		hooks,
 	) {
@@ -27,6 +28,7 @@ export default class ContextAssembler {
 			loopStartTurn,
 			type,
 			contextSize,
+			lastContextTokens,
 			demoted,
 			toolSet,
 		};

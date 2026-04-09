@@ -282,7 +282,6 @@ export default class AgentLoop {
 							signal: controller.signal,
 						});
 						lastAssembledTokens = hkResult.assembledTokens;
-						loopIteration++;
 					}
 				}
 

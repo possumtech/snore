@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS turns (
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, loop_id INTEGER NOT NULL REFERENCES loops (id) ON DELETE CASCADE
 	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
+	, context_tokens INTEGER NOT NULL DEFAULT 0 CHECK (context_tokens >= 0)
 	, reasoning_content TEXT
 	, prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0)
 	, cached_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cached_tokens >= 0)

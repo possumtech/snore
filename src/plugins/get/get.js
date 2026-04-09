@@ -40,9 +40,10 @@ export default class Get {
 		const contextSize = rummy.contextSize;
 		if (contextSize && matches.length > 0) {
 			const incomingTokens = matches.reduce((s, m) => s + m.tokens_full, 0);
-			const currentUsage = (
-				await rummy.db.get_promoted_token_total.get({ run_id: runId })
-			).total;
+			const lastCtx = await rummy.db.get_last_context_tokens.get({
+				run_id: runId,
+			});
+			const currentUsage = lastCtx?.context_tokens ?? 0;
 			const remaining = Math.floor(contextSize * 0.95) - currentUsage;
 			if (incomingTokens > remaining) {
 				await store.upsert(runId, turn, entry.resultPath, "", 413, {

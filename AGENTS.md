@@ -122,15 +122,6 @@ the oldest half by scheme into `known://stash_<scheme>` index entries:
 If stash entries + system prompt + tool docs don't fit, that's a
 configuration error — the model's context window is too small.
 
-### Future: Keyword-Based Stash Grouping
-
-Instead of flat per-scheme stashes (`known://stash_known` with 200 URIs),
-group by shared keywords from crunch summaries. Alphabetically-sorted
-slash-separated keywords become the stash path:
-`known://stash/defense` → rumsfeld, cheney, pentagon entries.
-The model searches stash by keyword instead of scanning a flat URI list.
-Not yet implemented — current flat stash works at small scale.
-
 ### 413 Budget Gate
 
 Before the cascade runs, entry recording checks remaining budget headroom.

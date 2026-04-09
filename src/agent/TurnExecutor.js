@@ -155,48 +155,24 @@ export default class TurnExecutor {
 			run_id: currentRunId,
 			turn,
 		});
+		const lastCtx = await this.#db.get_last_context_tokens.get({
+			run_id: currentRunId,
+		});
+		const lastContextTokens = lastCtx?.context_tokens ?? 0;
+
 		let messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			{ type: mode, systemPrompt, contextSize, demoted, toolSet },
+			{ type: mode, systemPrompt, contextSize, demoted, toolSet, lastContextTokens },
 			this.#hooks,
 		);
 
 		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
-			store: this.#knownStore,
-			runId: currentRunId,
-			loopId: currentLoopId,
-			turn,
 			messages,
 			rows,
-			rematerialize: async () => {
-				await this.#rematerialize(currentRunId, currentLoopId, turn);
-				rows = await this.#db.get_turn_context.all({
-					run_id: currentRunId,
-					turn,
-				});
-				messages = await ContextAssembler.assembleFromTurnContext(
-					rows,
-					{ type: mode, systemPrompt, contextSize, demoted, toolSet },
-					this.#hooks,
-				);
-				return { messages, rows };
-			},
-			summarize: async (entries) => {
-				await this.#hooks.cascade.summarize.emit({
-					entries,
-					runId: currentRunId,
-					model: requestedModel,
-					store: this.#knownStore,
-					contextSize,
-					complete: async (msgs) =>
-						this.#llmProvider.completion(msgs, requestedModel),
-				});
-			},
 		});
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;
-		demoted.push(...budgetResult.demoted);
 		const assembledTokens = messages.reduce(
 			(sum, m) => sum + countTokens(m.content),
 			0,
@@ -233,61 +209,7 @@ export default class TurnExecutor {
 					await new Promise((r) => setTimeout(r, delay));
 					continue;
 				}
-				if (!err.message?.includes("exceed")) throw err;
-
-				// Emergency retry — cascade missed due to tokenizer mismatch.
-				// Demote largest remaining full entries one at a time until it fits.
-				console.warn("[RUMMY] Context overflow from LLM — emergency demotion");
-				for (let attempt = 0; attempt < 10; attempt++) {
-					const candidate = rows
-						.filter(
-							(r) =>
-								r.fidelity === "full" &&
-								r.tokens > 0 &&
-								r.category !== "prompt" &&
-								!demoted.includes(r.path),
-						)
-						.toSorted((a, b) => b.tokens - a.tokens)[0];
-
-					if (!candidate) throw err;
-					await this.#knownStore.setFidelity(
-						currentRunId,
-						candidate.path,
-						"summary",
-					);
-					demoted.push(candidate.path);
-
-					await this.#rematerialize(currentRunId, currentLoopId, turn);
-					rows = await this.#db.get_turn_context.all({
-						run_id: currentRunId,
-						turn,
-					});
-					messages = await ContextAssembler.assembleFromTurnContext(
-						rows,
-						{ type: mode, systemPrompt, contextSize, demoted, toolSet },
-						this.#hooks,
-					);
-					filteredMessages = await this.#hooks.llm.messages.filter(messages, {
-						model: requestedModel,
-						projectId,
-						runId: currentRunId,
-					});
-
-					try {
-						rawResult = await this.#llmProvider.completion(
-							filteredMessages,
-							requestedModel,
-							{ temperature: options?.temperature, signal },
-						);
-						console.warn(
-							`[RUMMY] Emergency demotion: ${attempt + 1} entries demoted. Retry succeeded.`,
-						);
-						break;
-					} catch (retryErr) {
-						if (!retryErr.message?.includes("exceed")) throw retryErr;
-					}
-				}
-				if (!rawResult) throw err;
+				throw err;
 			}
 		}
 		const result = await this.#hooks.llm.response.filter(rawResult, {
@@ -323,6 +245,8 @@ export default class TurnExecutor {
 			content,
 			commands,
 			unparsed,
+			assembledTokens,
+			contextSize,
 			systemMsg: systemMsg?.content,
 			userMsg: userMsg?.content,
 		});

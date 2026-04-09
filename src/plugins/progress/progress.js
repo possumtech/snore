@@ -7,7 +7,10 @@ export default class Progress {
 	}
 
 	async assembleProgress(content, ctx) {
-		const usedTokens = ctx.rows.reduce((sum, r) => sum + (r.tokens || 0), 0);
+		// Use last turn's real assembled token count when available.
+		// Falls back to row token sum (less accurate — missing system prompt overhead).
+		const rowTokens = ctx.rows.reduce((sum, r) => sum + (r.tokens || 0), 0);
+		const usedTokens = ctx.lastContextTokens || rowTokens;
 		const contextSize = ctx.contextSize || 0;
 		const pct = contextSize ? Math.round((usedTokens / contextSize) * 100) : 0;
 
@@ -65,17 +68,13 @@ export default class Progress {
 		if (fidelityParts.length > 0)
 			parts.push(`Entries: ${fidelityParts.join(" · ")}`);
 
-		if (ctx.demoted?.length > 0) {
+		if (pct > 75) {
 			parts.push(
-				`⚠ ${ctx.demoted.length} entries auto-compressed. Summaries may be lossy — <get> to verify.`,
-			);
-		} else if (pct > 75) {
-			parts.push(
-				'Context above 75%. YOU MUST summarize enough entries to free space or entries will be auto-compressed:\n<set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later with <set path="known://people/rumsfeld" fidelity="full"/>',
+				'Context above 75%. YOU MUST summarize enough entries to free space or the run will fail:\nExample: <set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later with Example: <set path="known://people/rumsfeld" fidelity="full"/>',
 			);
 		} else if (pct > 50) {
 			parts.push(
-				'Context above 50%. YOU MAY summarize entries to free space:\n<set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later with <set path="known://people/rumsfeld" fidelity="full"/>',
+				'Context above 50%. YOU MAY summarize entries to free space:\nExample: <set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later with Example: <set path="known://people/rumsfeld" fidelity="full"/>',
 			);
 		}
 

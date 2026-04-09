@@ -77,6 +77,8 @@ export default class Telemetry {
 		content,
 		commands,
 		unparsed,
+		assembledTokens,
+		contextSize,
 		systemMsg,
 		userMsg,
 	}) {
@@ -149,6 +151,7 @@ export default class Telemetry {
 			0;
 		await rummy.db.update_turn_stats.run({
 			id: rummy.turnId,
+			context_tokens: assembledTokens ?? 0,
 			reasoning_content: responseMessage?.reasoning_content || null,
 			prompt_tokens: usage.prompt_tokens ?? 0,
 			cached_tokens: cachedTokens ?? 0,
