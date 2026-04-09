@@ -126,15 +126,17 @@ async function resolveAll(client, result) {
 	return current;
 }
 
-async function ingestContext(client, model, run, chunks) {
-	for (let i = 0; i < chunks.length; i++) {
-		const chunkNum = i + 1;
-		const total = chunks.length;
+async function ingestSessions(client, model, run, sessions, dates, sessionIds) {
+	for (let i = 0; i < sessions.length; i++) {
+		const session = sessions[i];
+		const date = dates?.[i] || `session ${i + 1}`;
+		const total = sessions.length;
+		const text = formatSession(session, date, sessionIds?.[i]);
 		const prompt = [
-			`Memory ingestion — chunk ${chunkNum} of ${total}.`,
-			"Read and remember the key facts from these conversation sessions.",
+			`Conversation ${i + 1} of ${total} (${date}).`,
+			"Read and remember any new key facts.",
 			"",
-			chunks[i],
+			text,
 		].join("\n");
 
 		let r = await client.call("ask", {
@@ -147,12 +149,13 @@ async function ingestContext(client, model, run, chunks) {
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status >= 500) {
 			console.warn(
-				`    chunk ${chunkNum}/${total} failed: ${r.error || "unknown"}`,
+				`    session ${i + 1}/${total} failed: ${r.error || "unknown"}`,
 			);
 		}
-		process.stdout.write(`    ingesting ${chunkNum}/${total}\r`);
+		const preview = text.replace(/\n/g, " ").slice(0, 80);
+		console.log(`    ${i + 1}/${total} ${date}: ${preview}`);
 	}
-	console.log(`    ingested ${chunks.length} chunks                `);
+	console.log(`    ingested ${sessions.length} sessions`);
 }
 
 async function askQuestion(client, db, model, run, question, questionDate) {
@@ -260,13 +263,14 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		run = lmeAlias;
 	} catch {}
 
-	const chunks = chunkSessions(
+	await ingestSessions(
+		client,
+		model,
+		run,
 		row.haystack_sessions,
 		row.haystack_dates,
 		row.haystack_session_ids,
-		CHUNK_SIZE,
 	);
-	await ingestContext(client, model, run, chunks);
 
 	const answer =
 		typeof row.answer === "string" ? row.answer : String(row.answer);
