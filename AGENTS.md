@@ -32,8 +32,19 @@ Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
 always dispatch, never 409'd. Summarize overridden when actions fail.
 Preamble: XML format, conclude every turn, summaries approximate.
-173 unit + 121 integration + 15/15 e2e passing (gemma).
-MAB and LME benchmark runners built. First MAB run in progress.
+175 unit + 121 integration + 14/15 e2e passing (gemma).
+MAB benchmark: Conflict_Resolution row 0 = 1/100 (frontier = 7/100).
+Ingestion working: atomic entries, no duplication, 100% crunch success.
+Retrieval from stashed entries is the bottleneck.
+
+### Pending
+
+- [ ] Auto-housekeeping prompt: when >75%, inject "Summarize your entries
+  to recover at least half of your context before proceeding" as a
+  dedicated turn before the real prompt. System-level, not runner.
+- [ ] Body-content similarity dedup (catches paraphrases, not just exact paths)
+- [ ] Keyword-based stash grouping (inverted index, deferred)
+- [ ] Model ignores 75% progress warning — housekeeping prompt is the fix
 
 ### Architecture Notes
 

@@ -235,6 +235,8 @@ export default class AgentLoop {
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
 
+		let lastAssembledTokens = 0;
+
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				if (controller.signal.aborted) {
@@ -251,6 +253,38 @@ export default class AgentLoop {
 					return out;
 				}
 				loopIteration++;
+
+				// Auto-housekeeping: if context >75%, inject compression turns (up to 3)
+				if (loopIteration > 1) {
+					for (let hk = 0; hk < 3; hk++) {
+						const usedPct = (lastAssembledTokens / contextSize) * 100;
+						if (usedPct <= 75) break;
+						console.warn(
+							`[RUMMY] Housekeeping ${hk + 1}/3: context at ${usedPct | 0}%`,
+						);
+						const hkResult = await this.#turnExecutor.execute({
+							mode,
+							project,
+							projectId,
+							currentRunId,
+							currentAlias,
+							currentLoopId,
+							requestedModel,
+							loopPrompt:
+								'Your context is over 75%. Use <set path="known://..." fidelity="summary" summary="keyword1,keyword2"/> on enough entries to free space. Then <update>done</update>.',
+							noContext,
+							toolSet,
+							contextSize,
+							options: {
+								...options,
+								isContinuation: true,
+							},
+							signal: controller.signal,
+						});
+						lastAssembledTokens = hkResult.assembledTokens;
+						loopIteration++;
+					}
+				}
 
 				let turnPrompt;
 				if (loopIteration === 1) {
@@ -277,6 +311,8 @@ export default class AgentLoop {
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal: controller.signal,
 				});
+
+				lastAssembledTokens = result.assembledTokens;
 
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,

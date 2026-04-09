@@ -317,11 +317,12 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 
 	// Story 5: Unknown-driven investigation — one prompt, model must
 	// register unknowns, investigate them, and answer.
+	// Multi-hop: needs to find config.json, read it, extract host, then answer.
 	it("autonomous unknown investigation", { timeout: TIMEOUT }, async () => {
 		const r = await client.call("ask", {
 			model,
 			prompt:
-				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What database does this project use?",
+				"Investigate this project and answer: what is the database connection pool size AND the database host? You MUST register unknowns for what you need to find, then investigate with <get>.",
 			noInteraction: true,
 		});
 		await client.assertRun(r, [200, 202], "unknowns");

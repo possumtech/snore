@@ -197,6 +197,10 @@ export default class TurnExecutor {
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;
 		demoted.push(...budgetResult.demoted);
+		const assembledTokens = messages.reduce(
+			(sum, m) => sum + countTokens(m.content),
+			0,
+		);
 
 		let filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
@@ -502,6 +506,7 @@ export default class TurnExecutor {
 				options?.temperature ??
 				Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
 			contextSize,
+			assembledTokens,
 			usage: result.usage,
 		};
 	}

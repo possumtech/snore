@@ -1,6 +1,6 @@
 const SYSTEM_PROMPT =
 	"Compress each entry to comma-separated searchable keywords (≤80 chars). " +
-	"One line per entry. Format: N → keyword1, keyword2, keyword3";
+	"One line per entry. Format: N → keyword1,keyword2,keyword3";
 
 const DEBUG = process.env.RUMMY_DEBUG === "true";
 

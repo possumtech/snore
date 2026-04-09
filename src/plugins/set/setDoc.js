@@ -5,10 +5,18 @@ const LINES = [
 	// --- Syntax: path attr + body = edit content
 	['## <set path="[path/to/file]">[edit]</set> - Edit a file or entry'],
 
-	// --- Examples: sed edit, then fidelity control (the two primary use cases)
+	// --- Examples: sed, SEARCH/REPLACE, fidelity control
 	[
 		'Example: <set path="src/config.js">s/port = 3000/port = 8080/g</set>',
 		"Sed syntax: most common edit pattern. Shows s/old/new/ with g flag.",
+	],
+	[
+		`Example: <set path="src/app.js"><<<<<<< SEARCH
+// TODO: add error handling
+=======
+// error handler configured
+>>>>>>> REPLACE</set>`,
+		"SEARCH/REPLACE block: literal match and replace. Use when sed escaping is complex.",
 	],
 	[
 		'Example: <set path="known://plan" stored summary="Migration plan for Q2"/>',
@@ -16,10 +24,6 @@ const LINES = [
 	],
 
 	// --- Constraints
-	[
-		"* Editing: s/old/new/ sed patterns and literal SEARCH/REPLACE blocks",
-		"Both syntaxes supported. Hedberg normalizes either form.",
-	],
 	[
 		'* `fidelity="..."`: `stored`, `summary`, `index`, `full`',
 		"Fidelity control via attributes. Replaces the removed <store> tool.",
@@ -31,6 +35,10 @@ const LINES = [
 	[
 		"* YOU MUST NOT use <sh/> or <env/> to read, create, or edit files",
 		"Forces file operations through set/get. Prevents untracked mutations.",
+	],
+	[
+		"* Editing: s/old/new/ sed patterns and literal SEARCH/REPLACE blocks",
+		"Both syntaxes supported. Hedberg normalizes either form.",
 	],
 ];
 
