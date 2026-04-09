@@ -1,5 +1,5 @@
 import slugify from "../sql/functions/slugify.js";
-import BudgetGuard from "./BudgetGuard.js";
+import { countTokens } from "./tokens.js";
 
 export default class KnownStore {
 	#db;
@@ -115,7 +115,8 @@ export default class KnownStore {
 				run_id: runId,
 				path: normalized,
 			});
-			delta = BudgetGuard.delta(body, existing?.body);
+			delta =
+				countTokens(body) - (existing?.body ? countTokens(existing.body) : 0);
 			this.#budgetGuard.check(delta, normalized);
 		}
 
@@ -267,7 +268,7 @@ export default class KnownStore {
 				this.#isVisible(e.path, e.fidelity),
 			);
 			const oldTotal = visible.reduce((sum, e) => sum + (e.tokens || 0), 0);
-			const newTokensPer = BudgetGuard.delta(newBody, null);
+			const newTokensPer = countTokens(newBody);
 			delta = newTokensPer * visible.length - oldTotal;
 			if (delta > 0) this.#budgetGuard.check(delta, path);
 		}

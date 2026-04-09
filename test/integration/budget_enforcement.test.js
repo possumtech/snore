@@ -1,7 +1,9 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import BudgetGuard, { BudgetExceeded } from "../../src/agent/BudgetGuard.js";
 import KnownStore from "../../src/agent/KnownStore.js";
+import BudgetGuard, {
+	BudgetExceeded,
+} from "../../src/plugins/budget/BudgetGuard.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Budget enforcement at KnownStore layer", () => {

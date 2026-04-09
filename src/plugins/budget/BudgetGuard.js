@@ -1,4 +1,4 @@
-import { countTokens } from "./tokens.js";
+import { countTokens } from "../../agent/tokens.js";
 
 export class BudgetExceeded extends Error {
 	constructor(path, requested, remaining) {

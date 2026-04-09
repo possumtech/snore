@@ -1,5 +1,4 @@
 import RummyContext from "../hooks/RummyContext.js";
-import BudgetGuard, { BudgetExceeded } from "./BudgetGuard.js";
 import ContextAssembler from "./ContextAssembler.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
@@ -305,9 +304,13 @@ export default class TurnExecutor {
 		}
 
 		// --- PHASE 2: DISPATCH ---
-		// Activate budget enforcement on the store for the dispatch window.
-		const guard = new BudgetGuard(contextSize, assembledTokens);
-		this.#knownStore.budgetGuard = guard;
+		// Budget plugin activates the guard on the store for dispatch.
+		const guard = this.#hooks.budget.activate(
+			this.#knownStore,
+			contextSize,
+			assembledTokens,
+		);
+		const { BudgetExceeded } = this.#hooks.budget;
 
 		let hasErrors = false;
 		let hasProposed = false;
@@ -398,7 +401,7 @@ export default class TurnExecutor {
 				}
 			}
 		} finally {
-			this.#knownStore.budgetGuard = null;
+			this.#hooks.budget.deactivate(this.#knownStore);
 		}
 
 		// Lifecycle signals are always available — never 409'd.

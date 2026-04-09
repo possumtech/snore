@@ -1,22 +1,23 @@
 import { countTokens } from "../../agent/tokens.js";
-
-/**
- * Budget plugin: measures context and enforces ceiling.
- *
- * Returns { messages, rows, assembledTokens, status }
- * status 200 = fits. status 413 = over budget, needs housekeeping.
- */
+import BudgetGuard, { BudgetExceeded } from "./BudgetGuard.js";
 
 function measureMessages(messages) {
 	return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 }
+
+export { BudgetExceeded };
 
 export default class Budget {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
-		core.hooks.budget = { enforce: this.enforce.bind(this) };
+		core.hooks.budget = {
+			enforce: this.enforce.bind(this),
+			activate: this.activate.bind(this),
+			deactivate: this.deactivate.bind(this),
+			BudgetExceeded,
+		};
 	}
 
 	async enforce({ contextSize, messages, rows }) {
@@ -46,5 +47,15 @@ export default class Budget {
 		}
 
 		return { messages, rows, demoted: [], assembledTokens, status: 200 };
+	}
+
+	activate(store, contextSize, assembledTokens) {
+		const guard = new BudgetGuard(contextSize, assembledTokens);
+		store.budgetGuard = guard;
+		return guard;
+	}
+
+	deactivate(store) {
+		store.budgetGuard = null;
 	}
 }

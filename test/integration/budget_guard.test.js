@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import BudgetGuard, { BudgetExceeded } from "./BudgetGuard.js";
+import BudgetGuard, {
+	BudgetExceeded,
+} from "../../src/plugins/budget/BudgetGuard.js";
 
 describe("BudgetGuard", () => {
 	it("no ceiling allows any amount", () => {
