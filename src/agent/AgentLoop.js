@@ -271,7 +271,7 @@ export default class AgentLoop {
 							currentLoopId,
 							requestedModel,
 							loopPrompt:
-								'Your context is over 75%. Use <set path="known://..." fidelity="summary" summary="keyword1,keyword2"/> on enough entries to free space. Then <update>done</update>.',
+								`Your context is at ${usedPct | 0}%. YOU MUST use <set path="known://..." fidelity="summary" summary="keyword1,keyword2"/> on at least half of your full-fidelity entries. Then <update>done</update>.`,
 							noContext,
 							toolSet,
 							contextSize,
