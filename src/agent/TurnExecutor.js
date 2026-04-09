@@ -1,4 +1,5 @@
 import RummyContext from "../hooks/RummyContext.js";
+import BudgetGuard, { BudgetExceeded } from "./BudgetGuard.js";
 import ContextAssembler from "./ContextAssembler.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
@@ -285,16 +286,6 @@ export default class TurnExecutor {
 		const lifecycle = [];
 		const actions = [];
 
-		// Track budget headroom for 413 rejection during recording.
-		// Use assembled message tokens (includes system prompt overhead).
-		const budgetCeiling = contextSize ? contextSize * 0.95 : null;
-		const currentBudgetUsed = budgetCeiling
-			? messages.reduce((sum, m) => sum + countTokens(m.content || ""), 0)
-			: 0;
-		let budgetRemaining = budgetCeiling
-			? budgetCeiling - currentBudgetUsed
-			: Infinity;
-
 		for (const cmd of commands) {
 			const entry = await this.#record(
 				currentRunId,
@@ -302,7 +293,6 @@ export default class TurnExecutor {
 				turn,
 				mode,
 				cmd,
-				budgetRemaining,
 			);
 			if (!entry) continue;
 			recorded.push(entry);
@@ -312,80 +302,103 @@ export default class TurnExecutor {
 			} else {
 				actions.push(entry);
 			}
-
-			if (entry.body && budgetCeiling) {
-				budgetRemaining -= countTokens(entry.body);
-			}
 		}
 
 		// --- PHASE 2: DISPATCH ---
-		// Lifecycle signals first — always dispatched, never aborted.
-		for (const entry of lifecycle) {
-			await this.#hooks.tool.before.emit({ entry, rummy });
-			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
-			await this.#hooks.tool.after.emit({ entry, rummy });
-			await this.#hooks.entry.created.emit(entry);
-		}
+		// Activate budget enforcement on the store for the dispatch window.
+		const guard = new BudgetGuard(contextSize, assembledTokens);
+		this.#knownStore.budgetGuard = guard;
 
-		// Action commands: sequential, stop on proposal or error.
 		let hasErrors = false;
 		let hasProposed = false;
 		let abortAfter = null;
 		const dispatched = [...lifecycle];
 
-		for (const entry of actions) {
-			if (abortAfter) {
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					entry.resultPath || entry.path,
-					"",
-					409,
-					{
-						attributes: {
-							error: `Aborted — preceding <${abortAfter}> requires resolution.`,
-						},
-						loopId: currentLoopId,
-					},
-				);
-				hasErrors = true;
-				continue;
+		try {
+			// Lifecycle signals first — always dispatched, never aborted.
+			for (const entry of lifecycle) {
+				await this.#hooks.tool.before.emit({ entry, rummy });
+				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+				await this.#hooks.tool.after.emit({ entry, rummy });
+				await this.#hooks.entry.created.emit(entry);
 			}
 
-			await this.#hooks.tool.before.emit({ entry, rummy });
-			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
-			await this.#hooks.tool.after.emit({ entry, rummy });
-			await this.#hooks.entry.created.emit(entry);
-			dispatched.push(entry);
-
-			const row = await this.#db.get_entry_state.get({
-				run_id: currentRunId,
-				path: entry.resultPath || entry.path,
-			});
-			if (row?.status === 202) {
-				hasProposed = true;
-				abortAfter = entry.scheme;
-			} else if (row?.status >= 400) {
-				hasErrors = true;
-				abortAfter = entry.scheme;
-			}
-		}
-
-		// Materialize proposals only if we dispatched actions
-		if (!abortAfter || hasProposed) {
-			await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
-		}
-
-		// Recheck after materialization (set handler may create proposals)
-		if (!hasProposed && !hasErrors) {
 			for (const entry of actions) {
+				if (abortAfter || guard.isTripped) {
+					await this.#knownStore.upsert(
+						currentRunId,
+						turn,
+						entry.resultPath || entry.path,
+						"",
+						guard.isTripped ? 413 : 409,
+						{
+							attributes: {
+								error: guard.isTripped
+									? `Budget exceeded by <${guard.tripSource}>.`
+									: `Aborted — preceding <${abortAfter}> requires resolution.`,
+							},
+							loopId: currentLoopId,
+						},
+					);
+					hasErrors = true;
+					continue;
+				}
+
+				try {
+					await this.#hooks.tool.before.emit({ entry, rummy });
+					await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+					await this.#hooks.tool.after.emit({ entry, rummy });
+					await this.#hooks.entry.created.emit(entry);
+					dispatched.push(entry);
+				} catch (err) {
+					if (err instanceof BudgetExceeded) {
+						guard.trip(entry.scheme);
+						await this.#knownStore.upsert(
+							currentRunId,
+							turn,
+							entry.resultPath || entry.path,
+							`Budget exceeded: ${err.requested} tokens requested, ${err.remaining} remaining.`,
+							413,
+							{ attributes: { error: err.message }, loopId: currentLoopId },
+						);
+						hasErrors = true;
+						abortAfter = entry.scheme;
+						continue;
+					}
+					throw err;
+				}
+
 				const row = await this.#db.get_entry_state.get({
 					run_id: currentRunId,
 					path: entry.resultPath || entry.path,
 				});
-				if (row?.status === 202) hasProposed = true;
-				if (row?.status >= 400) hasErrors = true;
+				if (row?.status === 202) {
+					hasProposed = true;
+					abortAfter = entry.scheme;
+				} else if (row?.status >= 400) {
+					hasErrors = true;
+					abortAfter = entry.scheme;
+				}
 			}
+
+			// Materialize proposals only if we dispatched actions
+			if (!abortAfter || hasProposed) {
+				await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
+			}
+
+			// Recheck after materialization (set handler may create proposals)
+			if (!hasProposed && !hasErrors) {
+				for (const entry of actions) {
+					const row = await this.#db.get_entry_state.get({
+						run_id: currentRunId,
+						path: entry.resultPath || entry.path,
+					});
+					if (row?.status === 202) hasProposed = true;
+					if (row?.status >= 400) hasErrors = true;
+				}
+			}
+		} finally {
+			this.#knownStore.budgetGuard = null;
 		}
 
 		// Lifecycle signals are always available — never 409'd.
@@ -471,7 +484,7 @@ export default class TurnExecutor {
 	 * Record a parsed command as a known_entries row.
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
-	async #record(runId, loopId, turn, mode, cmd, budgetRemaining = Infinity) {
+	async #record(runId, loopId, turn, mode, cmd) {
 		// Mode enforcement — reject prohibited commands in ask mode
 		if (mode === "ask") {
 			if (cmd.name === "sh") {
@@ -560,33 +573,8 @@ export default class TurnExecutor {
 		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
 			if (!cmd.body) return null;
 
-			// Budget gate: reject if this entry would exceed context budget
-			const entryTokens = countTokens(cmd.body);
-			if (entryTokens > budgetRemaining) {
-				const rejectPath = await this.#knownStore.slugPath(
-					runId,
-					scheme,
-					cmd.body,
-				);
-				await this.#knownStore.upsert(
-					runId,
-					turn,
-					rejectPath,
-					`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
-					413,
-					{ loopId },
-				);
-				return {
-					scheme,
-					path: rejectPath,
-					body: "",
-					resultPath: rejectPath,
-					attributes,
-					status: 413,
-				};
-			}
-
 			// Size gate: reject entries > 500 tokens — force atomic entries
+			const entryTokens = countTokens(cmd.body);
 			const MAX_ENTRY_TOKENS = 500;
 			if (scheme === "known" && entryTokens > MAX_ENTRY_TOKENS) {
 				const rejectPath = await this.#knownStore.slugPath(
@@ -654,27 +642,7 @@ export default class TurnExecutor {
 			};
 		}
 
-		// Budget gate: reject if this entry would exceed context budget
 		const body = cmd.body || cmd.command || cmd.question || "";
-		const entryTokens = countTokens(body);
-		if (body && entryTokens > budgetRemaining) {
-			await this.#knownStore.upsert(
-				runId,
-				turn,
-				resultPath,
-				`Context budget exceeded (${entryTokens} tokens, ${Math.max(0, budgetRemaining) | 0} remaining). Use <set fidelity="store"> to file entries, or <rm> old entries.`,
-				413,
-				{ attributes, loopId },
-			);
-			return {
-				scheme,
-				path: resultPath,
-				body: "",
-				attributes,
-				status: 413,
-				resultPath,
-			};
-		}
 
 		// Filter: plugins can validate/transform before recording
 		const filtered = await this.#hooks.entry.recording.filter(

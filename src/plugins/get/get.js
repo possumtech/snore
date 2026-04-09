@@ -36,26 +36,6 @@ export default class Get {
 			bodyFilter,
 		);
 
-		// Budget check — reject if loading would exceed context
-		const contextSize = rummy.contextSize;
-		if (contextSize && matches.length > 0) {
-			const incomingTokens = matches.reduce((s, m) => s + m.tokens_full, 0);
-			const lastCtx = await rummy.db.get_last_context_tokens.get({
-				run_id: runId,
-			});
-			const currentUsage = lastCtx?.context_tokens ?? 0;
-			const remaining = Math.floor(contextSize * 0.95) - currentUsage;
-			if (incomingTokens > remaining) {
-				await store.upsert(runId, turn, entry.resultPath, "", 413, {
-					attributes: {
-						error: `${matches.length} entries (${incomingTokens} tokens) exceeds available context (${remaining} tokens remaining). Use <set path="..." stored/> to archive or <rm/> to free space, or <get path="..." preview/> to list without loading.`,
-					},
-					loopId,
-				});
-				return;
-			}
-		}
-
 		await store.promoteByPattern(runId, normalized, bodyFilter, turn);
 
 		if (isPattern) {

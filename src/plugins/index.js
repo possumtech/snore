@@ -86,6 +86,8 @@ export async function initPlugins(db, store, hooks) {
 			});
 		}
 	}
+
+	await store.loadSchemes(db);
 }
 
 function resolvePlugin(packageName) {

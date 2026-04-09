@@ -1,12 +1,38 @@
 import slugify from "../sql/functions/slugify.js";
+import BudgetGuard from "./BudgetGuard.js";
 
 export default class KnownStore {
 	#db;
 	#onChanged;
+	#budgetGuard = null;
+	#schemes = new Map();
 
 	constructor(db, { onChanged } = {}) {
 		this.#db = db;
 		this.#onChanged = onChanged || null;
+	}
+
+	get budgetGuard() {
+		return this.#budgetGuard;
+	}
+
+	set budgetGuard(guard) {
+		this.#budgetGuard = guard;
+	}
+
+	async loadSchemes(db) {
+		const rows = await (db || this.#db).get_all_schemes.all();
+		this.#schemes.clear();
+		for (const row of rows) {
+			this.#schemes.set(row.name, row);
+		}
+	}
+
+	#isVisible(path, fidelity) {
+		if (fidelity === "stored") return false;
+		const scheme = KnownStore.scheme(path) ?? "file";
+		const meta = this.#schemes.get(scheme);
+		return meta ? meta.model_visible !== 0 : true;
 	}
 
 	#emitChanged(runId, path, changeType) {
@@ -78,6 +104,21 @@ export default class KnownStore {
 		} = {},
 	) {
 		const normalized = KnownStore.normalizePath(path);
+		let delta = 0;
+
+		if (
+			this.#budgetGuard &&
+			status < 400 &&
+			this.#isVisible(normalized, fidelity)
+		) {
+			const existing = await this.#db.get_entry_body.get({
+				run_id: runId,
+				path: normalized,
+			});
+			delta = BudgetGuard.delta(body, existing?.body);
+			this.#budgetGuard.check(delta, normalized);
+		}
+
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			loop_id: loopId,
@@ -91,6 +132,8 @@ export default class KnownStore {
 			updated_at: updatedAt,
 		});
 		this.#emitChanged(runId, normalized, "upsert");
+
+		if (delta > 0) this.#budgetGuard?.charge(delta);
 	}
 
 	async promote(runId, path, turn) {
@@ -156,6 +199,21 @@ export default class KnownStore {
 	}
 
 	async promoteByPattern(runId, path, body, turn) {
+		let cost = 0;
+		if (this.#budgetGuard) {
+			const entries = await this.#db.get_entries_by_pattern.all({
+				run_id: runId,
+				path,
+				body: KnownStore.#bodyPattern(body),
+				limit: null,
+				offset: null,
+			});
+			cost = entries
+				.filter((e) => e.fidelity === "stored" || e.fidelity === "index")
+				.reduce((sum, e) => sum + (e.tokens_full || 0), 0);
+			if (cost > 0) this.#budgetGuard.check(cost, path);
+		}
+
 		await this.#db.promote_by_pattern.run({
 			run_id: runId,
 			path,
@@ -163,6 +221,8 @@ export default class KnownStore {
 			turn,
 		});
 		this.#emitChanged(runId, path, "promote");
+
+		if (cost > 0) this.#budgetGuard?.charge(cost);
 	}
 
 	async demoteByPattern(runId, path, body) {
@@ -194,6 +254,24 @@ export default class KnownStore {
 	}
 
 	async updateBodyByPattern(runId, path, body, newBody) {
+		let delta = 0;
+		if (this.#budgetGuard) {
+			const entries = await this.#db.get_entries_by_pattern.all({
+				run_id: runId,
+				path,
+				body: KnownStore.#bodyPattern(body),
+				limit: null,
+				offset: null,
+			});
+			const visible = entries.filter((e) =>
+				this.#isVisible(e.path, e.fidelity),
+			);
+			const oldTotal = visible.reduce((sum, e) => sum + (e.tokens || 0), 0);
+			const newTokensPer = BudgetGuard.delta(newBody, null);
+			delta = newTokensPer * visible.length - oldTotal;
+			if (delta > 0) this.#budgetGuard.check(delta, path);
+		}
+
 		await this.#db.update_body_by_pattern.run({
 			run_id: runId,
 			path,
@@ -201,6 +279,8 @@ export default class KnownStore {
 			new_body: newBody,
 		});
 		this.#emitChanged(runId, path, "body");
+
+		if (delta > 0) this.#budgetGuard?.charge(delta);
 	}
 
 	async resolve(runId, path, status, body) {
