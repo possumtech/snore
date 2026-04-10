@@ -41,6 +41,7 @@
 		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test $(find test/integration -name '*.test.js')",
 		"test:e2e": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/e2e -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/e2e_$(date +%Y%m%dT%H%M%S).log",
 		"test:live": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/live_$(date +%Y%m%dT%H%M%S).log",
+		"test:clean": "rm -rf test/lme/results test/mab/results test/tmp /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal && echo 'Test artifacts cleaned.'",
 		"test:mab:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/download.js",
 		"test:mab": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js 2>&1 | tee /tmp/rummy_test_diag/mab_$(date +%Y%m%dT%H%M%S).log",
 		"test:lme:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/download.js",
