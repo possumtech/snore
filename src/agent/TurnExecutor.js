@@ -190,8 +190,9 @@ export default class TurnExecutor {
 			budgetResult.assembledTokens ??
 			messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 
-		// Budget overflow — return 413 to caller without calling LLM
-		if (budgetResult.status === 413) {
+		// Budget overflow — return 413 to caller without calling LLM.
+		// Panic mode suppresses this — the model must run to free space.
+		if (budgetResult.status === 413 && mode !== "panic") {
 			return {
 				turn,
 				turnId: turnRow.id,
