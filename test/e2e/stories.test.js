@@ -485,12 +485,12 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	it("panic mode recovers from context overflow", {
 		timeout: TIMEOUT * 4,
 	}, async () => {
-		// Fill context: ~28000 chars of file content = ~14000 tokens.
-		// System prompt ~3000 tokens. Total ~17000 > 16384 ceiling.
-		for (let i = 0; i < 5; i++) {
+		// Fill context: 6 × 12000 chars = 36000 tokens.
+		// System prompt + previous loops ~5000. Total ~41000 > 32768 ceiling.
+		for (let i = 0; i < 6; i++) {
 			await fs.writeFile(
 				join(projectRoot, `src/data${i}.txt`),
-				"x".repeat(8000),
+				"x".repeat(12000),
 			);
 		}
 		const { execSync: exec } = await import("node:child_process");
@@ -498,9 +498,9 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			cwd: projectRoot,
 		});
 
-		// Load 3 files — fills context to ~15000 of 16384
+		// Load files one at a time until context fills
 		let run = null;
-		for (let i = 0; i < 3; i++) {
+		for (let i = 0; i < 5; i++) {
 			const r = await client.call("act", {
 				model,
 				prompt: `Read src/data${i}.txt and reply OK.`,
@@ -511,10 +511,10 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			run = r.run;
 		}
 
-		// 4th load should trigger panic — context can't fit another 4000 tokens
+		// 6th load should trigger panic — context full
 		const r2 = await client.call("act", {
 			model,
-			prompt: "Read src/data3.txt and reply OK.",
+			prompt: "Read src/data5.txt and reply OK.",
 			run,
 			noInteraction: true,
 		});
