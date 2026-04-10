@@ -87,9 +87,9 @@ function resolveCommand(name, attrs, rawBody) {
 				preview: a.preview,
 			};
 		}
-		// Plain write → create/overwrite
+		// Plain write or fidelity change
 		const body = trimmed || a.body || "";
-		return { name, path: a.path, body, preview: a.preview };
+		return { name, ...a, body };
 	}
 
 	if (name === "summarize" || name === "update" || name === "unknown") {
