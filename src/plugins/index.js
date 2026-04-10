@@ -199,6 +199,7 @@ async function scanDir(dir, hooks, isRoot = false) {
 				await loadPlugin(fullPath, hooks);
 			}
 		} else if (stats.isDirectory()) {
+			if (existsSync(join(fullPath, "DISABLED"))) continue;
 			await scanDir(fullPath, hooks, false);
 		}
 	}

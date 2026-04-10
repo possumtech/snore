@@ -522,8 +522,15 @@ export default class TurnExecutor {
 		// Mode enforcement — panic mode restricts to context management
 		if (mode === "panic") {
 			const PANIC_ALLOWED = new Set([
-				"get", "set", "known", "unknown", "rm", "mv", "cp",
-				"summarize", "update",
+				"get",
+				"set",
+				"known",
+				"unknown",
+				"rm",
+				"mv",
+				"cp",
+				"summarize",
+				"update",
 			]);
 			if (!PANIC_ALLOWED.has(cmd.name)) {
 				console.warn(`[RUMMY] Rejected <${cmd.name}> in panic mode`);
@@ -532,7 +539,9 @@ export default class TurnExecutor {
 			if (cmd.name === "set" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(`[RUMMY] Rejected file set to ${cmd.path} in panic mode`);
+					console.warn(
+						`[RUMMY] Rejected file set to ${cmd.path} in panic mode`,
+					);
 					return null;
 				}
 			}

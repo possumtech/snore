@@ -173,11 +173,12 @@ export default class AgentLoop {
 			if (!loop) break;
 
 			const loopConfig = loop.config ? JSON.parse(loop.config) : {};
-			const hook = loop.mode === "panic"
-				? this.#hooks.panic
-				: loop.mode === "ask"
-					? this.#hooks.ask
-					: this.#hooks.act;
+			const hook =
+				loop.mode === "panic"
+					? this.#hooks.panic
+					: loop.mode === "ask"
+						? this.#hooks.ask
+						: this.#hooks.act;
 
 			const result = await this.#executeLoop({
 				mode: loop.mode,
@@ -207,9 +208,10 @@ export default class AgentLoop {
 					return {
 						run: currentAlias,
 						status: 413,
-						error: loop.mode === "panic"
-							? `Panic mode failed to free enough space (${result.overflow} tokens over).`
-							: `Context full (${result.overflow} tokens over).`,
+						error:
+							loop.mode === "panic"
+								? `Panic mode failed to free enough space (${result.overflow} tokens over).`
+								: `Context full (${result.overflow} tokens over).`,
 					};
 				}
 

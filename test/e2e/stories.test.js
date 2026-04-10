@@ -530,4 +530,44 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			"search results should contain meaningful snippets",
 		);
 	});
+
+	// Story 11: Panic mode — model fills context, new prompt triggers panic,
+	// model frees space, original prompt retries.
+	it("panic mode recovers from context overflow", {
+		timeout: TIMEOUT * 4,
+	}, async () => {
+		// Ask the model to fill its own context with known entries
+		const r1 = await client.call("ask", {
+			model,
+			prompt: [
+				"Create 15 separate <known> entries, each containing a unique fun fact about a different animal.",
+				"Each entry MUST be at least 100 characters long.",
+				"Use paths like known://animal_1, known://animal_2, etc.",
+			].join(" "),
+			noInteraction: true,
+			noRepo: true,
+		});
+		await client.assertRun(r1, 200, "panic-fill");
+
+		// Verify entries were created
+		const entries = await allEntries(tdb.db, r1.run);
+		const knowns = entries.filter((e) => e.scheme === "known");
+		assert.ok(
+			knowns.length >= 5,
+			`panic-fill: expected 5+ knowns, got ${knowns.length}`,
+		);
+
+		// Shrink context so the next prompt won't fit
+		await client.call("run/config", { run: r1.run, contextLimit: 4096 });
+
+		// This prompt should trigger panic — the model must free space
+		const r2 = await client.call("ask", {
+			model,
+			prompt: "What is 2 + 2? Reply ONLY with the number.",
+			run: r1.run,
+			noInteraction: true,
+		});
+		await client.assertRun(r2, 200, "panic-recover");
+		assertContains(await lastResponse(tdb.db, r2.run), "4", "panic-answer");
+	});
 });

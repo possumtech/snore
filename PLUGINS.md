@@ -475,7 +475,9 @@ prepended above the plugin's summary view output.
 | `file` | Internal | File entry projections and constraints |
 | `rpc` | Internal | RPC method registration |
 | `telemetry` | Internal | Audit entries, usage stats, reasoning_content |
-| `budget` | Internal | Context ceiling enforcement (413) |
+| `budget` | Internal | Context ceiling enforcement (413), panic mode, BudgetGuard |
+| `think` | Internal | Model reasoning tag (`model_visible = 0`) |
+| `mcp` | Core tool | Model Context Protocol server management |
 
 Removed: `crunch` (dead code, replaced by model-owned context management),
 `store` (merged into `set` fidelity attributes).

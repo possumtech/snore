@@ -22,15 +22,17 @@ HTTP status codes throughout (entries, runs, loops, client RPC).
 13 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
 search, summarize, update, ask_user. Tool priority ordering (get first,
 ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
-Budget: 413 enforcement (model owns context). No auto-crunch, no death
-spiral. Pre-LLM check on assembled tokens, per-entry gate at 95%
-ceiling, 500-token size gate on known entries. Advisory warnings at
-50% (YOU MAY) and 75% (YOU MUST). Token math: assembled tokens for
-budget, DB tokens for display only — never conflated (PLUGINS.md §7.5).
-Token estimation via tiktoken * 2x multiplier. Glob matching via picomatch.
+Budget: BudgetGuard at KnownStore layer gates every write during
+dispatch. Pre-LLM check on assembled tokens. contextSize is the
+ceiling, no margins. Token math: `ceil(text.length / RUMMY_TOKEN_DIVISOR)`.
+No tiktoken. Panic mode: new prompt exceeds ceiling → model gets
+restricted loop to free space, 3 strikes without reduction → hard 413.
+500-token size gate on known entries. Advisory warnings at 50%/75%.
+Glob matching via picomatch.
 Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
-always dispatch, never 409'd. Summarize overridden when actions fail.
+always dispatch, never 409'd. Both sent → update wins. Summarize
+overridden when actions fail. `<think>` tag for model reasoning.
 Preamble: XML format, conclude every turn, summaries approximate.
 Four entry roles: data (knowns), logging (current/previous), unknown,
 prompt. Default category: logging. `<prompt mode="ask|act">` replaces
@@ -142,22 +144,46 @@ aren't documented in EXCEPTIONS.md with clear justification.
 
 **Future work:**
 
-### Future: Budget Enforcement
-- Budget plugin: 413 on every tool use that would exceed context
-- Universal: model tools, client RPC, and plugin calls all checked
-- Measurement: full materialization after each tool, not DB estimates
-- No crashes: all violations are 413 rejections with token math
-
-### Future: Housekeeping Loop
-- Budget plugin enqueues housekeeping loop when next prompt won't fit
-- 3 loops max, 3 summarize rejections per loop
-- 413 to client if model can't free enough
-- Implemented as a plugin, not backbone code
-
 ### Future: Benchmarking (MAB + LME)
 - Runners are clean and separate — no changes needed
-- Re-run after refactoring to measure improvement
+- Re-run after budget enforcement to measure improvement
 - Model cooperation with budget is the remaining challenge
+
+### Future: Smart Housekeeping (Step 3)
+- Model makes informed decisions about what to demote
+- Guided by progress warnings at 50%/75%
+- Step 3 of ENFORCED → FUNCTIONAL → SMART
+
+## Done: Session 2026-04-09/10 — Budget Enforcement + Paradigm Shift
+
+- **Budget enforcement (Project 413)**: BudgetGuard at KnownStore
+  layer. Every write gated during dispatch. Delta calculation for
+  updates. Exemptions: status>=400, model_visible=0, stored fidelity.
+  Trip cascade: one tool exceeds → all subsequent fail.
+- **Panic mode**: New prompt exceeds ceiling → panic loop with
+  restricted tools, strike system (3 strikes without reduction →
+  hard 413), re-enqueue original prompt after panic. mode="panic"
+  in loops table.
+- **Four entry roles**: data, logging, unknown, prompt. Categories
+  hardcoded in PluginContext.CATEGORIES (frozen Set). Default: logging.
+  registerScheme() rejects invalid categories.
+- **`<prompt mode="ask|act">`**: Unified ask/act into one scheme.
+  prompt:// with mode attribute.
+- **`<think>` tag**: Model reasoning. model_visible=0, logging category.
+- **Token math simplified**: tiktoken removed. `ceil(text.length /
+  RUMMY_TOKEN_DIVISOR)`. Env-configurable. No external dependencies.
+- **Update wins over summarize**: If model sends both, it's not done.
+- **Automatic RPC**: All registered tools callable via RPC. Third-party
+  plugins get RPC for free via tool fallback on RpcRegistry.
+- **Hook expansion**: tool.before/after, entry.recording filter,
+  turn.completed, loop.started/completed, run.created,
+  context.materialized, panic.started/completed.
+- **Plugin loader**: Timeout protection (10s). Absolute path support.
+- **External plugin alignment**: noContext→noRepo across all repos.
+  rummy.repo: external file change diffs via set:// entries.
+- **Documentation**: All plugin READMEs rewritten. SPEC.md, PLUGINS.md
+  aligned. Four roles documented.
+- **Tests**: 186 unit + 157 integration + 14 E2E.
 
 ## Done: Session 2026-04-09 — Paradigm Audit
 

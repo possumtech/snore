@@ -390,13 +390,18 @@ The model owns its context. The system enforces a hard ceiling and
 provides advisory warnings — it does not automatically manage entries.
 
 **Pre-LLM check:** The budget plugin measures `countTokens()` on the
-assembled messages. If assembled tokens exceed the model's context
-window, the turn returns 413 without calling the LLM.
+assembled messages. If assembled tokens exceed `contextSize`, the turn
+returns 413 without calling the LLM. This triggers panic mode (see
+§4.6).
 
-**Per-entry gate:** During recording, each entry's tokens are checked
-against a 95% ceiling minus current usage. Entries that would exceed
-the budget are rejected with 413 status and an error message telling
-the model to use `<set fidelity="stored">` or `<rm>`.
+**Write-layer gate:** BudgetGuard on KnownStore gates every write
+during dispatch. `upsert()`, `promoteByPattern()`, and
+`updateBodyByPattern()` check token delta against remaining headroom.
+Exceeding the budget throws `BudgetExceeded` — the tool 413s, the
+guard trips, and all subsequent tools in the turn fail.
+
+**Exemptions:** `status >= 400` entries (error results), `model_visible
+= 0` entries (audit), `fidelity = "stored"` entries (not in context).
 
 **Size gate:** Known entries exceeding 500 tokens are rejected with
 413, forcing atomic entries.
@@ -405,9 +410,30 @@ the model to use `<set fidelity="stored">` or `<rm>`.
 - 50%: "You may free space by lowering the fidelity of entries"
 - 75%: "YOU MUST free space... or the run will fail"
 
-**Token math rule:** Budget decisions use ONLY assembled message token
-counts. The `tokens` column on `known_entries` is strictly for DISPLAY.
-See PLUGINS.md §7.5.
+**Token math:** `Math.ceil(text.length / RUMMY_TOKEN_DIVISOR)`. One
+formula, one file (`src/agent/tokens.js`), env-configurable. No
+external dependencies. `contextSize` is the ceiling. Over = 413.
+Under = 200. No margins.
+
+### 4.6 Panic Mode
+
+When a new prompt arrives and the assembled context exceeds
+`contextSize`, the system enters panic mode instead of failing to
+the client.
+
+1. The failed loop is completed with 413 (audit trail)
+2. A panic loop is enqueued (`mode = "panic"`, `noRepo = true`)
+3. The original loop is re-enqueued to retry after panic
+4. The model receives a prompt with the exact shortfall in tokens
+5. Tools: get, set, known, unknown, rm, mv, cp, summarize, update
+6. Excluded: sh, env, search, ask_user
+
+**Strike system:** Each turn without context reduction = 1 strike.
+Any reduction resets the counter. 3 consecutive strikes = hard 413
+to client. Unlimited turns as long as the model makes progress.
+
+One panic attempt per drain cycle. If the retried original loop also
+413s, hard-fail to the client.
 
 **`ToolRegistry.view()`** prepends `attributes.summary` above the
 plugin's summary view output at summary fidelity. The model authors
@@ -626,7 +652,7 @@ Termination protocol:
 - `<summarize>` → run terminates
 - `<summarize>` + failed actions → overridden to `<update>` (continue)
 - `<update>` → run continues
-- Both → summarize wins
+- Both → update wins (if the model can't decide, it's not done)
 - Neither + investigation tools → stall counter (RUMMY_MAX_STALLS)
 - Neither + action-only tools → healed to summarize
 - Neither + plain text → healed to summarize
@@ -661,7 +687,7 @@ E2E tests must NEVER mock the LLM. Environment cascade:
 | Function | Purpose |
 |----------|---------|
 | `schemeOf(path)` | Extract URI scheme |
-| `countTokens(text)` | Token count (tiktoken o200k_base, `ceil(len/4)` fallback) |
+| `countTokens(text)` | Token count (`ceil(len / RUMMY_TOKEN_DIVISOR)`) |
 | `hedmatch(pattern, string)` | Full-string pattern match (paths, equality) |
 | `hedsearch(pattern, string)` | Substring pattern search (content filtering) |
 | `hedreplace(pattern, replacement, string)` | Pattern-based replacement |
@@ -675,6 +701,7 @@ See [PLUGINS.md](PLUGINS.md) for the hedberg pattern type reference.
 
 ```env
 RUMMY_HOME=~/.rummy
+RUMMY_TOKEN_DIVISOR=2
 RUMMY_MAX_TURNS=99
 RUMMY_MAX_STALLS=3
 RUMMY_MAX_REPETITIONS=3
