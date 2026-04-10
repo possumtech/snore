@@ -6,27 +6,27 @@ const LINES = [
 	[
 		"## <known>[specific information, ideas, or plans]</known> - Sort and save what you learn for later recall",
 	],
+	// --- Examples: summary-with-keywords first (teaches the right pattern)
 	[
-		"Example: <known>Mitch Hedberg died on March 30, 2005</known>",
-		"Simple form: auto-slugged path. Works but unsearchable URIs.",
+		'Example: <known summary="hedberg,comedian,death,2005">Mitch Hedberg died on March 30, 2005</known>',
+		"Primary pattern: comma-separated keywords in summary. Path auto-generated from summary as known://hedberg/comedian/death/2005. Keywords become searchable path segments.",
 	],
-	// --- Examples: taxonomic form first (teaches path hierarchy + summary), then simple
 	[
-		'Example: <known path="known://people/rumsfeld" summary="US Secretary of Defense, born 1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
-		"Taxonomic form: slashed path=category/key, summary=keywords, body=detail. Survives crunching with searchable keywords. Category enables glob recall.",
+		'Example: <known path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
+		"Explicit path form: slashed path=category/key, summary=keywords. For when the model wants direct control over taxonomy.",
 	],
 	// --- Lifecycle
 	[
 		'* Recall with <get path="known://people/*">keyword</get>',
-		"Cross-tool lifecycle: optionally glob by category, optionally filter by keyword or pattern. Matches the slashed path convention.",
+		"Cross-tool lifecycle: glob by category, filter by keyword. Matches the slashed path convention.",
 	],
 	[
-		"* `summary` survives when entries are compressed — write keywords you'll search for later",
-		"Teaches WHY summaries matter. The model learns that summary text is what remains visible after budget pressure demotes the entry.",
+		"* `summary` keywords survive compression — write keywords you'll search for later",
+		"Teaches WHY summaries matter. Keywords become the path AND the compressed view.",
 	],
 	[
 		"* YOU MUST sort and save all new information, ideas, and plans in their own <known> entries",
-		"Critical behavioral constraint. 'new' prevents re-saving known facts. Without this, models assume they'll remember across turns.",
+		"Critical behavioral constraint. 'new' prevents re-saving known facts.",
 	],
 ];
 

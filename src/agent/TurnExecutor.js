@@ -582,7 +582,12 @@ export default class TurnExecutor {
 
 		const rawTarget = cmd.path || cmd.command || cmd.question || "";
 		const target = rawTarget;
-		const resultPath = await this.#knownStore.dedup(runId, scheme, target);
+		const resultPath = await this.#knownStore.dedup(
+			runId,
+			scheme,
+			target,
+			turn,
+		);
 
 		// Pass parsed command fields through as attributes
 		const { name: _, ...attributes } = cmd;
@@ -621,7 +626,12 @@ export default class TurnExecutor {
 
 			let knownPath = cmd.path;
 			if (!knownPath) {
-				knownPath = await this.#knownStore.slugPath(runId, "known", cmd.body);
+				knownPath = await this.#knownStore.slugPath(
+					runId,
+					"known",
+					cmd.body,
+					cmd.summary,
+				);
 			}
 			// Dedup: if this exact path already exists, update rather than duplicate
 			const existing = await this.#knownStore.getEntriesByPattern(

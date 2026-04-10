@@ -62,9 +62,10 @@ export default class KnownStore {
 		return row.turn;
 	}
 
-	async dedup(runId, scheme, target) {
+	async dedup(runId, scheme, target, turn) {
 		const encodedTarget = encodeURIComponent(target);
-		const candidate = `${scheme}://${encodedTarget}`;
+		const turnPrefix = turn ? `turn_${turn}/` : "";
+		const candidate = `${scheme}://${turnPrefix}${encodedTarget}`;
 		const existing = await this.#db.get_entry_body.get({
 			run_id: runId,
 			path: candidate,
@@ -73,8 +74,9 @@ export default class KnownStore {
 		return `${candidate}_${Date.now()}`;
 	}
 
-	async slugPath(runId, scheme, content) {
-		const base = slugify(content || "");
+	async slugPath(runId, scheme, content, summary) {
+		const source = summary ? summary.replace(/,\s*/g, "/") : content || "";
+		const base = slugify(source);
 		const prefix = `${scheme}://`;
 
 		if (!base) return `${prefix}${Date.now()}`;

@@ -18,8 +18,8 @@ const LINES = [
 
 	// --- Constraints
 	[
-		"* Removes from context AND deletes permanently",
-		"Not just hiding — actual deletion. Models must understand the permanence.",
+		'* Permanent. Prefer <set fidelity="archive"/> to preserve for later retrieval',
+		"Nudges toward archive over rm. Archive keeps the key; rm deletes permanently.",
 	],
 	[
 		"* Paths accept globs — use `preview` to check matches first",

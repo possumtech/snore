@@ -515,7 +515,12 @@ async function buildRunContext(hooks, ctx, runAlias) {
 
 async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 	const store = rummy.entries;
-	const resultPath = await store.dedup(rummy.runId, scheme, path);
+	const resultPath = await store.dedup(
+		rummy.runId,
+		scheme,
+		path,
+		rummy.sequence,
+	);
 
 	await store.upsert(rummy.runId, rummy.sequence, resultPath, body, 200, {
 		attributes: attributes,
