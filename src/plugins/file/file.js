@@ -29,8 +29,8 @@ export default class File {
 		return entry.body;
 	}
 
-	summary(entry) {
-		return entry.body;
+	summary() {
+		return "";
 	}
 
 	/**

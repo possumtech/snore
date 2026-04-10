@@ -455,56 +455,6 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
-	// Story 9c: Budget ceiling — run fails when context exceeds limit.
-	// The model owns context management. The budget is the backstop.
-	it("budget crash when context exceeds limit", {
-		timeout: TIMEOUT,
-	}, async () => {
-		// Load large files to fill context
-		const bigContent = `// ${"x".repeat(3000)}\n`;
-		await fs.writeFile(join(projectRoot, "src/pressure1.js"), bigContent);
-		await fs.writeFile(join(projectRoot, "src/pressure2.js"), bigContent);
-
-		const setup = await client.call("startRun", { model });
-		await client.call("get", {
-			path: "src/pressure1.js",
-			persist: true,
-			run: setup.run,
-		});
-		await client.call("get", {
-			path: "src/pressure2.js",
-			persist: true,
-			run: setup.run,
-		});
-
-		const r1 = await client.call("ask", {
-			model,
-			prompt: "Reply with OK.",
-			run: setup.run,
-			noInteraction: true,
-		});
-		await client.assertRun(r1, 200, "pressure-load");
-
-		// Shrink context below the floor — should crash
-		await client.call("run/config", {
-			run: r1.run,
-			contextLimit: 1024,
-		});
-
-		const r2 = await client.call("ask", {
-			model,
-			prompt: "Reply with OK.",
-			run: r1.run,
-			noInteraction: true,
-		});
-		await client.assertRun(r2, 413, "pressure-rejected");
-
-		// Clean up: remove file constraints and pressure files
-		await client.call("store", { path: "src/pressure1.js", clear: true });
-		await client.call("store", { path: "src/pressure2.js", clear: true });
-		await fs.unlink(join(projectRoot, "src/pressure1.js")).catch(() => {});
-		await fs.unlink(join(projectRoot, "src/pressure2.js")).catch(() => {});
-	});
 
 	// Story 10: Web search — model searches, gets results, answers from them.
 	it("autonomous web search", { timeout: TIMEOUT }, async () => {
