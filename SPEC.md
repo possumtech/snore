@@ -96,7 +96,6 @@ Every entry plays one of four roles:
 | `http://`, `https://` | data | Web content. |
 | `unknown://` | unknown | Unresolved questions. |
 | `prompt://` | prompt | User prompt with `mode` attribute (`ask`/`act`). |
-| `progress://` | prompt | Continuation prompt. |
 | `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | Tool result entries. |
 | `summarize://`, `update://` | logging | Lifecycle signals. |
 | `tool://` | audit | Internal plugin metadata. `model_visible = 0`. |
@@ -307,7 +306,7 @@ Two messages per turn. System = stable truth. User = active task.
     <current>
         (current loop entries, each with turn, status, summary, fidelity, tokens)
     </current>
-    <progress>the above actions have been performed on this user prompt:</progress>
+    <progress turn="N">token budget, fidelity stats, causal bridge</progress>
     <prompt mode="ask|act" tools="...">user prompt</prompt>
 [/user]
 ```
@@ -359,7 +358,7 @@ text from body + attributes.
 Each turn:
 
 1. Write `instructions://system` (empty body, attributes = { persona })
-2. Emit `turn.started` — plugins write prompt/progress/instructions entries
+2. Emit `turn.started` — plugins write prompt/instructions entries
 3. Project `instructions://system` → instructions text
 4. Query `v_model_context` VIEW → visible entries
 5. Project each entry through its tool's `full`/`summary` projection
