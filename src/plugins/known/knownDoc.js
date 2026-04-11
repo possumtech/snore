@@ -4,7 +4,7 @@
 const LINES = [
 	// --- Syntax: body = the information to save
 	[
-		'## <known summary="keyword1,keyword2,keyword3">[specific information, ideas, or plans]</known> - Sort and save what you learn for later recall',
+		'## <known summary="defense,secretary,born,1932">[specific information, ideas, or plans]</known> - Sort and save what you learn for later recall',
 	],
 	// --- Examples: summary-with-keywords first (teaches the right pattern)
 	[

@@ -28,7 +28,7 @@ export default class Budget {
 			"",
 			"Entries in <knowns> and <previous> each show their current fidelity and token size. Reduce their fidelity to free up space.",
 			"Target the largest and/or least relevant entries first.",
-			'<set path="known://topic" fidelity="summary" summary="keyword1,keyword2,keyword3"/> to compress an entry.',
+			'<set path="known://rumsfeld" fidelity="summary" summary="defense,secretary,iraq"/> to compress an entry.',
 			'<set path="prompt://3" fidelity="index"/> to compress an entry — preferred, keeps path visible for later retrieval.',
 			'<set path="known://topic" fidelity="archive"/> to remove from context — use only if the entry is truly irrelevant.',
 			"Use quality keywords from the entry to describe the content.",

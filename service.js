@@ -81,10 +81,12 @@ async function main() {
 			if (!key.startsWith("RUMMY_MODEL_")) continue;
 			const alias = key.replace("RUMMY_MODEL_", "");
 			const actual = process.env[key];
+			const contextEnv = process.env[`RUMMY_CONTEXT_${alias}`];
+			const context_length = contextEnv ? Number.parseInt(contextEnv, 10) : null;
 			await db.upsert_model.get({
 				alias,
 				actual,
-				context_length: null,
+				context_length,
 			});
 			modelAliases.push(alias);
 		}

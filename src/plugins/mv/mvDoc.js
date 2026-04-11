@@ -26,6 +26,10 @@ const LINES = [
 		'Example: <mv path="known://people/*" fidelity="index"/> ... <mv path="known://people/rumsfeld" fidelity="full"/>',
 		"Index a whole category to free context while keeping paths visible, restore one entry when needed. No destination = fidelity change in place.",
 	],
+	[
+		"* YOU SHOULD demote irrelevant entries to `index` or `archive` — clean context improves reasoning.",
+		"Core curation principle: clean context is a quality signal, not just a budget concern. Teach the model to curate eagerly.",
+	],
 
 	// --- Constraints
 	[

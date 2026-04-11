@@ -26,10 +26,12 @@ export default class TestServer {
 			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_TEST_MODEL")
 				continue;
 			const alias = key.replace("RUMMY_MODEL_", "");
+			const contextEnv = process.env[`RUMMY_CONTEXT_${alias}`];
+			const context_length = contextEnv ? Number.parseInt(contextEnv, 10) : null;
 			await db.upsert_model.get({
 				alias,
 				actual: process.env[key],
-				context_length: null,
+				context_length,
 			});
 		}
 
