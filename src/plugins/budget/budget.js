@@ -21,12 +21,10 @@ export default class Budget {
 		};
 	}
 
-	static panicPrompt({ assembledTokens, contextSize, continuation = false }) {
-		const target = Math.floor(contextSize * 0.5);
-		const mustFree = assembledTokens - target;
+	static panicPrompt({ assembledTokens, panicTarget, continuation = false }) {
+		const mustFree = assembledTokens - panicTarget;
 		return [
-			`CONTEXT OVERFLOW: ${assembledTokens} tokens used. The ceiling is ${contextSize}.`,
-			`YOU MUST free ${mustFree} tokens to get below ${target} (50%).`,
+			`CONTEXT OVERFLOW: YOU MUST free up at least ${mustFree} tokens to continue.`,
 			"",
 			"Entries in <knowns> and <previous> each show their current fidelity and token size. Reduce their fidelity to free up space.",
 			"Target the largest and/or least relevant entries first.",

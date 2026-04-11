@@ -1,6 +1,7 @@
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
+import { countTokens } from "./tokens.js";
 
 export default class AgentLoop {
 	#db;
@@ -198,6 +199,7 @@ export default class AgentLoop {
 						noRepo: loopConfig.noRepo || false,
 						noInteraction: loopConfig.noInteraction || false,
 						noWeb: loopConfig.noWeb || false,
+						panicTarget: loopConfig.panicTarget ?? null,
 						options: { ...options, temperature: loopConfig.temperature },
 						hook,
 						signal: controller.signal,
@@ -232,9 +234,16 @@ export default class AgentLoop {
 
 					panicAttempted = true;
 
+					const ceiling = Math.floor(result.contextSize * 0.9);
+					const incomingTokens = countTokens(loop.prompt);
+					const panicTarget = Math.min(
+						Math.floor(result.contextSize * 0.75),
+						ceiling - incomingTokens,
+					);
+
 					const panicPrompt = this.#hooks.budget.panicPrompt({
 						assembledTokens: result.assembledTokens,
-						contextSize: result.contextSize,
+						panicTarget,
 					});
 
 					// Enqueue panic loop
@@ -247,7 +256,7 @@ export default class AgentLoop {
 						mode: "panic",
 						model: loop.model,
 						prompt: panicPrompt,
-						config: JSON.stringify({ noRepo: true }),
+						config: JSON.stringify({ noRepo: true, panicTarget }),
 					});
 
 					// Re-enqueue the original loop to retry after panic
@@ -296,6 +305,7 @@ export default class AgentLoop {
 		noRepo,
 		noInteraction,
 		noWeb,
+		panicTarget,
 		options,
 		hook,
 		signal,
@@ -400,8 +410,9 @@ export default class AgentLoop {
 
 				// Panic mode: target check + strike counting
 				if (mode === "panic") {
-					const panicTarget = Math.floor(contextSize * 0.5);
-					if (result.assembledTokens <= panicTarget) {
+					const panicTarget_ =
+						panicTarget ?? Math.floor(contextSize * 0.75);
+					if (result.assembledTokens <= panicTarget_) {
 						await this.#db.update_run_status.run({
 							id: currentRunId,
 							status: 200,
@@ -514,8 +525,9 @@ export default class AgentLoop {
 				if (!repetition.continue) {
 					// In panic mode, don't exit on summarize unless budget target is met.
 					// The model may signal done before reaching the required headroom.
-					const panicTarget = Math.floor(contextSize * 0.5);
-					if (mode === "panic" && result.assembledTokens > panicTarget) {
+					const panicTarget_ =
+						panicTarget ?? Math.floor(contextSize * 0.75);
+					if (mode === "panic" && result.assembledTokens > panicTarget_) {
 						// treat as continuation — target not yet reached
 					} else {
 						await this.#db.update_run_status.run({
