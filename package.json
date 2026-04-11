@@ -43,9 +43,9 @@
 		"test:live": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/live_$(date +%Y%m%dT%H%M%S).log",
 		"test:clean": "rm -rf test/lme/results test/mab/results test/tmp /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal && echo 'Test artifacts cleaned.'",
 		"test:mab:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/download.js",
-		"test:mab": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js 2>&1 | tee /tmp/rummy_test_diag/mab_$(date +%Y%m%dT%H%M%S).log",
+		"test:mab": "bash -c 'mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js \"$@\" 2>&1 | tee /tmp/rummy_test_diag/mab_$(date +%Y%m%dT%H%M%S).log' --",
 		"test:lme:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/download.js",
-		"test:lme": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/runner.js 2>&1 | tee /tmp/rummy_test_diag/lme_$(date +%Y%m%dT%H%M%S).log",
+		"test:lme": "bash -c 'mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/runner.js \"$@\" 2>&1 | tee /tmp/rummy_test_diag/lme_$(date +%Y%m%dT%H%M%S).log' --",
 		"test:mab:clean": "rm -rf test/mab/results/*/",
 		"test:lme:clean": "rm -rf test/lme/results/*/",
 		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*"

@@ -427,28 +427,6 @@ export default class TurnExecutor {
 		// If model sent both, update wins — if it can't decide, it's not done
 		if (summaryText && updateText) summaryText = null;
 
-		// If model says "done" but issued read actions this turn, override — it
-		// composed its conclusion before seeing the results. Write actions are
-		// already gated by hasErrors above; reads are not (they return data
-		// the model hasn't seen yet).
-		const READ_SCHEMES = new Set(["get", "env", "search"]);
-		const hasPendingReads = actions.some((e) => READ_SCHEMES.has(e.scheme));
-		if (summaryText && hasPendingReads) {
-			console.warn(
-				"[RUMMY] Overriding <summarize> — read actions issued in this turn. Model cannot conclude before seeing results.",
-			);
-			if (summaryEntry?.path) {
-				await this.#knownStore.resolve(
-					currentRunId,
-					summaryEntry.path,
-					409,
-					"Overridden — you issued reads in this turn. Wait for results before concluding.",
-				);
-			}
-			updateText = summaryText;
-			summaryText = null;
-		}
-
 		// If model says "done" but actions failed, override — the model's
 		// assertion that it's done is false if it failed to do what it tried.
 		if (summaryText && hasErrors) {

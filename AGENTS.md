@@ -31,8 +31,8 @@ restricted loop to free space to 50%, 3 strikes without reduction → hard 413.
 Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
 always dispatch, never 409'd. Both sent → update wins. Summarize
-overridden when actions fail or when read actions (get/env/search) issued
-in same turn (model cannot conclude before seeing results). `<think>` /
+overridden only when actions fail (4xx/5xx). Reads (get/env/search) in
+same turn do not block conclude — model is trusted to decide. `<think>` /
 `<thought>` tags for model reasoning — inner tool calls captured as
 rawBody, never dispatched.
 Preamble: XML format, conclude every turn, summaries approximate.
