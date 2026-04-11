@@ -69,7 +69,7 @@ export default class Budget {
 	}
 
 	activate(store, contextSize, assembledTokens) {
-		const guard = new BudgetGuard(Math.floor(contextSize * 0.9), assembledTokens);
+		const guard = new BudgetGuard(Math.floor(contextSize * 0.9) - 500, assembledTokens);
 		store.budgetGuard = guard;
 		return guard;
 	}

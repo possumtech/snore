@@ -401,6 +401,16 @@ during dispatch. `upsert()`, `promoteByPattern()`, and
 Exceeding the budget throws `BudgetExceeded` — the tool 413s, the
 guard trips, and all subsequent tools in the turn fail.
 
+BudgetGuard ceiling = `floor(contextSize × 0.9) − 500`. The 500-token
+buffer below the enforce ceiling absorbs two sources of overhead that
+BudgetGuard cannot see: (a) `#record()`-phase writes that bypass the
+guard (~15 tokens per command), and (b) loop transition overhead —
+when a loop completes and a new one starts, entries shift from
+`<current>` to `<previous>` format, adding ~200–300 tokens to the
+next assembly. Without this buffer, the base context can accumulate
+to exactly the enforce ceiling, making it impossible for the panic
+loop to start (panic prompt + loop overhead > ceiling).
+
 **Exemptions:** `status >= 400` entries (error results), `model_visible
 = 0` entries (audit), `fidelity = "archive"` entries (not in context).
 
