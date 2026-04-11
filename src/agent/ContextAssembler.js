@@ -13,7 +13,7 @@ export default class ContextAssembler {
 			demoted = [],
 			toolSet = null,
 			lastContextTokens = 0,
-			loopIteration = 1,
+			turn = 1,
 		} = {},
 		hooks,
 	) {
@@ -31,7 +31,7 @@ export default class ContextAssembler {
 			lastContextTokens,
 			demoted,
 			toolSet,
-			loopIteration,
+			turn,
 		};
 
 		const system = await hooks.assembly.system.filter(systemPrompt, ctx);

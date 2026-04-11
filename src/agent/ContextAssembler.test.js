@@ -106,7 +106,7 @@ describe("ContextAssembler", () => {
 
 			const user = messages[1].content;
 			const currentPos = user.indexOf("<current>");
-			const progressPos = user.indexOf("<progress>");
+			const progressPos = user.indexOf("<progress");
 			const promptPos = user.indexOf("<prompt");
 			assert.ok(currentPos < progressPos, "current before progress");
 			assert.ok(progressPos < promptPos, "progress before prompt");
@@ -255,7 +255,7 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].content, "sys");
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<progress>"));
+			assert.ok(messages[1].content.includes("<progress"));
 		});
 
 		it("renders known entries in row order", async () => {

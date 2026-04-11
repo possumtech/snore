@@ -177,7 +177,7 @@ export default class TurnExecutor {
 				demoted,
 				toolSet,
 				lastContextTokens,
-				loopIteration,
+				turn,
 			},
 			this.#hooks,
 		);

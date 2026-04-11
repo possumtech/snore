@@ -9,9 +9,8 @@ current work log to the active prompt.
 
 ## Behavior
 
-On first turn: "Begin."
+Emits `<progress turn="N">` carrying token budget and fidelity stats.
 On continuation turns with current entries: "The above actions were
 performed in response to the following prompt:"
-If a `progress://` entry exists, uses its body directly.
 
 Progress text is the tuning knob for model orientation between turns.
