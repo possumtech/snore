@@ -506,6 +506,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				prompt: `Read src/data${i}.txt and reply OK.`,
 				run,
 				noInteraction: true,
+				noProposals: true,
 			});
 			await client.assertRun(r, 200, `panic-load-${i}`);
 			run = r.run;

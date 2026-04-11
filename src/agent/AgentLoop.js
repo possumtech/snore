@@ -122,6 +122,7 @@ export default class AgentLoop {
 		const noRepo = options?.noRepo === true;
 		const noInteraction = options?.noInteraction === true;
 		const noWeb = options?.noWeb === true;
+		const noProposals = options?.noProposals === true;
 		const requestedModel = model;
 
 		const runInfo = await this.#ensureRun(projectId, model, run, options);
@@ -147,6 +148,7 @@ export default class AgentLoop {
 				noRepo,
 				noInteraction,
 				noWeb,
+				noProposals,
 				temperature: options?.temperature,
 			}),
 		});
@@ -199,6 +201,7 @@ export default class AgentLoop {
 						noRepo: loopConfig.noRepo || false,
 						noInteraction: loopConfig.noInteraction || false,
 						noWeb: loopConfig.noWeb || false,
+						noProposals: loopConfig.noProposals || false,
 						panicTarget: loopConfig.panicTarget ?? null,
 						options: { ...options, temperature: loopConfig.temperature },
 						hook,
@@ -305,6 +308,7 @@ export default class AgentLoop {
 		noRepo,
 		noInteraction,
 		noWeb,
+		noProposals,
 		panicTarget,
 		options,
 		hook,
@@ -327,6 +331,7 @@ export default class AgentLoop {
 		const toolSet = this.#hooks.tools.resolveForLoop(mode, {
 			noInteraction,
 			noWeb,
+			noProposals,
 		});
 
 		let loopIteration = 0;
@@ -410,8 +415,7 @@ export default class AgentLoop {
 
 				// Panic mode: target check + strike counting
 				if (mode === "panic") {
-					const panicTarget_ =
-						panicTarget ?? Math.floor(contextSize * 0.75);
+					const panicTarget_ = panicTarget ?? Math.floor(contextSize * 0.75);
 					if (result.assembledTokens <= panicTarget_) {
 						await this.#db.update_run_status.run({
 							id: currentRunId,
@@ -525,8 +529,7 @@ export default class AgentLoop {
 				if (!repetition.continue) {
 					// In panic mode, don't exit on summarize unless budget target is met.
 					// The model may signal done before reaching the required headroom.
-					const panicTarget_ =
-						panicTarget ?? Math.floor(contextSize * 0.75);
+					const panicTarget_ = panicTarget ?? Math.floor(contextSize * 0.75);
 					if (mode === "panic" && result.assembledTokens > panicTarget_) {
 						// treat as continuation — target not yet reached
 					} else {

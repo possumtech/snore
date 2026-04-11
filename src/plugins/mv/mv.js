@@ -27,10 +27,15 @@ export default class Mv {
 		// Fidelity-in-place: no destination, change visibility of matched entries
 		if (fidelity && !to) {
 			const matches = await store.getEntriesByPattern(runId, path);
-			for (const match of matches) await store.setFidelity(runId, match.path, fidelity);
+			for (const match of matches)
+				await store.setFidelity(runId, match.path, fidelity);
 			const label = fidelity === "archive" ? "archived" : `set to ${fidelity}`;
-			await store.upsert(runId, turn, entry.resultPath,
-				`${matches.map((m) => m.path).join(", ")} ${label}`, 200,
+			await store.upsert(
+				runId,
+				turn,
+				entry.resultPath,
+				`${matches.map((m) => m.path).join(", ")} ${label}`,
+				200,
 				{ fidelity: "archive", loopId },
 			);
 			return;

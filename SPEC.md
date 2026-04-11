@@ -210,7 +210,7 @@ object is the same shape at every tier.
 
 Model tier restrictions enforced by unified `resolveForLoop(mode, flags)`.
 Ask mode excludes `sh`. Flags: `noInteraction` excludes `ask_user`,
-`noWeb` excludes `search`, `noBench` excludes `ask_user`/`env`/`sh`.
+`noWeb` excludes `search`, `noProposals` excludes `ask_user`/`env`/`sh`.
 13 model tools: get, set, known, unknown, env, sh, rm, cp, mv, search,
 summarize, update, ask_user.
 Client tier requires project init. Plugin tier has no restrictions.
@@ -610,7 +610,7 @@ Tools are presented gather → reason → act → communicate. Position in
 the list implies priority. `get` is first. `ask_user` is last. The
 order is defined in `ToolRegistry.TOOL_ORDER` and applied by
 `resolveForLoop()`. The same method handles all tool exclusions —
-mode restrictions, `noInteraction`, `noWeb`, `noBench` — through
+mode restrictions, `noInteraction`, `noWeb`, `noProposals` — through
 one unified mechanism.
 
 ### Pattern Distribution
@@ -695,6 +695,54 @@ E2E tests must NEVER mock the LLM. Environment cascade:
 | `slugify(text)` | URI-encoded slug, max 80 chars |
 
 See [PLUGINS.md](PLUGINS.md) for the hedberg pattern type reference.
+
+---
+
+## 13. Debugging: E2E and Benchmark Results
+
+### E2E test failures
+
+E2E tests use a temp DB at `/tmp/rummy_test_<timestamp>_<random>.db` (cleaned up after).
+On failure, `AuditClient.assertRun` calls `dumpRun`, which prints a full turn-by-turn audit
+to stdout. That output is in the background task log:
+
+```
+/tmp/claude-1000/-home-hyzen-repo-rummy-main/<session-id>/tasks/<task-id>.output
+```
+
+If oversized, the harness saves to:
+```
+/home/hyzen/.claude/projects/-home-hyzen-repo-rummy-main/<session-id>/tool-results/<id>.txt
+```
+
+The dump format is: `scheme:state path {attributes}\n  body (120 chars)` grouped by turn.
+
+Key things to look for in a dump:
+- **202**: unresolved proposals — model issued `<sh>`, `<rm>`, or `<mv>` that needs approval
+- **413**: budget overflow — assembled context exceeded ceiling before LLM call
+- **BudgetGuard errors**: per-tool rejections mid-turn (`Budget exceeded: N tokens requested`)
+- **`<sh>` in act/panic mode**: model fell back to shell when blocked (doc/prompt gap)
+- Loop sequence: look for `mode` in `instructions://system` attrs to see which loop type ran
+
+### MAB benchmark
+
+Results live in `test/mab/results/<ISO-timestamp>/mab.db`. Latest run = most recent dir.
+
+```js
+// Query a MAB result DB directly:
+import { DatabaseSync } from 'node:sqlite';
+const db = new DatabaseSync('test/mab/results/<timestamp>/mab.db');
+db.prepare('SELECT * FROM questions').all();      // all questions + scores
+db.prepare('SELECT * FROM runs').all();           // individual model runs
+```
+
+Run with: `npm run test:mab`
+
+### LME benchmark
+
+Results live in `test/lme/results/<ISO-timestamp>/lme.db`. Same structure.
+
+Run with: `npm run test:lme`
 
 ---
 

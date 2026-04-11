@@ -3,7 +3,7 @@ import { countTokens } from "../../agent/tokens.js";
 export class BudgetExceeded extends Error {
 	constructor(path, requested, remaining) {
 		super(
-			`Budget exceeded: ${path} needs ${requested} tokens, ${remaining} remaining`,
+			`Budget exceeded: ${path} needs ${requested} tokens, ${remaining} remaining.\nArchive or compress entries in <knowns> to free space, then retry.`,
 		);
 		this.name = "BudgetExceeded";
 		this.status = 413;

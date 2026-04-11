@@ -118,7 +118,7 @@ export default class ToolRegistry {
 	 */
 	resolveForLoop(
 		mode,
-		{ noInteraction = false, noWeb = false, noBench = false } = {},
+		{ noInteraction = false, noWeb = false, noProposals = false } = {},
 	) {
 		const excluded = new Set();
 		if (mode === "ask") excluded.add("sh");
@@ -130,7 +130,7 @@ export default class ToolRegistry {
 		}
 		if (noInteraction) excluded.add("ask_user");
 		if (noWeb) excluded.add("search");
-		if (noBench) {
+		if (noProposals) {
 			excluded.add("ask_user");
 			excluded.add("env");
 			excluded.add("sh");

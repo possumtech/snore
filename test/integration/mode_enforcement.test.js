@@ -150,8 +150,8 @@ describe("Tool exclusion flags", () => {
 		assert.ok(tools.has("get"), "get should still be available");
 	});
 
-	it("noBench removes ask_user, env, and sh", () => {
-		const tools = tdb.hooks.tools.resolveForLoop("act", { noBench: true });
+	it("noProposals removes ask_user, env, and sh", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("act", { noProposals: true });
 		assert.ok(!tools.has("ask_user"), "ask_user excluded");
 		assert.ok(!tools.has("env"), "env excluded");
 		assert.ok(!tools.has("sh"), "sh excluded");
