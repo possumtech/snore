@@ -418,28 +418,82 @@ Under = 200. No margins.
 
 ### 4.6 Panic Mode
 
-When a new prompt arrives and the assembled context exceeds
-`contextSize`, the system enters panic mode instead of failing to
-the client.
+**The invariant.** A panic is only ever triggered because the
+assembled context was under the ceiling — and the new prompt pushed
+it over. The existing context fit; the incoming prompt did not.
+Panic mode replaces that too-large incoming prompt with a small
+panic prompt on the same context. Therefore: the first turn of a
+panic loop cannot 413. If it does, it is a bug.
 
-1. The failed loop is completed with 413 (audit trail)
-2. A panic loop is enqueued (`mode = "panic"`, `noRepo = true`)
-3. The original loop is re-enqueued to retry after panic
-4. The model receives a prompt with the exact shortfall in tokens
-5. Tools: get, set, known, unknown, rm, mv, cp, summarize, update
-6. Excluded: sh, env, search, ask_user
+**Trigger.** `TurnExecutor.execute()` assembles the full packet
+(context + incoming prompt) before calling the LLM. If
+`assembledTokens > contextSize`, it returns 413 without calling
+the LLM. `#drainQueue` intercepts this and enters panic mode.
 
-**Strike system:** Each turn without context reduction = 1 strike.
-Any reduction resets the counter. 3 consecutive strikes = hard 413
-to client. Unlimited turns as long as the model makes progress.
+**Flow.**
+1. Complete the failed loop with status 413 (audit trail).
+2. Enqueue a panic loop (`mode = "panic"`, `noRepo = true`,
+   `prompt = panicPrompt`, `panicTarget` in config).
+3. Re-enqueue the original loop with `panicAttempted: true` in
+   its config JSON. This flag persists across drain cycles.
+4. `continue` — the drain loop claims the panic loop next.
 
-One panic attempt per drain cycle. If the retried original loop also
-413s, hard-fail to the client.
+After panic completes (model freed enough space), the retry loop
+runs. If the retry also 413s, hard-fail to client. One panic
+attempt per drain cycle — `panicAttempted` is checked both as a
+local variable and on the re-enqueued loop's config.
 
-**`ToolRegistry.view()`** prepends `attributes.summary` above the
-plugin's summary view output at summary fidelity. The model authors
-summaries (<= 80 chars) via `<set summary="...">`. Summaries persist
-across fidelity changes.
+**Panic target.** The model must compress context to below:
+
+```
+panicTarget = MIN(contextSize × 0.75, contextSize − incomingTokens) − cushion
+```
+
+`incomingTokens` is the raw token count of the original prompt.
+`cushion` is a small safety margin (500 tokens) to absorb
+materialization overhead. The target is expressed in materialized
+token units — the same unit the system uses to measure completion
+(see Token Math below).
+
+**Two token contexts.**
+
+The model reasons in *per-entry SQL tokens* — the token counts
+visible in `<knowns>` entries. These are the granular unit the model
+uses to decide which entries to target: "this entry is 200 tokens;
+if I archive it, I save 200 tokens."
+
+The system makes decisions in *materialized assembled tokens* —
+measured by `budget.enforce → measureMessages(messages)` on the
+fully assembled packet. SQL token sums do not equal materialized
+totals because projections, assembly overhead, and fidelity
+transforms alter the output. **Never use SQL token sums for ceiling
+or panic decisions.** `result.assembledTokens` in all panic logic
+is always the materialized measure.
+
+**Strike system.** After each panic turn, compare
+`result.assembledTokens` (materialized) with `_lastPanicTokens`
+(previous turn's materialized total):
+- Decreased → reset strike counter to 0.
+- Same or increased → increment strikes.
+- 3 consecutive strikes → return 413 to `#drainQueue` → hard-fail.
+
+Progress (any reduction) resets the counter. The model has
+unlimited turns as long as it makes progress.
+
+**Panic success.** After each turn, if `result.assembledTokens
+<= panicTarget`, the panic loop exits with 200. The retry loop
+then runs with the original prompt on the now-compressed context.
+
+**Tool set.** `resolveForLoop("panic")` includes: get, set, known,
+unknown, rm, mv, cp, summarize, update. Excludes: sh, env, search,
+ask_user. `noRepo: true` — no file scanning during panic.
+
+**What the model sees.** Turn 1 receives the panic prompt from
+`budget.panicPrompt()`: the assembled token count, the target, and
+the exact number of tokens to free. Turn 2+ receives a continuation
+prompt. The model uses `<set fidelity="archive">`, `<mv
+fidelity="index">`, and similar fidelity operations to free space,
+concluding with `<summarize>` when done or `<update>` while working.
 
 ---
 
