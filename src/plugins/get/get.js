@@ -30,6 +30,10 @@ export default class Get {
 		const normalized = KnownStore.normalizePath(target);
 		const bodyFilter = entry.attributes.body || null;
 		const isPattern = bodyFilter || normalized.includes("*");
+		const VALID_FIDELITY = { stored: 1, summary: 1, index: 1, full: 1, archive: 1 };
+		const fidelityAttr = VALID_FIDELITY[entry.attributes.fidelity]
+			? entry.attributes.fidelity
+			: null;
 		const matches = await store.getEntriesByPattern(
 			runId,
 			normalized,
@@ -37,6 +41,9 @@ export default class Get {
 		);
 
 		await store.promoteByPattern(runId, normalized, bodyFilter, turn);
+		if (fidelityAttr) {
+			for (const match of matches) await store.setFidelity(runId, match.path, fidelityAttr);
+		}
 
 		if (isPattern) {
 			await storePatternResult(

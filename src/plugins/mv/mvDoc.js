@@ -17,6 +17,16 @@ const LINES = [
 		"File rename. Shows that mv works on files too, not just known entries.",
 	],
 
+	// --- Archive lifecycle
+	[
+		"* You may move entries or pattern-matching batches of entries to and from the archive to manage your context budget.",
+		"Teaches archival as a reversible budget operation, not permanent deletion.",
+	],
+	[
+		'Example: <mv path="known://people/*" fidelity="index"/> ... <mv path="known://people/rumsfeld" fidelity="full"/>',
+		"Index a whole category to free context while keeping paths visible, restore one entry when needed. No destination = fidelity change in place.",
+	],
+
 	// --- Constraints
 	[
 		"* Source path accepts globs for batch moves",

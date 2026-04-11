@@ -19,7 +19,7 @@ export default class Cp {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
-		const VALID = { stored: 1, summary: 1, index: 1, full: 1 };
+		const VALID = { stored: 1, summary: 1, index: 1, full: 1, archive: 1 };
 		const fidelity = VALID[entry.attributes.fidelity]
 			? entry.attributes.fidelity
 			: undefined;

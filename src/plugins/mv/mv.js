@@ -19,10 +19,22 @@ export default class Mv {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
-		const VALID = { stored: 1, summary: 1, index: 1, full: 1 };
+		const VALID = { stored: 1, summary: 1, index: 1, full: 1, archive: 1 };
 		const fidelity = VALID[entry.attributes.fidelity]
 			? entry.attributes.fidelity
 			: undefined;
+
+		// Fidelity-in-place: no destination, change visibility of matched entries
+		if (fidelity && !to) {
+			const matches = await store.getEntriesByPattern(runId, path);
+			for (const match of matches) await store.setFidelity(runId, match.path, fidelity);
+			const label = fidelity === "archive" ? "archived" : `set to ${fidelity}`;
+			await store.upsert(runId, turn, entry.resultPath,
+				`${matches.map((m) => m.path).join(", ")} ${label}`, 200,
+				{ fidelity: "archive", loopId },
+			);
+			return;
+		}
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
