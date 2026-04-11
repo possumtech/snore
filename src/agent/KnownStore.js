@@ -77,7 +77,7 @@ export default class KnownStore {
 	}
 
 	async slugPath(runId, scheme, content, summary) {
-		const source = summary ? summary.replace(/,\s*/g, "/") : content || "";
+		const source = summary || content || "";
 		const base = slugify(source);
 		const prefix = `${scheme}://`;
 

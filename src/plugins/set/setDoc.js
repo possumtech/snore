@@ -19,7 +19,7 @@ const LINES = [
 		"SEARCH/REPLACE block: literal match and replace. Use when sed escaping is complex.",
 	],
 	[
-		'Example: <set path="known://rumsfeld" fidelity="summary" summary="defense,secretary,iraq"/> ... <set path="prompt://3" fidelity="index"/>',
+		'Example: <set path="known://rumsfeld" fidelity="summary" summary="defense/secretary/iraq"/> ... <set path="prompt://3" fidelity="index"/>',
 		"Fidelity control: compress a known entry to keywords, demote a previous prompt to index-only. Both free context while keeping paths visible.",
 	],
 

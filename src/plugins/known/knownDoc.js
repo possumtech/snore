@@ -2,18 +2,18 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	// --- Syntax: body = the information to save
+	// --- Syntax: path = slash-separated topic hierarchy, body = the information to save
 	[
-		'## <known summary="defense,secretary,born,1932">[specific information, ideas, or plans]</known> - Sort and save what you learn for later recall',
+		'## <known path="known://topic/subtopic">[specific information, ideas, or plans]</known> - Sort and save what you learn for later recall',
 	],
-	// --- Examples: summary-with-keywords first (teaches the right pattern)
+	// --- Examples: explicit slash path first (canonical pattern)
 	[
-		'Example: <known summary="hedberg,comedian,death,2005">Mitch Hedberg died on March 30, 2005</known>',
-		"Primary pattern: comma-separated keywords in summary. Path auto-generated from summary as known://hedberg/comedian/death/2005. Keywords become searchable path segments.",
+		'Example: <known path="known://hedberg/comedian">Mitch Hedberg died on March 30, 2005</known>',
+		"Primary pattern: slash-separated path segments form a topic hierarchy. Path is the address for recall.",
 	],
 	[
-		'Example: <known path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
-		"Explicit path form: slashed path=category/key, summary=keywords. For when the model wants direct control over taxonomy.",
+		'Example: <known path="known://people/rumsfeld" summary="defense/secretary/born/1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
+		"With summary: optional comma-separated keywords survive compression. Path is the taxonomy; summary is the compressed label.",
 	],
 	// --- Lifecycle
 	[
@@ -22,7 +22,7 @@ const LINES = [
 	],
 	[
 		"* `summary` keywords survive compression — write keywords you'll search for later",
-		"Teaches WHY summaries matter. Keywords become the path AND the compressed view.",
+		"Summary is a compression label, not a path generator. Path is always explicit.",
 	],
 	[
 		"* YOU MUST sort and save all new information, ideas, and plans in their own <known> entries",
