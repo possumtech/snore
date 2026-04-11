@@ -164,110 +164,124 @@ export default class AgentLoop {
 	}
 
 	async #drainQueue(currentRunId, currentAlias, projectId, project, options) {
+		const controller = new AbortController();
+		this.#activeRuns.set(currentRunId, controller);
+
 		let panicAttempted = false;
 
-		while (true) {
-			const loop = await this.#db.claim_next_loop.get({
-				run_id: currentRunId,
-			});
-			if (!loop) break;
-
-			const loopConfig = loop.config ? JSON.parse(loop.config) : {};
-			const hook =
-				loop.mode === "panic"
-					? this.#hooks.panic
-					: loop.mode === "ask"
-						? this.#hooks.ask
-						: this.#hooks.act;
-
-			let result;
-			try {
-				result = await this.#executeLoop({
-					mode: loop.mode,
-					project,
-					projectId,
-					currentRunId,
-					currentAlias,
-					currentLoopId: loop.id,
-					requestedModel: loop.model,
-					prompt: loop.prompt,
-					noRepo: loopConfig.noRepo || false,
-					noInteraction: loopConfig.noInteraction || false,
-					noWeb: loopConfig.noWeb || false,
-					options: { ...options, temperature: loopConfig.temperature },
-					hook,
+		try {
+			while (true) {
+				const loop = await this.#db.claim_next_loop.get({
+					run_id: currentRunId,
 				});
-			} catch (err) {
+				if (!loop) break;
+
+				const loopConfig = loop.config ? JSON.parse(loop.config) : {};
+				const hook =
+					loop.mode === "panic"
+						? this.#hooks.panic
+						: loop.mode === "ask"
+							? this.#hooks.ask
+							: this.#hooks.act;
+
+				let result;
+				try {
+					result = await this.#executeLoop({
+						mode: loop.mode,
+						project,
+						projectId,
+						currentRunId,
+						currentAlias,
+						currentLoopId: loop.id,
+						requestedModel: loop.model,
+						prompt: loop.prompt,
+						noRepo: loopConfig.noRepo || false,
+						noInteraction: loopConfig.noInteraction || false,
+						noWeb: loopConfig.noWeb || false,
+						options: { ...options, temperature: loopConfig.temperature },
+						hook,
+						signal: controller.signal,
+					});
+				} catch (err) {
+					await this.#db.complete_loop.run({
+						id: loop.id,
+						status: 500,
+						result: JSON.stringify({ error: err.message }),
+					});
+					throw err;
+				}
+
+				if (result.status === 413) {
+					await this.#db.complete_loop.run({
+						id: loop.id,
+						status: 413,
+						result: JSON.stringify(result),
+					});
+
+					// One panic attempt per drain cycle
+					if (loop.mode === "panic" || panicAttempted) {
+						return {
+							run: currentAlias,
+							status: 413,
+							error:
+								loop.mode === "panic"
+									? `Panic mode failed to free enough space (${result.overflow} tokens over).`
+									: `Context full (${result.overflow} tokens over).`,
+						};
+					}
+
+					panicAttempted = true;
+
+					const panicPrompt = this.#hooks.budget.panicPrompt({
+						assembledTokens: result.assembledTokens,
+						contextSize: result.contextSize,
+					});
+
+					// Enqueue panic loop
+					const panicSeq = await this.#db.next_loop.get({
+						run_id: currentRunId,
+					});
+					await this.#db.enqueue_loop.get({
+						run_id: currentRunId,
+						sequence: panicSeq.sequence,
+						mode: "panic",
+						model: loop.model,
+						prompt: panicPrompt,
+						config: JSON.stringify({ noRepo: true }),
+					});
+
+					// Re-enqueue the original loop to retry after panic
+					const retrySeq = await this.#db.next_loop.get({
+						run_id: currentRunId,
+					});
+					await this.#db.enqueue_loop.get({
+						run_id: currentRunId,
+						sequence: retrySeq.sequence,
+						mode: loop.mode,
+						model: loop.model,
+						prompt: loop.prompt,
+						config: loop.config,
+					});
+
+					continue;
+				}
+
 				await this.#db.complete_loop.run({
 					id: loop.id,
-					status: 500,
-					result: JSON.stringify({ error: err.message }),
-				});
-				throw err;
-			}
-
-			if (result.status === 413) {
-				await this.#db.complete_loop.run({
-					id: loop.id,
-					status: 413,
+					status: result.status === 202 ? 202 : result.status,
 					result: JSON.stringify(result),
 				});
 
-				// One panic attempt per drain cycle
-				if (loop.mode === "panic" || panicAttempted) {
-					return {
-						run: currentAlias,
-						status: 413,
-						error:
-							loop.mode === "panic"
-								? `Panic mode failed to free enough space (${result.overflow} tokens over).`
-								: `Context full (${result.overflow} tokens over).`,
-					};
-				}
-
-				panicAttempted = true;
-
-				const panicPrompt = this.#hooks.budget.panicPrompt({
-					assembledTokens: result.assembledTokens,
-					contextSize: result.contextSize,
-				});
-
-				// Enqueue panic loop
-				const panicSeq = await this.#db.next_loop.get({ run_id: currentRunId });
-				await this.#db.enqueue_loop.get({
-					run_id: currentRunId,
-					sequence: panicSeq.sequence,
-					mode: "panic",
-					model: loop.model,
-					prompt: panicPrompt,
-					config: JSON.stringify({ noRepo: true }),
-				});
-
-				// Re-enqueue the original loop to retry after panic
-				const retrySeq = await this.#db.next_loop.get({ run_id: currentRunId });
-				await this.#db.enqueue_loop.get({
-					run_id: currentRunId,
-					sequence: retrySeq.sequence,
-					mode: loop.mode,
-					model: loop.model,
-					prompt: loop.prompt,
-					config: loop.config,
-				});
-
-				continue;
+				if (result.status === 202) return result;
 			}
 
-			await this.#db.complete_loop.run({
-				id: loop.id,
-				status: result.status === 202 ? 202 : result.status,
-				result: JSON.stringify(result),
+			const runRow = await this.#db.get_run_by_alias.get({
+				alias: currentAlias,
 			});
-
-			if (result.status === 202) return result;
+			return { run: currentAlias, status: runRow?.status ?? 200 };
+		} finally {
+			this.#activeRuns.delete(currentRunId);
 		}
-
-		const runRow = await this.#db.get_run_by_alias.get({ alias: currentAlias });
-		return { run: currentAlias, status: runRow?.status ?? 200 };
 	}
 
 	async #executeLoop({
@@ -284,6 +298,7 @@ export default class AgentLoop {
 		noWeb,
 		options,
 		hook,
+		signal,
 	}) {
 		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 		if (runRow.status !== 102) {
@@ -308,9 +323,6 @@ export default class AgentLoop {
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
 		const healer = new ResponseHealer();
 
-		const controller = new AbortController();
-		this.#activeRuns.set(currentRunId, controller);
-
 		let _lastAssembledTokens = 0;
 		let _panicStrikes = 0;
 		let _lastPanicTokens = null;
@@ -324,7 +336,7 @@ export default class AgentLoop {
 
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
-				if (controller.signal.aborted) {
+				if (signal.aborted) {
 					await this.#db.update_run_status.run({
 						id: currentRunId,
 						status: 499,
@@ -369,7 +381,7 @@ export default class AgentLoop {
 					toolSet,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
-					signal: controller.signal,
+					signal,
 				});
 
 				// Budget overflow — return 413 to drainQueue for panic mode
@@ -542,7 +554,7 @@ export default class AgentLoop {
 			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
-			if (controller.signal.aborted) {
+			if (signal.aborted) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: 499,
@@ -574,7 +586,6 @@ export default class AgentLoop {
 			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} finally {
-			this.#activeRuns.delete(currentRunId);
 			await this.#hooks.loop.completed
 				.emit({
 					runId: currentRunId,
