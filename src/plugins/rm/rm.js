@@ -41,32 +41,37 @@ export default class Rm {
 			return;
 		}
 
-		// Single match: reuse the pre-computed entry.resultPath (no duplicate entry).
-		// Multi-match: dedup a path per match, remove the glob-pattern placeholder.
-		const useSinglePath = matches.length === 1;
-		if (!useSinglePath) await store.remove(runId, entry.resultPath);
+		const fileMatches = matches.filter((m) => m.scheme === null);
+		const schemeMatches = matches.filter((m) => m.scheme !== null);
 
-		for (const match of matches) {
-			const resultPath = useSinglePath
-				? entry.resultPath
-				: await store.dedup(runId, "rm", match.path, turn);
-			if (match.scheme === null) {
-				await store.upsert(runId, turn, resultPath, match.path, 202, {
-					attributes: { path: match.path },
-					loopId,
-				});
-			} else {
-				await store.remove(runId, match.path);
-				await store.upsert(runId, turn, resultPath, match.path, 200, {
-					attributes: { path: match.path },
-					loopId,
-				});
-			}
+		// Scheme entries: remove all, write one aggregate result entry
+		for (const match of schemeMatches) await store.remove(runId, match.path);
+		if (schemeMatches.length > 0) {
+			const paths = schemeMatches.map((m) => m.path).join("\n");
+			await store.upsert(runId, turn, entry.resultPath, paths, 200, {
+				attributes: { path: target },
+				loopId,
+			});
+		}
+
+		// File entries: individual 202 proposals (require user resolution)
+		if (fileMatches.length > 0 && schemeMatches.length > 0)
+			await store.remove(runId, entry.resultPath);
+		for (const match of fileMatches) {
+			const resultPath =
+				schemeMatches.length === 0 && fileMatches.length === 1
+					? entry.resultPath
+					: await store.dedup(runId, "rm", match.path, turn);
+			await store.upsert(runId, turn, resultPath, match.path, 202, {
+				attributes: { path: match.path },
+				loopId,
+			});
 		}
 	}
 
 	full(entry) {
-		return `# rm ${entry.attributes.path || entry.path}`;
+		const header = `# rm ${entry.attributes.path || entry.path}`;
+		return entry.body ? `${header}\n${entry.body}` : header;
 	}
 
 	summary(entry) {

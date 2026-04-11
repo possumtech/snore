@@ -362,6 +362,53 @@ describe("Handler dispatch", () => {
 			const gone = await store.getBody(RUN_ID, "known://ephemeral");
 			assert.strictEqual(gone, null, "known entry removed immediately");
 		});
+
+		it("multi-match produces one aggregate result entry", async () => {
+			await store.upsert(RUN_ID, 2, "known://bulk_a", "data-a", 200);
+			await store.upsert(RUN_ID, 2, "known://bulk_b", "data-b", 200);
+			await store.upsert(RUN_ID, 2, "known://bulk_c", "data-c", 200);
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 2 });
+			const resultPath = "rm://known%3A%2F%2Fbulk_*";
+			const entry = {
+				scheme: "rm",
+				path: resultPath,
+				body: "",
+				attributes: { path: "known://bulk_*" },
+				status: 200,
+				resultPath,
+			};
+
+			await hooks.tools.dispatch("rm", entry, rummy);
+
+			// All three entries removed
+			const remaining = await store.getEntriesByPattern(
+				RUN_ID,
+				"known://bulk_*",
+				null,
+			);
+			assert.strictEqual(remaining.length, 0, "all matched entries removed");
+
+			// Exactly one aggregate rm:// log entry
+			const allEntries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const rmEntries = allEntries.filter((e) =>
+				e.path.startsWith("rm://known%3A%2F%2Fbulk"),
+			);
+			assert.strictEqual(rmEntries.length, 1, "one aggregate result entry");
+			assert.strictEqual(rmEntries[0].status, 200);
+			assert.ok(
+				rmEntries[0].body.includes("known://bulk_a"),
+				"body lists removed paths",
+			);
+			assert.ok(
+				rmEntries[0].body.includes("known://bulk_b"),
+				"body lists removed paths",
+			);
+			assert.ok(
+				rmEntries[0].body.includes("known://bulk_c"),
+				"body lists removed paths",
+			);
+		});
 	});
 
 	describe("priority ordering", () => {
