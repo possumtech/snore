@@ -25,7 +25,7 @@ export default class Progress {
 			(r) => r.category === "unknown",
 		).length;
 
-		const hasCurrent = loggingEntries.some(
+		const hasPerformed = loggingEntries.some(
 			(r) => r.source_turn >= ctx.loopStartTurn,
 		);
 
@@ -51,7 +51,7 @@ export default class Progress {
 		if (fidelityParts.length > 0)
 			parts.push(`Entries: ${fidelityParts.join(" · ")}`);
 
-		if (hasCurrent) {
+		if (hasPerformed) {
 			parts.push(
 				"The above actions were performed in response to the following prompt:",
 			);

@@ -105,15 +105,15 @@ describe("ContextAssembler", () => {
 			);
 
 			const user = messages[1].content;
-			const currentPos = user.indexOf("<current>");
+			const performedPos = user.indexOf("<performed>");
 			const progressPos = user.indexOf("<progress");
 			const promptPos = user.indexOf("<prompt");
-			assert.ok(currentPos < progressPos, "current before progress");
+			assert.ok(performedPos < progressPos, "performed before progress");
 			assert.ok(progressPos < promptPos, "progress before prompt");
 			assert.ok(user.endsWith("</prompt>"), "prompt is last");
 		});
 
-		it("splits history into previous and current by loop boundary", async () => {
+		it("splits history into previous and performed by loop boundary", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -162,9 +162,9 @@ describe("ContextAssembler", () => {
 			assert.ok(system.includes("<previous>"), "system has previous");
 			assert.ok(system.includes("old.js"), "old get in previous");
 			assert.ok(!system.includes("new.js"), "new get not in previous");
-			assert.ok(user.includes("<current>"), "user has current");
-			assert.ok(user.includes("new.js"), "new get in current");
-			assert.ok(!user.includes("old.js"), "old get not in current");
+			assert.ok(user.includes("<performed>"), "user has performed");
+			assert.ok(user.includes("new.js"), "new get in performed");
+			assert.ok(!user.includes("old.js"), "old get not in performed");
 		});
 
 		it("omits previous on first loop", async () => {
@@ -190,7 +190,7 @@ describe("ContextAssembler", () => {
 			assert.ok(!messages[0].content.includes("<previous>"));
 		});
 
-		it("renders results with status symbols in current", async () => {
+		it("renders results with status symbols in performed", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -237,10 +237,10 @@ describe("ContextAssembler", () => {
 
 			assert.ok(user.includes('status="200"'), "pass result has status");
 			assert.ok(user.includes("Fixed it"), "summary renders");
-			assert.ok(user.includes("<current>"), "results in current block");
+			assert.ok(user.includes("<performed>"), "results in performed block");
 			assert.ok(
 				user.includes("<set path="),
-				"tool tags in current use tool name",
+				"tool tags in performed use tool name",
 			);
 		});
 
@@ -343,7 +343,7 @@ describe("ContextAssembler", () => {
 			assert.ok(system.includes("which database adapter"));
 		});
 
-		it("progress bridges current to prompt", async () => {
+		it("progress bridges performed to prompt", async () => {
 			const rows = [
 				{
 					ordinal: 1,

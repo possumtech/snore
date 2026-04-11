@@ -82,7 +82,7 @@ Every entry plays one of four roles:
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
 | **Data** | `data` | `<knowns>` | Entries the model works with — persistent state |
-| **Logging** | `logging` | `<current>`/`<previous>` | Records of what happened — tool results, lifecycle signals |
+| **Logging** | `logging` | `<performed>`/`<previous>` | Records of what happened — tool results, lifecycle signals |
 | **Unknowns** | `unknown` | `<unknowns>` | Open questions the model is tracking |
 | **Prompt** | `prompt` | `<prompt>` | The task driving the loop |
 
@@ -303,9 +303,9 @@ Two messages per turn. System = stable truth. User = active task.
     </unknowns>
 [/system]
 [user]
-    <current>
+    <performed>
         (current loop entries, each with turn, status, summary, fidelity, tokens)
-    </current>
+    </performed>
     <progress turn="N">token budget, fidelity stats, causal bridge</progress>
     <prompt mode="ask|act" tools="...">user prompt</prompt>
 [/user]
@@ -318,9 +318,9 @@ The `<prompt>` tag is present on every turn — first turn and
 continuations alike. The model always sees its task. The active prompt
 is extracted from its chronological position and placed last for maximum
 recency. `<progress>` bridges the gap, narrating the causal relationship
-between `<current>` (the work) and the prompt (the cause).
+between `<performed>` (the work) and the prompt (the cause).
 
-### 4.2 Loops, Previous, and Current
+### 4.2 Loops, Previous, and Performed
 
 A **loop** is one `ask` or `act` invocation and all its continuation
 turns until summarize, fail, or abort.
@@ -330,14 +330,14 @@ responses, tool results, agent warnings — the full chronicle in order.
 Lives in the system message as established history. Omitted on the
 first turn of the first loop.
 
-**Current** = the active loop's work so far. Model responses, tool
+**Performed** = the active loop's work so far. Model responses, tool
 results, agent warnings — in order. Does NOT include the user prompt
 (one per loop, extracted to `<prompt>`). Lives in the user
 message as immediate context. Empty on the first turn of a loop.
 
 When a new prompt arrives on an existing run, the prior loop's
-`<current>` content plus its prompt move to `<previous>`. When a loop
-continues (next turn), new results append to `<current>`.
+`<performed>` content plus its prompt move to `<previous>`. When a loop
+continues (next turn), new results append to `<performed>`.
 
 ### 4.3 Key Entries
 
@@ -368,7 +368,7 @@ Each turn:
    - Previous plugin (priority 200) → `<previous>` section
    - Unknown plugin (priority 300) → `<unknowns>` section
 8. Invoke `assembly.user` filter chain (empty string as base):
-   - Current plugin (priority 100) → `<current>` section
+   - Performed plugin (priority 100) → `<performed>` section
    - Progress plugin (priority 200) → `<progress>` section
    - Prompt plugin (priority 300) → `<prompt>` section
 9. Store as `system://N` and `user://N` audit entries
@@ -406,7 +406,7 @@ buffer below the enforce ceiling absorbs two sources of overhead that
 BudgetGuard cannot see: (a) `#record()`-phase writes that bypass the
 guard (~15 tokens per command), and (b) loop transition overhead —
 when a loop completes and a new one starts, entries shift from
-`<current>` to `<previous>` format, adding ~200–300 tokens to the
+`<performed>` to `<previous>` format, adding ~200–300 tokens to the
 next assembly. Without this buffer, the base context can accumulate
 to exactly the enforce ceiling, making it impossible for the panic
 loop to start (panic prompt + loop overhead > ceiling).

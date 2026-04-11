@@ -467,7 +467,7 @@ prepended above the plugin's summary view output.
 | `update` | Structural | Signal continued work |
 | `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
 | `previous` | Assembly | Render `<previous>` loop history |
-| `current` | Assembly | Render `<current>` active loop work |
+| `performed` | Assembly | Render `<performed>` active loop work |
 | `progress` | Assembly | Render `<progress>` telemetry + warnings |
 | `prompt` | Assembly | Render `<prompt mode="ask|act">` tag |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
