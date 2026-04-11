@@ -509,9 +509,20 @@ export default class TurnExecutor {
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
 	async #record(runId, loopId, turn, mode, cmd) {
-		// Mode enforcement — reject prohibited commands in ask/panic mode
+		// Mode enforcement — reject prohibited commands by mode
+		if (mode === "panic") {
+			if (
+				cmd.name === "sh" ||
+				cmd.name === "env" ||
+				cmd.name === "search" ||
+				cmd.name === "ask_user"
+			) {
+				console.warn(`[RUMMY] Rejected <${cmd.name}> in panic mode`);
+				return null;
+			}
+		}
 		if (mode === "ask" || mode === "panic") {
-			if (cmd.name === "sh") {
+			if (mode === "ask" && cmd.name === "sh") {
 				console.warn("[RUMMY] Rejected <sh> in ask mode");
 				return null;
 			}
