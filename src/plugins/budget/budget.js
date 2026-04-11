@@ -2,81 +2,81 @@ import { countTokens } from "../../agent/tokens.js";
 import BudgetGuard, { BudgetExceeded } from "./BudgetGuard.js";
 
 function measureMessages(messages) {
-  return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
+	return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 }
 
 export { BudgetExceeded };
 
 export default class Budget {
-  #core;
+	#core;
 
-  constructor(core) {
-    this.#core = core;
-    core.hooks.budget = {
-      enforce: this.enforce.bind(this),
-      activate: this.activate.bind(this),
-      deactivate: this.deactivate.bind(this),
-      panicPrompt: Budget.panicPrompt,
-      BudgetExceeded,
-    };
-  }
+	constructor(core) {
+		this.#core = core;
+		core.hooks.budget = {
+			enforce: this.enforce.bind(this),
+			activate: this.activate.bind(this),
+			deactivate: this.deactivate.bind(this),
+			panicPrompt: Budget.panicPrompt,
+			BudgetExceeded,
+		};
+	}
 
-  static panicPrompt({ assembledTokens, contextSize, continuation = false }) {
-    const target = Math.floor(contextSize * 0.5);
-    const mustFree = assembledTokens - target;
-    return [
-      `CONTEXT OVERFLOW: ${assembledTokens} tokens used. The ceiling is ${contextSize}.`,
-      `YOU MUST free ${mustFree} tokens to get below ${target} (50%).`,
-      "",
-      "Entries above show their current fidelity and token size. Reduce their fidelity to free up space.",
-      "Target the largest and/or least relevant entries first.",
-      '<set path="..." fidelity="summary" summary="keyword1,keyword2,keyword3,..."/> to compress.',
-      "Use quality keywords from the entry to describe the content.",
-      '<set path="..." fidelity="index"/> to only list the path.',
-      '<set path="..." fidelity="archive"/> to remove it from the context.',
-      continuation
-        ? "<update></update> to report progress, <summarize></summarize> when done."
-        : "<summarize></summarize> when done. <update></update> if still working.",
-    ].join("\n");
-  }
+	static panicPrompt({ assembledTokens, contextSize, continuation = false }) {
+		const target = Math.floor(contextSize * 0.5);
+		const mustFree = assembledTokens - target;
+		return [
+			`CONTEXT OVERFLOW: ${assembledTokens} tokens used. The ceiling is ${contextSize}.`,
+			`YOU MUST free ${mustFree} tokens to get below ${target} (50%).`,
+			"",
+			"Entries above show their current fidelity and token size. Reduce their fidelity to free up space.",
+			"Target the largest and/or least relevant entries first.",
+			'<set path="..." fidelity="summary" summary="keyword1,keyword2,keyword3,..."/> to compress.',
+			"Use quality keywords from the entry to describe the content.",
+			'<set path="..." fidelity="index"/> to only list the path.',
+			'<set path="..." fidelity="archive"/> to remove it from the context.',
+			continuation
+				? "<update></update> to report progress, <summarize></summarize> when done."
+				: "<summarize></summarize> when done. <update></update> if still working.",
+		].join("\n");
+	}
 
-  async enforce({ contextSize, messages, rows }) {
-    if (!contextSize) {
-      return { messages, rows, demoted: [], assembledTokens: 0, status: 200 };
-    }
+	async enforce({ contextSize, messages, rows }) {
+		if (!contextSize) {
+			return { messages, rows, demoted: [], assembledTokens: 0, status: 200 };
+		}
 
-    const assembledTokens = measureMessages(messages);
+		const assembledTokens = measureMessages(messages);
 
-    console.warn(
-      `[RUMMY] Budget enforce: ${assembledTokens} tokens, ceiling ${contextSize}, ${rows.length} rows`,
-    );
+		console.warn(
+			`[RUMMY] Budget enforce: ${assembledTokens} tokens, ceiling ${contextSize}, ${rows.length} rows`,
+		);
 
-    const ceiling = Math.floor(contextSize * 0.9);
-    if (assembledTokens > ceiling) {
-      const overflow = assembledTokens - ceiling;
-      console.warn(
-        `[RUMMY] Budget 413: ${assembledTokens} tokens > ${contextSize} ceiling (${overflow} over)`,
-      );
-      return {
-        messages,
-        rows,
-        demoted: [],
-        assembledTokens,
-        status: 413,
-        overflow,
-      };
-    }
+		const ceiling = Math.floor(contextSize * 0.9);
+		if (assembledTokens > ceiling) {
+			const overflow = assembledTokens - ceiling;
+			console.warn(
+				`[RUMMY] Budget 413: ${assembledTokens} tokens > ${contextSize} ceiling (${overflow} over)`,
+			);
+			return {
+				messages,
+				rows,
+				demoted: [],
+				assembledTokens,
+				status: 413,
+				overflow,
+			};
+		}
 
-    return { messages, rows, demoted: [], assembledTokens, status: 200 };
-  }
+		return { messages, rows, demoted: [], assembledTokens, status: 200 };
+	}
 
-  activate(store, contextSize, assembledTokens) {
-    const guard = new BudgetGuard(contextSize, assembledTokens);
-    store.budgetGuard = guard;
-    return guard;
-  }
+	activate(store, contextSize, assembledTokens) {
+		const guard = new BudgetGuard(contextSize, assembledTokens);
+		store.budgetGuard = guard;
+		return guard;
+	}
 
-  deactivate(store) {
-    store.budgetGuard = null;
-  }
+	deactivate(store) {
+		store.budgetGuard = null;
+	}
 }
