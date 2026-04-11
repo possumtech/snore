@@ -7,38 +7,34 @@ export default class Progress {
 	}
 
 	async assembleProgress(content, ctx) {
-		// Use last turn's real assembled token count when available.
-		// Falls back to row token sum (less accurate — missing system prompt overhead).
-		const rowTokens = ctx.rows.reduce((sum, r) => sum + (r.tokens || 0), 0);
-		const usedTokens = ctx.lastContextTokens || rowTokens;
-		const contextSize = ctx.contextSize || 0;
+		const { lastContextTokens: usedTokens, contextSize } = ctx;
 		const pct = contextSize ? Math.round((usedTokens / contextSize) * 100) : 0;
 
-		// Fidelity distribution across known/file entries
-		const entries = ctx.rows.filter((r) => r.category === "data");
+		// Fidelity distribution across all manageable entries (data + logging)
+		const dataEntries = ctx.rows.filter((r) => r.category === "data");
+		const loggingEntries = ctx.rows.filter((r) => r.category === "logging");
+		const entries = [...dataEntries, ...loggingEntries];
 		const fullEntries = entries.filter((r) => r.fidelity === "full");
 		const summaryEntries = entries.filter((r) => r.fidelity === "summary");
 		const indexEntries = entries.filter((r) => r.fidelity === "index");
-		const fullTokens = fullEntries.reduce((s, r) => s + (r.tokens || 0), 0);
-		const summaryTokens = summaryEntries.reduce(
-			(s, r) => s + (r.tokens || 0),
-			0,
-		);
-		const indexTokens = indexEntries.reduce((s, r) => s + (r.tokens || 0), 0);
+		const fullTokens = fullEntries.reduce((s, r) => s + r.tokens, 0);
+		const summaryTokens = summaryEntries.reduce((s, r) => s + r.tokens, 0);
+		const indexTokens = indexEntries.reduce((s, r) => s + r.tokens, 0);
 
 		const unknownCount = ctx.rows.filter(
 			(r) => r.category === "unknown",
 		).length;
 
-		const hasCurrent = ctx.rows.some(
-			(r) => r.category === "logging" && r.source_turn >= ctx.loopStartTurn,
+		const hasCurrent = loggingEntries.some(
+			(r) => r.source_turn >= ctx.loopStartTurn,
 		);
 
 		const parts = [];
 
-		const knownCount = entries.length;
+		const knownCount = dataEntries.length;
+		const loggingCount = loggingEntries.length;
 		const tokenLine = contextSize
-			? `${usedTokens} of ${contextSize} tokens (${pct}%) · ${knownCount} known${knownCount !== 1 ? "s" : ""} · ${unknownCount} unknown${unknownCount !== 1 ? "s" : ""}`
+			? `${usedTokens} of ${contextSize} tokens (${pct}%) · ${knownCount} known${knownCount !== 1 ? "s" : ""} · ${loggingCount} logging · ${unknownCount} unknown${unknownCount !== 1 ? "s" : ""}`
 			: "";
 		if (tokenLine) parts.push(tokenLine);
 
@@ -61,7 +57,6 @@ export default class Progress {
 			);
 		}
 
-		const turn = ctx.turn ? ` turn="${ctx.turn}"` : "";
-		return `${content}<progress${turn}>${parts.join("\n")}</progress>\n`;
+		return `${content}<progress turn="${ctx.turn}">${parts.join("\n")}</progress>\n`;
 	}
 }
