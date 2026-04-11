@@ -8,18 +8,19 @@ export default class Current {
 
 	async assembleCurrent(content, ctx) {
 		const entries = ctx.rows.filter(
-			(r) => r.category === "logging" && r.source_turn >= ctx.loopStartTurn,
+			(r) =>
+				r.category === "logging" &&
+				r.source_turn >= ctx.loopStartTurn &&
+				r.scheme !== "unknown",
 		);
 		if (entries.length === 0) return content;
 
-		const lines = await Promise.all(
-			entries.map((e) => renderToolTag(e, this.#core)),
-		);
+		const lines = entries.map((e) => renderToolTag(e));
 		return `${content}<current>\n${lines.join("\n")}\n</current>\n`;
 	}
 }
 
-async function renderToolTag(entry, core) {
+function renderToolTag(entry) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -35,15 +36,7 @@ async function renderToolTag(entry, core) {
 			? ` summary="${attrs.summary.slice(0, 80)}"`
 			: "";
 
-	let body;
-	try {
-		body = await core.hooks.tools.view(entry.scheme, {
-			...entry,
-			attributes: attrs,
-		});
-	} catch {
-		body = entry.body;
-	}
+	const body = entry.body || null;
 
 	if (body) {
 		return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}>${body}</${entry.scheme}>`;

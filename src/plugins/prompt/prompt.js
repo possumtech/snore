@@ -9,7 +9,7 @@ export default class Prompt {
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
 	}
 
-	async onTurnStarted({ rummy, mode, prompt, isContinuation }) {
+	async onTurnStarted({ rummy, mode, prompt, isContinuation, loopIteration }) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
@@ -17,11 +17,12 @@ export default class Prompt {
 				attributes: { mode },
 				loopId,
 			});
-		} else {
-			await store.upsert(runId, turn, `progress://${turn}`, prompt || "", 200, {
-				loopId,
-			});
 		}
+		const maxTurns = Number(process.env.RUMMY_MAX_TURNS) || 15;
+		const counter = `Turn ${loopIteration}/${maxTurns}`;
+		await store.upsert(runId, turn, `progress://${turn}`, counter, 200, {
+			loopId,
+		});
 	}
 
 	async assemblePrompt(content, ctx) {

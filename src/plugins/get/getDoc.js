@@ -33,7 +33,7 @@ const LINES = [
 		"Generalizes examples 2-3. Body = filter, not just path.",
 	],
 	[
-		'* Use <set path="..." fidelity="index"/> to archive loaded content',
+		'* Use <set path="..." fidelity="archive"/> to remove loaded content from context',
 		"Lifecycle: get→set. Load, read, archive. Prevents context hoarding.",
 	],
 ];

@@ -16,9 +16,9 @@ export default class Known {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId } = rummy;
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path || entry.resultPath;
-		await store.upsert(runId, turn, target, entry.body, 200);
+		await store.upsert(runId, turn, target, entry.body, 200, { loopId });
 	}
 
 	full(entry) {
@@ -47,7 +47,7 @@ function renderKnownTag(entry, demotedSet, panic = false) {
 
 	// Panic mode: index-only view so context fits in LLM window
 	if (panic) {
-		return `<${tag} path="${entry.path}"${turn}${fidelity}${tokens}/>`;
+		return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${tokens}/>`;
 	}
 
 	const attrs =

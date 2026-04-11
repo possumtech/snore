@@ -63,6 +63,13 @@ export default class HookRegistry {
 		this.#events.get(tag).sort((a, b) => a.priority - b.priority);
 	}
 
+	removeEvent(tag, callback) {
+		const hooks = this.#events.get(tag);
+		if (!hooks) return;
+		const idx = hooks.findIndex((h) => h.callback === callback);
+		if (idx !== -1) hooks.splice(idx, 1);
+	}
+
 	async emitEvent(tag, ...args) {
 		const hooks = this.#events.get(tag) || [];
 		for (const h of hooks) {

@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export default class Telemetry {
@@ -189,10 +189,8 @@ export default class Telemetry {
 
 	#flush() {
 		if (!this.#lastRunPath || this.#turnLog.length === 0) return;
-		try {
-			writeFileSync(this.#lastRunPath, `${this.#turnLog.join("\n")}\n`);
-		} catch {
-			// RUMMY_HOME may not exist yet
-		}
+		writeFile(this.#lastRunPath, `${this.#turnLog.join("\n")}\n`).catch(
+			() => {},
+		);
 	}
 }

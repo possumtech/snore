@@ -28,6 +28,7 @@ export default class TurnExecutor {
 		currentLoopId,
 		requestedModel,
 		loopPrompt,
+		loopIteration,
 		noRepo,
 		toolSet,
 		contextSize,
@@ -85,6 +86,7 @@ export default class TurnExecutor {
 			mode,
 			prompt: loopPrompt,
 			isContinuation: options?.isContinuation,
+			loopIteration,
 		});
 
 		await this.#hooks.processTurn(rummy);
@@ -342,21 +344,19 @@ export default class TurnExecutor {
 
 			for (const entry of actions) {
 				if (abortAfter || guard.isTripped) {
-					await this.#knownStore.upsert(
-						currentRunId,
-						turn,
-						entry.resultPath || entry.path,
-						"",
-						guard.isTripped ? 413 : 409,
-						{
-							attributes: {
-								error: guard.isTripped
-									? `Budget exceeded by <${guard.tripSource}>.`
-									: `Aborted — preceding <${abortAfter}> requires resolution.`,
-							},
-							loopId: currentLoopId,
-						},
-					);
+					{
+						const errorMsg = guard.isTripped
+							? `Budget exceeded by <${guard.tripSource}>.`
+							: `Aborted — preceding <${abortAfter}> requires resolution.`;
+						await this.#knownStore.upsert(
+							currentRunId,
+							turn,
+							entry.resultPath || entry.path,
+							errorMsg,
+							guard.isTripped ? 413 : 409,
+							{ attributes: { error: errorMsg }, loopId: currentLoopId },
+						);
+					}
 					hasErrors = true;
 					continue;
 				}
@@ -433,6 +433,15 @@ export default class TurnExecutor {
 			console.warn(
 				"[RUMMY] Overriding <summarize> — actions in this turn failed. Continuing.",
 			);
+			// Mark the recorded summarize entry as 409 so the model sees it was rejected
+			if (summaryEntry?.path) {
+				await this.#knownStore.resolve(
+					currentRunId,
+					summaryEntry.path,
+					409,
+					"Overridden — actions in this turn failed. Use <update/> until resolved.",
+				);
+			}
 			updateText = summaryText;
 			summaryText = null;
 		}
@@ -484,9 +493,7 @@ export default class TurnExecutor {
 			flags,
 			model: result.model || requestedModel,
 			modelAlias: requestedModel,
-			temperature:
-				options?.temperature ??
-				Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
+			temperature: options?.temperature,
 			contextSize,
 			assembledTokens,
 			usage: result.usage,
@@ -581,6 +588,31 @@ export default class TurnExecutor {
 		}
 
 		const rawTarget = cmd.path || cmd.command || cmd.question || "";
+		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
+		if (rawTarget.length > 512 || /\p{Cc}/u.test(rawTarget)) {
+			const rejectPath = await this.#knownStore.dedup(
+				runId,
+				scheme,
+				`${scheme}://invalid`,
+				turn,
+			);
+			await this.#knownStore.upsert(
+				runId,
+				turn,
+				rejectPath,
+				`Invalid path: too long or contains non-printing characters`,
+				400,
+				{ loopId },
+			);
+			return {
+				scheme,
+				path: rejectPath,
+				body: "",
+				attributes: {},
+				status: 400,
+				resultPath: rejectPath,
+			};
+		}
 		const target = rawTarget;
 		const resultPath = await this.#knownStore.dedup(
 			runId,
@@ -701,35 +733,5 @@ export default class TurnExecutor {
 			status: 200,
 			resultPath: filtered.path,
 		};
-	}
-
-	async #rematerialize(runId, loopId, turn) {
-		await this.#db.clear_turn_context.run({ run_id: runId, turn });
-		const viewRows = await this.#db.get_model_context.all({ run_id: runId });
-		for (const row of viewRows) {
-			const scheme = row.scheme || "file";
-			const projectedBody = await this.#hooks.tools.view(scheme, {
-				path: row.path,
-				scheme,
-				body: row.body,
-				attributes: row.attributes ? JSON.parse(row.attributes) : null,
-				fidelity: row.fidelity,
-				category: row.category,
-			});
-			await this.#db.insert_turn_context.run({
-				run_id: runId,
-				loop_id: loopId,
-				turn,
-				ordinal: row.ordinal,
-				path: row.path,
-				fidelity: row.fidelity,
-				status: row.status,
-				body: projectedBody ?? "",
-				tokens: countTokens(projectedBody ?? ""),
-				attributes: row.attributes,
-				category: row.category,
-				source_turn: row.turn,
-			});
-		}
 	}
 }

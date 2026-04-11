@@ -37,10 +37,12 @@ async function renderToolTag(entry, _core) {
 
 	// Previous entries render at summary. Prompts get 512 chars for orientation.
 	const limit = entry.scheme === "prompt" ? 512 : 80;
-	const summaryText =
+	const rawSummary =
 		(typeof attrs?.summary === "string" ? attrs.summary : null) ||
 		entry.body?.slice(0, limit) ||
 		"";
+	// Strip internal dedup namespace prefixes (e.g. "get://turn_3/src/app.js" → "src/app.js")
+	const summaryText = rawSummary.replace(/\b\w+:\/\/turn_\d+\//g, "");
 	const summaryAttr = summaryText
 		? ` summary="${summaryText.replace(/"/g, "'").slice(0, limit)}"`
 		: "";

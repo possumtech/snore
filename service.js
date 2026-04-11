@@ -18,13 +18,13 @@ if (gitCheck.error || gitCheck.status !== 0) {
 	console.warn("[RUMMY] WARNING: 'git' not found. File tracking will use manual activation only.");
 }
 
-let SqlRite, SocketServer, registerPlugins, createHooks, RpcRegistry;
+let SqlRite, SocketServer, registerPlugins, initPlugins, createHooks, RpcRegistry;
 try {
 	SqlRite = (await import("@possumtech/sqlrite")).default;
 	SocketServer = (await import("./src/server/SocketServer.js")).default;
 	const pluginIndex = await import("./src/plugins/index.js");
 	registerPlugins = pluginIndex.registerPlugins;
-	var initPlugins = pluginIndex.initPlugins;
+	initPlugins = pluginIndex.initPlugins;
 	createHooks = (await import("./src/hooks/Hooks.js")).default;
 	RpcRegistry = (await import("./src/server/RpcRegistry.js")).default;
 } catch (err) {

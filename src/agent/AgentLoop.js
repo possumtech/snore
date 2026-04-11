@@ -360,6 +360,7 @@ export default class AgentLoop {
 					currentLoopId,
 					requestedModel,
 					loopPrompt: turnPrompt,
+					loopIteration,
 					noRepo,
 					toolSet,
 					contextSize,
@@ -709,7 +710,7 @@ export default class AgentLoop {
 			mode: resumeMode,
 			model: runRow.model,
 			prompt: "",
-			config: "{}",
+			config: currentLoop?.config || "{}",
 		});
 		return this.#drainQueue(runId, runAlias, projectId, project, {});
 	}

@@ -14,6 +14,7 @@ visible AS (
 		, ke.updated_at
 		, ke.attributes
 		, ke.tokens AS tokens_full
+		, COALESCE(s.category, 'logging') AS category
 		, CASE
 			-- Archived entries not in context
 			WHEN ke.fidelity = 'archive' THEN NULL
@@ -38,23 +39,12 @@ projected AS (
 		, turn
 		, updated_at
 		, attributes
+		-- Category comes from schemes table — plugins declare it via registerScheme().
+		, category
 		, CASE
 			WHEN visible_fidelity IN ('full', 'summary') THEN body
 			ELSE ''
 		END AS body
-		-- Four roles: data, logging, unknown, prompt.
-		-- These are structural — see PluginContext.CATEGORIES.
-		-- 'tool' is internal (model_visible=0 in practice).
-		-- Default is 'logging' — plugins opt into 'data' explicitly.
-		, CASE
-			WHEN scheme IS NULL THEN 'data'
-			WHEN scheme IN ('http', 'https') THEN 'data'
-			WHEN scheme IN ('known', 'skill') THEN 'data'
-			WHEN scheme = 'unknown' THEN 'unknown'
-			WHEN scheme = 'prompt' THEN 'prompt'
-			WHEN scheme = 'tool' THEN 'tool'
-			ELSE 'logging'
-		END AS category
 	FROM visible
 	WHERE visible_fidelity IS NOT NULL
 )

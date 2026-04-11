@@ -4,7 +4,7 @@ import { normalizeAttrs, parseJsonEdit } from "../plugins/hedberg/normalize.js";
 import { parseSed } from "../plugins/hedberg/sed.js";
 
 const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
-const ALL_TOOLS = new Set([
+export const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
 	"known",
 	"sh",
@@ -13,6 +13,9 @@ const ALL_TOOLS = new Set([
 	"summarize",
 	"update",
 	"unknown",
+	"think",
+	"thought",
+	"mcp",
 ]);
 
 /**

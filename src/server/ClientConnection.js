@@ -21,53 +21,66 @@ export default class ClientConnection {
 		this.#projectAgent = new ProjectAgent(db, hooks);
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
+		this.#ws.on("close", () => this.#teardown());
 
 		this.#setupNotifications();
 	}
 
+	#onProgress = (payload) => {
+		if (payload.projectId === this.#context.projectId) {
+			this.#sendNotification("run/progress", {
+				run: payload.run,
+				turn: payload.turn,
+				status: payload.status,
+			});
+		}
+	};
+
+	#onRender = (payload) => {
+		if (payload.projectId === this.#context.projectId) {
+			this.#sendNotification("ui/render", {
+				text: payload.text,
+				append: payload.append,
+			});
+		}
+	};
+
+	#onNotify = (payload) => {
+		if (payload.projectId === this.#context.projectId) {
+			this.#sendNotification("ui/notify", {
+				text: payload.text,
+				level: payload.level,
+			});
+		}
+	};
+
+	#onState = (payload) => {
+		if (payload.projectId === this.#context.projectId) {
+			this.#sendNotification("run/state", {
+				run: payload.run,
+				turn: payload.turn,
+				status: payload.status,
+				summary: payload.summary,
+				history: payload.history,
+				unknowns: payload.unknowns,
+				proposed: payload.proposed,
+				telemetry: payload.telemetry,
+			});
+		}
+	};
+
 	#setupNotifications() {
-		this.#hooks.run.progress.on((payload) => {
-			if (payload.projectId === this.#context.projectId) {
-				this.#sendNotification("run/progress", {
-					run: payload.run,
-					turn: payload.turn,
-					status: payload.status,
-				});
-			}
-		});
+		this.#hooks.run.progress.on(this.#onProgress);
+		this.#hooks.ui.render.on(this.#onRender);
+		this.#hooks.ui.notify.on(this.#onNotify);
+		this.#hooks.run.state.on(this.#onState);
+	}
 
-		this.#hooks.ui.render.on((payload) => {
-			if (payload.projectId === this.#context.projectId) {
-				this.#sendNotification("ui/render", {
-					text: payload.text,
-					append: payload.append,
-				});
-			}
-		});
-
-		this.#hooks.ui.notify.on((payload) => {
-			if (payload.projectId === this.#context.projectId) {
-				this.#sendNotification("ui/notify", {
-					text: payload.text,
-					level: payload.level,
-				});
-			}
-		});
-
-		this.#hooks.run.state.on((payload) => {
-			if (payload.projectId === this.#context.projectId) {
-				this.#sendNotification("run/state", {
-					run: payload.run,
-					turn: payload.turn,
-					status: payload.status,
-					summary: payload.summary,
-					history: payload.history,
-					unknowns: payload.unknowns,
-					proposed: payload.proposed,
-					telemetry: payload.telemetry,
-				});
-			}
-		});
+	#teardown() {
+		this.#hooks.run.progress.off(this.#onProgress);
+		this.#hooks.ui.render.off(this.#onRender);
+		this.#hooks.ui.notify.off(this.#onNotify);
+		this.#hooks.run.state.off(this.#onState);
 	}
 
 	#buildHandlerContext() {
@@ -135,10 +148,11 @@ export default class ClientConnection {
 				);
 			} else {
 				const timeout = Number(process.env.RUMMY_RPC_TIMEOUT) || 10_000;
+				let timer;
 				result = await Promise.race([
 					registration.handler(params || {}, this.#buildHandlerContext()),
-					new Promise((_, reject) =>
-						setTimeout(
+					new Promise((_, reject) => {
+						timer = setTimeout(
 							() =>
 								reject(
 									new Error(
@@ -149,9 +163,9 @@ export default class ClientConnection {
 									),
 								),
 							timeout,
-						),
-					),
-				]);
+						);
+					}),
+				]).finally(() => clearTimeout(timer));
 			}
 
 			const finalResult = await this.#hooks.rpc.response.result.filter(result, {

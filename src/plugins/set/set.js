@@ -1,4 +1,5 @@
 import KnownStore from "../../agent/KnownStore.js";
+import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -66,16 +67,33 @@ export default class Set {
 					}
 				}
 			}
+			if (matches.length === 0) {
+				await store.upsert(
+					runId,
+					turn,
+					entry.resultPath,
+					`${target} not found`,
+					404,
+					{
+						fidelity: "archive",
+						loopId,
+					},
+				);
+				return;
+			}
 			const label =
 				fidelityAttr === "archive" ? "archived" : `set to ${fidelityAttr}`;
-			const body =
-				matches.length > 0
-					? `${matches.map((m) => m.path).join(", ")} ${label}`
-					: `${target} not found`;
-			await store.upsert(runId, turn, entry.resultPath, body, 200, {
-				fidelity: "archive",
-				loopId,
-			});
+			await store.upsert(
+				runId,
+				turn,
+				entry.resultPath,
+				`${matches.map((m) => m.path).join(", ")} ${label}`,
+				200,
+				{
+					fidelity: "archive",
+					loopId,
+				},
+			);
 			return;
 		}
 
@@ -198,7 +216,7 @@ export default class Set {
 					? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
 					: null;
 			const beforeTokens = match.tokens_full || 0;
-			const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
+			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
 			await store.upsert(runId, turn, resultPath, match.body, status, {
 				attributes: {
@@ -265,7 +283,7 @@ export default class Set {
 					: null;
 			const merge = mergeBlocks.length > 0 ? mergeBlocks.join("\n") : null;
 			const beforeTokens = fileEntry[0].tokens_full || 0;
-			const afterTokens = current ? (current.length / 4) | 0 : beforeTokens;
+			const afterTokens = current ? countTokens(current) : beforeTokens;
 
 			await store.upsert(runId, turn, entry.path, original, state, {
 				attributes: {
@@ -287,10 +305,7 @@ export default class Set {
 			return { search: attrs.search, replace: attrs.replace ?? "" };
 		}
 		if (attrs.blocks?.length > 0) {
-			return {
-				search: attrs.blocks[0].search,
-				replace: attrs.blocks[0].replace,
-			};
+			return { blocks: attrs.blocks };
 		}
 		return null;
 	}
@@ -312,11 +327,32 @@ export default class Set {
 			};
 		}
 		if (body && attrs.blocks?.length > 0) {
-			const block = attrs.blocks[0];
-			return Hedberg.replace(body, block.search, block.replace, {
-				sed: block.sed,
-				flags: block.flags,
-			});
+			if (attrs.blocks.length === 1) {
+				const block = attrs.blocks[0];
+				return Hedberg.replace(body, block.search, block.replace, {
+					sed: block.sed,
+					flags: block.flags,
+				});
+			}
+			// Multi-block: apply sequentially, no per-hunk merge notation
+			let current = body;
+			let lastWarning = null;
+			for (const block of attrs.blocks) {
+				const result = Hedberg.replace(current, block.search, block.replace, {
+					sed: block.sed,
+					flags: block.flags,
+				});
+				if (result.error) return result;
+				if (result.warning) lastWarning = result.warning;
+				if (result.patch) current = result.patch;
+			}
+			return {
+				patch: current !== body ? current : null,
+				searchText: null,
+				replaceText: null,
+				warning: lastWarning,
+				error: null,
+			};
 		}
 		return {
 			patch: null,

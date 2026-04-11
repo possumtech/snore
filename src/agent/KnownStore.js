@@ -6,6 +6,7 @@ export default class KnownStore {
 	#onChanged;
 	#budgetGuard = null;
 	#schemes = new Map();
+	#seq = 0;
 
 	constructor(db, { onChanged } = {}) {
 		this.#db = db;
@@ -71,7 +72,7 @@ export default class KnownStore {
 			path: candidate,
 		});
 		if (!existing) return candidate;
-		return `${candidate}_${Date.now()}`;
+		return `${candidate}_${++this.#seq}`;
 	}
 
 	async slugPath(runId, scheme, content, summary) {
@@ -79,7 +80,7 @@ export default class KnownStore {
 		const base = slugify(source);
 		const prefix = `${scheme}://`;
 
-		if (!base) return `${prefix}${Date.now()}`;
+		if (!base) return `${prefix}${++this.#seq}`;
 
 		const candidate = `${prefix}${base}`;
 		const existing = await this.#db.get_entry_body.get({
@@ -88,7 +89,7 @@ export default class KnownStore {
 		});
 		if (!existing) return candidate;
 
-		return `${prefix}${base}_${Date.now()}`;
+		return `${prefix}${base}_${++this.#seq}`;
 	}
 
 	async upsert(
@@ -136,7 +137,7 @@ export default class KnownStore {
 		});
 		this.#emitChanged(runId, normalized, "upsert");
 
-		if (delta > 0) this.#budgetGuard?.charge(delta);
+		if (delta !== 0) this.#budgetGuard?.charge(delta);
 	}
 
 	async promote(runId, path, turn) {
@@ -283,7 +284,7 @@ export default class KnownStore {
 		});
 		this.#emitChanged(runId, path, "body");
 
-		if (delta > 0) this.#budgetGuard?.charge(delta);
+		if (delta !== 0) this.#budgetGuard?.charge(delta);
 	}
 
 	async resolve(runId, path, status, body) {

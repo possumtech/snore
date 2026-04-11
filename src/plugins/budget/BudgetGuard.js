@@ -54,7 +54,7 @@ export default class BudgetGuard {
 	}
 
 	charge(tokens) {
-		if (tokens > 0) this.#spent += tokens;
+		this.#spent = Math.max(0, this.#spent + tokens);
 	}
 
 	trip(source) {

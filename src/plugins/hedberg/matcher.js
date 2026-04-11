@@ -1,34 +1,15 @@
-import { execSync } from "node:child_process";
-import { unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createTwoFilesPatch } from "diff";
 
 export function generatePatch(filePath, oldContent, newContent) {
-	const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-	const oldPath = join(tmpdir(), `rummy_diff_old_${id}`);
-	const newPath = join(tmpdir(), `rummy_diff_new_${id}`);
-
-	try {
-		writeFileSync(oldPath, oldContent);
-		writeFileSync(newPath, newContent);
-
-		const result = execSync(
-			`diff -u --label "${filePath}\told" --label "${filePath}\tnew" "${oldPath}" "${newPath}"`,
-			{ encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-		);
-		return result;
-	} catch (err) {
-		// diff exits 1 when files differ — that's the success case
-		if (err.stdout) return err.stdout;
-		return "";
-	} finally {
-		try {
-			unlinkSync(oldPath);
-		} catch {}
-		try {
-			unlinkSync(newPath);
-		} catch {}
-	}
+	return createTwoFilesPatch(
+		`${filePath}\told`,
+		`${filePath}\tnew`,
+		oldContent,
+		newContent,
+		"",
+		"",
+		{ context: 3 },
+	);
 }
 
 export default class HeuristicMatcher {

@@ -11,6 +11,7 @@ export default function createHooks(debug = false) {
 
 	const createEvent = (tag) => ({
 		on: (callback, priority) => registry.addEvent(tag, callback, priority),
+		off: (callback) => registry.removeEvent(tag, callback),
 		emit: (...args) => registry.emitEvent(tag, ...args),
 	});
 
