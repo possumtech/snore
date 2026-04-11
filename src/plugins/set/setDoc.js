@@ -19,14 +19,18 @@ const LINES = [
 		"SEARCH/REPLACE block: literal match and replace. Use when sed escaping is complex.",
 	],
 	[
-		'Example: <set path="known://plan" stored summary="Migration plan for Q2"/>',
-		"Fidelity + summary: archive an entry while preserving a description. Lifecycle endpoint.",
+		'Example: <set path="known://plan" fidelity="summary" summary="Migration plan for Q2"/>',
+		"Fidelity + summary: hide body from context, keep short label visible. Lifecycle endpoint.",
 	],
 
 	// --- Constraints
 	[
 		'* `fidelity="..."`: `archive`, `summary`, `index`, `full`',
 		"Fidelity control. Archive removes from context but preserves for retrieval.",
+	],
+	[
+		'* `fidelity="summary"` HIDES the body — does NOT require reading or compressing content. Write any short keyword label you already know.',
+		"M-10 fix: model was reading files before compressing to summary, believing it needed semantic content. It does not. The body is preserved on disk; only context visibility changes.",
 	],
 	[
 		'* `summary="..."` (<= 80 chars) persists across fidelity changes',

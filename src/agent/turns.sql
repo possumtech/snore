@@ -27,6 +27,11 @@ SELECT
 FROM turns
 WHERE run_id = :run_id;
 
+-- PREP: get_turn_context_tokens
+SELECT context_tokens
+FROM turns
+WHERE run_id = :run_id AND sequence = :sequence;
+
 -- PREP: get_last_context_tokens
 SELECT context_tokens
 FROM turns

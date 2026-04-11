@@ -4,12 +4,11 @@ export default class Prompt {
 	constructor(core) {
 		this.#core = core;
 		core.hooks.tools.onView("prompt", (entry) => entry.body);
-		core.hooks.tools.onView("progress", (entry) => entry.body);
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
 	}
 
-	async onTurnStarted({ rummy, mode, prompt, isContinuation, loopIteration }) {
+	async onTurnStarted({ rummy, mode, prompt, isContinuation }) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
@@ -18,11 +17,6 @@ export default class Prompt {
 				loopId,
 			});
 		}
-		const maxTurns = Number(process.env.RUMMY_MAX_TURNS) || 15;
-		const counter = `Turn ${loopIteration}/${maxTurns}`;
-		await store.upsert(runId, turn, `progress://${turn}`, counter, 200, {
-			loopId,
-		});
 	}
 
 	async assemblePrompt(content, ctx) {

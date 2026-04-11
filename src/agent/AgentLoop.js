@@ -343,7 +343,11 @@ export default class AgentLoop {
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
 				} else if (mode === "panic") {
-					turnPrompt = "Continue freeing space. Check <knowns> token counts.";
+					turnPrompt = this.#hooks.budget.panicPrompt({
+						assembledTokens: _lastAssembledTokens,
+						contextSize,
+						continuation: true,
+					});
 				} else {
 					turnPrompt = this.#buildContinuationPrompt(
 						loopIteration,
@@ -453,12 +457,13 @@ export default class AgentLoop {
 						model: result.model,
 						temperature: result.temperature,
 						context_size: result.contextSize,
-						context_tokens: (
-							await this.#db.get_turn_budget.get({
-								run_id: currentRunId,
-								turn: result.turn,
-							})
-						).total,
+						context_tokens:
+							(
+								await this.#db.get_turn_context_tokens.get({
+									run_id: currentRunId,
+									sequence: result.turn,
+								})
+							)?.context_tokens ?? 0,
 						prompt_tokens: runUsage.prompt_tokens,
 						cached_tokens: runUsage.cached_tokens,
 						completion_tokens: runUsage.completion_tokens,

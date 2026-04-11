@@ -13,6 +13,8 @@ export default class Progress {
 		const usedTokens = ctx.lastContextTokens || rowTokens;
 		const contextSize = ctx.contextSize || 0;
 		const pct = contextSize ? Math.round((usedTokens / contextSize) * 100) : 0;
+		const maxTurns = Number(process.env.RUMMY_MAX_TURNS) || 15;
+		const turnCounter = `Turn ${ctx.loopIteration}/${maxTurns}`;
 
 		// Fidelity distribution across known/file entries
 		const entries = ctx.rows.filter((r) => r.category === "data");
@@ -34,7 +36,7 @@ export default class Progress {
 			(r) => r.category === "logging" && r.source_turn >= ctx.loopStartTurn,
 		);
 
-		const parts = [];
+		const parts = [turnCounter];
 
 		const knownCount = entries.length;
 		const tokenLine = contextSize

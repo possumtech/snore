@@ -21,7 +21,7 @@ export default class Budget {
 		};
 	}
 
-	static panicPrompt({ assembledTokens, contextSize }) {
+	static panicPrompt({ assembledTokens, contextSize, continuation = false }) {
 		const target = Math.floor(contextSize * 0.5);
 		const mustFree = assembledTokens - target;
 		return [
@@ -29,12 +29,15 @@ export default class Budget {
 			`YOU MUST free ${mustFree} tokens to get below ${target} (50%).`,
 			"YOU MUST NOT load or create new content. Only reduce.",
 			"",
-			"<knowns> above shows each entry with its token count.",
+			"<knowns> above shows each entry with its token count (0 = already minimal).",
 			"Target the largest entries first.",
+			"Copy the path attribute EXACTLY from <knowns> — do not invent paths.",
 			'<rm path="..."/> to delete entries you no longer need.',
 			'<set path="..." fidelity="summary" summary="keywords"/> to compress.',
 			'<set path="..." fidelity="archive"/> to archive out of context.',
-			"<summarize/> when done. <update/> if still working.",
+			continuation
+				? "<update/> to report progress, <summarize/> when done."
+				: "<summarize/> when done. <update/> if still working.",
 		].join("\n");
 	}
 

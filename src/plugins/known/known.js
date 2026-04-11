@@ -47,7 +47,8 @@ function renderKnownTag(entry, demotedSet, panic = false) {
 
 	// Panic mode: index-only view so context fits in LLM window
 	if (panic) {
-		return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${tokens}/>`;
+		const panicTokens = ` tokens="${entry.tokens || 0}"`;
+		return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${panicTokens}/>`;
 	}
 
 	const attrs =
