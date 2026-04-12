@@ -41,6 +41,7 @@ projected AS (
 		, attributes
 		-- Category comes from schemes table — plugins declare it via registerScheme().
 		, category
+		, tokens_full
 		, CASE
 			WHEN visible_fidelity IN ('full', 'summary') THEN body
 			ELSE ''
@@ -58,6 +59,7 @@ SELECT
 	, attributes
 	, category
 	, turn
+	, tokens_full
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY

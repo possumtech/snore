@@ -220,16 +220,11 @@ WHERE
 
 -- PREP: demote_turn_entries
 -- Demote all full entries from a turn to summary with 413 status.
--- No exceptions. Budget entries survive because onView renders full
--- body at summary fidelity.
+-- Tokens unchanged — always reports full cost regardless of fidelity.
 UPDATE known_entries
 SET
 	fidelity = 'summary'
 	, status = 413
-	, tokens = COALESCE(
-		countTokens(json_extract(attributes, '$.summary'))
-		, countTokens(substr(body, 1, 80))
-	)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -245,10 +240,6 @@ UPDATE known_entries
 SET
 	fidelity = 'summary'
 	, status = 413
-	, tokens = COALESCE(
-		countTokens(json_extract(attributes, '$.summary'))
-		, countTokens(substr(body, 1, 80))
-	)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id

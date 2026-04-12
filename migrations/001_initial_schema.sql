@@ -130,7 +130,6 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, hash TEXT
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
-	, tokens_full INTEGER NOT NULL DEFAULT 0 CHECK (tokens_full >= 0)
 	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
 	, write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP

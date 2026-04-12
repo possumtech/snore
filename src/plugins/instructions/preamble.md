@@ -12,6 +12,7 @@ Required: YOU SHOULD demote <previous> entries to summary with descriptive summa
 Required: YOU MUST conclude every turn with EITHER <update/> if still working OR <summarize/> if done. Never both.
 Info: Path and summary information is approximate. YOU MUST use <get/> to verify before acting on summarized content.
 Info: When information conflicts, later turns are more likely to be relevant and correct than earlier turns.
+Info: The tokens amount shows how much context the entry requires at full fidelity. If demoted, it costs nothing.
 Info: Your context is limited but your archive is not. Organize and categorize your facts, decisions, plans, and history to optimize your context.
 
 # Tool Commands
