@@ -121,7 +121,7 @@ async function ingestContext(client, model, run, chunks) {
 	for (let i = 0; i < chunks.length; i++) {
 		const chunkNum = i + 1;
 		const total = chunks.length;
-		const prompt = chunks[i];
+		const prompt = `Read and file what follows.\n\n${chunks[i]}`;
 
 		let r = await client.call("ask", {
 			model,
@@ -201,9 +201,11 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		model,
 		prompt: "You will read some material and then answer questions about it.",
 		noRepo: true,
+		noInteraction: true,
 		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
 	});
 	let run = initR.run;
+	if (initR.status === 202) await resolveAll(client, initR);
 
 	// Rename to a descriptive alias for easy DB inspection
 	const mabAlias = `mab_${splitAbbrev}_${rowIndex}`;

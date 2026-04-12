@@ -269,6 +269,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
 	});
 	let run = initR.run;
+	if (initR.status === 202) await resolveAll(client, initR);
 
 	const lmeAlias = `lme_${splitAbbrev}_${rowIndex}`;
 	try {
