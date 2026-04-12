@@ -298,7 +298,7 @@ export default class TurnExecutor {
 				e.message,
 			);
 		const isContextExceeded = (e) =>
-			/\b(context.*(size|length|limit)|token.*(limit|exceed)|too.*(long|large|many))\b/i.test(
+			/\b(context.*(size|length|limit)|token.*(limit|exceed)|too.*(long|large))\b/i.test(
 				e.message,
 			);
 

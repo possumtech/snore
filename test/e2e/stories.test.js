@@ -505,4 +505,68 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			`[Story 11] overflow entries: ${overflowEntries.length}, demoted: ${demotedEntries.length}`,
 		);
 	});
+
+	// Story 12: Pre-turn 413 recovery — context is already full when a new
+	// prompt arrives. The system should give the model a chance to free space
+	// (demote entries), not return 413 immediately to the client.
+	it("pre-turn overflow triggers recovery, not immediate 413", {
+		timeout: TIMEOUT,
+	}, async () => {
+		// Step 1: Create a run with a tight context and fill it with known entries
+		const r1 = await client.call("ask", {
+			model,
+			prompt:
+				"Save 5 separate known entries about colors: red is warm, blue is cool, green is nature, yellow is bright, purple is royal. Then summarize.",
+			noInteraction: true,
+			noRepo: true,
+			contextLimit: 4500,
+		});
+		assert.ok(
+			[200, 202].includes(r1.status),
+			`setup: expected completion, got ${r1.status}`,
+		);
+
+		// Step 2: Send another prompt on the SAME run — context is already
+		// near the ceiling from step 1. This triggers a new loop whose
+		// pre-turn budget check may 413. The model should get a recovery
+		// chance, not an immediate 413 to the client.
+		const r2 = await client.call("ask", {
+			model,
+			prompt: "What color is associated with royalty?",
+			run: r1.run,
+			noInteraction: true,
+			noRepo: true,
+		});
+
+		// The critical assertion: the model should recover, not 413
+		assert.ok(
+			[200, 202].includes(r2.status),
+			`expected recovery, got status ${r2.status} — 413 reached client without recovery attempt`,
+		);
+	});
+
+	// Story 13: LLM context exceeded recovery — our token estimate passes
+	// budget enforcement but the LLM rejects the request as too large.
+	// The system should recover, not crash or 413 to client.
+	it("LLM context rejection triggers recovery, not client 413", {
+		timeout: TIMEOUT,
+	}, async () => {
+		// Use an extremely tight context limit where our char-based estimate
+		// might pass but the LLM's actual tokenization rejects it.
+		const r1 = await client.call("ask", {
+			model,
+			prompt:
+				"Save 8 known entries about world capitals: Tokyo-Japan, Paris-France, London-UK, Berlin-Germany, Madrid-Spain, Rome-Italy, Ottawa-Canada, Canberra-Australia. Include details about each city's founding, population, and famous landmarks. Then summarize.",
+			noInteraction: true,
+			noRepo: true,
+			contextLimit: 3500,
+		});
+
+		// If the LLM rejects the context, the system should attempt recovery.
+		// Status 413 to client means no recovery was attempted.
+		assert.ok(
+			[200, 202].includes(r1.status),
+			`expected recovery from LLM rejection, got status ${r1.status}`,
+		);
+	});
 });
