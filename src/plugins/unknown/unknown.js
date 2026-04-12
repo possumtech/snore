@@ -21,6 +21,10 @@ export default class Unknown {
 		return `# unknown\n${entry.body}`;
 	}
 
+	summary(entry) {
+		return this.full(entry);
+	}
+
 	async assembleUnknowns(content, ctx) {
 		const entries = ctx.rows.filter((r) => r.category === "unknown");
 		if (entries.length === 0) return content;
