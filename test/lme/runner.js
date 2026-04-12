@@ -139,11 +139,7 @@ async function ingestSessions(client, model, run, sessions, dates, sessionIds) {
 		const date = dates?.[i] || `session ${i + 1}`;
 		const total = sessions.length;
 		const text = formatSession(session, date, sessionIds?.[i]);
-		const prompt = [
-			`Conversation ${i + 1} of ${total} (${date}). Identify and record the facts found in this text for future recall and reasoning tasks.`,
-			"",
-			text,
-		].join("\n");
+		const prompt = text;
 
 		let r = await client.call("ask", {
 			model,
