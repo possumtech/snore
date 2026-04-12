@@ -466,15 +466,16 @@ export default class TurnExecutor {
 				rows: postMat.rows,
 			});
 			if (postBudget.status === 413) {
-				await this.#db.demote_turn_data_entries.run({
+				const demoted = await this.#db.demote_turn_data_entries.all({
 					run_id: currentRunId,
 					turn,
 				});
+				const paths = demoted.map((r) => r.path).join(", ");
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					`budget://${currentLoopId}/${turn}`,
-					`Turn ${turn}: ${postBudget.assembledTokens}/${contextSize} tokens (${postBudget.overflow} over). Data entries auto-summarized.`,
+					`Turn ${turn} overflow (${postBudget.overflow} tokens over). Auto-summarized: ${paths}`,
 					413,
 					{ loopId: currentLoopId },
 				);

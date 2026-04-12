@@ -224,4 +224,5 @@ WHERE
 	AND turn = :turn
 	AND fidelity = 'full'
 	AND status < 400
-	AND scheme IN (SELECT name FROM schemes WHERE category = 'data');
+	AND scheme IN (SELECT name FROM schemes WHERE category = 'data')
+RETURNING path;
