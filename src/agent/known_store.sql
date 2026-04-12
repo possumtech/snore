@@ -237,3 +237,23 @@ WHERE
 	AND status < 400
 	AND scheme IN (SELECT name FROM schemes WHERE category = 'data')
 RETURNING path;
+
+-- PREP: demote_all_full_data
+-- Batch-demote ALL full data entries to summary.
+-- Fires when pre-turn or LLM context overflow reaches AgentLoop.
+-- Aggressive: creates room for the model to run and choose what to restore.
+UPDATE known_entries
+SET
+	fidelity = 'summary'
+	, status = 413
+	, tokens = COALESCE(
+		countTokens(json_extract(attributes, '$.summary'))
+		, countTokens(substr(body, 1, 80))
+	)
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND fidelity = 'full'
+	AND status < 400
+	AND scheme IN (SELECT name FROM schemes WHERE category = 'data')
+RETURNING path;

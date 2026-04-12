@@ -344,14 +344,78 @@ export default class AgentLoop {
 				});
 
 				if (result.status === 413) {
-					return {
-						run: currentAlias,
-						status: 413,
-						overflow: result.overflow,
-						assembledTokens: result.assembledTokens,
-						contextSize: result.contextSize,
-						turn: result.turn,
+					if (recovery) {
+						// Already in recovery — let advanceRecovery track strikes.
+						// Synthesize a budgetRecovery so the state machine sees
+						// the re-overflow and tightens or strikes.
+						const ra = advanceRecovery(recovery, {
+							assembledTokens:
+								result.assembledTokens ?? _lastAssembledTokens,
+							budgetRecovery: {
+								target: Math.floor(contextSize * 0.9),
+								promptPath: recovery.promptPath,
+							},
+						});
+						recovery = ra.next;
+						if (ra.action === "hard413") {
+							await this.#db.update_run_status.run({
+								id: currentRunId,
+								status: 413,
+							});
+							const out = {
+								run: currentAlias,
+								status: 413,
+								turn: result.turn,
+							};
+							await hook.completed.emit({ projectId, ...out });
+							return out;
+						}
+						continue;
+					}
+
+					// First 413 — enter recovery. Batch-demote all full data
+					// entries to create room for the model to run and self-correct.
+					const demoted413 =
+						await this.#db.demote_all_full_data.all({
+							run_id: currentRunId,
+						});
+					const paths413 = demoted413.map((r) => r.path).join(", ");
+
+					// Write a budget entry instructing the model to free space.
+					const budgetBody = [
+						"Error 413: Context Size Exceeded",
+						"",
+						"Required: YOU MUST demote larger and/or less relevant items to optimize your context.",
+						paths413
+							? `Info: ${paths413} have been automatically summarized to avoid overflow.`
+							: "Info: No data entries to auto-summarize.",
+						"Info: YOU MAY use bulk patterns to demote and promote entries by pattern.",
+						"Info: Well-designed paths and summaries improve context management.",
+						'Example: <set path="known://people/*" fidelity="summary"/>',
+					].join("\n");
+
+					await this.#knownStore.upsert(
+						currentRunId,
+						result.turn ?? loopIteration,
+						`budget://${currentLoopId}/${loopIteration}`,
+						budgetBody,
+						413,
+						{ loopId: currentLoopId },
+					);
+
+					const safeLevel = Math.floor(contextSize * 0.9);
+					recovery = {
+						target: safeLevel,
+						promptPath: null,
+						strikes: 0,
+						lastTokens:
+							result.assembledTokens ?? _lastAssembledTokens,
 					};
+
+					console.warn(
+						`[RUMMY] 413 recovery: demoted ${demoted413.length} entries, target ${safeLevel} tokens`,
+					);
+					continue;
 				}
 
 				_lastAssembledTokens = result.assembledTokens;
