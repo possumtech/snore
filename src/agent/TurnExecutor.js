@@ -297,6 +297,10 @@ export default class TurnExecutor {
 			/\b(503|429|timeout|ECONNREFUSED|ECONNRESET|unavailable)\b/i.test(
 				e.message,
 			);
+		const isContextExceeded = (e) =>
+			/\b(context.*(size|length|limit)|token.*(limit|exceed)|too.*(long|large|many))\b/i.test(
+				e.message,
+			);
 
 		for (let llmAttempt = 0; ; llmAttempt++) {
 			try {
@@ -314,6 +318,18 @@ export default class TurnExecutor {
 					);
 					await new Promise((r) => setTimeout(r, delay));
 					continue;
+				}
+				if (isContextExceeded(err)) {
+					console.warn(
+						`[RUMMY] LLM context exceeded: ${err.message.slice(0, 120)}. Returning 413.`,
+					);
+					return {
+						turn,
+						turnId: turnRow.id,
+						status: 413,
+						assembledTokens,
+						contextSize,
+					};
 				}
 				throw err;
 			}

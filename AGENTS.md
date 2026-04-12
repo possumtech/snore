@@ -229,6 +229,39 @@ Publish after Phase 1 (CR full) completes. Tables populated incrementally.
 - Score vs context pressure correlation
 - Folksonomic quality (spot-check known:// paths in DB)
 
+## Active: Post-MAB Fixes
+
+### Context: What MAB Taught Us
+- Taxonomy quality (paths + summaries) is solved: 7/7 semantic, 6/7 keyword-format
+- Parser bug fixed: XmlParser + TurnExecutor now pass `summary` attr to DB
+- "Folksonomic memory agent" identity fixed MAB taxonomy but broke normal work
+- Model loads raw files into entries instead of reading then filing findings
+- LLM 400 (context exceeded) surfaces as 500 — should be 413
+
+### Fix 1: LLM 400→413 error handling
+- **File**: `src/llm/OpenAiClient.js` line 33-37
+- **Bug**: Any non-OK LLM response throws generic Error. A 400 "context exceeded"
+  is not transient, so TurnExecutor rethrows at line 318, propagating as 500.
+- **Fix**: Detect context-exceeded 400s in the LLM catch block (line 309-319).
+  Return 413 status in the same shape as existing budget enforcement (line 264-272).
+  This routes into the existing demotion/panic machinery.
+- [ ] Implement
+- [ ] Test: send oversized context to LLM, verify 413 not 500
+
+### Fix 2: Preamble rebalancing
+- **Problem**: "Folksonomic memory agent" makes model treat filing as primary job.
+  On real projects, it ingests raw source files into entries instead of working.
+- **Fix**: Identity should convey "read sources, extract findings into known://"
+  not "ingest everything." Files are sources, known:// is where findings go.
+- [ ] Revise preamble line 1
+- [ ] Demo run on rummy_dev.db to verify normal agent behavior
+
+### Fix 3: Previous-entry summarization
+- **Problem**: Auto-demotion of previous loop entries strips context without
+  model-written summary tags. The model should summarize before/as entries demote.
+- [ ] Design approach
+- [ ] Implement
+
 ## Deferred
 
 - `src/plugins/progress/progress.js` — add recovery guidance
