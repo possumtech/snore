@@ -97,10 +97,10 @@ describe("Budget demotion", () => {
 			assert.strictEqual(entry.fidelity, "full", "4xx entry not demoted");
 		});
 
-		it("does not demote budget entries", async () => {
+		it("demotes budget entries too (onView renders full at summary)", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_budget" });
 
-			await store.upsert(runId, 7, "budget://1/7", "413 report", 413, {
+			await store.upsert(runId, 7, "budget://1/7", "413 report", 200, {
 				fidelity: "full",
 			});
 
@@ -108,7 +108,7 @@ describe("Budget demotion", () => {
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "budget://1/7");
-			assert.strictEqual(entry.fidelity, "full", "budget entry survives");
+			assert.strictEqual(entry.fidelity, "summary", "budget entry demoted");
 		});
 	});
 });

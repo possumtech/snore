@@ -219,9 +219,9 @@ WHERE
 	AND scheme IN (SELECT name FROM schemes WHERE category = 'logging');
 
 -- PREP: demote_turn_entries
--- Demote all full model-visible entries from a turn to summary with 413 status.
--- Covers data, logging, AND file entries (NULL scheme). Excludes lifecycle
--- signals (summarize, update, budget) so the model sees the demotion report.
+-- Demote all full entries from a turn to summary with 413 status.
+-- No exceptions. Budget entries survive because onView renders full
+-- body at summary fidelity.
 UPDATE known_entries
 SET
 	fidelity = 'summary'
@@ -236,14 +236,11 @@ WHERE
 	AND turn = :turn
 	AND fidelity = 'full'
 	AND status < 400
-	AND scheme NOT IN ('summarize', 'update', 'budget', 'system', 'prompt', 'instructions')
 RETURNING path;
 
--- PREP: demote_all_full_data
--- Batch-demote ALL full model-visible entries to summary.
+-- PREP: demote_all_full
+-- Batch-demote ALL full entries to summary. No exceptions.
 -- Fires when pre-turn or LLM context overflow reaches AgentLoop.
--- Includes data entries AND file entries (NULL scheme).
--- Excludes prompt and system entries (needed for the model to function).
 UPDATE known_entries
 SET
 	fidelity = 'summary'
@@ -257,9 +254,4 @@ WHERE
 	run_id = :run_id
 	AND fidelity = 'full'
 	AND status < 400
-	AND (
-		scheme IN (SELECT name FROM schemes WHERE category = 'data')
-		OR scheme IS NULL
-	)
-	AND scheme NOT IN ('system', 'prompt', 'instructions')
 RETURNING path;

@@ -372,7 +372,7 @@ export default class AgentLoop {
 					// First 413 — enter recovery. Batch-demote all full data
 					// entries to create room for the model to run and self-correct.
 					const demoted413 =
-						await this.#db.demote_all_full_data.all({
+						await this.#db.demote_all_full.all({
 							run_id: currentRunId,
 						});
 					const paths413 = demoted413.map((r) => r.path).join(", ");
