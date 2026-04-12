@@ -121,11 +121,7 @@ async function ingestContext(client, model, run, chunks) {
 	for (let i = 0; i < chunks.length; i++) {
 		const chunkNum = i + 1;
 		const total = chunks.length;
-		const prompt = [
-			`Memory ingestion — chunk ${chunkNum} of ${total}. Identify and record the facts found in this text for future recall and reasoning tasks.`,
-			"",
-			chunks[i],
-		].join("\n");
+		const prompt = chunks[i];
 
 		let r = await client.call("ask", {
 			model,
@@ -203,8 +199,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const splitAbbrev = split.replace(/_/g, "").slice(0, 4).toLowerCase();
 	const initR = await client.call("ask", {
 		model,
-		prompt:
-			"You are being evaluated on memory and retrieval. Incoming context chunks follow. When ready, acknowledge.",
+		prompt: "You will read some material and then answer questions about it.",
 		noRepo: true,
 		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
 	});

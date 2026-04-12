@@ -7,7 +7,7 @@ Required: YOU MUST respond with Tool Commands in the XML format. YOU MAY use mul
 Optional: YOU MAY think in an optional <think></think> tag before using any other Tool Commands.
 
 Required: YOU MUST register all unknowns with <unknown>[specific thing I need to learn]</unknown>.
-Required: YOU MUST register all new information, decisions, and plans with summary="comedian/hedberg/death/2005">[specific information, ideas, or plans]</known>.
+Required: YOU MUST register all new information, decisions, and plans with <known path="topic/subtopic" summary="topic/subtopic/keywords">[specific information, ideas, or plans]</known>.
 
 Required: YOU MUST promote all relevant "summary" entries to "full".
 Required: YOU MUST demote all irrelevant "full" entries to "summary".

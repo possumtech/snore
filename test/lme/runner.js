@@ -267,8 +267,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const splitAbbrev = split.replace(/longmemeval_|_cleaned/g, "").slice(0, 4);
 	const initR = await client.call("ask", {
 		model,
-		prompt:
-			"You are being evaluated on long-term memory. Incoming conversation history follows. When ready, acknowledge.",
+		prompt: "You will read some conversations and then answer questions about them.",
 		noRepo: true,
 		noInteraction: true,
 		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
