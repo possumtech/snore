@@ -21,7 +21,7 @@ const LINES = [
 		"Cross-tool lifecycle: glob by category, filter by keyword. Matches the slashed path convention.",
 	],
 	[
-		"* `summary` keywords survive compression — comma-separated search terms, not descriptions",
+		"* `summary` REQUIRED — comma-separated search keywords that survive at summary fidelity",
 		"Summary is a compression label, not a path generator. Path is always explicit.",
 	],
 	[
