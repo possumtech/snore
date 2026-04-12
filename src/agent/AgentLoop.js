@@ -375,19 +375,13 @@ export default class AgentLoop {
 						await this.#db.demote_all_full.all({
 							run_id: currentRunId,
 						});
-					const paths413 = demoted413.map((r) => r.path).join(", ");
 
-					// Write a budget entry instructing the model to free space.
+					// Budget entry must be small — listing all paths caused a
+					// 25K-token entry that was itself larger than the context.
 					const budgetBody = [
 						"Error 413: Context Size Exceeded",
-						"",
-						"Required: YOU MUST demote larger and/or less relevant items to optimize your context.",
-						paths413
-							? `Info: ${paths413} have been automatically summarized to avoid overflow.`
-							: "Info: No data entries to auto-summarize.",
-						"Info: YOU MAY use bulk patterns to demote and promote entries by pattern.",
-						"Info: Well-designed paths and summaries improve context management.",
-						'Example: <set path="known://people/*" fidelity="summary"/>',
+						`${demoted413.length} entries demoted to summary.`,
+						"Review your entries and archive what you don't need.",
 					].join("\n");
 
 					await this.#knownStore.upsert(
