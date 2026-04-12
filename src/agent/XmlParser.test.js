@@ -524,4 +524,41 @@ I need to check the port.
 			assert.strictEqual(commands[0].replace, "7 - a = 5");
 		});
 	});
+
+	describe("command cap", () => {
+		it("enforces MAX_COMMANDS limit", () => {
+			const original = XmlParser.MAX_COMMANDS;
+			XmlParser.MAX_COMMANDS = 5;
+			try {
+				const xml = Array.from(
+					{ length: 20 },
+					(_, i) => `<get>file_${i}.js</get>`,
+				).join("");
+				const { commands, warnings } = XmlParser.parse(xml);
+				assert.strictEqual(commands.length, 5);
+				assert.ok(
+					warnings.some((w) => w.includes("limit")),
+					"should warn about cap",
+				);
+			} finally {
+				XmlParser.MAX_COMMANDS = original;
+			}
+		});
+
+		it("allows exactly MAX_COMMANDS", () => {
+			const original = XmlParser.MAX_COMMANDS;
+			XmlParser.MAX_COMMANDS = 3;
+			try {
+				const xml = "<get>a.js</get><get>b.js</get><get>c.js</get>";
+				const { commands, warnings } = XmlParser.parse(xml);
+				assert.strictEqual(commands.length, 3);
+				assert.ok(
+					!warnings.some((w) => w.includes("limit")),
+					"no warning at exact limit",
+				);
+			} finally {
+				XmlParser.MAX_COMMANDS = original;
+			}
+		});
+	});
 });

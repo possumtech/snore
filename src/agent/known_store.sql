@@ -214,7 +214,8 @@ WHERE
 RETURNING path;
 
 -- PREP: demote_all_full
--- Batch-demote ALL full entries to summary. No exceptions.
+-- Batch-demote full entries to summary. Excludes structural entries
+-- (instructions, system, prompt) that the model needs to function.
 -- Fires when pre-turn or LLM context overflow reaches AgentLoop.
 UPDATE known_entries
 SET
@@ -225,4 +226,5 @@ WHERE
 	run_id = :run_id
 	AND fidelity = 'full'
 	AND status < 400
+	AND scheme NOT IN ('instructions', 'system', 'prompt')
 RETURNING path;

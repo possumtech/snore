@@ -145,6 +145,8 @@ export default class XmlParser {
 	 * @param {string} content - Raw model response text
 	 * @returns {{ commands: Array, warnings: string[], unparsed: string }}
 	 */
+	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS) || 99;
+
 	static parse(content) {
 		if (!content) return { commands: [], warnings: [], unparsed: "" };
 
@@ -156,10 +158,12 @@ export default class XmlParser {
 		const textChunks = [];
 		let current = null;
 		let ended = false;
+		let capped = false;
 
 		const parser = new Parser(
 			{
 				onopentag(name, attrs) {
+					if (capped) return;
 					if (!ALL_TOOLS.has(name)) {
 						if (current) {
 							current.rawBody += `<${name}>`;
@@ -177,10 +181,17 @@ export default class XmlParser {
 						);
 					}
 
+					if (commands.length >= XmlParser.MAX_COMMANDS) {
+						capped = true;
+						current = null;
+						return;
+					}
+
 					current = { name, attrs, rawBody: "" };
 				},
 
 				ontext(text) {
+					if (capped) return;
 					if (current) {
 						current.rawBody += text;
 					} else {
@@ -189,6 +200,7 @@ export default class XmlParser {
 				},
 
 				onclosetag(name, isImplied) {
+					if (capped) return;
 					if (current && name === current.name) {
 						if (ended) {
 							warnings.push(`Unclosed <${name}> tag — content captured anyway`);
@@ -230,12 +242,18 @@ export default class XmlParser {
 		parser.end();
 
 		// Flush any unclosed tool tag
-		if (current) {
+		if (current && !capped) {
 			warnings.push(`Unclosed <${current.name}> tag — content captured anyway`);
 			commands.push(
 				resolveCommand(current.name, current.attrs, current.rawBody),
 			);
 			current = null;
+		}
+
+		if (capped) {
+			warnings.push(
+				`Tool call limit (${XmlParser.MAX_COMMANDS}) reached — remaining commands dropped`,
+			);
 		}
 
 		const unparsed = textChunks.join("").trim();
