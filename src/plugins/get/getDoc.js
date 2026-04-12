@@ -19,6 +19,12 @@ const LINES = [
 		"Full pattern: recursive glob + preview + content filter. Shows all 3 features at once. Body is a filter keyword, never file content.",
 	],
 
+	// --- Partial read: line/limit — show before constraints so model sees it as a first-class pattern
+	[
+		'Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>',
+		"Partial read. Returns lines 644–723 as the log item without promoting the entry to full. Use summary fidelity to find line numbers, then target the symbol directly.",
+	],
+
 	// --- Constraints: RFC-style. Each prevents a specific failure mode.
 	[
 		"* Paths accept globs: `src/**/*.js`, `known://api_*`",
@@ -31,6 +37,10 @@ const LINES = [
 	[
 		"* Body text filters results by content match",
 		"Generalizes examples 2-3. Body = filter, not just path.",
+	],
+	[
+		"* `line` and `limit` read a slice without promoting — globs not allowed",
+		"The no-promotion constraint is what makes partial read safe: context budget is unaffected.",
 	],
 	[
 		'* Use <set path="..." fidelity="archive"/> to remove loaded content from context',

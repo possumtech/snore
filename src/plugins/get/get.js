@@ -30,6 +30,52 @@ export default class Get {
 		const normalized = KnownStore.normalizePath(target);
 		const bodyFilter = entry.attributes.body || null;
 		const isPattern = bodyFilter || normalized.includes("*");
+
+		const line =
+			entry.attributes.line != null
+				? Math.max(1, parseInt(entry.attributes.line, 10))
+				: null;
+		const limit =
+			entry.attributes.limit != null
+				? Math.max(1, parseInt(entry.attributes.limit, 10))
+				: null;
+
+		const matches = await store.getEntriesByPattern(
+			runId,
+			normalized,
+			bodyFilter,
+		);
+
+		// Partial read — no fidelity promotion, returns a line slice as the log item.
+		if (line !== null || limit !== null) {
+			if (isPattern) {
+				await store.upsert(
+					runId,
+					turn,
+					entry.resultPath,
+					"line/limit requires a single path, not a glob or body filter",
+					400,
+					{ loopId },
+				);
+				return;
+			}
+			if (matches.length === 0) {
+				await store.upsert(runId, turn, entry.resultPath, `${target} not found`, 200, { loopId });
+				return;
+			}
+			const allLines = matches[0].body.split("\n");
+			const total = allLines.length;
+			const startLine = line ?? 1;
+			const startIdx = startLine - 1;
+			const endIdx =
+				limit !== null ? Math.min(startIdx + limit, total) : total;
+			const slice = allLines.slice(startIdx, endIdx).join("\n");
+			const endLine = endIdx;
+			const header = `[lines ${startLine}–${endLine} / ${total} total]`;
+			await store.upsert(runId, turn, entry.resultPath, `${header}\n${slice}`, 200, { loopId });
+			return;
+		}
+
 		const VALID_FIDELITY = {
 			stored: 1,
 			summary: 1,
@@ -40,11 +86,6 @@ export default class Get {
 		const fidelityAttr = VALID_FIDELITY[entry.attributes.fidelity]
 			? entry.attributes.fidelity
 			: null;
-		const matches = await store.getEntriesByPattern(
-			runId,
-			normalized,
-			bodyFilter,
-		);
 
 		await store.promoteByPattern(runId, normalized, bodyFilter, turn);
 		if (fidelityAttr) {

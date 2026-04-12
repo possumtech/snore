@@ -378,6 +378,12 @@ The VIEW determines visibility from `fidelity` and `status`:
 - `summary` → summary visible (model-authored `summary` attribute if set)
 - `index` → path listed, no content
 - `archive` → invisible (retrievable via `<get>`)
+
+**Partial read:** `<get path="..." line="N" limit="M"/>` returns lines N through
+N+M−1 of the entry body as the log item without changing fidelity or promoting
+the entry to context. Use after reading `summary` fidelity (which gives line
+numbers via repomap) to target a specific symbol. Single-path only — glob or
+body filter with `line`/`limit` is a 400 error.
 - `status = 202` → invisible (proposed, pending client)
 - `model_visible = 0` → invisible (audit, tool, instructions)
 
