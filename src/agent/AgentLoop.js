@@ -1,7 +1,6 @@
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
-import { countTokens } from "./tokens.js";
 
 export default class AgentLoop {
 	#db;
@@ -170,8 +169,6 @@ export default class AgentLoop {
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
 
-		let panicAttempted = false;
-
 		try {
 			while (true) {
 				const loop = await this.#db.claim_next_loop.get({
@@ -180,12 +177,7 @@ export default class AgentLoop {
 				if (!loop) break;
 
 				const loopConfig = loop.config ? JSON.parse(loop.config) : {};
-				const hook =
-					loop.mode === "panic"
-						? this.#hooks.panic
-						: loop.mode === "ask"
-							? this.#hooks.ask
-							: this.#hooks.act;
+				const hook = loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act;
 
 				let result;
 				try {
@@ -202,7 +194,6 @@ export default class AgentLoop {
 						noInteraction: loopConfig.noInteraction || false,
 						noWeb: loopConfig.noWeb || false,
 						noProposals: loopConfig.noProposals || false,
-						panicTarget: loopConfig.panicTarget ?? null,
 						options: { ...options, temperature: loopConfig.temperature },
 						hook,
 						signal: controller.signal,
@@ -222,68 +213,11 @@ export default class AgentLoop {
 						status: 413,
 						result: JSON.stringify(result),
 					});
-
-					// One panic attempt per run: check both local flag and persisted config
-					if (
-						loop.mode === "panic" ||
-						panicAttempted ||
-						loopConfig.panicAttempted
-					) {
-						return {
-							run: currentAlias,
-							status: 413,
-							error:
-								loop.mode === "panic"
-									? `Panic mode failed to free enough space (${result.overflow} tokens over).`
-									: `Context full (${result.overflow} tokens over).`,
-						};
-					}
-
-					panicAttempted = true;
-
-					const _ceiling = Math.floor(result.contextSize * 0.9);
-					const incomingTokens = countTokens(loop.prompt);
-					const cushion = 500;
-					const panicTarget =
-						Math.min(
-							Math.floor(result.contextSize * 0.75),
-							result.contextSize - incomingTokens,
-						) - cushion;
-
-					const panicPrompt = this.#hooks.budget.panicPrompt({
-						assembledTokens: result.assembledTokens,
-						panicTarget,
-					});
-
-					// Enqueue panic loop
-					const panicSeq = await this.#db.next_loop.get({
-						run_id: currentRunId,
-					});
-					await this.#db.enqueue_loop.get({
-						run_id: currentRunId,
-						sequence: panicSeq.sequence,
-						mode: "panic",
-						model: loop.model,
-						prompt: panicPrompt,
-						config: JSON.stringify({ noRepo: true, panicTarget }),
-					});
-
-					// Re-enqueue the original loop to retry after panic.
-					// Mark panicAttempted so if it 413s again, we hard-fail rather than re-panicking.
-					const retrySeq = await this.#db.next_loop.get({
-						run_id: currentRunId,
-					});
-					const retryConfig = { ...loopConfig, panicAttempted: true };
-					await this.#db.enqueue_loop.get({
-						run_id: currentRunId,
-						sequence: retrySeq.sequence,
-						mode: loop.mode,
-						model: loop.model,
-						prompt: loop.prompt,
-						config: JSON.stringify(retryConfig),
-					});
-
-					continue;
+					return {
+						run: currentAlias,
+						status: 413,
+						error: `Context full (${result.overflow} tokens over).`,
+					};
 				}
 
 				await this.#db.complete_loop.run({
@@ -317,7 +251,6 @@ export default class AgentLoop {
 		noInteraction,
 		noWeb,
 		noProposals,
-		panicTarget,
 		options,
 		hook,
 		signal,
@@ -347,8 +280,13 @@ export default class AgentLoop {
 		const healer = new ResponseHealer();
 
 		let _lastAssembledTokens = 0;
-		let _panicStrikes = 0;
-		let _lastPanicTokens = null;
+
+		// Demote full logging entries from previous loops to summary before
+		// they appear in <previous>. General policy: keep <previous> compact.
+		await this.#knownStore.demotePreviousLoopLogging(
+			currentRunId,
+			currentLoopId,
+		);
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -377,12 +315,6 @@ export default class AgentLoop {
 				let turnPrompt;
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
-				} else if (mode === "panic") {
-					turnPrompt = this.#hooks.budget.panicPrompt({
-						assembledTokens: _lastAssembledTokens,
-						contextSize,
-						continuation: true,
-					});
 				} else {
 					turnPrompt = this.#buildContinuationPrompt(
 						loopIteration,
@@ -407,7 +339,6 @@ export default class AgentLoop {
 					signal,
 				});
 
-				// Budget overflow — return 413 to drainQueue for panic mode
 				if (result.status === 413) {
 					return {
 						run: currentAlias,
@@ -420,46 +351,6 @@ export default class AgentLoop {
 				}
 
 				_lastAssembledTokens = result.assembledTokens;
-
-				// Panic mode: target check + strike counting
-				if (mode === "panic") {
-					const panicTarget_ = panicTarget ?? Math.floor(contextSize * 0.75);
-					if (result.assembledTokens <= panicTarget_) {
-						await this.#db.update_run_status.run({
-							id: currentRunId,
-							status: 200,
-						});
-						const out = {
-							run: currentAlias,
-							status: 200,
-							turn: result.turn,
-						};
-						await hook.completed.emit({ projectId, ...out });
-						return out;
-					}
-					if (_lastPanicTokens !== null) {
-						if (result.assembledTokens < _lastPanicTokens) {
-							_panicStrikes = 0;
-						} else {
-							_panicStrikes++;
-							if (_panicStrikes >= 3) {
-								await this.#db.update_run_status.run({
-									id: currentRunId,
-									status: 200,
-								});
-								return {
-									run: currentAlias,
-									status: 413,
-									overflow: result.assembledTokens - contextSize,
-									assembledTokens: result.assembledTokens,
-									contextSize,
-									turn: result.turn,
-								};
-							}
-						}
-					}
-					_lastPanicTokens = result.assembledTokens;
-				}
 
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,
@@ -535,25 +426,18 @@ export default class AgentLoop {
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
-					// In panic mode, don't exit on summarize unless budget target is met.
-					// The model may signal done before reaching the required headroom.
-					const panicTarget_ = panicTarget ?? Math.floor(contextSize * 0.75);
-					if (mode === "panic" && result.assembledTokens > panicTarget_) {
-						// treat as continuation — target not yet reached
-					} else {
-						await this.#db.update_run_status.run({
-							id: currentRunId,
-							status: 200,
-						});
-						const out = {
-							run: currentAlias,
-							status: 200,
-							turn: result.turn,
-							reason: repetition.reason,
-						};
-						await hook.completed.emit({ projectId, ...out });
-						return out;
-					}
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: 200,
+					});
+					const out = {
+						run: currentAlias,
+						status: 200,
+						turn: result.turn,
+						reason: repetition.reason,
+					};
+					await hook.completed.emit({ projectId, ...out });
+					return out;
 				}
 
 				const progress = healer.assessProgress(result);

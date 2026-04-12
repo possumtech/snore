@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS loops (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
-	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act', 'panic'))
+	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
 	, model TEXT
 	, prompt TEXT NOT NULL DEFAULT ''
 	, status INTEGER NOT NULL DEFAULT 100 CHECK (status BETWEEN 100 AND 599)

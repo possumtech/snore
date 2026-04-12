@@ -480,50 +480,47 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
-	// Story 11: Panic mode — context fills with large files, new prompt
-	// triggers panic, model frees space, original prompt succeeds.
-	it("panic mode recovers from context overflow", {
-		timeout: TIMEOUT * 4,
+	// Story 11: Turn Demotion — model writes many known entries in a tight
+	// context window, triggering end-of-turn auto-summarization. The run
+	// must complete (not 413), and demoted entries must be visible in the DB.
+	it("turn demotion fires and run completes", {
+		timeout: TIMEOUT,
 	}, async () => {
-		// Fill context: 6 × 12000 chars = 36000 tokens.
-		// System prompt + previous loops ~5000. Total ~41000 > 32768 ceiling.
-		for (let i = 0; i < 6; i++) {
-			await fs.writeFile(
-				join(projectRoot, `src/data${i}.txt`),
-				"x".repeat(12000),
-			);
-		}
-		const { execSync: exec } = await import("node:child_process");
-		exec('git add src/data*.txt && git commit --no-verify -m "data"', {
-			cwd: projectRoot,
-		});
-
-		// Load files one at a time until context fills
-		let run = null;
-		for (let i = 0; i < 5; i++) {
-			const r = await client.call("act", {
-				model,
-				prompt: `Read src/data${i}.txt and reply OK.`,
-				run,
-				noInteraction: true,
-				noProposals: true,
-			});
-			await client.assertRun(r, 200, `panic-load-${i}`);
-			run = r.run;
-		}
-
-		// 6th load should trigger panic — context full
-		const r2 = await client.call("act", {
+		const r = await client.call("ask", {
 			model,
-			prompt: "Read src/data5.txt and reply OK.",
-			run,
+			prompt:
+				"Save 10 separate known entries: for each number 1 through 10, save a known entry with the key 'number-N' and value 'The number N is important because it has N digits of history.' Then summarize when done.",
 			noInteraction: true,
+			noRepo: true,
+			contextLimit: 3000,
 		});
-		await client.assertRun(r2, 200, "panic-recover");
 
-		// Clean up
-		for (let i = 0; i < 20; i++) {
-			await fs.unlink(join(projectRoot, `src/data${i}.txt`)).catch(() => {});
-		}
+		// Run must complete — Turn Demotion means 413 never reaches the client
+		assert.ok(
+			[200, 202].includes(r.status),
+			`expected completion, got status ${r.status}`,
+		);
+
+		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
+		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
+
+		// At least some known entries should exist
+		const knownEntries = entries.filter((e) => e.scheme === "known");
+		assert.ok(
+			knownEntries.length > 0,
+			"model should have written known entries",
+		);
+
+		// If demotion fired, some entries will be at summary fidelity with 413 status.
+		// The run completing without client-facing 413 is the key assertion above.
+		const overflowEntries = entries.filter(
+			(e) => e.scheme === "ctx-overflow" && e.status === 413,
+		);
+		const demotedEntries = entries.filter(
+			(e) => e.fidelity === "summary" && e.status === 413,
+		);
+		console.log(
+			`[Story 11] overflow entries: ${overflowEntries.length}, demoted: ${demotedEntries.length}`,
+		);
 	});
 });

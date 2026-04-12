@@ -189,3 +189,39 @@ WHERE
 	run_id = :run_id
 	AND hedmatch(:path, path)
 	AND (:body IS NULL OR hedsearch(:body, body));
+
+-- PREP: demote_previous_loop_logging
+-- Demote full logging entries from all other loops to summary.
+-- Fires at loop start so <previous> entries are already compact.
+UPDATE known_entries
+SET
+	fidelity = 'summary'
+	, tokens = COALESCE(
+		countTokens(json_extract(attributes, '$.summary'))
+		, countTokens(substr(body, 1, 80))
+	)
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND (loop_id IS NULL OR loop_id != :loop_id)
+	AND fidelity = 'full'
+	AND scheme IN (SELECT name FROM schemes WHERE category = 'logging');
+
+-- PREP: demote_turn_data_entries
+-- Demote full data entries from a turn to summary with 413 status.
+-- Fires when end-of-turn materialization exceeds the context ceiling.
+UPDATE known_entries
+SET
+	fidelity = 'summary'
+	, status = 413
+	, tokens = COALESCE(
+		countTokens(json_extract(attributes, '$.summary'))
+		, countTokens(substr(body, 1, 80))
+	)
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND turn = :turn
+	AND fidelity = 'full'
+	AND status < 400
+	AND scheme IN (SELECT name FROM schemes WHERE category = 'data');

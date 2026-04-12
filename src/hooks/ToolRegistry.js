@@ -122,12 +122,6 @@ export default class ToolRegistry {
 	) {
 		const excluded = new Set();
 		if (mode === "ask") excluded.add("sh");
-		if (mode === "panic") {
-			excluded.add("sh");
-			excluded.add("env");
-			excluded.add("search");
-			excluded.add("ask_user");
-		}
 		if (noInteraction) excluded.add("ask_user");
 		if (noWeb) excluded.add("search");
 		if (noProposals) {

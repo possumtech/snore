@@ -22,19 +22,21 @@ HTTP status codes throughout (entries, runs, loops, client RPC).
 13 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
 search, summarize, update, ask_user. Tool priority ordering (get first,
 ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
-Budget: BudgetGuard at KnownStore layer gates every write during
-dispatch. Pre-LLM check on assembled tokens. contextSize is the
-ceiling, no margins. Token math: `ceil(text.length / RUMMY_TOKEN_DIVISOR)`.
-No tiktoken. Panic mode: new prompt exceeds 90% of ceiling → model gets
-restricted loop to free space to 50%, 3 strikes without reduction → hard 413.
+Budget: two declarative demotion events replace per-write BudgetGuard.
+Ceiling: `floor(contextSize × 0.9)`. 413 never reaches the client.
+  - **Prompt Demotion**: first-turn materialization 413s → prompt → summary,
+    re-materialize, continue. Still 413 → genuine failure, return 413.
+  - **Turn Demotion**: end-of-turn materialization 413s → all full data
+    entries at current turn → summary + status 413, write ctx-overflow log.
+  - **Previous-loop logging demotion**: at loop start, batch-demote all full
+    logging entries from other loops to summary (keeps `<previous>` compact).
+Token math: `ceil(text.length / RUMMY_TOKEN_DIVISOR)`. No tiktoken.
 500-token size gate on known entries. Glob matching via picomatch.
 Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
 always dispatch, never 409'd. Both sent → update wins. Summarize
-overridden only when actions fail (4xx/5xx). Reads (get/env/search) in
-same turn do not block conclude — model is trusted to decide. `<think>` /
-`<thought>` tags for model reasoning — inner tool calls captured as
-rawBody, never dispatched.
+overridden only when actions fail (4xx/5xx). `<think>` / `<thought>` tags
+for model reasoning — inner tool calls captured as rawBody, never dispatched.
 Preamble: XML format, conclude every turn, summaries approximate.
 Four entry roles: data (knowns), logging (current/previous), unknown,
 prompt. Default category: logging. `<prompt mode="ask|act">`.
@@ -48,7 +50,25 @@ Concurrent loop protection: AbortController created at top of
 chronologically by source_turn (prompt before logging within same turn).
 `progress://` scheme removed; `<progress turn="N">` is structural only.
 `context_tokens` back-filled from LLM `prompt_tokens` post-response.
-155 unit tests passing.
+
+## In Progress: Budget Demotion System (2026-04-11)
+
+Replacing panic mode and BudgetGuard with two demotion events.
+
+- [x] `src/agent/known_store.sql` — add `demote_previous_loop_logging`, `demote_turn_data_entries`
+- [x] `src/agent/KnownStore.js` — remove BudgetGuard fields/methods, add `demotePreviousLoopLogging()`
+- [x] `src/agent/AgentLoop.js` — call `demotePreviousLoopLogging` at top of `#executeLoop`
+- [x] `src/agent/TurnExecutor.js` — `#materializeTurnContext` helper, Prompt Demotion, Turn Demotion, remove BudgetGuard dispatch
+- [x] `src/plugins/budget/budget.js` — remove activate/deactivate/BudgetExceeded, register ctx-overflow scheme
+- [x] `src/plugins/budget/BudgetGuard.js` — deleted
+- [x] `src/plugins/budget/BudgetGuard.test.js` — deleted
+- [x] `src/plugins/budget/budget.test.js` — updated constructor signature
+- [x] `test/integration/budget_enforcement.test.js` — deleted (tested BudgetGuard)
+- [x] `test/integration/budget_demotion.test.js` — new: demotePreviousLoopLogging + demote_turn_data_entries
+- [x] `test/e2e/stories.test.js` — Story 11: turn demotion fires and run completes
+- [ ] `npm test` — verify all tiers pass
+- [ ] `npm run test:e2e` — verify Story 11 passes
+- [ ] `src/plugins/progress/progress.js` — add recovery guidance (deferred)
 
 ## Benchmark Plan
 

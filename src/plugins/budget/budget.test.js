@@ -3,18 +3,11 @@ import { describe, it } from "node:test";
 import Budget from "./budget.js";
 
 describe("Budget", () => {
-	it("panicPrompt includes mustFree and fidelity instructions", () => {
-		const prompt = Budget.panicPrompt({
-			assembledTokens: 4500,
-			panicTarget: 3000,
-		});
-		assert.ok(prompt.includes("1500"), "mustFree (4500-3000) in prompt");
-		assert.ok(prompt.includes("archive"), "archive instruction");
-		assert.ok(prompt.includes("fidelity"), "fidelity instruction");
-	});
-
 	it("enforce returns 200 when under budget", async () => {
-		const budget = new Budget({ hooks: { budget: null } });
+		const budget = new Budget({
+			hooks: { budget: null },
+			registerScheme: () => {},
+		});
 		const result = await budget.enforce({
 			contextSize: 10000,
 			messages: [{ role: "system", content: "short" }],
@@ -25,7 +18,10 @@ describe("Budget", () => {
 	});
 
 	it("enforce returns 413 when over budget", async () => {
-		const budget = new Budget({ hooks: { budget: null } });
+		const budget = new Budget({
+			hooks: { budget: null },
+			registerScheme: () => {},
+		});
 		const result = await budget.enforce({
 			contextSize: 10,
 			messages: [{ role: "system", content: "x".repeat(1000) }],
@@ -36,7 +32,10 @@ describe("Budget", () => {
 	});
 
 	it("enforce returns 200 with no contextSize", async () => {
-		const budget = new Budget({ hooks: { budget: null } });
+		const budget = new Budget({
+			hooks: { budget: null },
+			registerScheme: () => {},
+		});
 		const result = await budget.enforce({
 			contextSize: null,
 			messages: [{ role: "system", content: "anything" }],

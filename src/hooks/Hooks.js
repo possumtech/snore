@@ -74,10 +74,6 @@ export default function createHooks(debug = false) {
 			started: createEvent("act.started"),
 			completed: createEvent("act.completed"),
 		},
-		panic: {
-			started: createEvent("panic.started"),
-			completed: createEvent("panic.completed"),
-		},
 		llm: {
 			request: {
 				started: createEvent("llm.request.started"),

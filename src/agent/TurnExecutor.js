@@ -19,6 +19,67 @@ export default class TurnExecutor {
 		this.#knownStore = knownStore;
 	}
 
+	/**
+	 * Rebuild turn_context from v_model_context, then assemble messages.
+	 * Called at turn start and again after any fidelity demotion within the turn.
+	 */
+	async #materializeTurnContext({
+		runId,
+		loopId,
+		turn,
+		systemPrompt,
+		mode,
+		toolSet,
+		contextSize,
+		demoted,
+	}) {
+		await this.#db.clear_turn_context.run({ run_id: runId, turn });
+		const viewRows = await this.#db.get_model_context.all({ run_id: runId });
+		for (const row of viewRows) {
+			const scheme = row.scheme || "file";
+			const projectedBody = await this.#hooks.tools.view(scheme, {
+				path: row.path,
+				scheme,
+				body: row.body,
+				attributes: row.attributes ? JSON.parse(row.attributes) : null,
+				fidelity: row.fidelity,
+				category: row.category,
+			});
+			await this.#db.insert_turn_context.run({
+				run_id: runId,
+				loop_id: loopId,
+				turn,
+				ordinal: row.ordinal,
+				path: row.path,
+				fidelity: row.fidelity,
+				status: row.status,
+				body: projectedBody ?? "",
+				tokens: countTokens(projectedBody ?? ""),
+				attributes: row.attributes,
+				category: row.category,
+				source_turn: row.turn,
+			});
+		}
+		const rows = await this.#db.get_turn_context.all({ run_id: runId, turn });
+		const lastCtx = await this.#db.get_last_context_tokens.get({
+			run_id: runId,
+		});
+		const messages = await ContextAssembler.assembleFromTurnContext(
+			rows,
+			{
+				type: mode,
+				systemPrompt,
+				contextSize,
+				demoted,
+				toolSet,
+				lastContextTokens: lastCtx?.context_tokens ?? 0,
+				turn,
+			},
+			this.#hooks,
+		);
+		return { rows, messages };
+	}
+
 	async execute({
 		mode,
 		project,
@@ -113,43 +174,22 @@ export default class TurnExecutor {
 		});
 
 		// Materialize turn_context: VIEW rows projected through tools
-		await this.#db.clear_turn_context.run({ run_id: currentRunId, turn });
-		const viewRows = await this.#db.get_model_context.all({
-			run_id: currentRunId,
-		});
-		for (const row of viewRows) {
-			const scheme = row.scheme || "file";
-			const projectedBody = await this.#hooks.tools.view(scheme, {
-				path: row.path,
-				scheme,
-				body: row.body,
-				attributes: row.attributes ? JSON.parse(row.attributes) : null,
-				fidelity: row.fidelity,
-				category: row.category,
-			});
-
-			await this.#db.insert_turn_context.run({
-				run_id: currentRunId,
-				loop_id: currentLoopId,
-				turn,
-				ordinal: row.ordinal,
-				path: row.path,
-				fidelity: row.fidelity,
-				status: row.status,
-				body: projectedBody ?? "",
-				tokens: countTokens(projectedBody ?? ""),
-				attributes: row.attributes,
-				category: row.category,
-				source_turn: row.turn,
-			});
-		}
-
 		const demoted = [];
+		let { rows, messages } = await this.#materializeTurnContext({
+			runId: currentRunId,
+			loopId: currentLoopId,
+			turn,
+			systemPrompt,
+			mode,
+			toolSet,
+			contextSize,
+			demoted,
+		});
 
 		await this.#hooks.context.materialized.emit({
 			runId: currentRunId,
 			turn,
-			rowCount: viewRows.length,
+			rowCount: rows.length,
 		});
 
 		await this.#hooks.run.progress.emit({
@@ -159,29 +199,6 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		let rows = await this.#db.get_turn_context.all({
-			run_id: currentRunId,
-			turn,
-		});
-		const lastCtx = await this.#db.get_last_context_tokens.get({
-			run_id: currentRunId,
-		});
-		const lastContextTokens = lastCtx?.context_tokens ?? 0;
-
-		let messages = await ContextAssembler.assembleFromTurnContext(
-			rows,
-			{
-				type: mode,
-				systemPrompt,
-				contextSize,
-				demoted,
-				toolSet,
-				lastContextTokens,
-				turn,
-			},
-			this.#hooks,
-		);
-
 		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
 			messages,
@@ -189,20 +206,66 @@ export default class TurnExecutor {
 		});
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;
-		const assembledTokens =
+		let assembledTokens =
 			budgetResult.assembledTokens ??
 			messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 
-		// Budget overflow — return 413 to caller without calling LLM.
 		if (budgetResult.status === 413) {
-			return {
-				turn,
-				turnId: turnRow.id,
-				status: 413,
-				assembledTokens,
-				contextSize,
-				overflow: budgetResult.overflow,
-			};
+			if (loopIteration === 1) {
+				// Prompt Demotion: first-turn overflow — demote incoming prompt to summary
+				const promptRow = rows.findLast(
+					(r) => r.category === "prompt" && r.scheme === "prompt",
+				);
+				if (promptRow) {
+					await this.#knownStore.setFidelity(
+						currentRunId,
+						promptRow.path,
+						"summary",
+					);
+				}
+				const reMat = await this.#materializeTurnContext({
+					runId: currentRunId,
+					loopId: currentLoopId,
+					turn,
+					systemPrompt,
+					mode,
+					toolSet,
+					contextSize,
+					demoted,
+				});
+				rows = reMat.rows;
+				messages = reMat.messages;
+				const recheck = await this.#hooks.budget.enforce({
+					contextSize,
+					messages,
+					rows,
+				});
+				messages = recheck.messages;
+				rows = recheck.rows;
+				assembledTokens =
+					recheck.assembledTokens ??
+					messages.reduce((sum, m) => sum + countTokens(m.content), 0);
+				if (recheck.status === 413) {
+					return {
+						turn,
+						turnId: turnRow.id,
+						status: 413,
+						assembledTokens,
+						contextSize,
+						overflow: recheck.overflow,
+					};
+				}
+			} else {
+				// Base context too large even without new prompt — genuine failure
+				return {
+					turn,
+					turnId: turnRow.id,
+					status: 413,
+					assembledTokens,
+					contextSize,
+					overflow: budgetResult.overflow,
+				};
+			}
 		}
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
@@ -320,102 +383,102 @@ export default class TurnExecutor {
 		}
 
 		// --- PHASE 2: DISPATCH ---
-		// Budget plugin activates the guard on the store for dispatch.
-		const guard = this.#hooks.budget.activate(
-			this.#knownStore,
-			contextSize,
-			assembledTokens,
-		);
-		const { BudgetExceeded } = this.#hooks.budget;
-
 		let hasErrors = false;
 		let hasProposed = false;
 		let abortAfter = null;
 		const dispatched = [...lifecycle];
 
-		try {
-			// Lifecycle signals first — always dispatched, never aborted.
-			for (const entry of lifecycle) {
-				await this.#hooks.tool.before.emit({ entry, rummy });
-				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
-				await this.#hooks.tool.after.emit({ entry, rummy });
-				await this.#hooks.entry.created.emit(entry);
+		// Lifecycle signals first — always dispatched, never aborted.
+		for (const entry of lifecycle) {
+			await this.#hooks.tool.before.emit({ entry, rummy });
+			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			await this.#hooks.tool.after.emit({ entry, rummy });
+			await this.#hooks.entry.created.emit(entry);
+		}
+
+		for (const entry of actions) {
+			if (abortAfter) {
+				const errorMsg = `Aborted — preceding <${abortAfter}> requires resolution.`;
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					entry.resultPath || entry.path,
+					errorMsg,
+					409,
+					{ attributes: { error: errorMsg }, loopId: currentLoopId },
+				);
+				hasErrors = true;
+				continue;
 			}
 
+			await this.#hooks.tool.before.emit({ entry, rummy });
+			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			await this.#hooks.tool.after.emit({ entry, rummy });
+			await this.#hooks.entry.created.emit(entry);
+			dispatched.push(entry);
+
+			const row = await this.#db.get_entry_state.get({
+				run_id: currentRunId,
+				path: entry.resultPath || entry.path,
+			});
+			if (row?.status === 202) {
+				hasProposed = true;
+				abortAfter = entry.scheme;
+			} else if (row?.status >= 400) {
+				hasErrors = true;
+				abortAfter = entry.scheme;
+			}
+		}
+
+		// Materialize proposals only if we dispatched actions
+		if (!abortAfter || hasProposed) {
+			await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
+		}
+
+		// Recheck after materialization (set handler may create proposals)
+		if (!hasProposed && !hasErrors) {
 			for (const entry of actions) {
-				if (abortAfter || guard.isTripped) {
-					{
-						const errorMsg = guard.isTripped
-							? `Budget exceeded by <${guard.tripSource}>.`
-							: `Aborted — preceding <${abortAfter}> requires resolution.`;
-						await this.#knownStore.upsert(
-							currentRunId,
-							turn,
-							entry.resultPath || entry.path,
-							errorMsg,
-							guard.isTripped ? 413 : 409,
-							{ attributes: { error: errorMsg }, loopId: currentLoopId },
-						);
-					}
-					hasErrors = true;
-					continue;
-				}
-
-				try {
-					await this.#hooks.tool.before.emit({ entry, rummy });
-					await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
-					await this.#hooks.tool.after.emit({ entry, rummy });
-					await this.#hooks.entry.created.emit(entry);
-					dispatched.push(entry);
-				} catch (err) {
-					if (err instanceof BudgetExceeded) {
-						guard.trip(entry.scheme);
-						await this.#knownStore.upsert(
-							currentRunId,
-							turn,
-							entry.resultPath || entry.path,
-							`Budget exceeded: ${err.requested} tokens requested, ${err.remaining} remaining.`,
-							413,
-							{ attributes: { error: err.message }, loopId: currentLoopId },
-						);
-						hasErrors = true;
-						abortAfter = entry.scheme;
-						continue;
-					}
-					throw err;
-				}
-
 				const row = await this.#db.get_entry_state.get({
 					run_id: currentRunId,
 					path: entry.resultPath || entry.path,
 				});
-				if (row?.status === 202) {
-					hasProposed = true;
-					abortAfter = entry.scheme;
-				} else if (row?.status >= 400) {
-					hasErrors = true;
-					abortAfter = entry.scheme;
-				}
+				if (row?.status === 202) hasProposed = true;
+				if (row?.status >= 400) hasErrors = true;
 			}
+		}
 
-			// Materialize proposals only if we dispatched actions
-			if (!abortAfter || hasProposed) {
-				await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
+		// Turn Demotion: if end-of-turn context exceeds ceiling, demote this
+		// turn's data entries to summary with 413 status.
+		if (contextSize) {
+			const postMat = await this.#materializeTurnContext({
+				runId: currentRunId,
+				loopId: currentLoopId,
+				turn,
+				systemPrompt,
+				mode,
+				toolSet,
+				contextSize,
+				demoted,
+			});
+			const postBudget = await this.#hooks.budget.enforce({
+				contextSize,
+				messages: postMat.messages,
+				rows: postMat.rows,
+			});
+			if (postBudget.status === 413) {
+				await this.#db.demote_turn_data_entries.run({
+					run_id: currentRunId,
+					turn,
+				});
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					`ctx-overflow://${currentLoopId}/${turn}`,
+					`Turn ${turn}: ${postBudget.assembledTokens}/${contextSize} tokens (${postBudget.overflow} over). Data entries auto-summarized.`,
+					413,
+					{ loopId: currentLoopId },
+				);
 			}
-
-			// Recheck after materialization (set handler may create proposals)
-			if (!hasProposed && !hasErrors) {
-				for (const entry of actions) {
-					const row = await this.#db.get_entry_state.get({
-						run_id: currentRunId,
-						path: entry.resultPath || entry.path,
-					});
-					if (row?.status === 202) hasProposed = true;
-					if (row?.status >= 400) hasErrors = true;
-				}
-			}
-		} finally {
-			this.#hooks.budget.deactivate(this.#knownStore);
 		}
 
 		// Lifecycle signals are always available — never 409'd.
@@ -509,20 +572,8 @@ export default class TurnExecutor {
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
 	async #record(runId, loopId, turn, mode, cmd) {
-		// Mode enforcement — reject prohibited commands by mode
-		if (mode === "panic") {
-			if (
-				cmd.name === "sh" ||
-				cmd.name === "env" ||
-				cmd.name === "search" ||
-				cmd.name === "ask_user"
-			) {
-				console.warn(`[RUMMY] Rejected <${cmd.name}> in panic mode`);
-				return null;
-			}
-		}
-		if (mode === "ask" || mode === "panic") {
-			if (mode === "ask" && cmd.name === "sh") {
+		if (mode === "ask") {
+			if (cmd.name === "sh") {
 				console.warn("[RUMMY] Rejected <sh> in ask mode");
 				return null;
 			}

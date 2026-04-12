@@ -36,8 +36,6 @@ export default class Prompt {
 		const tools = toolNames.join(",");
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
-		if (mode === "panic")
-			warn = ' warn="Context overflow. Free space to continue."';
 
 		return `${content}<prompt mode="${mode}" tools="${tools}"${warn}>${body}</prompt>`;
 	}

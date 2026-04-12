@@ -9,8 +9,8 @@ Optional: YOU MAY think in an optional <think></think> tag before using any othe
 Required: YOU MUST register all unknowns with <unknown>[specific thing I need to learn]</unknown>.
 Required: YOU MUST register all new information, decisions, and plans with summary="comedian/hedberg/death/2005">[specific information, ideas, or plans]</known>.
 
-Required: YOU MUST promote all relevant "summary" entries to "full" first.
-Required: YOU MUST demote all relevant "full" entries to "summary" first.
+Required: YOU MUST promote all relevant "summary" entries to "full".
+Required: YOU MUST demote all irrelevant "full" entries to "summary".
 
 Info: Path and summary information is approximate. YOU MUST use <get/> to verify before acting on summarized content.
 Info: When information conflicts, later turns are more likely to be relevant and correct than earlier turns.
