@@ -309,22 +309,43 @@ Root causes identified:
 5. Budget language said "archive" — model doesn't know "archive", knows "demote"
 6. Gemma produced zero reasoning — can't diagnose without thinking output
 
-### TODO
+### TODO (in order)
+
+**Recovery loop rewrite:**
+- [ ] Exclude structural entries from batch demotion (`instructions`,
+  `system`, `prompt`). These can't be demoted — the model can't
+  function without them. Prompt has its own demotion path.
+- [ ] Three strikes of no reduction → hard 413. Now works because
+  structural entries don't cycle (they're excluded from demotion).
+- [ ] Budget entry path listing bounded by 99 operation cap (see below).
+
+**99 operation enforcement:**
+- [ ] Enforce 99 tool call cap in XmlParser or TurnExecutor — drop
+  commands past 99 with a message. Prevents 2001-get scenario.
+- [ ] Budget entry path listing ≤ 99 paths by definition. Fits in
+  10% headroom at any context size ≥ 8K.
+
+**Tool summary/full wiring:**
+- [ ] Audit all tool handlers — every scheme needs `summary()` that
+  returns readable content. Most `full()` methods already produce
+  compact output (`# get src/app.js`). Wire `summary()` to call
+  `full()` where missing. No blank summary entries.
 
 **Reasoning collection:**
-- [ ] Verify reasoning://N entries are written for gemma (API reasoning vs
-  `<think>` tag). If gemma's reasoning comes through a different field,
-  the telemetry plugin may be missing it.
-- [ ] Check if gemma produces reasoning at all on OpenRouter, or if it
-  needs explicit prompting to use `<think>`
+- [ ] Verify reasoning://N entries are written for gemma. Check if
+  llama.cpp needs server-side config for Gemma 4 thinking output.
+- [ ] If gemma can't produce reasoning, consider making `<think>`
+  Required instead of Optional in the preamble.
 
-**Demo validation (next):**
-- [ ] Fresh demo run with all fixes applied — verify:
-  - Model sees token counts, makes informed promotion decisions
-  - Model doesn't call `<env>` for directory listing
-  - Prompt visible at summary fidelity after demotion
-  - Budget recovery lets model run (not infinite system-only loop)
-  - Model produces reasoning in `<think>` tags
+**Demo validation:**
+- [ ] Fresh demo run with all fixes — verify:
+  - Recovery loop exits (3 strikes or success, not infinite)
+  - Structural entries survive demotion
+  - Model sees token counts, promotes selectively
+  - Budget entry fits in headroom
+  - Prompt visible at summary fidelity
+  - No `<env>` for directory listing
+  - Model produces reasoning
 - [ ] Verify `<previous>` entries get model-written summary tags
 
 **Prompt Demotion:**
