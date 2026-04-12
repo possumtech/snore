@@ -294,7 +294,20 @@ Test locations:
 - Integration: `test/integration/`
 - E2E: `test/e2e/` (real model, never mocked)
 
-### Fix 5: Repo scanner context pressure
+### Fix 5: Proposal lifecycle — env executed but still blocked
+- **Problem**: `<env>ls -R` dispatched (status 200, results returned) but ALSO
+  created an unresolved proposal. All subsequent actions 409'd with "preceding
+  <env> requires resolution." Run returned 202 (proposed), never resolved.
+  Model then hallucinated success: `<summarize>Generated 100 checklist items`
+  when the `<set>plan.md` was 409'd.
+- **Questions**: (a) Should env execute before approval? If it requires resolution,
+  it should NOT have run. (b) If it ran, why is it still blocking?
+- [ ] Test: env in act mode — verify it either executes without blocking OR
+  blocks without executing, never both
+- [ ] Fix the dispatch/proposal inconsistency
+- [ ] Consider: should `<env>ls` even require resolution? It's read-only.
+
+### Fix 6: Repo scanner context pressure (RESOLVED — scanner is fine)
 - **Problem**: 47 files at full/index = 114K tokens before the model
   even gets a turn. On a 32K model this guarantees overflow.
 - **Options**: (a) scan at index-only fidelity, (b) cap total file
