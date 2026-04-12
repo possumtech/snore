@@ -289,6 +289,11 @@ export default class AgentLoop {
 			currentLoopId,
 		);
 
+		// Restore any prompt entries left at summary fidelity by a recovery
+		// phase that was interrupted (server crash, restart). If the full
+		// prompt would overflow, Prompt Demotion on turn 1 handles it.
+		await this.#knownStore.restoreSummarizedPrompts(currentRunId);
+
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
 			loopId: currentLoopId,
@@ -355,56 +360,27 @@ export default class AgentLoop {
 				_lastAssembledTokens = result.assembledTokens;
 
 				// Budget recovery: enforce progress toward context target.
-				if (result.budgetRecovery) {
-					if (!recovery) {
-						recovery = {
-							target: result.budgetRecovery.target,
-							promptPath: result.budgetRecovery.promptPath,
-							strikes: 0,
-							lastTokens: result.assembledTokens,
-						};
-					} else {
-						// Re-overflow during recovery — update target, don't strike.
-						recovery.target = Math.min(
-							recovery.target,
-							result.budgetRecovery.target,
-						);
-					}
+				const ra = advanceRecovery(recovery, result);
+				recovery = ra.next;
+				if (ra.action === "restore" && ra.promptPath) {
+					await this.#knownStore.setFidelity(
+						currentRunId,
+						ra.promptPath,
+						"full",
+					);
 				}
-
-				if (recovery !== null) {
-					const current = result.assembledTokens;
-					if (current <= recovery.target) {
-						// Target met: restore full prompt and exit recovery.
-						if (recovery.promptPath) {
-							await this.#knownStore.setFidelity(
-								currentRunId,
-								recovery.promptPath,
-								"full",
-							);
-						}
-						recovery = null;
-					} else {
-						if (current >= recovery.lastTokens && !result.budgetRecovery) {
-							recovery.strikes++;
-							if (recovery.strikes >= 3) {
-								await this.#db.update_run_status.run({
-									id: currentRunId,
-									status: 413,
-								});
-								const out = {
-									run: currentAlias,
-									status: 413,
-									turn: result.turn,
-								};
-								await hook.completed.emit({ projectId, ...out });
-								return out;
-							}
-						} else {
-							recovery.strikes = 0;
-						}
-						recovery.lastTokens = current;
-					}
+				if (ra.action === "hard413") {
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: 413,
+					});
+					const out = {
+						run: currentAlias,
+						status: 413,
+						turn: result.turn,
+					};
+					await hook.completed.emit({ projectId, ...out });
+					return out;
 				}
 
 				const runUsage = await this.#db.get_run_usage.get({
@@ -756,4 +732,52 @@ export default class AgentLoop {
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 		return this.#knownStore.getLog(runRow.id);
 	}
+}
+
+/**
+ * Pure recovery state transition — exported for testing.
+ *
+ * @param {object|null} recovery  Current recovery state (mutated copy returned).
+ * @param {{ assembledTokens: number, budgetRecovery?: { target: number, promptPath: string|null } }} result
+ * @returns {{ next: object|null, action: null|'restore'|'hard413', promptPath: string|null }}
+ */
+export function advanceRecovery(recovery, result) {
+	// Initialise or update recovery state from a new Turn Demotion event.
+	if (result.budgetRecovery) {
+		if (!recovery) {
+			recovery = {
+				target: result.budgetRecovery.target,
+				promptPath: result.budgetRecovery.promptPath,
+				strikes: 0,
+				lastTokens: result.assembledTokens,
+			};
+		} else {
+			// Re-overflow during recovery: tighten target, don't count as strike.
+			recovery = {
+				...recovery,
+				target: Math.min(recovery.target, result.budgetRecovery.target),
+			};
+		}
+	}
+
+	if (recovery === null) return { next: null, action: null, promptPath: null };
+
+	const current = result.assembledTokens;
+
+	if (current <= recovery.target) {
+		return { next: null, action: "restore", promptPath: recovery.promptPath };
+	}
+
+	const noProgress = current >= recovery.lastTokens && !result.budgetRecovery;
+	const strikes = noProgress ? recovery.strikes + 1 : 0;
+
+	if (strikes >= 3) {
+		return { next: null, action: "hard413", promptPath: null };
+	}
+
+	return {
+		next: { ...recovery, strikes, lastTokens: current },
+		action: null,
+		promptPath: null,
+	};
 }

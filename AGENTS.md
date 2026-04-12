@@ -27,7 +27,12 @@ Ceiling: `floor(contextSize × 0.9)`. 413 never reaches the client.
   - **Prompt Demotion**: first-turn materialization 413s → prompt → summary,
     re-materialize, continue. Still 413 → genuine failure, return 413.
   - **Turn Demotion**: end-of-turn materialization 413s → all full data
-    entries at current turn → summary + status 413, write ctx-overflow log.
+    entries at current turn → summary + 413; prompt also summarized; writes
+    `budget://` entry (registered by budget plugin, `category='logging'`);
+    enters in-memory recovery phase. Recovery: model restricted to
+    get/set/known/unknown/rm/cp/mv/summarize/update; 3 consecutive turns
+    without token reduction → hard 413. Token target = ceiling; met when
+    assembled ≤ ceiling; prompt fidelity restored on exit.
   - **Previous-loop logging demotion**: at loop start, batch-demote all full
     logging entries from other loops to summary (keeps `<previous>` compact).
 Token math: `ceil(text.length / RUMMY_TOKEN_DIVISOR)`. No tiktoken.
@@ -51,24 +56,25 @@ chronologically by source_turn (prompt before logging within same turn).
 `progress://` scheme removed; `<progress turn="N">` is structural only.
 `context_tokens` back-filled from LLM `prompt_tokens` post-response.
 
-## In Progress: Budget Demotion System (2026-04-11)
+## In Progress: Recovery System Hardening (2026-04-12)
 
-Replacing panic mode and BudgetGuard with two demotion events.
-
-- [x] `src/agent/known_store.sql` — add `demote_previous_loop_logging`, `demote_turn_data_entries`
-- [x] `src/agent/KnownStore.js` — remove BudgetGuard fields/methods, add `demotePreviousLoopLogging()`
-- [x] `src/agent/AgentLoop.js` — call `demotePreviousLoopLogging` at top of `#executeLoop`
-- [x] `src/agent/TurnExecutor.js` — `#materializeTurnContext` helper, Prompt Demotion, Turn Demotion, remove BudgetGuard dispatch
-- [x] `src/plugins/budget/budget.js` — remove activate/deactivate/BudgetExceeded, register ctx-overflow scheme
-- [x] `src/plugins/budget/BudgetGuard.js` — deleted
-- [x] `src/plugins/budget/BudgetGuard.test.js` — deleted
-- [x] `src/plugins/budget/budget.test.js` — updated constructor signature
-- [x] `test/integration/budget_enforcement.test.js` — deleted (tested BudgetGuard)
-- [x] `test/integration/budget_demotion.test.js` — new: demotePreviousLoopLogging + demote_turn_data_entries
-- [x] `test/e2e/stories.test.js` — Story 11: turn demotion fires and run completes
-- [x] `npm test` — 153/153 pass
-- [x] `npm run test:e2e` — 14/14 pass; Story 11 verified
-- [ ] `src/plugins/progress/progress.js` — add recovery guidance (deferred)
+- [ ] **`tokensToFree = 0` message** — when auto-demotion alone brings
+  assembled context under ceiling, `budget://` body tells the model
+  "free 0 tokens." Suppress the prompt-restoration line when
+  `tokensToFree === 0`; the work is already done and the instruction
+  is noise. (`src/agent/TurnExecutor.js`)
+- [ ] **Unit tests for recovery state machine** — strike counter
+  increments on no-progress turns, resets on reduction, hard 413 at 3
+  strikes; prompt fidelity restored to `full` when target met. Story 11
+  e2e exits recovery in 0 strikes (auto-demotion was sufficient), so the
+  multi-turn path is untested. (`test/integration/budget_recovery.test.js`)
+- [ ] **Crash-during-recovery** — `recovery` is in-memory in
+  `AgentLoop.#executeLoop`. If the server restarts mid-recovery, `recovery`
+  resets to `null` but the prompt entry remains at `summary` fidelity in
+  the DB. The model never sees the full prompt again. Fix: at loop start,
+  detect any `prompt` entries at `summary` fidelity and restore them to
+  `full` if current assembled tokens are under ceiling.
+  (`src/agent/AgentLoop.js`, `src/agent/KnownStore.js`)
 
 ## Benchmark Plan
 
@@ -194,19 +200,5 @@ Publish after Phase 1 (CR full) completes. Tables populated incrementally.
 
 ## Deferred
 
+- `src/plugins/progress/progress.js` — add recovery guidance
 - Non-git file scanner fallback
-
----
-
-## Done: Session 2026-04-10/11 — Packet SDI Audit + E2E
-
-40-item SDI audit. 36 fixed, 4 no-change. Summarize/read enforcement.
-14/14 E2E passing. 155 unit tests passing.
-
-## Done: Session 2026-04-09/10 — Budget Enforcement + Paradigm Shift
-
-## Done: Session 2026-04-09 — Paradigm Audit
-
-## Done: Session 2026-04-06/07
-
-## Done: Earlier Sessions

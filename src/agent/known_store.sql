@@ -190,6 +190,17 @@ WHERE
 	AND hedmatch(:path, path)
 	AND (:body IS NULL OR hedsearch(:body, body));
 
+-- PREP: restore_summarized_prompts
+-- Restore prompt entries demoted to summary by a recovery phase that was
+-- interrupted (e.g. server crash). Safe to call unconditionally at loop
+-- start: if the full prompt would overflow, Prompt Demotion handles it.
+UPDATE known_entries
+SET
+	fidelity = 'full'
+	, tokens = tokens_full
+	, updated_at = CURRENT_TIMESTAMP
+WHERE run_id = :run_id AND scheme = 'prompt' AND fidelity = 'summary';
+
 -- PREP: demote_previous_loop_logging
 -- Demote full logging entries from all other loops to summary.
 -- Fires at loop start so <previous> entries are already compact.

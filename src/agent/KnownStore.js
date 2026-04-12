@@ -227,6 +227,11 @@ export default class KnownStore {
 		this.#emitChanged(runId, normalized, "resolve");
 	}
 
+	async restoreSummarizedPrompts(runId) {
+		await this.#db.restore_summarized_prompts.run({ run_id: runId });
+		this.#emitChanged(runId, "prompt://batch", "fidelity");
+	}
+
 	async demotePreviousLoopLogging(runId, loopId) {
 		await this.#db.demote_previous_loop_logging.run({
 			run_id: runId,

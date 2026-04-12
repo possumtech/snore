@@ -519,12 +519,16 @@ export default class TurnExecutor {
 					recoveryBudget.assembledTokens - safeLevel,
 				);
 
+				const promptLine =
+					tokensToFree > 0
+						? `Info: Prompt auto-summarized. Full prompt restores automatically when you free ${tokensToFree} tokens.`
+						: "Info: Prompt auto-summarized. It will restore automatically.";
 				const body = [
 					"Error 413: Context Size Exceeded",
 					"",
 					"Required: YOU MUST demote larger and/or less relevant items to optimize your context.",
 					`Info: ${paths} have been automatically summarized to avoid overflow.`,
-					`Info: Prompt auto-summarized. Full prompt restores automatically when you free ${tokensToFree} tokens.`,
+					promptLine,
 					"Info: YOU MAY use bulk patterns to demote and promote entries by pattern.",
 					"Info: Well-designed paths and summaries improve context management.",
 					'Example: <set path="known://people/*" fidelity="summary"/>',
