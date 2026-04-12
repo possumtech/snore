@@ -235,31 +235,71 @@ Publish after Phase 1 (CR full) completes. Tables populated incrementally.
 - Taxonomy quality (paths + summaries) is solved: 7/7 semantic, 6/7 keyword-format
 - Parser bug fixed: XmlParser + TurnExecutor now pass `summary` attr to DB
 - "Folksonomic memory agent" identity fixed MAB taxonomy but broke normal work
-- Model loads raw files into entries instead of reading then filing findings
-- LLM 400 (context exceeded) surfaces as 500 — should be 413
+- Budget/recovery system was only tested against benchmarks, not real workflows
+
+### Demo Run Failure (rummy_dev.db, gemma, rummy.nvim project)
+User asked: "review project, search web for best practices, generate checklist, save to plan.md"
+Result: dead run, never wrote to plan.md, 413 to client.
+
+Failure chain:
+1. Repo scanner loads 47 files (114K tokens) into context at index/full fidelity
+2. Model fires `<env>ls -R` + 2 `<get>` + 4 `<search>` + 1 `<set>` in one turn
+3. Sequential dispatch runs only `<env>`, 409s the other 7 actions
+4. Loop 2 starts, 47 files + turn 1 logging = context overflow
+5. LLM returns 400 "context exceeded" (52K tokens, 32K limit)
+6. TurnExecutor catches 400, returns 413 (Fix 1 — done)
+7. AgentLoop returns 413 directly to client — no recovery attempted
+8. Dead run. User never got results.
 
 ### Fix 1: LLM 400→413 error handling
-- **File**: `src/llm/OpenAiClient.js` line 33-37
-- **Bug**: Any non-OK LLM response throws generic Error. A 400 "context exceeded"
-  is not transient, so TurnExecutor rethrows at line 318, propagating as 500.
-- **Fix**: Detect context-exceeded 400s in the LLM catch block (line 309-319).
-  Return 413 status in the same shape as existing budget enforcement (line 264-272).
-  This routes into the existing demotion/panic machinery.
-- [ ] Implement
-- [ ] Test: send oversized context to LLM, verify 413 not 500
+- [x] Detect context-exceeded 400s in TurnExecutor LLM catch block
+- [x] Return 413 status instead of throwing 500
+- [ ] **AgentLoop line 346**: 413 returns directly to client. Must enter
+  demotion/recovery loop instead. Current budget 413s from TurnExecutor
+  have already attempted Prompt Demotion internally — but LLM 413s
+  haven't tried any demotion. AgentLoop needs to distinguish and
+  trigger demotion before giving up.
 
 ### Fix 2: Preamble rebalancing
-- **Problem**: "Folksonomic memory agent" makes model treat filing as primary job.
-  On real projects, it ingests raw source files into entries instead of working.
-- **Fix**: Identity should convey "read sources, extract findings into known://"
-  not "ingest everything." Files are sources, known:// is where findings go.
-- [ ] Revise preamble line 1
-- [ ] Demo run on rummy_dev.db to verify normal agent behavior
+- [x] Changed "all information" → "your findings" (extract, don't ingest)
+- [ ] Demo run to verify model reads files and extracts findings
+  instead of loading everything into known://
 
 ### Fix 3: Previous-entry summarization
-- **Problem**: Auto-demotion of previous loop entries strips context without
-  model-written summary tags. The model should summarize before/as entries demote.
-- [ ] Design approach
+- [x] Added preamble line: "YOU SHOULD demote <previous> entries to
+  summary with descriptive summary tags"
+- [x] Removed auto-demotion in AgentLoop (demotePreviousLoopLogging)
+- [ ] Demo run to verify model manages its own previous entries
+
+### Fix 4: 413 recovery loop (not just detection)
+- **Problem**: AgentLoop line 346 returns 413 to client immediately.
+  The model never gets a chance to free context. This defeats the
+  entire purpose of budget enforcement — the model should self-correct.
+- **Required**: When TurnExecutor returns 413 (from LLM or budget),
+  AgentLoop should enter recovery mode: tell the model to demote
+  entries, give it N turns to free space, only hard-413 after strikes.
+- **This is the panic mode plan** from the existing plan file.
+- [ ] Wire 413 into recovery loop instead of client return
+- [ ] Strike system: 3 turns without progress → hard 413
+- [ ] Test: demo run where context fills, model recovers
+
+### Testing Strategy
+**Write failing tests BEFORE implementing fixes.** Each fix gets:
+1. A failing test that reproduces the bug
+2. The fix that makes it pass
+3. Regression coverage going forward
+
+Test locations:
+- Unit: `src/**/*.test.js` (alongside source)
+- Integration: `test/integration/`
+- E2E: `test/e2e/` (real model, never mocked)
+
+### Fix 5: Repo scanner context pressure
+- **Problem**: 47 files at full/index = 114K tokens before the model
+  even gets a turn. On a 32K model this guarantees overflow.
+- **Options**: (a) scan at index-only fidelity, (b) cap total file
+  tokens, (c) let the model decide what to promote via `<get>`
+- [ ] Decide approach
 - [ ] Implement
 
 ## Deferred
