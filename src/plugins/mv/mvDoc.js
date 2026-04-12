@@ -23,7 +23,7 @@ const LINES = [
 		"Teaches archival as a reversible budget operation, not permanent deletion.",
 	],
 	[
-		'Example: <mv path="known://people/*" fidelity="index"/> ... <mv path="known://people/rumsfeld" fidelity="full"/>',
+		'Example: <mv path="known://project/*" fidelity="index"/> ... <mv path="known://project/active_sprint" fidelity="full"/>',
 		"Index a whole category to free context while keeping paths visible, restore one entry when needed. No destination = fidelity change in place.",
 	],
 	[

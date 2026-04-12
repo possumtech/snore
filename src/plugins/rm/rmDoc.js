@@ -8,7 +8,7 @@ const LINES = [
 	// --- Examples: file, known (with slug path), preview safety
 	['Example: <rm path="src/config.js"/>', "File removal. Simplest form."],
 	[
-		'Example: <rm path="known://people/rumsfeld"/>',
+		'Example: <rm path="known://config/deprecated_service"/>',
 		"Shows topic-hierarchy path convention. Paths are category/key, not sentence slugs.",
 	],
 	[
