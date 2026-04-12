@@ -66,8 +66,8 @@ Replacing panic mode and BudgetGuard with two demotion events.
 - [x] `test/integration/budget_enforcement.test.js` — deleted (tested BudgetGuard)
 - [x] `test/integration/budget_demotion.test.js` — new: demotePreviousLoopLogging + demote_turn_data_entries
 - [x] `test/e2e/stories.test.js` — Story 11: turn demotion fires and run completes
-- [ ] `npm test` — verify all tiers pass
-- [ ] `npm run test:e2e` — verify Story 11 passes
+- [x] `npm test` — 153/153 pass
+- [x] `npm run test:e2e` — 14/14 pass; Story 11 verified
 - [ ] `src/plugins/progress/progress.js` — add recovery guidance (deferred)
 
 ## Benchmark Plan
