@@ -191,7 +191,8 @@ async function askQuestion(client, db, model, run, question) {
 }
 
 // Path is positional if it ends in digits, or contains part/chunk/list/batch + digit.
-const POSITIONAL_PATH = /\/(part|chunk|batch|list|item|block)\d*$|\/-?\d+(-\d+)?$|\/\d/i;
+const POSITIONAL_PATH =
+	/\/(part|chunk|batch|list|item|block)\d*$|\/-?\d+(-\d+)?$|\/\d/i;
 const LONG_PATH = 80;
 
 function checkTaxonomy(entries) {
@@ -205,9 +206,14 @@ function checkTaxonomy(entries) {
 		const pathLong = e.path.length > LONG_PATH;
 		const pathPositional = POSITIONAL_PATH.test(e.path);
 		const pathPass = !pathLong && !pathPositional;
-		const pathReason = pathLong ? "content in path" : pathPositional ? "positional" : null;
+		const pathReason = pathLong
+			? "content in path"
+			: pathPositional
+				? "positional"
+				: null;
 
-		const summaryPass = !!summary && summary.includes(",") && summary.length <= 80;
+		const summaryPass =
+			!!summary && summary.includes(",") && summary.length <= 80;
 		const summaryReason = !summary
 			? "missing"
 			: !summary.includes(",")
@@ -216,7 +222,14 @@ function checkTaxonomy(entries) {
 					? "too long"
 					: null;
 
-		return { path: e.path, summary, pathPass, pathReason, summaryPass, summaryReason };
+		return {
+			path: e.path,
+			summary,
+			pathPass,
+			pathReason,
+			summaryPass,
+			summaryReason,
+		};
 	});
 }
 
@@ -239,7 +252,9 @@ function printTaxonomyReport(run, results) {
 	const pathScore = results.filter((r) => r.pathPass).length;
 	const sumScore = results.filter((r) => r.summaryPass).length;
 	const n = results.length;
-	console.log(`\n  Paths: ${pathScore}/${n} semantic    Summaries: ${sumScore}/${n} keyword-format`);
+	console.log(
+		`\n  Paths: ${pathScore}/${n} semantic    Summaries: ${sumScore}/${n} keyword-format`,
+	);
 	return pathScore === n && sumScore === n;
 }
 
@@ -339,7 +354,9 @@ async function main() {
 	const splits = args.split ? [args.split] : ALL_SPLITS;
 	const rowRange = parseRowRange(args.row);
 
-	console.log(`MemoryAgentBench Runner${TAXONOMY_ONLY ? " [taxonomy check]" : ""}`);
+	console.log(
+		`MemoryAgentBench Runner${TAXONOMY_ONLY ? " [taxonomy check]" : ""}`,
+	);
 	console.log(`Model: ${MODEL}`);
 	console.log(`Chunk size: ${CHUNK_SIZE} chars`);
 	console.log(`Splits: ${splits.join(", ")}`);

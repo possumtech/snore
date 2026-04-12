@@ -9,13 +9,13 @@ function makeStore(entries = []) {
 		getEntriesByPattern: async () => entries,
 		promoteByPattern: async () => {},
 		setFidelity: async () => {},
-		upsert: async (runId, turn, path, body, status, opts) => {
+		upsert: async (_runId, _turn, path, body, status, _opts) => {
 			upserted.push({ path, body, status });
 		},
 	};
 }
 
-function makeRummy(store, attrs = {}) {
+function makeRummy(store, _attrs = {}) {
 	return {
 		entries: store,
 		sequence: 1,
@@ -39,8 +39,12 @@ const plugin = new Get({
 
 describe("Get partial read (line/limit)", () => {
 	it("returns a line slice without promoting", async () => {
-		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
-		const store = makeStore([{ path: "src/agent/AgentLoop.js", body, tokens_full: 500 }]);
+		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
+			"\n",
+		);
+		const store = makeStore([
+			{ path: "src/agent/AgentLoop.js", body, tokens_full: 500 },
+		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ line: "10", limit: "5" });
 
@@ -49,7 +53,10 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.status, 200);
-		assert.ok(result.body.startsWith("[lines 10–14 / 100 total]"), `unexpected header: ${result.body.slice(0, 40)}`);
+		assert.ok(
+			result.body.startsWith("[lines 10–14 / 100 total]"),
+			`unexpected header: ${result.body.slice(0, 40)}`,
+		);
 		assert.ok(result.body.includes("line 10"));
 		assert.ok(result.body.includes("line 14"));
 		assert.ok(!result.body.includes("line 15"));
@@ -57,7 +64,9 @@ describe("Get partial read (line/limit)", () => {
 
 	it("limit only defaults start to line 1", async () => {
 		const body = "a\nb\nc\nd\ne";
-		const store = makeStore([{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 }]);
+		const store = makeStore([
+			{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 },
+		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ limit: "3" });
 
@@ -71,7 +80,9 @@ describe("Get partial read (line/limit)", () => {
 
 	it("clamps end to total lines when limit exceeds file length", async () => {
 		const body = "x\ny\nz";
-		const store = makeStore([{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 }]);
+		const store = makeStore([
+			{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 },
+		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ line: "2", limit: "999" });
 
@@ -108,10 +119,14 @@ describe("Get partial read (line/limit)", () => {
 		let promoted = false;
 		const store = {
 			upserted: [],
-			getEntriesByPattern: async () => [{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 }],
-			promoteByPattern: async () => { promoted = true; },
+			getEntriesByPattern: async () => [
+				{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 },
+			],
+			promoteByPattern: async () => {
+				promoted = true;
+			},
 			setFidelity: async () => {},
-			upsert: async (runId, turn, path, b, status) => {
+			upsert: async (_runId, _turn, path, b, status) => {
 				store.upserted.push({ path, body: b, status });
 			},
 		};
@@ -120,6 +135,10 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		assert.strictEqual(promoted, false, "promoteByPattern must not be called on partial read");
+		assert.strictEqual(
+			promoted,
+			false,
+			"promoteByPattern must not be called on partial read",
+		);
 	});
 });

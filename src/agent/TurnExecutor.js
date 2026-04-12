@@ -188,16 +188,17 @@ export default class TurnExecutor {
 
 		// Materialize turn_context: VIEW rows projected through tools
 		const demoted = [];
-		let { rows, messages, lastContextTokens } = await this.#materializeTurnContext({
-			runId: currentRunId,
-			loopId: currentLoopId,
-			turn,
-			systemPrompt,
-			mode,
-			toolSet: effectiveToolSet,
-			contextSize,
-			demoted,
-		});
+		let { rows, messages, lastContextTokens } =
+			await this.#materializeTurnContext({
+				runId: currentRunId,
+				loopId: currentLoopId,
+				turn,
+				systemPrompt,
+				mode,
+				toolSet: effectiveToolSet,
+				contextSize,
+				demoted,
+			});
 
 		await this.#hooks.context.materialized.emit({
 			runId: currentRunId,

@@ -60,19 +60,32 @@ export default class Get {
 				return;
 			}
 			if (matches.length === 0) {
-				await store.upsert(runId, turn, entry.resultPath, `${target} not found`, 200, { loopId });
+				await store.upsert(
+					runId,
+					turn,
+					entry.resultPath,
+					`${target} not found`,
+					200,
+					{ loopId },
+				);
 				return;
 			}
 			const allLines = matches[0].body.split("\n");
 			const total = allLines.length;
 			const startLine = line ?? 1;
 			const startIdx = startLine - 1;
-			const endIdx =
-				limit !== null ? Math.min(startIdx + limit, total) : total;
+			const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
 			const slice = allLines.slice(startIdx, endIdx).join("\n");
 			const endLine = endIdx;
 			const header = `[lines ${startLine}–${endLine} / ${total} total]`;
-			await store.upsert(runId, turn, entry.resultPath, `${header}\n${slice}`, 200, { loopId });
+			await store.upsert(
+				runId,
+				turn,
+				entry.resultPath,
+				`${header}\n${slice}`,
+				200,
+				{ loopId },
+			);
 			return;
 		}
 
