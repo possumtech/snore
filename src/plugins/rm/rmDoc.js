@@ -22,7 +22,7 @@ const LINES = [
 		"Nudges toward archive over rm. Archive keeps the key; rm deletes permanently.",
 	],
 	[
-		"* Paths accept globs — use `preview` to check matches first",
+		"* Paths accept patterns — use `preview` to check matches first",
 		"Reinforces preview safety pattern. Prevents accidental bulk deletion.",
 	],
 ];

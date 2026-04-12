@@ -27,7 +27,7 @@ const LINES = [
 
 	// --- Constraints: RFC-style. Each prevents a specific failure mode.
 	[
-		"* Paths accept globs: `src/**/*.js`, `known://api_*`",
+		"* Paths accept patterns: `src/**/*.js`, `known://api_*`",
 		"Reinforces picomatch patterns work everywhere, not just in examples.",
 	],
 	[
@@ -39,7 +39,7 @@ const LINES = [
 		"Generalizes examples 2-3. Body = filter, not just path.",
 	],
 	[
-		"* `line` and `limit` read a slice without promoting — globs not allowed",
+		"* `line` and `limit` read a slice without promoting — patterns not allowed",
 		"The no-promotion constraint is what makes partial read safe: context budget is unaffected.",
 	],
 	[

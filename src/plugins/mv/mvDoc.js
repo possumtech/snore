@@ -33,7 +33,7 @@ const LINES = [
 
 	// --- Constraints
 	[
-		"* Source path accepts globs for batch moves",
+		"* Source path accepts patterns for batch moves",
 		"Pattern support consistent with get/cp/rm.",
 	],
 	[

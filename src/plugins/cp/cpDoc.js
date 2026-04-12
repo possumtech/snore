@@ -17,7 +17,7 @@ const LINES = [
 
 	// --- Constraints
 	[
-		"* Source path accepts globs: `src/*.js`, `known://draft_*`",
+		"* Source path accepts patterns: `src/*.js`, `known://draft_*`",
 		"Pattern support. Distributes glob teaching beyond get.",
 	],
 	[
