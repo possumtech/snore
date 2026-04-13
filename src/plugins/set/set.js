@@ -74,11 +74,8 @@ export default class Set {
 		// Edit: sed patterns or SEARCH/REPLACE blocks
 		if (attrs.blocks || attrs.search != null) {
 			await this.#processEdit(rummy, entry, attrs);
-			return;
-		}
-
-		// Preview
-		if (attrs.preview && attrs.path) {
+		} else if (attrs.preview && attrs.path) {
+			// Preview
 			const matches = await store.getEntriesByPattern(
 				runId,
 				attrs.path,
@@ -95,51 +92,63 @@ export default class Set {
 				{ preview: true, loopId },
 			);
 			return;
+		} else {
+			// Write content
+			const target = attrs.path;
+			if (!target) return;
+
+			const scheme = KnownStore.scheme(target);
+			if (scheme === null) {
+				// File write — create proposal
+				const udiff = generatePatch(target, "", entry.body || "");
+				const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
+				await store.upsert(runId, turn, entry.resultPath, "", 202, {
+					attributes: { file: target, patch: udiff, merge },
+					loopId,
+				});
+			} else if (attrs.filter || target.includes("*")) {
+				// Pattern update
+				const matches = await store.getEntriesByPattern(
+					runId,
+					target,
+					attrs.filter,
+				);
+				await store.updateBodyByPattern(
+					runId,
+					target,
+					attrs.filter || null,
+					entry.body,
+				);
+				await storePatternResult(
+					store,
+					runId,
+					turn,
+					"set",
+					target,
+					attrs.filter,
+					matches,
+					{ loopId },
+				);
+			} else {
+				// Direct scheme write
+				await store.upsert(runId, turn, target, entry.body, 200, {
+					fidelity: fidelityAttr || "full",
+					attributes: summaryText ? { summary: summaryText } : null,
+					loopId,
+				});
+			}
 		}
 
-		// Write content
-		const target = attrs.path;
-		if (!target) return;
-
-		const scheme = KnownStore.scheme(target);
-		if (scheme === null) {
-			// File write — create proposal
-			const udiff = generatePatch(target, "", entry.body || "");
-			const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
-			await store.upsert(runId, turn, entry.resultPath, "", 202, {
-				attributes: { file: target, patch: udiff, merge },
-				loopId,
-			});
-		} else if (attrs.filter || target.includes("*")) {
-			// Pattern update
-			const matches = await store.getEntriesByPattern(
-				runId,
-				target,
-				attrs.filter,
-			);
-			await store.updateBodyByPattern(
-				runId,
-				target,
-				attrs.filter || null,
-				entry.body,
-			);
-			await storePatternResult(
-				store,
-				runId,
-				turn,
-				"set",
-				target,
-				attrs.filter,
-				matches,
-				{ loopId },
-			);
-		} else {
-			// Direct scheme write — fidelity and summary applied here
-			await store.upsert(runId, turn, target, entry.body, 200, {
-				fidelity: fidelityAttr || "full",
-				attributes: summaryText ? { summary: summaryText } : null,
-				loopId,
-			});
+		// Apply fidelity after all write operations
+		if (fidelityAttr && attrs.path) {
+			const target = attrs.path;
+			const scheme = KnownStore.scheme(target);
+			if (scheme !== null) {
+				await store.setFidelity(runId, target, fidelityAttr);
+			}
+			if (summaryText) {
+				await store.setAttributes(runId, target, { summary: summaryText });
+			}
 		}
 	}
 
