@@ -567,13 +567,19 @@ export default class TurnExecutor {
 		}
 
 		// Lifecycle signals are always available — never 409'd.
-		const summaryEntry = lifecycle.find((e) => e.scheme === "summarize");
-		const updateEntry = lifecycle.find((e) => e.scheme === "update");
+		const summaryEntry = lifecycle.findLast((e) => e.scheme === "summarize");
+		const updateEntry = lifecycle.findLast((e) => e.scheme === "update");
 		let summaryText = summaryEntry?.body || null;
 		let updateText = updateEntry?.body || null;
 
-		// If model sent both, update wins — if it can't decide, it's not done
-		if (summaryText && updateText) summaryText = null;
+		// If model sent both, last signal wins — respects the model's final intent
+		if (summaryText && updateText) {
+			const lastLifecycle = lifecycle.findLast(
+				(e) => e.scheme === "summarize" || e.scheme === "update",
+			);
+			if (lastLifecycle.scheme === "summarize") updateText = null;
+			else summaryText = null;
+		}
 
 		// If model says "done" but actions failed, override — the model's
 		// assertion that it's done is false if it failed to do what it tried.
