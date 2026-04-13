@@ -232,13 +232,6 @@ export default class KnownStore {
 		this.#emitChanged(runId, "prompt://batch", "fidelity");
 	}
 
-	async demotePreviousLoopLogging(runId, loopId) {
-		await this.#db.demote_previous_loop_logging.run({
-			run_id: runId,
-			loop_id: loopId,
-		});
-		this.#emitChanged(runId, "logging://batch", "fidelity");
-	}
 
 	async getLog(runId) {
 		return this.#db.get_results.all({ run_id: runId });

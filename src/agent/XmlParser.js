@@ -14,8 +14,6 @@ export const ALL_TOOLS = new Set([
 	"update",
 	"unknown",
 	"think",
-	"thought",
-	"mcp",
 ]);
 
 /**

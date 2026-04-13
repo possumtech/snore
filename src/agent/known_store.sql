@@ -172,23 +172,6 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND scheme = 'prompt' AND fidelity = 'summary';
 
--- PREP: demote_previous_loop_logging
--- Demote full logging entries from all other loops to summary.
--- Fires at loop start so <previous> entries are already compact.
-UPDATE known_entries
-SET
-	fidelity = 'summary'
-	, tokens = COALESCE(
-		countTokens(json_extract(attributes, '$.summary'))
-		, countTokens(substr(body, 1, 80))
-	)
-	, updated_at = CURRENT_TIMESTAMP
-WHERE
-	run_id = :run_id
-	AND (loop_id IS NULL OR loop_id != :loop_id)
-	AND fidelity = 'full'
-	AND scheme IN (SELECT name FROM schemes WHERE category = 'logging');
-
 -- PREP: demote_turn_entries
 -- Demote all full entries from a turn to summary with 413 status.
 -- Tokens unchanged — always reports full cost regardless of fidelity.
@@ -204,18 +187,3 @@ WHERE
 	AND status < 400
 RETURNING path, tokens;
 
--- PREP: demote_all_full
--- Batch-demote full entries to summary. Excludes structural entries
--- (instructions, system, prompt) that the model needs to function.
--- Fires when pre-turn or LLM context overflow reaches AgentLoop.
-UPDATE known_entries
-SET
-	fidelity = 'summary'
-	, status = 413
-	, updated_at = CURRENT_TIMESTAMP
-WHERE
-	run_id = :run_id
-	AND fidelity = 'full'
-	AND status < 400
-	AND COALESCE(scheme, '') NOT IN ('instructions', 'system', 'prompt')
-RETURNING path;
