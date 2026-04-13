@@ -227,9 +227,13 @@ Plugin: rummy.rm({ path })               → #record() → dispatch(scheme, entr
 **Tool dispatch:** Commands are dispatched sequentially in the order
 the model emitted them. Each tool either succeeds (200), fails (400+),
 or proposes (202). On failure, all remaining tools are aborted. On
-proposal, dispatch pauses, the client resolves (accept/reject), and
-dispatch resumes — the proposal becomes 200 or 400+ like any other
-tool. The model controls ordering; the system respects it.
+proposal, dispatch pauses, a notification is pushed to the client
+(same WebSocket push pattern as `run/progress`), the client resolves
+(accept/reject), and dispatch resumes — the proposal becomes 200 or
+400+ like any other tool. The `ask`/`act` RPC response is only sent
+when all tools have completed. Proposals are NOT batched — each is
+sent and resolved inline during dispatch. The model controls tool
+ordering; the system respects it.
 
 If the model sends `<summarize>` but a preceding action in the same
 turn failed, the summarize is overridden to an update (the model's

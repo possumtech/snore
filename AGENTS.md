@@ -340,6 +340,25 @@ Major budget system overhaul driven by demo run failures. Key fixes:
 - Set tooldoc: SEARCH/REPLACE first, bare create last.
 - Tests: 234 unit, 172 integration, 16 E2E — all green.
 
+### Dispatch Restructuring Decision (2026-04-13)
+
+The dispatch loop processes tools as a simple sequential queue in the
+order the model emitted them. No lifecycle/action split. No reordering.
+
+- Each tool either succeeds (200), fails (400+), or proposes (202)
+- On failure: abort all remaining tools
+- On proposal: push notification to client (WebSocket, same pattern as
+  `run/progress`), await resolution inline, continue dispatch
+- The `ask`/`act` RPC response is sent only when ALL tools complete
+- Proposals are NOT batched — each is sent and resolved inline
+- Post-dispatch: budget check (independent of tool outcomes)
+- Lifecycle resolution: last summarize/update in `recorded` order wins
+
+This replaces the legacy batch-proposal pattern where all tools
+dispatched first, proposals accumulated, and the RPC returned 202
+with a batch of proposed items. That pattern allowed tools to run
+that depended on unresolved proposals — incorrect.
+
 ### TODO
 
 **Documentation audit (next):**

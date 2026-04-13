@@ -390,15 +390,7 @@ export default class TurnExecutor {
 		});
 
 		// --- PHASE 1: RECORD ---
-		// Split lifecycle signals from action commands.
-		// Lifecycle signals (summarize, update, unknown, known) are state
-		// declarations — always recorded, never 409'd by sequential dispatch.
-		const LIFECYCLE = new Set(["summarize", "update", "unknown", "known"]);
-
 		const recorded = [];
-		const lifecycle = [];
-		const actions = [];
-
 		for (const cmd of commands) {
 			const entry = await this.#record(
 				currentRunId,
@@ -407,33 +399,19 @@ export default class TurnExecutor {
 				mode,
 				cmd,
 			);
-			if (!entry) continue;
-			recorded.push(entry);
-
-			if (LIFECYCLE.has(entry.scheme)) {
-				lifecycle.push(entry);
-			} else {
-				actions.push(entry);
-			}
+			if (entry) recorded.push(entry);
 		}
 
 		// --- PHASE 2: DISPATCH ---
+		// Tools dispatch in the order the model emitted them.
+		// Abort remaining tools on failure (400+).
 		let hasErrors = false;
 		let hasProposed = false;
 		let abortAfter = null;
-		const dispatched = [...lifecycle];
 
-		// Lifecycle signals first — always dispatched, never aborted.
-		for (const entry of lifecycle) {
-			await this.#hooks.tool.before.emit({ entry, rummy });
-			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
-			await this.#hooks.tool.after.emit({ entry, rummy });
-			await this.#hooks.entry.created.emit(entry);
-		}
-
-		for (const entry of actions) {
+		for (const entry of recorded) {
 			if (abortAfter) {
-				const errorMsg = `Aborted — preceding <${abortAfter}> requires resolution.`;
+				const errorMsg = `Aborted — preceding <${abortAfter}> failed.`;
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
@@ -450,35 +428,27 @@ export default class TurnExecutor {
 			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
-			dispatched.push(entry);
 
 			const row = await this.#db.get_entry_state.get({
 				run_id: currentRunId,
 				path: entry.resultPath || entry.path,
 			});
-			if (row?.status === 202) {
-				hasProposed = true;
-			} else if (row?.status >= 400) {
+			if (row?.status >= 400) {
 				hasErrors = true;
 				abortAfter = entry.scheme;
 			}
 		}
 
-		// Materialize proposals only if we dispatched actions
-		if (!abortAfter || hasProposed) {
-			await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
-		}
+		// Materialize proposals (set handler aggregates revisions here)
+		await this.#hooks.turn.proposing.emit({ rummy, recorded });
 
-		// Recheck after materialization (set handler may create proposals)
-		if (!hasProposed && !hasErrors) {
-			for (const entry of actions) {
-				const row = await this.#db.get_entry_state.get({
-					run_id: currentRunId,
-					path: entry.resultPath || entry.path,
-				});
-				if (row?.status === 202) hasProposed = true;
-				if (row?.status >= 400) hasErrors = true;
-			}
+		// Check for proposals after materialization
+		for (const entry of recorded) {
+			const row = await this.#db.get_entry_state.get({
+				run_id: currentRunId,
+				path: entry.resultPath || entry.path,
+			});
+			if (row?.status === 202) hasProposed = true;
 		}
 
 		// Turn Demotion: if end-of-turn context exceeds ceiling, demote this
@@ -572,15 +542,14 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Lifecycle signals are always available — never 409'd.
-		const summaryEntry = lifecycle.findLast((e) => e.scheme === "summarize");
-		const updateEntry = lifecycle.findLast((e) => e.scheme === "update");
+		const summaryEntry = recorded.findLast((e) => e.scheme === "summarize");
+		const updateEntry = recorded.findLast((e) => e.scheme === "update");
 		let summaryText = summaryEntry?.body || null;
 		let updateText = updateEntry?.body || null;
 
 		// If model sent both, last signal wins — respects the model's final intent
 		if (summaryText && updateText) {
-			const lastLifecycle = lifecycle.findLast(
+			const lastLifecycle = recorded.findLast(
 				(e) => e.scheme === "summarize" || e.scheme === "update",
 			);
 			if (lastLifecycle.scheme === "summarize") updateText = null;
