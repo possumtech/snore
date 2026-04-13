@@ -73,21 +73,10 @@ SET
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: set_fidelity
+-- Tokens unchanged — always reflects full body cost.
 UPDATE known_entries
 SET
 	fidelity = :fidelity
-	, tokens = CASE
-		WHEN :fidelity = 'archive'
-			THEN 0
-		WHEN :fidelity = 'index'
-			THEN 0
-		WHEN :fidelity = 'summary'
-			THEN COALESCE(
-				countTokens(json_extract(attributes, '$.summary')),
-				countTokens(substr(body, 1, 80))
-			)
-		ELSE countTokens(body)
-	END
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 

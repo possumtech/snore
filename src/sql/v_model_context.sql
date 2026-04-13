@@ -59,7 +59,6 @@ SELECT
 	, attributes
 	, category
 	, turn
-	, tokens
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY

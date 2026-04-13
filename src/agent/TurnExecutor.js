@@ -54,7 +54,7 @@ export default class TurnExecutor {
 				fidelity: row.fidelity,
 				status: row.status,
 				body: projectedBody ?? "",
-				tokens: row.tokens ?? countTokens(projectedBody ?? ""),
+				tokens: countTokens(projectedBody ?? ""),
 				attributes: row.attributes,
 				category: row.category,
 				source_turn: row.turn,

@@ -29,6 +29,7 @@ export default async function materialize(
 
 	const rows = await db.get_model_context.all({ run_id: runId });
 	for (const row of rows) {
+		// tokens from the view reflect the projected body cost (fidelity-aware)
 		await db.insert_turn_context.run({
 			run_id: runId,
 			loop_id: null,
@@ -38,7 +39,7 @@ export default async function materialize(
 			fidelity: row.fidelity,
 			status: row.status,
 			body: row.body,
-			tokens: row.tokens,
+			tokens: countTokens(row.body),
 			attributes: row.attributes,
 			category: row.category,
 			source_turn: row.turn,
