@@ -673,50 +673,6 @@ export default class TurnExecutor {
 		}
 
 		const scheme = cmd.name;
-
-		// Structural tags — recorded like any other entry
-		if (scheme === "summarize" || scheme === "update") {
-			const statusPath = await this.#knownStore.slugPath(
-				runId,
-				scheme,
-				cmd.body,
-			);
-			await this.#knownStore.upsert(runId, turn, statusPath, cmd.body, 200, {
-				loopId,
-			});
-			return {
-				scheme,
-				body: cmd.body,
-				path: statusPath,
-				resultPath: statusPath,
-				attributes: null,
-			};
-		}
-
-		// Unknown — deduplicated, sticky
-		if (scheme === "unknown") {
-			const existingValues = await this.#knownStore.getUnknownValues(runId);
-			if (existingValues.has(cmd.body)) {
-				console.warn(`[RUMMY] Unknown deduped: "${cmd.body.slice(0, 60)}"`);
-				return null;
-			}
-			const unknownPath = await this.#knownStore.slugPath(
-				runId,
-				"unknown",
-				cmd.body,
-			);
-			await this.#knownStore.upsert(runId, turn, unknownPath, cmd.body, 200, {
-				loopId,
-			});
-			return {
-				scheme,
-				path: unknownPath,
-				body: cmd.body,
-				resultPath: unknownPath,
-				attributes: null,
-			};
-		}
-
 		const rawTarget = cmd.path || cmd.command || cmd.question || "";
 		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
 		if (rawTarget.length > 512 || /\p{Cc}/u.test(rawTarget)) {
@@ -754,86 +710,6 @@ export default class TurnExecutor {
 		// Pass parsed command fields through as attributes
 		const { name: _, ...attributes } = cmd;
 		if (cmd.path) attributes.path = target;
-
-		// known tool or naked write → known:// slug from body
-		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
-			if (!cmd.body) return null;
-
-			// Size gate: reject entries > 512 tokens — force atomic entries
-			const entryTokens = countTokens(cmd.body);
-			const MAX_ENTRY_TOKENS = 512;
-			if (scheme === "known" && entryTokens > MAX_ENTRY_TOKENS) {
-				const rejectPath = await this.#knownStore.slugPath(
-					runId,
-					scheme,
-					cmd.body,
-				);
-				await this.#knownStore.upsert(
-					runId,
-					turn,
-					rejectPath,
-					`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
-					413,
-					{ loopId },
-				);
-				return {
-					scheme,
-					path: rejectPath,
-					body: "",
-					resultPath: rejectPath,
-					attributes,
-					status: 413,
-				};
-			}
-
-			let knownPath = cmd.path;
-			if (!knownPath) {
-				knownPath = await this.#knownStore.slugPath(
-					runId,
-					"known",
-					cmd.body,
-					cmd.summary,
-				);
-			}
-			// Dedup: if this exact path already exists, update rather than duplicate
-			const existing = await this.#knownStore.getEntriesByPattern(
-				runId,
-				knownPath,
-				null,
-			);
-			if (existing.length > 0) {
-				// Path exists — update body and turn, skip creating a new entry
-				await this.#knownStore.upsert(
-					runId,
-					turn,
-					existing[0].path,
-					cmd.body || existing[0].body,
-					200,
-					{
-						attributes,
-						loopId,
-					},
-				);
-				return {
-					scheme: "known",
-					path: existing[0].path,
-					body: cmd.body || existing[0].body,
-					resultPath: existing[0].path,
-					attributes,
-				};
-			}
-			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, 200, {
-				attributes,
-				loopId,
-			});
-			return {
-				scheme: "known",
-				path: knownPath,
-				body: cmd.body,
-				resultPath: knownPath,
-				attributes,
-			};
-		}
 
 		const body = cmd.body || cmd.command || cmd.question || "";
 

@@ -1,4 +1,7 @@
+import { countTokens } from "../../agent/tokens.js";
 import docs from "./knownDoc.js";
+
+const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS) || 512;
 
 export default class Known {
 	#core;
@@ -8,6 +11,7 @@ export default class Known {
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.known = docs;
@@ -17,9 +21,52 @@ export default class Known {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		let target = entry.attributes.path || entry.resultPath;
-		if (target && !target.includes("://")) target = `known://${target}`;
-		await store.upsert(runId, turn, target, entry.body, 200, {
+		if (!entry.body) return;
+
+		// Size gate
+		const entryTokens = countTokens(entry.body);
+		if (entryTokens > MAX_ENTRY_TOKENS) {
+			const rejectPath = await store.slugPath(runId, "known", entry.body);
+			await store.upsert(
+				runId,
+				turn,
+				rejectPath,
+				`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
+				413,
+				{ loopId },
+			);
+			return;
+		}
+
+		// Resolve path: explicit or auto-generated slug
+		let knownPath = entry.attributes?.path || null;
+		if (knownPath && !knownPath.includes("://")) {
+			knownPath = `known://${knownPath}`;
+		}
+		if (!knownPath) {
+			knownPath = await store.slugPath(
+				runId,
+				"known",
+				entry.body,
+				entry.attributes?.summary,
+			);
+		}
+
+		// Dedup: if path exists, update rather than duplicate
+		const existing = await store.getEntriesByPattern(runId, knownPath, null);
+		if (existing.length > 0) {
+			await store.upsert(
+				runId,
+				turn,
+				existing[0].path,
+				entry.body || existing[0].body,
+				200,
+				{ attributes: entry.attributes, loopId },
+			);
+			return;
+		}
+
+		await store.upsert(runId, turn, knownPath, entry.body, 200, {
 			attributes: entry.attributes,
 			loopId,
 		});
@@ -29,11 +76,15 @@ export default class Known {
 		return `# known ${entry.path}\n${entry.body}`;
 	}
 
+	summary(entry) {
+		return this.full(entry);
+	}
+
 	async assembleKnown(content, ctx) {
 		const entries = ctx.rows.filter((r) => r.category === "data");
 		if (entries.length === 0) return content;
 
-		// Rows arrive pre-sorted by SQL: skill → summary → full, then by recency
+		// Rows arrive pre-sorted by SQL: summary → full, then by recency
 		const demotedSet = new Set(ctx.demoted || []);
 		const lines = entries.map((e) => renderKnownTag(e, demotedSet));
 		return `${content}\n\n<knowns>\n${lines.join("\n")}\n</knowns>`;
@@ -54,12 +105,12 @@ function renderKnownTag(entry, demotedSet) {
 			: entry.attributes;
 	const summary =
 		typeof attrs?.summary === "string"
-			? ` summary="${attrs.summary.slice(0, 80)}"`
+			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`
 			: "";
 
-	if (entry.body) {
-		return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${summary}${tokens}${flag}>${entry.body}</${tag}>`;
+	if (entry.fidelity === "archive") return "";
+	if (entry.fidelity === "summary") {
+		return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}/>`;
 	}
-
-	return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${summary}${tokens}${flag}/>`;
+	return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}>${entry.body}</${tag}>`;
 }
