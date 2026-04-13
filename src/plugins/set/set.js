@@ -27,8 +27,7 @@ export default class Set {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
 		const fidelityAttr = VALID_FIDELITY[attrs.fidelity] ? attrs.fidelity : null;
-		const rawSummary =
-			typeof attrs.summary === "string" ? attrs.summary : null;
+		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 
 		// Pure fidelity/metadata change — no body content

@@ -247,7 +247,6 @@ export default class KnownStore {
 		this.#emitChanged(runId, "prompt://batch", "fidelity");
 	}
 
-
 	async getLog(runId) {
 		return this.#db.get_results.all({ run_id: runId });
 	}

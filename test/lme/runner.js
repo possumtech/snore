@@ -132,7 +132,15 @@ async function resolveAll(client, result) {
 	return current;
 }
 
-async function ingestSessions(client, model, run, sessions, dates, sessionIds, contextLimit) {
+async function ingestSessions(
+	client,
+	model,
+	run,
+	sessions,
+	dates,
+	sessionIds,
+	contextLimit,
+) {
 	let ingested = 0;
 	for (let i = 0; i < sessions.length; i++) {
 		const session = sessions[i];

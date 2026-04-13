@@ -96,9 +96,7 @@ export default class AuditClient extends RpcClient {
 				? JSON.parse(rmEntry.attributes)
 				: rmEntry.attributes;
 		if (attrs?.path) {
-			await fs
-				.unlink(join(this.#projectRoot, attrs.path))
-				.catch(() => {});
+			await fs.unlink(join(this.#projectRoot, attrs.path)).catch(() => {});
 		}
 	}
 

@@ -19,10 +19,7 @@ const LINES = [
 		"* YOU MUST NOT use <summarize> if still working — use <update/> instead",
 		"Mutual exclusion with update.",
 	],
-	[
-		"* YOU MUST keep <summarize> to <= 80 characters",
-		"Length cap.",
-	],
+	["* YOU MUST keep <summarize> to <= 80 characters", "Length cap."],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

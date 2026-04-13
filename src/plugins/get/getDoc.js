@@ -3,10 +3,7 @@
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
 	["## <get>[path/to/file]</get> - Load a file or entry into context"],
-	[
-		"Example: <get>src/app.js</get>",
-		"Simplest form. Body = path.",
-	],
+	["Example: <get>src/app.js</get>", "Simplest form. Body = path."],
 	[
 		'Example: <get path="known://*">auth</get>',
 		"Keyword recall: glob in path, search term in body.",

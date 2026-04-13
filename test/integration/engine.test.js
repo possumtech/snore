@@ -102,7 +102,11 @@ describe("Engine integration", () => {
 				"known://test_entry",
 				null,
 			);
-			assert.strictEqual(demoted[0].tokens, originalTokens, "tokens unchanged after demote");
+			assert.strictEqual(
+				demoted[0].tokens,
+				originalTokens,
+				"tokens unchanged after demote",
+			);
 
 			await store.promote(RUN_ID, "known://test_entry", 3);
 			const promoted = await store.getEntriesByPattern(
@@ -110,7 +114,11 @@ describe("Engine integration", () => {
 				"known://test_entry",
 				null,
 			);
-			assert.strictEqual(promoted[0].tokens, originalTokens, "tokens unchanged after promote");
+			assert.strictEqual(
+				promoted[0].tokens,
+				originalTokens,
+				"tokens unchanged after promote",
+			);
 		});
 	});
 

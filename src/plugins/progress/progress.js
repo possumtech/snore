@@ -17,7 +17,7 @@ export default class Progress {
 			);
 		}
 		lines.push(
-			'Conclude with a brief <update></update> to continue or a brief <summarize></summarize> if done.',
+			"Conclude with a brief <update></update> to continue or a brief <summarize></summarize> if done.",
 		);
 		const body = lines.join("\n");
 

@@ -9,10 +9,7 @@ const LINES = [
 		'Example: <mv path="known://active_task">known://completed_task</mv>',
 		"Entry rename. Most common mv use case.",
 	],
-	[
-		'Example: <mv path="src/old_name.js">src/new_name.js</mv>',
-		"File rename.",
-	],
+	['Example: <mv path="src/old_name.js">src/new_name.js</mv>', "File rename."],
 	[
 		'Example: <mv path="known://project/*" fidelity="summary"/>',
 		"Batch fidelity change via pattern. No destination = fidelity in place.",

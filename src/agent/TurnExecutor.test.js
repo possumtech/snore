@@ -14,7 +14,7 @@ const IS_CONTEXT_EXCEEDED =
 describe("isContextExceeded pattern", () => {
 	const matches = [
 		// llama.cpp / local models
-		'request (52452 tokens) exceeds the available context size (32768 tokens)',
+		"request (52452 tokens) exceeds the available context size (32768 tokens)",
 		'OpenAI-compatible API error: 400 - {"error":{"code":400,"message":"request exceeds context size"}}',
 		// OpenAI
 		"This model's maximum context length is 128000 tokens",
@@ -43,19 +43,13 @@ describe("isContextExceeded pattern", () => {
 
 	for (const msg of matches) {
 		it(`matches: "${msg.slice(0, 60)}"`, () => {
-			assert.ok(
-				IS_CONTEXT_EXCEEDED.test(msg),
-				`should match: ${msg}`,
-			);
+			assert.ok(IS_CONTEXT_EXCEEDED.test(msg), `should match: ${msg}`);
 		});
 	}
 
 	for (const msg of noMatch) {
 		it(`rejects: "${msg.slice(0, 60)}"`, () => {
-			assert.ok(
-				!IS_CONTEXT_EXCEEDED.test(msg),
-				`should NOT match: ${msg}`,
-			);
+			assert.ok(!IS_CONTEXT_EXCEEDED.test(msg), `should NOT match: ${msg}`);
 		});
 	}
 });

@@ -1,7 +1,8 @@
 import docs from "./thinkDoc.js";
 
 const THINK_ENABLED = process.env.RUMMY_THINK;
-if (THINK_ENABLED === undefined) throw new Error("RUMMY_THINK must be set (1 or 0)");
+if (THINK_ENABLED === undefined)
+	throw new Error("RUMMY_THINK must be set (1 or 0)");
 
 export default class Think {
 	constructor(core) {

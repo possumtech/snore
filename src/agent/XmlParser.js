@@ -165,11 +165,9 @@ export default class XmlParser {
 					if (!ALL_TOOLS.has(name)) {
 						if (current) {
 							const attrStr = Object.entries(attrs)
-								.map(([k, v]) => v === "" ? k : `${k}="${v}"`)
+								.map(([k, v]) => (v === "" ? k : `${k}="${v}"`))
 								.join(" ");
-							current.rawBody += attrStr
-								? `<${name} ${attrStr}>`
-								: `<${name}>`;
+							current.rawBody += attrStr ? `<${name} ${attrStr}>` : `<${name}>`;
 						}
 						return;
 					}

@@ -204,13 +204,19 @@ describe("restoreSummarizedPrompts", () => {
 		const body = "a".repeat(200);
 		await store.upsert(runId, 1, "prompt://act/1", body, 200);
 		const before = await tdb.db.get_known_entries.all({ run_id: runId });
-		const originalTokens = before.find((e) => e.path === "prompt://act/1").tokens;
+		const originalTokens = before.find(
+			(e) => e.path === "prompt://act/1",
+		).tokens;
 
 		await store.setFidelity(runId, "prompt://act/1", "summary");
 		await store.restoreSummarizedPrompts(runId);
 
 		const after = await tdb.db.get_known_entries.all({ run_id: runId });
 		const entry = after.find((e) => e.path === "prompt://act/1");
-		assert.strictEqual(entry.tokens, originalTokens, "tokens unchanged through cycle");
+		assert.strictEqual(
+			entry.tokens,
+			originalTokens,
+			"tokens unchanged through cycle",
+		);
 	});
 });

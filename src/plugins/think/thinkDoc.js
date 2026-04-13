@@ -2,9 +2,7 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	[
-		"## <think>[reasoning]</think> - Think before acting",
-	],
+	["## <think>[reasoning]</think> - Think before acting"],
 	[
 		"* Use <think> before any other tools to plan your approach",
 		"Positioning: think first, then act. Prevents degenerate tool-call storms.",

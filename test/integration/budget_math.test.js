@@ -42,7 +42,11 @@ describe("Budget math", () => {
 			await store.upsert(RUN_ID, 1, "known://full_entry", body, 200, {
 				fidelity: "full",
 			});
-			await materialize(tdb.db, { runId: RUN_ID, turn: 1, systemPrompt: "test" });
+			await materialize(tdb.db, {
+				runId: RUN_ID,
+				turn: 1,
+				systemPrompt: "test",
+			});
 			const rows = await tdb.db.get_turn_context.all({
 				run_id: RUN_ID,
 				turn: 1,
@@ -71,7 +75,11 @@ describe("Budget math", () => {
 				turn: 1,
 			});
 			const entry = rows.find((r) => r.path === "test_file.js");
-			assert.strictEqual(entry, undefined, "archived entry excluded from context");
+			assert.strictEqual(
+				entry,
+				undefined,
+				"archived entry excluded from context",
+			);
 		});
 
 		it("summary entry body in view is full (onView transforms at runtime)", async () => {
@@ -144,7 +152,7 @@ describe("Budget math", () => {
 			});
 
 			// The assembled messages should NOT include the 500-pad index body
-			const totalChars = messages.reduce(
+			const _totalChars = messages.reduce(
 				(s, m) => s + (m.content?.length || 0),
 				0,
 			);
@@ -194,10 +202,7 @@ describe("Budget math", () => {
 				result.assembledTokens > 0,
 				"assembled tokens measured from messages, not from 0",
 			);
-			assert.ok(
-				result.overflow > 0,
-				"overflow computed from measured tokens",
-			);
+			assert.ok(result.overflow > 0, "overflow computed from measured tokens");
 		});
 	});
 

@@ -11,9 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
+import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
-import AuditClient from "../helpers/AuditClient.js";
 
 const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 120_000;
@@ -54,12 +54,18 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 		const sh = entries.find((e) => e.scheme === "sh");
-		assert.strictEqual(sh, undefined, "<sh> should not be recorded in ask mode");
+		assert.strictEqual(
+			sh,
+			undefined,
+			"<sh> should not be recorded in ask mode",
+		);
 	});
 
 	// --- Unknown dedup ---
 
-	it("deduplicates unknown entries with same body", { timeout: TIMEOUT }, async () => {
+	it("deduplicates unknown entries with same body", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const r = await client.call("ask", {
 			model,
 			prompt: "What is the database schema? What is the database schema?",
@@ -81,10 +87,13 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 
 	// --- Known size gate ---
 
-	it("known entries under 512 tokens are accepted", { timeout: TIMEOUT }, async () => {
+	it("known entries under 512 tokens are accepted", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const r = await client.call("ask", {
 			model,
-			prompt: "Save a known entry: Mitch Hedberg was a comedian who died in 2005.",
+			prompt:
+				"Save a known entry: Mitch Hedberg was a comedian who died in 2005.",
 			noInteraction: true,
 			noRepo: true,
 			noProposals: true,
@@ -99,7 +108,9 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 
 	// --- Known scheme prefix ---
 
-	it("known entries get known:// prefix even without explicit scheme", { timeout: TIMEOUT }, async () => {
+	it("known entries get known:// prefix even without explicit scheme", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const r = await client.call("ask", {
 			model,
 			prompt: 'Save this fact: The sky is blue. Use path "facts/sky".',
@@ -120,7 +131,9 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 
 	// --- Summarize/update recording ---
 
-	it("summarize creates entry with slug path", { timeout: TIMEOUT }, async () => {
+	it("summarize creates entry with slug path", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const r = await client.call("ask", {
 			model,
 			prompt: "What is 2+2? Answer immediately.",
@@ -144,11 +157,11 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 
 	it("rejects paths longer than 512 characters", async () => {
 		// This is a unit-level test using KnownStore directly
-		const store = new KnownStore(tdb.db);
-		const longPath = "x".repeat(600);
+		const _store = new KnownStore(tdb.db);
+		const _longPath = "x".repeat(600);
 		// The path length check is in #record, not in KnownStore.
 		// We verify the constraint exists by checking the schema.
-		const result = await tdb.db.get_known_entries.all({
+		const _result = await tdb.db.get_known_entries.all({
 			run_id: 999999,
 		});
 		// Schema enforces path <= 2048, but #record rejects > 512.
