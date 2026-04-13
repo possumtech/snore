@@ -543,10 +543,14 @@ export default class TurnExecutor {
 					recoveryBudget.assembledTokens - safeLevel,
 				);
 
-				const pathList = demotedEntries.map((r) => r.path).join("\n");
+				const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
+				const ceiling = Math.floor(contextSize * 0.9);
+				const pathList = demotedEntries
+					.map((r) => `${r.path} (${r.tokens} tokens)`)
+					.join("\n");
 				const body = [
 					`Error 413: Context overflowed by ${postBudget.overflow} tokens.`,
-					`${demotedEntries.length} entries from this turn demoted to summary:`,
+					`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted. Budget: ${ceiling} tokens.`,
 					pathList,
 				].join("\n");
 

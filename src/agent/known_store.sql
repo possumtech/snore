@@ -211,7 +211,7 @@ WHERE
 	AND turn = :turn
 	AND fidelity = 'full'
 	AND status < 400
-RETURNING path;
+RETURNING path, tokens;
 
 -- PREP: demote_all_full
 -- Batch-demote full entries to summary. Excludes structural entries
