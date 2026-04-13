@@ -344,6 +344,15 @@ export default class AgentLoop {
 				});
 
 				if (result.status === 413) {
+					await this.#db.complete_loop.run({
+						id: currentLoopId,
+						status: 413,
+						result: null,
+					});
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: 200,
+					});
 					const out = {
 						run: currentAlias,
 						status: 413,

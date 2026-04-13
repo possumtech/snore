@@ -545,10 +545,9 @@ export default class TurnExecutor {
 
 				const pathList = demotedEntries.map((r) => r.path).join("\n");
 				const body = [
-					"Error 413: Context Size Exceeded",
-					`${demotedEntries.length} entries demoted to summary:`,
+					`Error 413: Context overflowed by ${postBudget.overflow} tokens.`,
+					`${demotedEntries.length} entries from this turn demoted to summary:`,
 					pathList,
-					"Demote irrelevant entries to free context.",
 				].join("\n");
 
 				await this.#knownStore.upsert(
