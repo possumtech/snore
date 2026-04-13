@@ -60,6 +60,7 @@ WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 UPDATE known_entries
 SET
 	fidelity = 'full'
+	, status = 200
 	, turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
@@ -122,6 +123,7 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	fidelity = 'full'
+	, status = 200
 	, turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
