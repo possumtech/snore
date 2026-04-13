@@ -344,10 +344,6 @@ export default class AgentLoop {
 				});
 
 				if (result.status === 413) {
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 413,
-					});
 					const out = {
 						run: currentAlias,
 						status: 413,
