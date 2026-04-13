@@ -26,47 +26,19 @@ export default class Set {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
-
-		// Fidelity control: <set path="..." fidelity="archive"/>
 		const fidelityAttr = VALID_FIDELITY[attrs.fidelity] ? attrs.fidelity : null;
-		if (fidelityAttr && attrs.path) {
+		const rawSummary =
+			typeof attrs.summary === "string" ? attrs.summary : null;
+		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
+
+		// Pure fidelity/metadata change — no body content
+		if (!entry.body && fidelityAttr && attrs.path) {
 			const target = attrs.path;
-			const rawSummary =
-				typeof attrs.summary === "string" ? attrs.summary : null;
-			const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 			const matches = await store.getEntriesByPattern(
 				runId,
 				target,
 				attrs.body,
 			);
-			if (entry.body) {
-				// Write content directly at specified fidelity
-				const entryAttrs = summaryText ? { summary: summaryText } : null;
-				for (const match of matches) {
-					await store.upsert(runId, turn, match.path, entry.body, 200, {
-						fidelity: fidelityAttr,
-						attributes: entryAttrs,
-						loopId,
-					});
-				}
-				if (matches.length === 0) {
-					await store.upsert(runId, turn, target, entry.body, 200, {
-						fidelity: fidelityAttr,
-						attributes: entryAttrs,
-						loopId,
-					});
-				}
-			} else {
-				// No body — change fidelity, attach summary if provided
-				for (const match of matches) {
-					await store.setFidelity(runId, match.path, fidelityAttr);
-					if (summaryText) {
-						await store.setAttributes(runId, match.path, {
-							summary: summaryText,
-						});
-					}
-				}
-			}
 			if (matches.length === 0) {
 				await store.upsert(
 					runId,
@@ -74,12 +46,17 @@ export default class Set {
 					entry.resultPath,
 					`${target} not found`,
 					404,
-					{
-						fidelity: "archive",
-						loopId,
-					},
+					{ fidelity: "archive", loopId },
 				);
 				return;
+			}
+			for (const match of matches) {
+				await store.setFidelity(runId, match.path, fidelityAttr);
+				if (summaryText) {
+					await store.setAttributes(runId, match.path, {
+						summary: summaryText,
+					});
+				}
 			}
 			const label =
 				fidelityAttr === "archive" ? "archived" : `set to ${fidelityAttr}`;
@@ -89,19 +66,18 @@ export default class Set {
 				entry.resultPath,
 				`${matches.map((m) => m.path).join(", ")} ${label}`,
 				200,
-				{
-					fidelity: "archive",
-					loopId,
-				},
+				{ fidelity: "archive", loopId },
 			);
 			return;
 		}
 
+		// Edit: sed patterns or SEARCH/REPLACE blocks
 		if (attrs.blocks || attrs.search != null) {
 			await this.#processEdit(rummy, entry, attrs);
 			return;
 		}
 
+		// Preview
 		if (attrs.preview && attrs.path) {
 			const matches = await store.getEntriesByPattern(
 				runId,
@@ -121,11 +97,13 @@ export default class Set {
 			return;
 		}
 
+		// Write content
 		const target = attrs.path;
 		if (!target) return;
 
 		const scheme = KnownStore.scheme(target);
 		if (scheme === null) {
+			// File write — create proposal
 			const udiff = generatePatch(target, "", entry.body || "");
 			const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
 			await store.upsert(runId, turn, entry.resultPath, "", 202, {
@@ -133,6 +111,7 @@ export default class Set {
 				loopId,
 			});
 		} else if (attrs.filter || target.includes("*")) {
+			// Pattern update
 			const matches = await store.getEntriesByPattern(
 				runId,
 				target,
@@ -155,7 +134,12 @@ export default class Set {
 				{ loopId },
 			);
 		} else {
-			await store.upsert(runId, turn, target, entry.body, 200, { loopId });
+			// Direct scheme write — fidelity and summary applied here
+			await store.upsert(runId, turn, target, entry.body, 200, {
+				fidelity: fidelityAttr || "full",
+				attributes: summaryText ? { summary: summaryText } : null,
+				loopId,
+			});
 		}
 	}
 
@@ -334,7 +318,6 @@ export default class Set {
 					flags: block.flags,
 				});
 			}
-			// Multi-block: apply sequentially, no per-hunk merge notation
 			let current = body;
 			let lastWarning = null;
 			for (const block of attrs.blocks) {
