@@ -19,9 +19,9 @@ Plugin-driven architecture. Instantiated classes, constructor receives
 Assembly via `assembly.system` / `assembly.user` filter chains.
 No monolithic assembler. Loops table (projects > runs > loops > turns).
 HTTP status codes throughout (entries, runs, loops, client RPC).
-13 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
-search, summarize, update, ask_user. Tool priority ordering (get first,
-ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
+14 model tools: think, unknown, known, get, set, env, sh, rm, cp, mv,
+ask_user, update, summarize, search. Tool priority ordering (think first,
+search last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
 Budget: ceiling = `floor(contextSize × 0.9)`. The 10% headroom is the
 system's operating room for graceful overflow handling.
   - **Prompt Demotion**: new prompt exceeds ceiling → summarize the prompt,
@@ -40,7 +40,7 @@ Token math: `ceil(text.length / RUMMY_TOKEN_DIVISOR)`. No tiktoken.
 500-token size gate on known entries. Glob matching via picomatch.
 Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
-always dispatch, never 409'd. Both sent → update wins. Summarize
+always dispatch, never 409'd. Both sent → last signal wins. Summarize
 overridden only when actions fail (4xx/5xx). `<think>` / `<thought>` tags
 for model reasoning — inner tool calls captured as rawBody, never dispatched.
 Preamble: XML format, conclude every turn, summaries approximate.
@@ -309,7 +309,49 @@ Root causes identified:
 5. Budget language said "archive" — model doesn't know "archive", knows "demote"
 6. Gemma produced zero reasoning — can't diagnose without thinking output
 
-### TODO (in order)
+### Session Summary (2026-04-12/13)
+
+Major budget system overhaul driven by demo run failures. Key fixes:
+- Budget math: `v_model_context` had duplicate tokens column; index entries
+  were reporting full cost (33x overestimate). Fixed: tokens computed from
+  projected body, index entries cost 0.
+- Turn Demotion: post-dispatch enforce was using stale pre-dispatch
+  `prompt_tokens`. Fixed: forces re-measurement after dispatch.
+- Promotion: `promote_path`/`promote_by_pattern` now reset status to 200,
+  so Turn Demotion catches re-promoted entries.
+- `tokens_full` column removed entirely — one concept: `tokens` (always
+  full body cost in `known_entries`, actual context cost in `turn_context`).
+- `set_fidelity` SQL no longer recalculates tokens on fidelity change.
+- Set handler: fidelity applied as post-write step, not routing decision.
+  Bare body writes to existing files now diff against existing content.
+- XmlParser: preserves HTML attributes on non-tool tags inside bodies.
+  15-command cap enforced (`RUMMY_MAX_COMMANDS`).
+- Proposal dispatch: 202 proposals no longer abort subsequent actions.
+  All proposals from a turn queue for sequential client resolution.
+- AgentLoop 413: properly completes loop (status 413) and run (status 200).
+- Budget entry: shows overflow amount, per-entry token costs, ceiling.
+- Progress: aligned with preamble vocabulary, lifecycle reminder added.
+- Lifecycle: last signal wins (was: update always wins).
+- Prompt summary: first 500 chars visible at summary fidelity.
+- Think: proper plugin with tooldoc, gated by `RUMMY_THINK` env var.
+- Preamble/tooldocs: complete rewrite with user — system.md collaboration.
+  Structure: Preamble → Tool Commands → Tool Rules → Tool Usage.
+- Get handler: "promoted to full" (was "loaded into knowns").
+- Set tooldoc: SEARCH/REPLACE first, bare create last.
+- Tests: 234 unit, 172 integration, 16 E2E — all green.
+
+### TODO
+
+**Documentation audit (next):**
+- [ ] Audit all .md files for stale/incorrect content (AGENTS.md, SPEC.md,
+  PLUGINS.md, README.md, plugin READMEs)
+- [ ] Update AGENTS.md Current State section to reflect budget simplification,
+  new preamble structure, removed tokens_full, etc.
+- [ ] Update SPEC.md for current schema and behavior
+- [ ] Freshen README.md for third-party review
+- [ ] Verify plugin READMEs match current implementations
+  (budget/README.md already updated, check others)
+- [ ] Review PLUGINS.md third-party developer guide for accuracy
 
 **Done (latest):**
 - [x] Removed AgentLoop recovery loop — was bypassing all existing

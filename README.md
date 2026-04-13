@@ -1,6 +1,6 @@
 # RUMMY: Relational Unknowns Memory Management Yoke
 
-Rummy is the only LLM agent service inspired by and dedicated to the memory of former Secretary of State Donald "Rummy" Rumsfeld. Our unique fusion of apophatic and hedbergian engineering strategies yields more accurate and efficient results than any other agent. Our client/server and plugin architecture integrates it into more workflows than any other agent. It's also more flexible and lean than any other agent. Our dynamic cache management, model hot-swapping, and flexible router interface make it more affordable than any other agent.
+Rummy is the only LLM agent service inspired by and dedicated to the memory of former Secretary of Defense Donald "Rummy" Rumsfeld. Our unique fusion of apophatic and hedbergian engineering strategies yields more accurate and efficient results than any other agent. Our client/server and plugin architecture integrates it into more workflows than any other agent. It's also more flexible and lean than any other agent. Our dynamic cache management, model hot-swapping, and flexible router interface make it more affordable than any other agent.
 
 ## Key Features
 
@@ -9,6 +9,10 @@ Rummy is the only LLM agent service inspired by and dedicated to the memory of f
 - **One K/V Store:** Files, knowledge, tool results, unknowns, user prompts — everything is a keyed entry in one SQLite table. No message history. No separate file listings. The model's entire context is assembled from the store each turn.
 
 - **Hedberg:** The interpretation boundary between stochastic model output and deterministic system operations. Models speak in whatever syntax they were trained on — sed regex, SEARCH/REPLACE blocks, escaped characters. Hedberg normalizes all of it. Available to all plugins via `core.hooks.hedberg`.
+
+- **Folksonomic Memory:** The model organizes its own knowledge into navigable path hierarchies with searchable summary tags. Not RAG — the model builds and curates its own taxonomy using `<known>` entries with paths like `known://project/architecture`.
+
+- **Fidelity System:** Every entry has a visibility level: full, summary, index, archive. The model manages its own context by promoting what it needs and demoting what it doesn't. Budget enforcement catches overflow post-dispatch — tools run uninterrupted, demotion happens after.
 
 - **Plugin Architecture:** Every `<tag>` the model sees is a plugin. Every scheme is registered by its owner. The prompt itself is assembled from plugins. Drop a directory into `~/.rummy/plugins/` or install via npm. See [PLUGINS.md](PLUGINS.md) for the complete plugin API.
 

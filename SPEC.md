@@ -210,8 +210,8 @@ object is the same shape at every tier.
 Model tier restrictions enforced by unified `resolveForLoop(mode, flags)`.
 Ask mode excludes `sh`. Flags: `noInteraction` excludes `ask_user`,
 `noWeb` excludes `search`, `noProposals` excludes `ask_user`/`env`/`sh`.
-13 model tools: get, set, known, unknown, env, sh, rm, cp, mv, search,
-summarize, update, ask_user.
+14 model tools: think, unknown, known, get, set, env, sh, rm, cp, mv,
+ask_user, update, summarize, search.
 Client tier requires project init. Plugin tier has no restrictions.
 
 ### 3.2 Dispatch Path
@@ -745,7 +745,7 @@ Termination protocol:
 - `<summarize>` → run terminates
 - `<summarize>` + failed actions → overridden to `<update>` (continue)
 - `<update>` → run continues
-- Both → update wins (if the model can't decide, it's not done)
+- Both → last signal wins (respects the model's final intent)
 - Neither + investigation tools → stall counter (RUMMY_MAX_STALLS)
 - Neither + action-only tools → healed to summarize
 - Neither + plain text → healed to summarize
