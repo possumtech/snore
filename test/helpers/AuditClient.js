@@ -11,6 +11,24 @@ export default class AuditClient extends RpcClient {
 	constructor(url, db) {
 		super(url);
 		this.#db = db;
+		this.#setupAutoResolve();
+	}
+
+	#setupAutoResolve() {
+		this.on("run/proposal", async ({ run, proposed }) => {
+			for (const p of proposed || []) {
+				try {
+					await this.call("run/resolve", {
+						run,
+						resolution: {
+							path: p.path,
+							action: "accept",
+							output: p.path?.startsWith("ask_user://") ? "N/A" : "",
+						},
+					});
+				} catch {}
+			}
+		});
 	}
 
 	async call(method, params = {}) {

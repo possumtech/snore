@@ -222,11 +222,9 @@ export default class AgentLoop {
 
 				await this.#db.complete_loop.run({
 					id: loop.id,
-					status: result.status === 202 ? 202 : result.status,
+					status: result.status,
 					result: JSON.stringify(result),
 				});
-
-				if (result.status === 202) return result;
 			}
 
 			const runRow = await this.#db.get_run_by_alias.get({
@@ -623,68 +621,9 @@ export default class AgentLoop {
 			throw new Error(msg("error.resolution_invalid", { action }));
 		}
 
-		const unresolved = await this.#knownStore.getUnresolved(runId);
-		if (unresolved.length > 0) {
-			return {
-				run: runAlias,
-				status: 202,
-				remainingCount: unresolved.length,
-				proposed: unresolved,
-			};
-		}
-
-		// Scope completion checks to the current loop
-		const currentLoop = await this.#db.get_current_loop.get({ run_id: runId });
-		const loopId = currentLoop?.id ?? null;
-
-		if (await this.#knownStore.hasRejections(runId, loopId)) {
-			if (currentLoop)
-				await this.#db.complete_loop.run({
-					id: loopId,
-					status: 200,
-					result: null,
-				});
-			await this.#db.update_run_status.run({ id: runId, status: 200 });
-			return { run: runAlias, status: 200 };
-		}
-
-		const hasSummary = await this.#db.get_latest_summary.get({
-			run_id: runId,
-			loop_id: loopId,
-		});
-		if (hasSummary?.body) {
-			if (currentLoop)
-				await this.#db.complete_loop.run({
-					id: loopId,
-					status: 200,
-					result: null,
-				});
-			await this.#db.update_run_status.run({ id: runId, status: 200 });
-			return { run: runAlias, status: 200 };
-		}
-
-		// No summary and no rejections in this loop — resume it
-		const projectId = runRow.project_id;
-		const project = await this.#db.get_project_by_id.get({ id: projectId });
-
-		const latestPrompt = await this.#db.get_latest_prompt.get({
-			run_id: runId,
-		});
-		const resumeMode = latestPrompt?.attributes
-			? JSON.parse(latestPrompt.attributes).mode
-			: "ask";
-
-		// Re-enqueue the current loop's prompt to continue it
-		const loopSeq = await this.#db.next_loop.get({ run_id: runId });
-		await this.#db.enqueue_loop.get({
-			run_id: runId,
-			sequence: loopSeq.sequence,
-			mode: resumeMode,
-			model: runRow.model,
-			prompt: "",
-			config: currentLoop?.config || "{}",
-		});
-		return this.#drainQueue(runId, runAlias, projectId, project, {});
+		// The dispatch loop is awaiting resolution. This unblocks it.
+		// Dispatch continuation is handled by the loop, not here.
+		return { run: runAlias, status: 200 };
 	}
 
 	async #composeResolvedContent(runId, path, _attrs, output) {

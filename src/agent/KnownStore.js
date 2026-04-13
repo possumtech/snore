@@ -5,6 +5,7 @@ export default class KnownStore {
 	#onChanged;
 	#schemes = new Map();
 	#seq = 0;
+	#pendingResolutions = new Map();
 
 	constructor(db, { onChanged } = {}) {
 		this.#db = db;
@@ -225,6 +226,20 @@ export default class KnownStore {
 			body,
 		});
 		this.#emitChanged(runId, normalized, "resolve");
+		const key = `${runId}:${normalized}`;
+		const resolver = this.#pendingResolutions.get(key);
+		if (resolver) {
+			this.#pendingResolutions.delete(key);
+			resolver();
+		}
+	}
+
+	waitForResolution(runId, path) {
+		const normalized = KnownStore.normalizePath(path);
+		const key = `${runId}:${normalized}`;
+		return new Promise((resolve) => {
+			this.#pendingResolutions.set(key, resolve);
+		});
 	}
 
 	async restoreSummarizedPrompts(runId) {

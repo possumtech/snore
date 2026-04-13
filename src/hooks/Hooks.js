@@ -56,6 +56,7 @@ export default function createHooks(debug = false) {
 		turn: {
 			started: createEvent("turn.started"),
 			response: createEvent("turn.response"),
+			proposal: createEvent("turn.proposal"),
 			proposing: createEvent("turn.proposing"),
 			completed: createEvent("turn.completed"),
 		},

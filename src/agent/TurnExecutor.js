@@ -403,10 +403,10 @@ export default class TurnExecutor {
 		}
 
 		// --- PHASE 2: DISPATCH ---
-		// Tools dispatch in the order the model emitted them.
-		// Abort remaining tools on failure (400+).
+		// Sequential queue. Each tool completes before the next starts.
+		// On failure: abort remaining. On proposal: notify client, await
+		// resolution, continue.
 		let hasErrors = false;
-		let hasProposed = false;
 		let abortAfter = null;
 
 		for (const entry of recorded) {
@@ -429,26 +429,34 @@ export default class TurnExecutor {
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 
-			const row = await this.#db.get_entry_state.get({
+			// Materialize proposals for this entry (set revisions → 202)
+			await this.#hooks.turn.proposing.emit({ rummy, recorded: [entry] });
+
+			const entryPath = entry.resultPath || entry.path;
+			let row = await this.#db.get_entry_state.get({
 				run_id: currentRunId,
-				path: entry.resultPath || entry.path,
+				path: entryPath,
 			});
+
+			// Proposal: notify client, wait for resolution
+			if (row?.status === 202) {
+				const proposed = await this.#knownStore.getUnresolved(currentRunId);
+				await this.#hooks.turn.proposal.emit({
+					projectId,
+					run: currentAlias,
+					proposed,
+				});
+				await this.#knownStore.waitForResolution(currentRunId, entryPath);
+				row = await this.#db.get_entry_state.get({
+					run_id: currentRunId,
+					path: entryPath,
+				});
+			}
+
 			if (row?.status >= 400) {
 				hasErrors = true;
 				abortAfter = entry.scheme;
 			}
-		}
-
-		// Materialize proposals (set handler aggregates revisions here)
-		await this.#hooks.turn.proposing.emit({ rummy, recorded });
-
-		// Check for proposals after materialization
-		for (const entry of recorded) {
-			const row = await this.#db.get_entry_state.get({
-				run_id: currentRunId,
-				path: entry.resultPath || entry.path,
-			});
-			if (row?.status === 202) hasProposed = true;
 		}
 
 		// Turn Demotion: if end-of-turn context exceeds ceiling, demote this
