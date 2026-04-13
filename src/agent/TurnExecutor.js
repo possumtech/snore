@@ -640,38 +640,6 @@ export default class TurnExecutor {
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
 	async #record(runId, loopId, turn, mode, cmd) {
-		if (mode === "ask") {
-			if (cmd.name === "sh") {
-				console.warn("[RUMMY] Rejected <sh> in ask mode");
-				return null;
-			}
-			if (cmd.name === "set" && cmd.path && cmd.body) {
-				const scheme = KnownStore.scheme(cmd.path);
-				if (scheme === null) {
-					console.warn(
-						`[RUMMY] Rejected file edit to ${cmd.path} in ${mode} mode`,
-					);
-					return null;
-				}
-			}
-			if (cmd.name === "rm" && cmd.path) {
-				const scheme = KnownStore.scheme(cmd.path);
-				if (scheme === null) {
-					console.warn(`[RUMMY] Rejected file rm of ${cmd.path} in ask mode`);
-					return null;
-				}
-			}
-			if ((cmd.name === "mv" || cmd.name === "cp") && cmd.to) {
-				const destScheme = KnownStore.scheme(cmd.to);
-				if (destScheme === null) {
-					console.warn(
-						`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`,
-					);
-					return null;
-				}
-			}
-		}
-
 		const scheme = cmd.name;
 		const rawTarget = cmd.path || cmd.command || cmd.question || "";
 		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
@@ -716,22 +684,9 @@ export default class TurnExecutor {
 		// Filter: plugins can validate/transform before recording
 		const filtered = await this.#hooks.entry.recording.filter(
 			{ scheme, path: resultPath, body, attributes, status: 200 },
-			{ runId, turn, loopId },
+			{ runId, turn, loopId, mode },
 		);
 		if (filtered.status >= 400) return filtered;
-
-		// Record the entry — 200 OK, handlers change status during dispatch
-		await this.#knownStore.upsert(
-			runId,
-			turn,
-			filtered.path,
-			filtered.body,
-			200,
-			{
-				attributes: filtered.attributes,
-				loopId,
-			},
-		);
 
 		return {
 			scheme: filtered.scheme,
