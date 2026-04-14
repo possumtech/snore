@@ -16,9 +16,9 @@ Example: <known path="known://topic/subtopic2" summary="keyword,keyword,keyword"
 2. Analyze
 Required: YOU MUST use bulk pattern operations to demote all irrelevant entries to "summary".
 Example: <set path="prompt://42" fidelity="summary"/>
-Required: YOU MUST use bulk pattern operations to promote all relevant entries to "full".
+Required: YOU MUST use bulk pattern operations to promote relevant entries to "full".
 Example: <get path="known://*" fidelity="full">John Doe</get>
-Required: YOU MUST use available Tool Commands and bulk pattern operations to research and resolve <unknowns/>.
+Required: YOU MUST use available Tool Commands and bulk pattern operations to research and attempt to resolve <unknowns/>.
 3. Act
 Required: YOU MUST conclude with a brief <update></update> if still working or briefly <summarize></summarize> if finished.
 Example: <update>Demoting previous entries to summary to optimize token budget</update>
