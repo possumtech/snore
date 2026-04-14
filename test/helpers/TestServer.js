@@ -14,7 +14,13 @@ export default class TestServer {
 		this.hooks = hooks;
 	}
 
-	static async start(db) {
+	static async start(db, options = {}) {
+		// Set RUMMY_HOME before plugin registration so telemetry picks it up
+		// and writes per-turn diagnostic files under {home}/turns/{run_alias}/
+		if (options.home) {
+			process.env.RUMMY_HOME = options.home;
+		}
+
 		const hooks = createHooks(false);
 		hooks.rpc.registry = new RpcRegistry();
 

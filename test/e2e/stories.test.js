@@ -11,14 +11,16 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 300_000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function lastResponse(db, runAlias) {
 	const runRow = await db.get_run_by_alias.get({ alias: runAlias });
@@ -125,11 +127,14 @@ async function _acceptAll(client, result, db, projectRoot) {
 
 describe("E2E Stories", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-stories-${Date.now()}`);
+	const turnsHome = join(__dirname, "turns", `stories_${stamp}`);
 
 	before(async () => {
 		await fs.mkdir(join(projectRoot, "src"), { recursive: true });
 		await fs.mkdir(join(projectRoot, "data"), { recursive: true });
+		await fs.mkdir(turnsHome, { recursive: true });
 
 		await fs.writeFile(
 			join(projectRoot, "src/app.js"),
@@ -166,7 +171,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 
 		tdb = await TestDb.create("stories");
-		tserver = await TestServer.start(tdb.db);
+		tserver = await TestServer.start(tdb.db, { home: turnsHome });
 		client = new AuditClient(tserver.url, tdb.db, { projectRoot });
 		await client.connect();
 		await client.call("init", {

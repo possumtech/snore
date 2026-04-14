@@ -1,21 +1,26 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 120_000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-persona-${Date.now()}`);
+	const turnsHome = join(__dirname, "turns", `persona_fork_${stamp}`);
 
 	before(async () => {
 		await fs.mkdir(projectRoot, { recursive: true });
+		await fs.mkdir(turnsHome, { recursive: true });
 		await fs.writeFile(
 			join(projectRoot, "main.py"),
 			"def hello(): return 'hi'\n",
@@ -27,7 +32,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 		);
 
 		tdb = await TestDb.create("persona_fork");
-		tserver = await TestServer.start(tdb.db);
+		tserver = await TestServer.start(tdb.db, { home: turnsHome });
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {

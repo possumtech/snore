@@ -36,7 +36,7 @@ Required: Curate context with entry fidelity demotion and promotion to optimize 
 * fidelity="demoted": Only path and summary tag are shown (conserves token budget)
 * fidelity="archived": Fully hidden. Entries can be recalled with path recall or pattern search. (use with caution)
 
-Info: The token attribute shows how big an entry is when promoted.
+Info: The token attribute shows how big an entry is when promoted. Only promoted entries take up tokens.
 Info: Demote irrelevant and big entries to save room and improve focus.
 Info: Entries with higher turn numbers are more recent and relevant.
 

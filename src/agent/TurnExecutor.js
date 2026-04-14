@@ -288,10 +288,13 @@ export default class TurnExecutor {
 			}
 		}
 
+		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
 			projectId,
 			runId: currentRunId,
+			runAlias: runRow?.alias || `run_${currentRunId}`,
+			turn,
 		});
 
 		// Call LLM

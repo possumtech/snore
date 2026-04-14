@@ -1,17 +1,23 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export default class Telemetry {
 	#core;
 	#starts = new Map();
 	#lastRunPath = null;
+	#turnsDir = null;
 	#turnLog = [];
+	#currentRunAlias = null;
+	#currentTurn = null;
 
 	constructor(core) {
 		this.#core = core;
 
 		const home = process.env.RUMMY_HOME;
-		if (home) this.#lastRunPath = join(home, "last_run.txt");
+		if (home) {
+			this.#lastRunPath = join(home, "last_run.txt");
+			this.#turnsDir = join(home, "turns");
+		}
 
 		core.on("rpc.started", this.#onRpcStarted.bind(this));
 		core.on("rpc.completed", this.#onRpcCompleted.bind(this));
@@ -168,8 +174,10 @@ export default class Telemetry {
 	}
 
 	async #logMessages(messages, context) {
+		this.#currentRunAlias = context.runAlias || `run_${context.runId}`;
+		this.#currentTurn = context.turn ?? null;
 		this.#turnLog.push(
-			`\n${"=".repeat(60)}\nTURN — model=${context.model} run=${context.runId}\n${"=".repeat(60)}`,
+			`\n${"=".repeat(60)}\nTURN ${this.#currentTurn ?? "?"} — model=${context.model} run=${this.#currentRunAlias}\n${"=".repeat(60)}`,
 		);
 		for (const msg of messages) {
 			const label = msg.role.toUpperCase();
@@ -191,6 +199,7 @@ export default class Telemetry {
 		const usage = response.usage || {};
 		this.#turnLog.push(`\n--- USAGE ---\n${JSON.stringify(usage)}`);
 		this.#flush();
+		this.#writeTurnFile();
 		return response;
 	}
 
@@ -199,5 +208,18 @@ export default class Telemetry {
 		writeFile(this.#lastRunPath, `${this.#turnLog.join("\n")}\n`).catch(
 			() => {},
 		);
+	}
+
+	async #writeTurnFile() {
+		if (!this.#turnsDir || !this.#currentRunAlias || this.#currentTurn == null)
+			return;
+		const runDir = join(this.#turnsDir, this.#currentRunAlias);
+		try {
+			await mkdir(runDir, { recursive: true });
+			const fileName = `turn_${String(this.#currentTurn).padStart(3, "0")}.txt`;
+			await writeFile(join(runDir, fileName), `${this.#turnLog.join("\n")}\n`);
+		} catch {
+			// best effort — diagnostic feature, don't fail the turn
+		}
 	}
 }
