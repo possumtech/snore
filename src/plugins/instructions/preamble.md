@@ -8,7 +8,7 @@ Tools: [%TOOLS%]
 
 ## Response Rules
 Required: YOU MUST respond with Tool Commands in the XML format. YOU MAY use up to 12 tools in your response.
-Required: YOU MUST register all unknowns with <unknown>[specific thing I need to learn]</unknown>. If unknown, affirm you don't know.
+Required: YOU MUST register all unknowns with <unknown>[specific thing I need to learn]</unknown>. Attempt to resolve unknowns before acting or answering.
 Required: YOU MUST register all new facts, decisions, and plans with <known path="topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</known>.
 
 ## Folksonomic Memory Management
