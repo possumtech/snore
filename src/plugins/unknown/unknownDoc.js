@@ -14,7 +14,7 @@ const LINES = [
 		"Unknowns drive action — get, env, search, ask_user.",
 	],
 	[
-		'* When resolved or irrelevant, remove with <set path="unknown://..." fidelity="archive"/>',
+		'* When resolved or irrelevant, remove with <set path="unknown://..." fidelity="archived"/>',
 		"Archive instead of delete — preserves the question for context history.",
 	],
 ];

@@ -10,8 +10,8 @@ export default class Skill {
 			name: "skill",
 			category: "data",
 		});
-		core.hooks.tools.onView("skill", (entry) => entry.body, "full");
-		core.hooks.tools.onView("skill", () => "", "summary");
+		core.hooks.tools.onView("skill", (entry) => entry.body, "promoted");
+		core.hooks.tools.onView("skill", () => "", "demoted");
 
 		const r = core.hooks.rpc.registry;
 

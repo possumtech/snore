@@ -4,7 +4,7 @@ import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const VALID_FIDELITY = { archive: 1, summary: 1, full: 1 };
+const VALID_FIDELITY = { archived: 1, demoted: 1, promoted: 1 };
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
@@ -14,8 +14,8 @@ export default class Set {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("full", this.full.bind(this));
-		core.on("summary", this.summary.bind(this));
+		core.on("promoted", this.full.bind(this));
+		core.on("demoted", this.summary.bind(this));
 		core.on("turn.proposing", this.#materializeRevisions.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.set = docs;
@@ -45,7 +45,7 @@ export default class Set {
 					entry.resultPath,
 					`${target} not found`,
 					404,
-					{ fidelity: "archive", loopId },
+					{ fidelity: "archived", loopId },
 				);
 				return;
 			}
@@ -57,15 +57,14 @@ export default class Set {
 					});
 				}
 			}
-			const label =
-				fidelityAttr === "archive" ? "archived" : `set to ${fidelityAttr}`;
+			const label = `set to ${fidelityAttr}`;
 			await store.upsert(
 				runId,
 				turn,
 				entry.resultPath,
 				`${matches.map((m) => m.path).join(", ")} ${label}`,
 				200,
-				{ fidelity: "archive", loopId },
+				{ fidelity: "archived", loopId },
 			);
 			return;
 		}
@@ -136,7 +135,7 @@ export default class Set {
 			} else {
 				// Direct scheme write
 				await store.upsert(runId, turn, target, entry.body, 200, {
-					fidelity: fidelityAttr || "full",
+					fidelity: fidelityAttr || "promoted",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
 				});

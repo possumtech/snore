@@ -8,8 +8,8 @@ export default class Mv {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("full", this.full.bind(this));
-		core.on("summary", this.summary.bind(this));
+		core.on("promoted", this.full.bind(this));
+		core.on("demoted", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.mv = docs;
 			return docsMap;
@@ -29,14 +29,14 @@ export default class Mv {
 			const matches = await store.getEntriesByPattern(runId, path);
 			for (const match of matches)
 				await store.setFidelity(runId, match.path, fidelity);
-			const label = fidelity === "archive" ? "archived" : `set to ${fidelity}`;
+			const label = `set to ${fidelity}`;
 			await store.upsert(
 				runId,
 				turn,
 				entry.resultPath,
 				`${matches.map((m) => m.path).join(", ")} ${label}`,
 				200,
-				{ fidelity: "archive", loopId },
+				{ fidelity: "archived", loopId },
 			);
 			return;
 		}

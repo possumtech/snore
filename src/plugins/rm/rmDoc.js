@@ -9,7 +9,7 @@ const LINES = [
 		"Preview before deleting. Safety pattern for bulk operations.",
 	],
 	[
-		'* Permanent. Prefer <set fidelity="archive"/> to preserve for later retrieval',
+		'* Permanent. Prefer <set fidelity="archived"/> to preserve for later retrieval',
 		"Nudges toward archive over rm.",
 	],
 	[

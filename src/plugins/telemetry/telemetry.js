@@ -85,20 +85,20 @@ export default class Telemetry {
 		// assistant://N — the model's raw response
 		await store.upsert(runId, turn, `assistant://${turn}`, content, 200, {
 			loopId,
-			fidelity: "archive",
+			fidelity: "archived",
 		});
 
 		// system://N, user://N — assembled messages as audit
 		if (systemMsg) {
 			await store.upsert(runId, turn, `system://${turn}`, systemMsg, 200, {
 				loopId,
-				fidelity: "archive",
+				fidelity: "archived",
 			});
 		}
 		if (userMsg) {
 			await store.upsert(runId, turn, `user://${turn}`, userMsg, 200, {
 				loopId,
-				fidelity: "archive",
+				fidelity: "archived",
 			});
 		}
 
@@ -115,7 +115,7 @@ export default class Telemetry {
 				model: result.model || null,
 			}),
 			200,
-			{ loopId, fidelity: "archive" },
+			{ loopId, fidelity: "archived" },
 		);
 
 		// reasoning://N
@@ -126,7 +126,7 @@ export default class Telemetry {
 				`reasoning://${turn}`,
 				responseMessage.reasoning_content,
 				200,
-				{ loopId, fidelity: "archive" },
+				{ loopId, fidelity: "archived" },
 			);
 		}
 
@@ -134,7 +134,7 @@ export default class Telemetry {
 		if (unparsed) {
 			await store.upsert(runId, turn, `content://${turn}`, unparsed, 200, {
 				loopId,
-				fidelity: "archive",
+				fidelity: "archived",
 			});
 		}
 

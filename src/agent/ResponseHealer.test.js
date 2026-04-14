@@ -258,12 +258,12 @@ describe("ResponseHealer", () => {
 			const full = calls({
 				scheme: "get",
 				path: "src/app.js",
-				attributes: { path: "src/app.js", fidelity: "full" },
+				attributes: { path: "src/app.js", fidelity: "promoted" },
 			});
 			const summary = calls({
 				scheme: "get",
 				path: "src/app.js",
-				attributes: { path: "src/app.js", fidelity: "summary" },
+				attributes: { path: "src/app.js", fidelity: "demoted" },
 			});
 			// ABABAB — different fingerprints due to fidelity, should be period 2
 			for (let i = 0; i < 5; i++) {

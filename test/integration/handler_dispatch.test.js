@@ -79,7 +79,7 @@ describe("Handler dispatch", () => {
 	describe("get handler", () => {
 		it("promotes target and writes confirmation", async () => {
 			await store.upsert(RUN_ID, 0, "src/target.js", "const x = 1;", 200, {
-				fidelity: "summary",
+				fidelity: "demoted",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
@@ -98,7 +98,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "src/target.js",
 			});
-			assert.strictEqual(state.fidelity, "full", "target promoted to full");
+			assert.strictEqual(state.fidelity, "promoted", "target promoted to full");
 
 			const result = await store.getBody(RUN_ID, entry.resultPath);
 			assert.ok(result.includes("tokens"), "confirmation written");
@@ -308,7 +308,7 @@ describe("Handler dispatch", () => {
 				scheme: "set",
 				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
-				attributes: { path: "known://demote_me", fidelity: "archive" },
+				attributes: { path: "known://demote_me", fidelity: "archived" },
 				status: 200,
 				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};
@@ -319,7 +319,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "known://demote_me",
 			});
-			assert.strictEqual(state.fidelity, "archive", "target archived");
+			assert.strictEqual(state.fidelity, "archived", "target archived");
 		});
 	});
 
@@ -429,7 +429,7 @@ describe("Handler dispatch", () => {
 			// Core get handler is already at priority 10
 			// We just need to verify our priority-5 handler ran first
 			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", 200, {
-				fidelity: "summary",
+				fidelity: "demoted",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });

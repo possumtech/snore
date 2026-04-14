@@ -10,7 +10,7 @@ export default class Instructions {
 
 	constructor(core) {
 		this.#core = core;
-		core.on("full", this.full.bind(this));
+		core.on("promoted", this.full.bind(this));
 		core.on("turn.started", this.onTurnStarted.bind(this));
 	}
 

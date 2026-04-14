@@ -125,7 +125,7 @@ describe("Engine integration", () => {
 	describe("symbol file fidelity via VIEW", () => {
 		it("files at summary fidelity appear in turn_context", async () => {
 			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), 200, {
-				fidelity: "summary",
+				fidelity: "demoted",
 				attributes: { symbols: "function foo()" },
 			});
 
@@ -150,7 +150,7 @@ describe("Engine integration", () => {
 
 		it("summary files have summary fidelity with body passed through", async () => {
 			await store.upsert(RUN_ID, 3, "src/active.js", "function bar() {}", 200, {
-				fidelity: "summary",
+				fidelity: "demoted",
 			});
 
 			await materialize(tdb.db, {
@@ -178,7 +178,7 @@ describe("Engine integration", () => {
 
 		it("model-authored summary shows in known tag at full fidelity", async () => {
 			await store.upsert(RUN_ID, 5, "src/described.js", "const x = 1;", 200, {
-				fidelity: "full",
+				fidelity: "promoted",
 				attributes: { summary: "Utility module for X" },
 			});
 
@@ -186,7 +186,7 @@ describe("Engine integration", () => {
 				path: "src/described.js",
 				scheme: null,
 				body: "const x = 1;",
-				fidelity: "full",
+				fidelity: "promoted",
 				attributes: { summary: "Utility module for X" },
 				category: "data",
 			});
@@ -201,7 +201,7 @@ describe("Engine integration", () => {
 			// File plugin registers a summary view that returns body
 			// rummy.repo would override with symbols when installed
 			await store.upsert(RUN_ID, 6, "src/noview.js", "const y = 2;", 200, {
-				fidelity: "summary",
+				fidelity: "demoted",
 				attributes: { summary: "Helper for Y calculations" },
 			});
 
@@ -209,7 +209,7 @@ describe("Engine integration", () => {
 				path: "src/noview.js",
 				scheme: null,
 				body: "const y = 2;",
-				fidelity: "summary",
+				fidelity: "demoted",
 				attributes: { summary: "Helper for Y calculations" },
 				category: "data",
 			});

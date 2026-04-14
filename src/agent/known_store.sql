@@ -59,7 +59,7 @@ WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 -- PREP: promote_path
 UPDATE known_entries
 SET
-	fidelity = 'full'
+	fidelity = 'promoted'
 	, status = 200
 	, turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
@@ -68,7 +68,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: demote_path
 UPDATE known_entries
 SET
-	fidelity = 'archive'
+	fidelity = 'archived'
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -111,7 +111,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: promote_by_pattern
 UPDATE known_entries
 SET
-	fidelity = 'full'
+	fidelity = 'promoted'
 	, status = 200
 	, turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
@@ -123,7 +123,7 @@ WHERE
 -- PREP: demote_by_pattern
 UPDATE known_entries
 SET
-	fidelity = 'archive'
+	fidelity = 'archived'
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -163,27 +163,27 @@ WHERE
 	AND (:body IS NULL OR hedsearch(:body, body));
 
 -- PREP: restore_summarized_prompts
--- Restore prompt entries demoted to summary by a recovery phase that was
+-- Restore prompt entries demoted by a recovery phase that was
 -- interrupted (e.g. server crash). Safe to call unconditionally at loop
 -- start: if the full prompt would overflow, Prompt Demotion handles it.
 UPDATE known_entries
 SET
-	fidelity = 'full'
+	fidelity = 'promoted'
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND scheme = 'prompt' AND fidelity = 'summary';
+WHERE run_id = :run_id AND scheme = 'prompt' AND fidelity = 'demoted';
 
 -- PREP: demote_turn_entries
--- Demote all full entries from a turn to summary with 413 status.
+-- Demote all promoted entries from a turn with 413 status.
 -- Tokens unchanged — always reports full cost regardless of fidelity.
 UPDATE known_entries
 SET
-	fidelity = 'summary'
+	fidelity = 'demoted'
 	, status = 413
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
 	AND turn = :turn
-	AND fidelity = 'full'
+	AND fidelity = 'promoted'
 	AND status < 400
 RETURNING path, tokens;
 

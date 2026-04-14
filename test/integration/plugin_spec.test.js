@@ -432,7 +432,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_vis");
 			assert.ok(row, "entry appears in v_model_context");
-			assert.strictEqual(row.fidelity, "full");
+			assert.strictEqual(row.fidelity, "promoted");
 		});
 
 		it("§8.3 stored fidelity hides from v_model_context", async () => {
@@ -441,7 +441,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 				.default;
 			const store = new KnownStore(tdb.db);
 			await store.upsert(runId, 1, "known://lifecycle_stored", "hidden", 200, {
-				fidelity: "archive",
+				fidelity: "archived",
 			});
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });

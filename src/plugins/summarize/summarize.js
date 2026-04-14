@@ -8,8 +8,8 @@ export default class Summarize {
 		core.ensureTool();
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
-		core.on("full", this.full.bind(this));
-		core.on("summary", this.summary.bind(this));
+		core.on("promoted", this.full.bind(this));
+		core.on("demoted", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.summarize = docs;
 			return docsMap;

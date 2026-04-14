@@ -138,13 +138,15 @@ async function auditQuestion(
 	// Snapshot: what known entries are visible before asking?
 	const preEntries = await db.get_known_entries.all({ run_id: rid });
 	const preKnowns = preEntries
-		.filter((e) => e.scheme === "known" && e.fidelity === "full")
+		.filter((e) => e.scheme === "known" && e.fidelity === "promoted")
 		.map((e) => ({ path: e.path, body: e.body?.slice(0, 200) }));
 	const preKnownCount = preKnowns.length;
-	const storedCount = preEntries.filter((e) => e.fidelity === "archive").length;
+	const storedCount = preEntries.filter(
+		(e) => e.fidelity === "archived",
+	).length;
 	const indexCount = preEntries.filter((e) => e.fidelity === "index").length;
 	const summaryCount = preEntries.filter(
-		(e) => e.fidelity === "summary",
+		(e) => e.fidelity === "demoted",
 	).length;
 
 	// Ask the question

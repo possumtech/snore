@@ -146,7 +146,7 @@ describe("restoreSummarizedPrompts", () => {
 			"full prompt text here",
 			200,
 			{
-				fidelity: "summary",
+				fidelity: "demoted",
 			},
 		);
 
@@ -169,7 +169,7 @@ describe("restoreSummarizedPrompts", () => {
 		const { runId } = await tdb.seedRun({ alias: "rsp_2" });
 
 		await store.upsert(runId, 1, "prompt://act/1", "full prompt", 200, {
-			fidelity: "full",
+			fidelity: "promoted",
 		});
 
 		await store.restoreSummarizedPrompts(runId);
@@ -185,7 +185,7 @@ describe("restoreSummarizedPrompts", () => {
 		const { runId } = await tdb.seedRun({ alias: "rsp_3" });
 
 		await store.upsert(runId, 1, "known://some-fact", "fact body", 200, {
-			fidelity: "summary",
+			fidelity: "demoted",
 		});
 
 		await store.restoreSummarizedPrompts(runId);

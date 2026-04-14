@@ -18,7 +18,7 @@ export default async function materialize(
 			turn,
 			ordinal: 0,
 			path: "system://prompt",
-			fidelity: "full",
+			fidelity: "promoted",
 			status: 200,
 			body: systemPrompt,
 			tokens: countTokens(systemPrompt),

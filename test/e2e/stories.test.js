@@ -495,7 +495,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			(e) => e.scheme === "budget" && e.status === 413,
 		);
 		const demotedEntries = entries.filter(
-			(e) => e.fidelity === "summary" && e.status === 413,
+			(e) => e.fidelity === "demoted" && e.status === 413,
 		);
 		console.log(
 			`[Story 11] overflow entries: ${overflowEntries.length}, demoted: ${demotedEntries.length}`,

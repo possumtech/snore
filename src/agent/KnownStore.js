@@ -84,7 +84,7 @@ export default class KnownStore {
 		body,
 		status,
 		{
-			fidelity = "full",
+			fidelity = "promoted",
 			attributes = null,
 			hash = null,
 			updatedAt = null,

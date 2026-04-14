@@ -72,7 +72,7 @@ export default class PluginContext {
 	/**
 	 * Register a named callback for this plugin.
 	 * "handler" registers the tool handler.
-	 * "full"/"summary" register fidelity projections.
+	 * "promoted"/"demoted" register fidelity projections.
 	 * "docs" sets tool documentation.
 	 * Everything else resolves to a hook event.
 	 */
@@ -82,7 +82,7 @@ export default class PluginContext {
 			this.#hooks.tools.onHandle(this.#name, callback, priority);
 			return;
 		}
-		if (event === "full" || event === "summary") {
+		if (event === "promoted" || event === "demoted") {
 			this.#hooks.tools.onView(this.#name, callback, event);
 			return;
 		}

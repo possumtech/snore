@@ -184,7 +184,7 @@ describe("Message assembly", () => {
 			"summarize://test_sum",
 			"The answer is 42",
 			200,
-			{ fidelity: "summary" },
+			{ fidelity: "demoted" },
 		);
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");

@@ -53,7 +53,7 @@ export default class ToolRegistry {
 		list.sort((a, b) => a.priority - b.priority);
 	}
 
-	onView(scheme, fn, fidelity = "full") {
+	onView(scheme, fn, fidelity = "promoted") {
 		if (!this.#views.has(scheme)) this.#views.set(scheme, new Map());
 		this.#views.get(scheme).set(fidelity, fn);
 	}
@@ -67,32 +67,11 @@ export default class ToolRegistry {
 			);
 		}
 
-		const attrs =
-			typeof entry.attributes === "string"
-				? JSON.parse(entry.attributes)
-				: entry.attributes;
-		const summary = typeof attrs?.summary === "string" ? attrs.summary : null;
-
-		const fidelity = entry.fidelity || "full";
+		const fidelity = entry.fidelity || "promoted";
 		const fn = fidelityMap.get(fidelity);
-		if (!fn) {
-			// No view for this fidelity — fall back on model-authored summary
-			return summary || "";
-		}
+		if (!fn) return "";
 
-		const body = await fn(entry);
-
-		// Prepend summary keywords above plugin output at summary fidelity
-		if (fidelity === "summary" && summary && body) {
-			return `${summary}\n${body}`;
-		}
-
-		// Fall back to summary attribute when plugin returns empty
-		if (fidelity === "summary" && summary && !body) {
-			return summary;
-		}
-
-		return body;
+		return fn(entry);
 	}
 
 	hasView(scheme) {

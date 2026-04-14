@@ -13,7 +13,7 @@ export default class Progress {
 		const lines = [];
 		if (contextSize) {
 			lines.push(
-				`Using ${usedTokens} tokens (${pct}%) of ${contextSize} token budget. Use <get/> or set entry fidelity to "full" to spend tokens. Set entry fidelity to "summary" to save tokens.`,
+				`Using ${usedTokens} tokens (${pct}%) of ${contextSize} token budget. Promote entries with <get/> or set fidelity="promoted" to spend tokens. Set fidelity="demoted" to save tokens.`,
 			);
 		}
 		lines.push(

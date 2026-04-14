@@ -186,7 +186,7 @@ export default class TurnExecutor {
 			scheme: "instructions",
 			body: instrEntry[0]?.body || "",
 			attributes: instrAttrs,
-			fidelity: "full",
+			fidelity: "promoted",
 			category: "system",
 		});
 
@@ -239,7 +239,7 @@ export default class TurnExecutor {
 					await this.#knownStore.setFidelity(
 						currentRunId,
 						promptRow.path,
-						"summary",
+						"demoted",
 					);
 				}
 				const reMat = await this.#materializeTurnContext({

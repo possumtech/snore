@@ -85,7 +85,7 @@ describe("Scheme registration via plugins", () => {
 
 	it("stored fidelity entries hidden from model context", async () => {
 		await store.upsert(runId, 1, "known://stored_fact", "archive", 200, {
-			fidelity: "archive",
+			fidelity: "archived",
 		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "known://stored_fact");

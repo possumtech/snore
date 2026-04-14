@@ -85,7 +85,7 @@ export default class Budget {
 		// Also summarize the prompt
 		const promptRow = rows.find((r) => r.scheme === "prompt");
 		if (promptRow) {
-			await store.setFidelity(runId, promptRow.path, "summary");
+			await store.setFidelity(runId, promptRow.path, "demoted");
 		}
 
 		// Write budget entry

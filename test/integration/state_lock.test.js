@@ -57,7 +57,7 @@ describe("State lock: proposed entries block execution", () => {
 	it("non-proposed result entries do not block", async () => {
 		await store.upsert(RUN_ID, 1, "env://2", "contents", 200);
 		await store.upsert(RUN_ID, 1, "summarize://2", "summary text", 200, {
-			fidelity: "summary",
+			fidelity: "demoted",
 		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);

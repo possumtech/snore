@@ -17,7 +17,7 @@ visible AS (
 		, COALESCE(s.category, 'logging') AS category
 		, CASE
 			-- Archived entries not in context
-			WHEN ke.fidelity = 'archive' THEN NULL
+			WHEN ke.fidelity = 'archived' THEN NULL
 			-- 202 Accepted (proposed) hidden until resolved
 			WHEN ke.status = 202 THEN NULL
 			-- Audit schemes (model_visible = 0) hidden
@@ -43,7 +43,7 @@ projected AS (
 		, category
 		, tokens
 		, CASE
-			WHEN visible_fidelity IN ('full', 'summary') THEN body
+			WHEN visible_fidelity IN ('promoted', 'demoted') THEN body
 			ELSE ''
 		END AS body
 	FROM visible
@@ -72,7 +72,7 @@ SELECT
 			END
 			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
 			, CASE fidelity
-				WHEN 'summary' THEN 0
+				WHEN 'demoted' THEN 0
 				ELSE 1
 			END
 			, turn

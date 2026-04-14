@@ -33,7 +33,7 @@ const LINES = [
 		"Partial read is safe: context budget unaffected.",
 	],
 	[
-		'* Use <set path="src/file.txt" fidelity="summary"/> when the content is irrelevant to save tokens.',
+		'* Use <set path="src/file.txt" fidelity="demoted"/> when the content is irrelevant to save tokens.',
 		"Cross-tool lifecycle: get promotes, set demotes.",
 	],
 ];

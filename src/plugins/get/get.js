@@ -9,8 +9,8 @@ export default class Get {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("full", this.full.bind(this));
-		core.on("summary", this.summary.bind(this));
+		core.on("promoted", this.full.bind(this));
+		core.on("demoted", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.get = docs;
 			return docsMap;

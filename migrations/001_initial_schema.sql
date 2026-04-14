@@ -124,8 +124,8 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, body TEXT NOT NULL DEFAULT ''
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
-	, fidelity TEXT NOT NULL DEFAULT 'full' CHECK (
-		fidelity IN ('full', 'summary', 'archive')
+	, fidelity TEXT NOT NULL DEFAULT 'promoted' CHECK (
+		fidelity IN ('promoted', 'demoted', 'archived')
 	)
 	, hash TEXT
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, path TEXT NOT NULL
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
-	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'summary'))
+	, fidelity TEXT NOT NULL CHECK (fidelity IN ('promoted', 'demoted'))
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))

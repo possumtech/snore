@@ -364,7 +364,7 @@ export default class AgentLoop {
 					await this.#knownStore.setFidelity(
 						currentRunId,
 						ra.promptPath,
-						"full",
+						"promoted",
 					);
 				}
 				if (ra.action === "hard413") {

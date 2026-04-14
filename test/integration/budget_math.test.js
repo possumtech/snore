@@ -40,7 +40,7 @@ describe("Budget math", () => {
 		it("full entry tokens match body cost", async () => {
 			const body = pad(50);
 			await store.upsert(RUN_ID, 1, "known://full_entry", body, 200, {
-				fidelity: "full",
+				fidelity: "promoted",
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -63,7 +63,7 @@ describe("Budget math", () => {
 		it("archived entry does not appear in turn_context", async () => {
 			const body = pad(200);
 			await store.upsert(RUN_ID, 1, "test_file.js", body, 200, {
-				fidelity: "archive",
+				fidelity: "archived",
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -89,7 +89,7 @@ describe("Budget math", () => {
 			// view's behavior; E2E tests verify the full pipeline.
 			const body = pad(200);
 			await store.upsert(RUN_ID, 1, "known://summary_entry", body, 200, {
-				fidelity: "summary",
+				fidelity: "demoted",
 				attributes: { summary: "test,keywords,here" },
 			});
 			await materialize(tdb.db, {
@@ -103,7 +103,7 @@ describe("Budget math", () => {
 			});
 			const entry = rows.find((r) => r.path === "known://summary_entry");
 			assert.ok(entry, "summary entry appears in turn_context");
-			assert.strictEqual(entry.fidelity, "summary");
+			assert.strictEqual(entry.fidelity, "demoted");
 			// Body is full until onView transforms it — that's by design
 			assert.ok(entry.body.length > 0, "view projects full body for summary");
 		});
@@ -115,11 +115,11 @@ describe("Budget math", () => {
 
 			// Create a large entry at archive — should NOT count toward budget
 			await store.upsert(runId, 1, "big_archive_file.js", pad(500), 200, {
-				fidelity: "archive",
+				fidelity: "archived",
 			});
 			// Create a small entry at full — should count
 			await store.upsert(runId, 1, "known://small", "tiny fact", 200, {
-				fidelity: "full",
+				fidelity: "promoted",
 			});
 
 			await materialize(tdb.db, {
@@ -168,7 +168,7 @@ describe("Budget math", () => {
 
 			// Simulate: entries exist from dispatch (promoted files)
 			await store.upsert(runId, 1, "known://big", pad(100), 200, {
-				fidelity: "full",
+				fidelity: "promoted",
 			});
 
 			await materialize(tdb.db, {
@@ -213,7 +213,7 @@ describe("Budget math", () => {
 			const expectedTokens = countTokens(body);
 
 			await store.upsert(runId, 1, "known://fact", body, 200, {
-				fidelity: "full",
+				fidelity: "promoted",
 			});
 			let entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			let entry = entries.find((e) => e.path === "known://fact");
@@ -246,7 +246,7 @@ describe("Budget math", () => {
 
 			// Entry at full
 			await store.upsert(runId, 1, "known://tc_test", body, 200, {
-				fidelity: "full",
+				fidelity: "promoted",
 			});
 			await materialize(tdb.db, {
 				runId,
