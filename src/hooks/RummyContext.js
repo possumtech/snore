@@ -103,9 +103,12 @@ export default class RummyContext {
 
 	async set({ path, body, status = 200, fidelity, attributes } = {}) {
 		if (!path) {
-			const slugify = (await import("../sql/functions/slugify.js")).default;
-			const base = slugify(body || "");
-			path = `known://${base || Date.now()}`;
+			path = await this.entries.slugPath(
+				this.runId,
+				"known",
+				body || "",
+				attributes?.summary,
+			);
 		}
 		await this.entries.upsert(
 			this.runId,

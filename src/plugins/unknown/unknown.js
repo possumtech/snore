@@ -29,8 +29,14 @@ export default class Unknown {
 			return;
 		}
 
-		// Generate slug path and upsert
-		const unknownPath = await store.slugPath(runId, "unknown", entry.body);
+		// Generate slug path and upsert. Summary (if provided) becomes the
+		// path so the model can round-trip it via <get>; body is the fallback.
+		const unknownPath = await store.slugPath(
+			runId,
+			"unknown",
+			entry.body,
+			entry.attributes?.summary,
+		);
 		await store.upsert(runId, turn, unknownPath, entry.body, 200, { loopId });
 	}
 

@@ -124,6 +124,7 @@ export default class Get {
 					: `${target} not found`;
 			await store.upsert(runId, turn, entry.resultPath, body, 200, {
 				loopId,
+				attributes: { path: target },
 			});
 		}
 	}

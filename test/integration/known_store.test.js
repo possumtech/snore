@@ -193,15 +193,25 @@ describe("KnownStore integration", () => {
 	});
 
 	describe("slug path generation", () => {
-		it("generates URI-encoded slugs", async () => {
+		it("generates snake_case slugs from body", async () => {
 			const key1 = await store.slugPath(RUN_ID, "search", "Tom Petty death");
-			assert.strictEqual(key1, "search://Tom%20Petty%20death");
+			assert.strictEqual(key1, "search://Tom_Petty_death");
 		});
 
-		it("handles collisions with timestamp suffix", async () => {
-			await store.upsert(RUN_ID, 1, "search://Tom%20Petty%20death", "", 200);
+		it("derives hierarchical paths from summary keywords", async () => {
+			const key = await store.slugPath(
+				RUN_ID,
+				"known",
+				"body irrelevant when summary present",
+				"history,mongol,khan",
+			);
+			assert.strictEqual(key, "known://history/mongol/khan");
+		});
+
+		it("handles collisions with sequence suffix", async () => {
+			await store.upsert(RUN_ID, 1, "search://Tom_Petty_death", "", 200);
 			const key2 = await store.slugPath(RUN_ID, "search", "Tom Petty death");
-			assert.match(key2, /^search:\/\/Tom%20Petty%20death_\d+$/);
+			assert.match(key2, /^search:\/\/Tom_Petty_death_\d+$/);
 		});
 
 		it("uses timestamp for empty content", async () => {
