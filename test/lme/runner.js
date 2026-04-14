@@ -164,16 +164,20 @@ async function ingestSessions(
 		const total = sessions.length;
 		const text = formatSession(session, date, sessionIds?.[i]);
 
-		let r = await askWithRetry(client, {
-			model,
-			prompt: `Read and remember what follows.\n\n${text}`,
-			...(run ? { run } : {}),
-			noRepo: true,
-			noInteraction: true,
-			noProposals: true,
-			noWeb: true,
-			...(contextLimit ? { contextLimit } : {}),
-		}, `session ${i + 1}/${total}`);
+		let r = await askWithRetry(
+			client,
+			{
+				model,
+				prompt: `Read and remember what follows.\n\n${text}`,
+				...(run ? { run } : {}),
+				noRepo: true,
+				noInteraction: true,
+				noProposals: true,
+				noWeb: true,
+				...(contextLimit ? { contextLimit } : {}),
+			},
+			`session ${i + 1}/${total}`,
+		);
 		if (!run) run = r.run;
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
@@ -197,15 +201,19 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 		.filter(Boolean)
 		.join("\n");
 
-	let r = await askWithRetry(client, {
-		model,
-		prompt,
-		run,
-		noRepo: true,
-		noInteraction: true,
-		noProposals: true,
-		noWeb: true,
-	}, "question");
+	let r = await askWithRetry(
+		client,
+		{
+			model,
+			prompt,
+			run,
+			noRepo: true,
+			noInteraction: true,
+			noProposals: true,
+			noWeb: true,
+		},
+		"question",
+	);
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
@@ -238,12 +246,16 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 		"One word: PASS or FAIL.",
 	].join("\n");
 
-	let r = await askWithRetry(client, {
-		model,
-		prompt,
-		noRepo: true,
-		noInteraction: true,
-	}, "judge");
+	let r = await askWithRetry(
+		client,
+		{
+			model,
+			prompt,
+			noRepo: true,
+			noInteraction: true,
+		},
+		"judge",
+	);
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	const alias = r.run;

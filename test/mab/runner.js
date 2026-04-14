@@ -142,16 +142,20 @@ async function ingestContext(client, model, run, chunks, contextLimit) {
 		const total = chunks.length;
 		const prompt = `Read and remember what follows.\n\n${chunks[i]}`;
 
-		let r = await askWithRetry(client, {
-			model,
-			prompt,
-			...(run ? { run } : {}),
-			noRepo: true,
-			noInteraction: true,
-			noProposals: true,
-			noWeb: true,
-			...(contextLimit ? { contextLimit } : {}),
-		}, `chunk ${chunkNum}/${total}`);
+		let r = await askWithRetry(
+			client,
+			{
+				model,
+				prompt,
+				...(run ? { run } : {}),
+				noRepo: true,
+				noInteraction: true,
+				noProposals: true,
+				noWeb: true,
+				...(contextLimit ? { contextLimit } : {}),
+			},
+			`chunk ${chunkNum}/${total}`,
+		);
 		if (!run) run = r.run;
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
@@ -169,15 +173,19 @@ async function askQuestion(client, db, model, run, question) {
 	const preRun = await db.get_run_by_alias.get({ alias: run });
 	const turnBefore = preRun.next_turn;
 
-	let r = await askWithRetry(client, {
-		model,
-		prompt: question,
-		run,
-		noRepo: true,
-		noInteraction: true,
-		noProposals: true,
-		noWeb: true,
-	}, "question");
+	let r = await askWithRetry(
+		client,
+		{
+			model,
+			prompt: question,
+			run,
+			noRepo: true,
+			noInteraction: true,
+			noProposals: true,
+			noWeb: true,
+		},
+		"question",
+	);
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status === 413)
