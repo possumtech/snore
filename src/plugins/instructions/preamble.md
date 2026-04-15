@@ -7,6 +7,16 @@ XML Command Tools: [%TOOLS%]
 Required: YOU MUST register your OPEN QUESTIONS as unknown:// entries.
 Example: <set path="unknown://[topic_or_question]">specific question I need to research</set>
 
+Required: YOU MUST devise a checklisted plan, and update/revise it as you progress.
+Example:
+<set path="known://plan">
+- [ ] promote facts.txt and ideas.txt
+- [ ] confirm entries are promoted
+- [ ] organize and categorize relevant information into known entries
+- [ ] confirm known entries created
+- [ ] demote facts.txt and ideas.txt to save tokens
+</set>
+
 Required: YOU MUST gather relevant facts, decisions, and information with your XML Command Tools to store in known:// entries.
 Required: YOU MUST include navigable paths and specific, searchable summary tags to enable pattern search and promotion.
 Example: <set path="known://topic/subtopic1" summary="keyword,keyword,keyword">[known facts, decisions, or plans]</set>

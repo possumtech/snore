@@ -309,24 +309,25 @@ export default class XmlParser {
 		);
 
 		// Qwen/gemma: <|tool_call>call:NAME{key:"value"}<tool_call|>
-		// NAME may be namespaced (e.g. `rummy.nvim/get`) — extract the final
-		// segment as the tool name. Handles three observed value forms:
-		// key="v" / key:"v" / key:v (unquoted)
+		// NAME may be namespaced with any of /, :, or . separators
+		// (e.g. `rummy.nvim/get`, `rummy:get`) — extract the trailing word
+		// sequence as the tool name. Value forms observed in the wild:
+		//   key="v" / key:"v" / key:v (unquoted) / key:<|"|>v<|"|> (gemma chat-quotes)
 		result = result.replace(
-			/<\|tool_call>call:([\w./-]+)\{([^}]*)\}<(?:tool_call\||\|tool_call)>/g,
+			/<\|tool_call>call:([\w.:/-]+)\{([^}]*)\}<(?:tool_call\||\|tool_call)>/g,
 			(match, qualifiedName, params) => {
-				const name = qualifiedName.split("/").pop();
+				const name = qualifiedName.match(/\w+$/)?.[0] ?? qualifiedName;
 				if (!ALL_TOOLS.has(name)) {
 					return `<error>Unknown tool '${qualifiedName}' in <|tool_call> format. Use XML tool commands listed above.</error>`;
 				}
-				// Match value: double-quoted, single-quoted, or unquoted up to , or }
 				const valueMatch = params.match(
-					/[=:]\s*(?:"([^"]*)"|'([^']*)'|([^,}]+))/,
+					/[=:]\s*(?:<\|"\|>([^<]*?)<\|"\|>|"([^"]*)"|'([^']*)'|([^,}]+))/,
 				);
 				const body = (
 					valueMatch?.[1] ??
 					valueMatch?.[2] ??
 					valueMatch?.[3] ??
+					valueMatch?.[4] ??
 					""
 				).trim();
 				if (!body) {

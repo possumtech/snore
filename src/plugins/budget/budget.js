@@ -103,16 +103,16 @@ export default class Budget {
 
 		// Write budget entry — terse, actionable. Path list dropped since
 		// demoted entries already render at fidelity="demoted" in <knowns>/<files>.
+		// "tokens remaining" dropped too — the number was over-optimistic (it
+		// treated re-demoted files as freeing their full-body tokens when their
+		// demoted-view renderings return to baseline). Model reads the truthful
+		// remaining in next turn's progress line.
 		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
-		const freeTokens = Math.max(
-			0,
-			ceiling - (postBudget.assembledTokens - totalDemoted),
-		);
 		const body = [
 			`413 Token Budget Error: overflowed by ${postBudget.overflow} tokens. Token Budget: ${ceiling}.`,
 			`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted from previous turn.`,
-			`You have ${freeTokens} tokens remaining. Demote irrelevant entries and promote fewer entries next time.`,
+			`Demote irrelevant entries and promote fewer entries next time.`,
 		].join("\n");
 
 		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
