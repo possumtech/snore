@@ -29,6 +29,7 @@ export default class Get {
 		}
 		const normalized = KnownStore.normalizePath(target);
 		const bodyFilter = entry.attributes.body || null;
+		const preview = entry.attributes.preview !== undefined;
 		const isPattern = bodyFilter || normalized.includes("*");
 
 		const line =
@@ -45,6 +46,25 @@ export default class Get {
 			normalized,
 			bodyFilter,
 		);
+
+		// Preview — list matches with their full-body token costs. No promotion,
+		// no fidelity change, no Token Budget spent. Model uses this to plan
+		// which entries to actually promote. getDoc promises this behavior; the
+		// prior implementation silently promoted anyway, burning the Token Budget
+		// on entries the model thought it was only inspecting.
+		if (preview) {
+			await storePatternResult(
+				store,
+				runId,
+				turn,
+				"get",
+				target,
+				bodyFilter,
+				matches,
+				{ preview: true, loopId, attributes: { path: target } },
+			);
+			return;
+		}
 
 		// Partial read — no fidelity promotion, returns a line slice as the log item.
 		if (line !== null || limit !== null) {

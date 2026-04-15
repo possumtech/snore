@@ -12,7 +12,7 @@ const LINES = [
 		"Git history. Shows env for read-only investigation.",
 	],
 	[
-		'* YOU MUST NOT use <env/> to read or list files — use <get path="*" preview/> instead',
+		'* YOU MUST NOT use <env/> to read or list files — use <get path="*"/> instead',
 		"Prevents cat/ls through shell. Forces file access through get.",
 	],
 	[

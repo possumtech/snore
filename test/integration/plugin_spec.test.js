@@ -116,8 +116,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 			);
 			assert.ok(docsMap.get, "get has tool docs");
 			assert.ok(docsMap.set, "set has tool docs");
-			assert.ok(docsMap.known, "known has tool docs");
 			assert.ok(docsMap.rm, "rm has tool docs");
+			// known/unknown are hidden internal schemes — no toolDocs registered.
 		});
 
 		it("§3.5 tool docs use docsMap pattern not string concat", async () => {

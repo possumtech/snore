@@ -14,10 +14,6 @@ const LINES = [
 		'Example: <mv path="known://project/*" fidelity="demoted"/>',
 		"Batch fidelity change via pattern. No destination = fidelity in place.",
 	],
-	[
-		"* Use `preview` to check matches before bulk operations",
-		"Safety pattern consistent with rm/cp. Pattern support implicit from examples.",
-	],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

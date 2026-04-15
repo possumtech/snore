@@ -18,10 +18,7 @@ const LINES = [
 		"* Urgent: YOU MUST NOT include <summarize/> with other tools. Termination is a deliberate, isolated act — not a side effect of a turn doing other things.",
 		"Prior 'they might fail' rationale was argued around (when set on known:// succeeds, model rationalized bundling). Reframing as architectural ('termination is deliberate') removes the argument surface.",
 	],
-	[
-		"* YOU MUST keep <summarize/> to <= 80 characters",
-		"Length cap.",
-	],
+	["* YOU MUST keep <summarize/> to <= 80 characters", "Length cap."],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

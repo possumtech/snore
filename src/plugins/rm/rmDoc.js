@@ -13,8 +13,8 @@ const LINES = [
 		"Nudges toward archive over rm.",
 	],
 	[
-		"* Use `preview` to check matches before bulk operations",
-		"Reinforces preview safety pattern.",
+		"* `preview` shows what paths would be affected without performing the operation.",
+		"Canonical preview teaching lives here — rm is the most intuitive 'check before committing' case. Model generalizes to cp/mv/get by analogy. Advanced uses (e.g. archive rediscovery via <get preview>) belong in persona/skill docs, not here.",
 	],
 ];
 

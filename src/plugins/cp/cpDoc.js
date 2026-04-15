@@ -11,10 +11,6 @@ const LINES = [
 		'Example: <cp path="known://plan_*">known://archive_</cp>',
 		"Glob batch copy across known entries.",
 	],
-	[
-		"* Use `preview` to check matches before bulk operations",
-		"Safety pattern consistent with rm/mv. Pattern support implicit from examples.",
-	],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

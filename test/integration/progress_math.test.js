@@ -29,12 +29,12 @@ function pad(n) {
 
 function parseProgressNumbers(userMessage) {
 	const m = userMessage.match(
-		/Using (\d+) of (\d+) tokens\. (\d+) tokens remaining/,
+		/Token Budget: (\d+)\. Using (\d+)\. (\d+) remaining/,
 	);
 	if (!m) return null;
 	return {
-		used: Number(m[1]),
-		budget: Number(m[2]),
+		used: Number(m[2]),
+		budget: Number(m[1]),
 		remaining: Number(m[3]),
 	};
 }

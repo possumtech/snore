@@ -168,7 +168,7 @@ describe("Tool exclusion flags", () => {
 		assert.ok(!tools.has("ask_user"), "ask_user excluded");
 		assert.ok(!tools.has("search"), "search excluded");
 		assert.ok(!tools.has("sh"), "sh excluded (ask mode)");
-		assert.ok(tools.has("known"), "known still available");
+		assert.ok(tools.has("get"), "get still available");
 	});
 
 	it("no flags in act mode keeps all tools", () => {
