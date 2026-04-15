@@ -107,12 +107,17 @@ export default class Budget {
 		// treated re-demoted files as freeing their full-body tokens when their
 		// demoted-view renderings return to baseline). Model reads the truthful
 		// remaining in next turn's progress line.
+		//
+		// The 50% rule is the key directive: it forces the model to sum
+		// promotion costs (which is the behavior we want), and the threshold
+		// gives a concrete ceiling for the next try. Twofer — abiding by the
+		// rule requires budget awareness as a side effect.
 		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
 		const body = [
 			`413 Token Budget Error: overflowed by ${postBudget.overflow} tokens. Token Budget: ${ceiling}.`,
-			`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted from previous turn.`,
-			`Demote irrelevant entries and promote fewer entries next time.`,
+			`Your ${demotedEntries.length} promotions from last turn (${totalDemoted} tokens total) were demoted to fit.`,
+			`Required: sum your promotions before emitting. A single turn must promote no more than 50% of remaining Token Budget.`,
 		].join("\n");
 
 		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {

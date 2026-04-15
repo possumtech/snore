@@ -14,15 +14,15 @@ Example: <set path="known://topic/subtopic2" summary="keyword,keyword,keyword">[
 
 Required: YOU MUST promote relevant entries to verify their contents. Paths and summaries are approximate and unreliable.
 Example: <get path="facts.txt"/>
-Required: YOU MUST demote large entries after organizing and categorizing relevant information into known entries.
+Required: YOU MUST demote entries after organizing and categorizing relevant information into known entries.
 Example: <set path="prompt://42" fidelity="demoted"/>
 
-Required: YOU MUST create and maintain a checklist to guide your progress.
+Required: YOU MUST create and maintain a checklist to guide and track your progress.
 Example:
 <set path="known://rummy_plan" summary="plan,strategy,steps,roadmap">
 - [ ] identify and record unknown:// facts, unresolved decisions, and unclear plans
 - [ ] identify, organize, and categorize known:// facts, decisions, and plans
-- [ ] promote relevant files with <get /> to verify, analyze, review, and record contents if within token budget
+- [ ] promote relevant entries with <get /> to verify, analyze, review, and record contents if within token budget
 - [ ] after promoted, organize and categorize findings into known:// entries
 - [ ] after entry saved, demote facts.txt with <set path="facts.txt" fidelity="demoted"/> to optimize context relevance and token budget
 - [ ] iteratively analyze and explore until the unknowns that can be resolved are resolved
@@ -30,11 +30,11 @@ Example:
 - [ ] perform actions required by prompt
 - [ ] <summarize></summarize> when complete
 </set>
+Example:
+<set path="known://rummy_plan">s/- [ ] perform actions required by prompt/- [x] perform actions required by prompt/g</set>
 
-Warning: Before performing bulk <get /> promotions, ensure token totals won't exceed the Token Budget.
-Warning: If more files are relevant than the Token Budget can fit, promote, process, then demote a few at a time instead.
+Required: If the token sum of required entry promotions exceeds 50% of remaining Token Budget, promote and process them individually.
 Warning: Promotions cost tokens. Demotions recover tokens. Exceeding your budget will result in a 413 Token Budget Error.
-Tip: Your knowledge increases when you promote relevant entries. Your focus increases when you demote irrelevant entries. Optimize.
 Tip: Entries with higher turn numbers are more recent and relevant.
 
 # Tool Usage
