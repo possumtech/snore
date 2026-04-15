@@ -4,6 +4,11 @@ export default class OllamaClient {
 	#baseUrl;
 
 	constructor(baseUrl) {
+		if (!baseUrl) {
+			throw new Error(
+				"OLLAMA_BASE_URL must be set to use ollama/* models. Example: OLLAMA_BASE_URL=http://127.0.0.1:11434",
+			);
+		}
 		this.#baseUrl = baseUrl;
 	}
 
