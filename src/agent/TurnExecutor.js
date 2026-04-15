@@ -65,7 +65,12 @@ export default class TurnExecutor {
 				fidelity: row.fidelity,
 				status: row.status,
 				body: projectedBody ?? "",
-				tokens: countTokens(projectedBody ?? ""),
+				// Full-body token count, not projected. This is the cost to
+				// promote the entry — the number the model needs to do Token
+				// Budget math. Projecting the demoted symbol-preview (145
+				// tokens for a 2108-token file) was misleading the model into
+				// promotes that blew the Token Budget by 10-30× per entry.
+				tokens: countTokens(row.body ?? ""),
 				attributes: row.attributes,
 				category: row.category,
 				source_turn: row.turn,

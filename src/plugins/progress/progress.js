@@ -30,7 +30,7 @@ export default class Progress {
 			}, 0);
 			const remaining = Math.max(0, tokenBudget - used);
 			lines.push(
-				`Using ${used} of ${tokenBudget} tokens. ${remaining} tokens remaining. Promote relevant entries with <get/> or set fidelity="promoted" to spend tokens. Demote irrelevant entries with set fidelity="demoted" to save tokens.`,
+				`Token Budget: ${tokenBudget}. Using ${used}. ${remaining} remaining. Promote relevant entries with <get/> to spend. Demote irrelevant entries with <set fidelity="demoted"/> to save.`,
 			);
 		}
 		lines.push(
