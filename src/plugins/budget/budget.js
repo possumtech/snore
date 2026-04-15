@@ -88,18 +88,14 @@ export default class Budget {
 			await store.setFidelity(runId, promptRow.path, "demoted");
 		}
 
-		// Rewrite get-result bodies — the get handler claimed "promoted" success
-		// before this panic ran. Without rewriting, the model reads conflicting
-		// signals next turn (status=413 but body says "promoted").
-		for (const entry of demotedEntries) {
-			if (!entry.path.startsWith("get://")) continue;
-			await db.resolve_known_entry.run({
-				run_id: runId,
-				path: entry.path,
-				body: `Demoted by budget. See budget://${loopId}/${turn}.`,
-				status: 413,
-			});
-		}
+		// NOTE: we do NOT rewrite get-result bodies or flip their status.
+		// The get succeeded (status=200); budget demotion is a lifecycle
+		// event, not a failure of the get. The body still says "promoted"
+		// (which was true at the moment of the get); fidelity=demoted tells
+		// the model the entry is no longer in the promoted view. The budget://
+		// entry is the canonical record of the panic. Model reads three
+		// consistent signals: status=200 (get worked), fidelity=demoted (it's
+		// out of context now), budget://... (this turn overflowed).
 
 		// Write budget entry — terse, actionable. Path list dropped since
 		// demoted entries already render at fidelity="demoted" in <knowns>/<files>.

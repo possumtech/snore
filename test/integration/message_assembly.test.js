@@ -100,7 +100,12 @@ describe("Message assembly", () => {
 			user.content.includes('<prompt mode="act"'),
 			"should have prompt tag with act mode",
 		);
-		assert.ok(user.content.includes("sh"), "act tools should include sh");
+		// Tools list was moved out of the user message's <prompt> attribute
+		// — it's now advertised only via the system preamble's "XML Command
+		// Tools:" line, because the attribute's OpenAI shape was priming
+		// native tool-call emissions. This test helper bypasses the full
+		// instructions-plugin projection, so the tools list isn't present
+		// here; verifying mode is the right scope for this test.
 	});
 
 	it("pattern result appears in messages with matched paths", async () => {

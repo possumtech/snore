@@ -2,10 +2,12 @@
  * Budget demotion integration tests.
  *
  * Covers:
- * - demote_turn_entries: all full entries at turn N → summary + 413
- *   (every scheme except budget, system, prompt, instructions)
- * - Budget entries survive demotion
- * - Error-state entries survive demotion
+ * - demote_turn_entries: all promoted entries at turn N → fidelity=demoted.
+ *   Status is preserved: a successful operation stays at its original
+ *   status (200), because budget demotion is a lifecycle event, not a
+ *   failure of the body operation. The budget:// entry is the canonical
+ *   record of the panic event.
+ * - Error-state entries are not re-demoted
  * - Other turns are not affected
  */
 import assert from "node:assert";
@@ -27,7 +29,7 @@ describe("Budget demotion", () => {
 	});
 
 	describe("demote_turn_entries SQL", () => {
-		it("demotes full data entries at turn N to summary with status 413", async () => {
+		it("demotes promoted entries to fidelity=demoted without changing status", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_1" });
 
 			await store.upsert(runId, 3, "known://fact-a", "fact content", 200, {
@@ -43,13 +45,13 @@ describe("Budget demotion", () => {
 			const a = entries.find((e) => e.path === "known://fact-a");
 			const b = entries.find((e) => e.path === "known://fact-b");
 
-			assert.strictEqual(a.fidelity, "demoted", "fact-a demoted to summary");
-			assert.strictEqual(a.status, 413, "fact-a status set to 413");
-			assert.strictEqual(b.fidelity, "demoted", "fact-b demoted to summary");
-			assert.strictEqual(b.status, 413, "fact-b status set to 413");
+			assert.strictEqual(a.fidelity, "demoted", "fact-a demoted");
+			assert.strictEqual(a.status, 200, "fact-a status preserved at 200");
+			assert.strictEqual(b.fidelity, "demoted", "fact-b demoted");
+			assert.strictEqual(b.status, 200, "fact-b status preserved at 200");
 		});
 
-		it("demotes logging entries at the same turn", async () => {
+		it("demotes logging entries at the same turn, status preserved", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_log" });
 
 			await store.upsert(runId, 5, "get://turn_5/file.js", "file body", 200, {
@@ -61,7 +63,7 @@ describe("Budget demotion", () => {
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "get://turn_5/file.js");
 			assert.strictEqual(entry.fidelity, "demoted", "logging entry demoted");
-			assert.strictEqual(entry.status, 413, "logging entry status 413");
+			assert.strictEqual(entry.status, 200, "status preserved");
 		});
 
 		it("does not demote entries from other turns", async () => {
