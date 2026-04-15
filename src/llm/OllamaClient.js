@@ -1,5 +1,8 @@
 import msg from "../agent/messages.js";
 
+const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
+if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
+
 export default class OllamaClient {
 	#baseUrl;
 
@@ -17,7 +20,7 @@ export default class OllamaClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeout = FETCH_TIMEOUT;
 		const timeoutSignal = AbortSignal.timeout(timeout);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
@@ -59,9 +62,7 @@ export default class OllamaClient {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ model }),
-					signal: AbortSignal.timeout(
-						Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000,
-					),
+					signal: AbortSignal.timeout(FETCH_TIMEOUT),
 				});
 				if (!response.ok) {
 					throw new Error(

@@ -1,5 +1,8 @@
 import msg from "../agent/messages.js";
 
+const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
+if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
+
 export default class OpenAiClient {
 	#baseUrl;
 	#apiKey;
@@ -14,7 +17,7 @@ export default class OpenAiClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeout = FETCH_TIMEOUT;
 		const timeoutSignal = AbortSignal.timeout(timeout);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
@@ -61,7 +64,7 @@ export default class OpenAiClient {
 	}
 
 	async getContextSize(_model) {
-		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeout = FETCH_TIMEOUT;
 		const headers = { "Content-Type": "application/json" };
 		if (this.#apiKey) headers.Authorization = `Bearer ${this.#apiKey}`;
 

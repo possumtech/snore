@@ -174,18 +174,14 @@ WHERE run_id = :run_id AND scheme = 'prompt' AND fidelity = 'demoted';
 
 -- PREP: demote_turn_entries
 -- Demote all promoted entries from a turn for budget claw-back.
--- Action schemes (set/rm/mv/cp) at status 200 keep their status — those
--- represent committed side effects (files written/removed) that can't be
--- clawed back; only the body in context is demoted, not the truth of what
--- happened. Everything else flips to 413 since promotion was reversed.
+-- Status is NOT touched — it reflects the last body operation's outcome,
+-- which a lifecycle event (budget demotion) has no business overwriting.
+-- The budget:// entry is the canonical record of the panic event.
+-- Fidelity changes to 'demoted' so the entry leaves the promoted view.
 -- Tokens unchanged — always reports full cost regardless of fidelity.
 UPDATE known_entries
 SET
 	fidelity = 'demoted'
-	, status = CASE
-		WHEN scheme IN ('set', 'rm', 'mv', 'cp') AND status = 200 THEN 200
-		ELSE 413
-	END
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id

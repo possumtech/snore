@@ -6,7 +6,29 @@ model-facing behavior. This document defines everything else.
 
 ---
 
-## 0. Design Philosophy: Events & Filters
+## 0. Design Philosophy
+
+### 0.1 Everything Is an Entry
+
+Rummy's substrate is the `known_entries` table. Files, tool results,
+knowns, unknowns, plans, running processes, streaming output, past
+conversation — all keyed entries with a URI path, body, attributes,
+and status.
+
+This is the Unix "everything is a file" principle applied to agent
+systems. Read/write operations (`<get>`/`<set>`) speak a universal
+grammar; any plugin that produces entries composes with any plugin
+that consumes them, without coordination. New capabilities (streaming
+shell, web fetch, sub-agents, file watches) slot in by producing
+entries in the same substrate. The model learns one idiom —
+scheme://path, read, write, promote, demote — and applies it to every
+tool it meets.
+
+The bet: uniform substrate beats specialized abstractions. Unix's
+forty-five-year payoff on this bet scaled from PDP-11 to smartphones.
+Rummy's bet is the same wager applied to LLM-driven systems.
+
+### 0.2 Events & Filters
 
 Rummy is a hooks-and-filters system. Every structural seam in the
 pipeline is a hookable checkpoint. Plugins subscribe to events

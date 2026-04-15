@@ -1,5 +1,8 @@
 import msg from "../agent/messages.js";
 
+const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
+if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
+
 const DEFAULT_CONTEXT_SIZE = 131072;
 
 export default class OpenRouterClient {
@@ -21,7 +24,7 @@ export default class OpenRouterClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeout = FETCH_TIMEOUT;
 		const timeoutSignal = AbortSignal.timeout(timeout);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])

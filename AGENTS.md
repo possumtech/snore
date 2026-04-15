@@ -4,6 +4,12 @@
 > plugin. Every scheme is registered by its owner. Every piece of data
 > exists as an entry or a column. No exceptions without documentation.
 
+> **Everything is an entry.** Unix's "everything is a file" principle
+> applied to agent systems. Files, tool calls, streaming output, plans,
+> unknowns, sub-agents — all entries. Read/write (`<get>`/`<set>`) is the
+> universal grammar. New capabilities compose by producing entries in
+> the shared substrate. See SPEC §0.1.
+
 > **"Model behavior" is never an acceptable explanation for a test failure.**
 > When a model misbehaves, the system failed — suboptimal context, poorly
 > designed test conditions, insufficient reinforcement of correct behavior.
@@ -54,7 +60,6 @@ Ceiling = `floor(contextSize × RUMMY_BUDGET_CEILING)`. 10% headroom.
 - Previous-loop entries: model-managed via preamble instruction
 
 ### Preamble Structure
-
 ```
 Preamble (identity)
 # Tool Commands (tool list)
@@ -78,6 +83,153 @@ TurnExecutor orchestrates the pipeline; plugins handle specifics:
 - `budget` — enforce, postDispatch (Turn Demotion)
 - `policy` — ask-mode restrictions via entry.recording filter
 - `think` — gated by RUMMY_THINK, tooldoc registration
+
+## Paradigmatic Refactor: Status vs Lifecycle (Precedes Streaming)
+
+**The confusion:** `known_entries.status` is currently used for two
+distinct concerns — the HTTP outcome of the last body operation AND the
+entry's lifecycle phase. Turn Demotion flips status to 413 on demoted
+entries, overwriting their real outcome with a lifecycle event. We've
+been papering this over with scheme-specific preservation exceptions
+(set/rm/mv/cp keep 200 through budget panic). Adding 102 streaming
+entries would require yet another exception. The exception list is a
+symptom, not a pattern.
+
+**The fix:** `status` reflects body operation outcome only. Lifecycle
+events (budget demotion, archive, supersede) change `fidelity` but
+never `status`. The model reads status for truth about the operation
+and fidelity for visibility — two orthogonal signals, legible separately.
+
+**Scope (minimum viable):**
+
+- `demote_turn_entries` SQL: only changes `fidelity` and `updated_at`.
+  Drop the scheme-specific status-preservation CASE — it becomes the
+  default for everything.
+- `budget/budget.js` post-dispatch: drop the get-result body rewrite
+  that forces status=413. The get-result entry's original outcome
+  (status=200, body "X promoted (N tokens)") stays truthful; fidelity
+  demoted signals it's no longer in context. The budget:// entry is
+  the canonical panic record.
+- Tests: `test/integration/budget_demotion.test.js` — update assertions
+  to expect preserved status (200 stays 200 after demotion).
+- Diff estimate: ~25 lines source + ~15 lines test. Clear cuts, no new
+  columns, no migration.
+
+**What we lose:** the "which entries were demoted by this turn's panic?"
+question becomes "which entries have fidelity=demoted AND were written
+on turn N?" instead of "which entries have status=413 AND turn=N." The
+budget:// entry already records the event authoritatively; per-entry
+status=413 was redundant signal.
+
+**What we gain:** streaming entries at status=102 pass through budget
+demotion without needing a special case. Future lifecycle events (sub-
+agent spawn, file watch start, whatever) don't accrete new status-
+preservation exceptions. The data model matches reality: operation
+outcome and lifecycle phase are different facts.
+
+This refactor lands first, then streaming builds on the cleaner base.
+
+## Streaming Shell / Env (Design Sketch — v1)
+
+Shell and env commands vary in duration by orders of magnitude (0.5s for
+`git log` to 4 hours for benchmarks). The current synchronous-block model
+freezes the client and the run for the command's entire duration. For
+real daily-driver use, this is disqualifying. Applying Unix's
+"everything is a file" principle: shell output is first-class data in
+the folksonomy. Every command produces entries that live, grow, and
+terminate. Short commands appear complete by next turn; long commands
+stay at status 102 across many turns. The agent's interface is identical.
+
+**v1 decisions (locked):**
+
+- Status lifecycle: 202 (proposal) → accept → 102 (running) → 200/500
+  (complete). 102 is the HTTP code for "Processing" — the existing
+  paradigm fits, no novelty.
+- Entry structure: `sh://{handle}` for stdout + `sh://{handle}_stderr`
+  for stderr. Category = `data` (renders in `<knowns>`, not
+  `<performed>` — the output is reference material, not an event log).
+  Demoted by default. `summary="{command}"` so the demoted view shows
+  what produced this entry.
+- `sh` and `env` are one plugin's behavior with two scheme names.
+  Policy differs (env is safe; sh has side effects — different ask-mode
+  restrictions); the streaming mechanism is identical. Client can
+  distinguish them in UI if it wants; the server does not.
+- Generic stream RPC: `stream { run, path, channel, chunk }` — channel
+  is a label (`stdout`, `stderr`, `body`, `headers`, whatever). Any
+  plugin producing a streaming entry uses this RPC; no sh-specific
+  protocol.
+- Completion RPC: `stream/completed { run, path, exit_code? }` — sets
+  terminal status based on exit_code (200 on 0, 500 otherwise). Entries
+  whose producer isn't process-shaped (search, fetch) can complete
+  without exit_code and default to 200.
+- Plugin ownership: a dedicated `stream` plugin owns the generic stream
+  and completion RPCs, writing to the shared substrate. sh/env plugins
+  just create the proposal entries and declare scheme ownership; they
+  are consumers of the streaming substrate, not implementers.
+- Concurrency: no wake-on-completion. Turns remain human-triggered. A
+  command completing mid-idle queues the completion; next user prompt
+  assembles context including the now-complete entry.
+- Abort: use the existing run/loop abort mechanism — no new cancellation
+  protocol.
+- Connection fragility: no assumption of stable client connection. Chunks
+  arrive when they arrive; if completion never signals (client died),
+  the entry sits at 102 forever — which is truthful. Later users see
+  "still 102, no completion received — stale, probably needs cleanup."
+- Backpressure: none in v1. SQLite handles writes. If a command spews
+  MB of output, the body grows; model uses line/limit to tail without
+  full promote.
+
+**Out of scope (explicitly):**
+
+- Cancellation UI
+- Sub-agents, forks, swarms
+- LLM-as-tool streaming reasoning
+- File watches / observer tools
+- Multi-agent collaboration protocols (future: emerges naturally from
+  multiple agents sharing `data` category entries with separate
+  `logging` — no special protocol needed)
+
+**What the agent sees:**
+
+```
+Turn 1: <sh>npm run test:mab</sh>
+  → proposal (202), user accepts, command starts
+
+Turn 2 (command still running):
+  <knowns> shows:
+  <sh path="sh://abc123" status="102"
+      summary="npm run test:mab" fidelity="demoted" tokens="847"/>
+
+  Model reads: "still running, 847 tokens of output so far."
+  Model can: <get path="sh://abc123" line="800" limit="50"/>
+  to tail recent output without promoting.
+
+  Or continue with unrelated work — the agent isn't blocked.
+
+Turn 7 (command completed):
+  <sh path="sh://abc123" status="200" summary="npm run test:mab"
+      fidelity="demoted" tokens="12443"/>
+
+  Model sees terminal state. Promotes if interested.
+```
+
+**Generalization — streaming entries as a rummy idiom:**
+
+Once the stream plugin exists, other tools that produce data over time
+adopt the pattern: search results streaming in, web fetch of large
+pages, log tails, file watches. Each creates a 102 entry, appends via
+`stream` RPC, transitions to 200 on completion. The grammar stays
+uniform. The agent's mental model stays simple: entries are data; some
+grow, some don't; status tells you which.
+
+The core bet, extending "everything is an entry": **time becomes a
+property of data, not a property of calling conventions.** Currently
+most agent systems model "this is fast" vs "this is slow" implicitly
+via sync/async API boundaries. Rummy makes duration a property: status
+102 means "still producing," status 200/500 means "done." The
+distinction is semantic data the model reads, not an API boundary the
+system enforces. Parallel execution, cancellation, timeout — all
+uniform operations on entries rather than per-tool machinery.
 
 ## Road to Production
 
@@ -128,7 +280,11 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
 | Gemini 2.0 Flash | 30% | 3% |
 | Best published | 60% | **6%** |
 
-## Deferred
+## Ongoing Development Checklist
 
-- Community debut post (Latent Space) — after benchmark validation
-- Non-git file scanner fallback
+- [ ] Perform gemma/mab benchmark run
+
+## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
+
+> I wish to perform a short run of gemma/mab to see if we have any benchmark regressions after our long session that's been focused on improving the agent in project/development workflows.
+
