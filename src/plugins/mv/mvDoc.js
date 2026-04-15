@@ -15,12 +15,8 @@ const LINES = [
 		"Batch fidelity change via pattern. No destination = fidelity in place.",
 	],
 	[
-		"* Source path accepts patterns for batch moves",
-		"Pattern support consistent with get/cp/rm.",
-	],
-	[
-		"* Use `preview` to check matches before pattern-based bulk moves",
-		"Safety pattern consistent with rm/cp.",
+		"* Use `preview` to check matches before bulk operations",
+		"Safety pattern consistent with rm/cp. Pattern support implicit from examples.",
 	],
 ];
 

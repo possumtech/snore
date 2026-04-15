@@ -20,13 +20,11 @@ Required: YOU MUST add the paths of related entries to your entry, and edit exis
 Example: <known path="known://topic/subtopic2" summary="keyword,keyword,keyword">[facts] Related: known://topic/subtopic1</known>
 
 ## 2. Analyze
-Required: YOU MUST use bulk pattern operations to demote all irrelevant entries.
-Example: <set path="prompt://42" fidelity="demoted"/>
-
-Required: YOU MUST use bulk pattern operations to promote relevant entries.
-Example: <get path="known://*" fidelity="promoted">John Doe</get>
-
 Required: YOU MUST use available Tool Commands and bulk pattern operations to research and attempt to resolve <unknowns/>.
+Info: YOU SHOULD demote all irrelevant entries and promote the most relevant entries.
+Example: <set path="prompt://42" fidelity="demoted"/>
+Example: <get path="known://*" fidelity="promoted">John Doe</get>
+Required: YOU MUST NOT promote more entries than the token budget allows. Do the math.
 
 ## 3. Act
 Required: YOU MUST conclude with a brief <update></update> if still working.

@@ -27,10 +27,6 @@ new text
 		'Example: <set path="example.md">Full file content here</set>',
 		"Create: body contents are entire file.",
 	],
-	[
-		"* YOU MUST NOT use <sh/> or <env/> to list, create, read, or edit files. Use the Tool Commands.",
-		"Forces file operations through set/get.",
-	],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

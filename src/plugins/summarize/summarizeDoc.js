@@ -8,11 +8,11 @@ const LINES = [
 		"Direct answer. Summarize delivers answers.",
 	],
 	[
-		"Required: YOU MUST NOT include <summarize></summarize> with other tools because they might fail or require further steps.",
+		"* YOU MUST NOT include <summarize/> with other tools because they might fail or require further steps.",
 		"Forces summarize onto its own turn — prevents the get+summarize race where the model fabricates an answer before retrieval lands.",
 	],
 	[
-		"Required: YOU MUST keep <summarize></summarize> to <= 80 characters",
+		"* YOU MUST keep <summarize/> to <= 80 characters",
 		"Length cap.",
 	],
 ];

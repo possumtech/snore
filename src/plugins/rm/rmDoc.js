@@ -13,7 +13,7 @@ const LINES = [
 		"Nudges toward archive over rm.",
 	],
 	[
-		"* Use `preview` to check matches before pattern-based bulk deletion",
+		"* Use `preview` to check matches before bulk operations",
 		"Reinforces preview safety pattern.",
 	],
 ];

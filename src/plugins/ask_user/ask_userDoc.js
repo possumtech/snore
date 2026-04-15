@@ -2,7 +2,9 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	['## <ask_user question="[Question?]">[option1; option2; ...]</ask_user>'],
+	[
+		'## <ask_user question="[Question?]">[option1; option2; ...]</ask_user> - Ask the user a question',
+	],
 	[
 		"* YOU SHOULD use for decisions, preferences, or approvals the user must make",
 		"Positive framing. Shows what ask_user IS for.",

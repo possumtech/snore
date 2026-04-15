@@ -15,9 +15,11 @@ tools run uninterrupted. Enforcement happens at boundaries.
    the incoming prompt). Model runs in the headroom.
 
 2. **Post-dispatch Turn Demotion**: after all tools dispatch, check
-   context. If over ceiling → demote ALL entries from this turn to
-   summary (every scheme except `budget`). Write `budget://` entry
-   listing what was demoted. Model sees it next turn and adapts.
+   context. If over ceiling → demote ALL entries from this turn
+   (every scheme except `budget`/`system`/`prompt`/`instructions`,
+   and 4xx error states stay promoted). Write `budget://` entry with
+   directive to demote irrelevant entries and promote fewer next time.
+   Model sees it next turn and adapts.
 
 3. **LLM rejection** (`isContextExceeded`): turn-1 token estimate
    drift causes LLM to reject. Same demotion pattern.
@@ -36,4 +38,4 @@ tools run uninterrupted. Enforcement happens at boundaries.
 
 - **Hook**: `hooks.budget.enforce` — pre-LLM ceiling check.
 - **Scheme**: `budget://` — logging category, model-visible. `onView`
-  renders body at all fidelity levels (summary shows full content).
+  renders body at all fidelity levels (demoted shows full content).

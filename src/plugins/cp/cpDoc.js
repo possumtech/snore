@@ -12,12 +12,8 @@ const LINES = [
 		"Glob batch copy across known entries.",
 	],
 	[
-		"* Source path accepts patterns: `src/*.js`, `known://draft_*`",
-		"Pattern support consistent with get/rm.",
-	],
-	[
-		"* Use `preview` to check matches before pattern-based bulk copy",
-		"Safety pattern consistent with rm.",
+		"* Use `preview` to check matches before bulk operations",
+		"Safety pattern consistent with rm/mv. Pattern support implicit from examples.",
 	],
 ];
 

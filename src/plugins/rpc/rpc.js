@@ -111,7 +111,7 @@ export default class Rpc {
 				});
 				return { status: "ok" };
 			},
-			description: "Promote entry to full state.",
+			description: "Promote entry fidelity.",
 			params: {
 				path: "string — file path or glob pattern",
 				run: "string — run alias",

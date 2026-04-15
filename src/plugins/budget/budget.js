@@ -82,22 +82,37 @@ export default class Budget {
 			turn,
 		});
 
-		// Also summarize the prompt
+		// Also demote the prompt
 		const promptRow = rows.find((r) => r.scheme === "prompt");
 		if (promptRow) {
 			await store.setFidelity(runId, promptRow.path, "demoted");
 		}
 
-		// Write budget entry
+		// Rewrite get-result bodies — the get handler claimed "promoted" success
+		// before this panic ran. Without rewriting, the model reads conflicting
+		// signals next turn (status=413 but body says "promoted").
+		for (const entry of demotedEntries) {
+			if (!entry.path.startsWith("get://")) continue;
+			await db.resolve_known_entry.run({
+				run_id: runId,
+				path: entry.path,
+				body: `Demoted by budget. See budget://${loopId}/${turn}.`,
+				status: 413,
+			});
+		}
+
+		// Write budget entry — terse, actionable. Path list dropped since
+		// demoted entries already render at fidelity="demoted" in <knowns>/<files>.
 		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
-		const pathList = demotedEntries
-			.map((r) => `${r.path} (${r.tokens} tokens)`)
-			.join("\n");
+		const freeTokens = Math.max(
+			0,
+			ceiling - (postBudget.assembledTokens - totalDemoted),
+		);
 		const body = [
-			`Error 413: Context overflowed by ${postBudget.overflow} tokens.`,
-			`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted. Budget: ${ceiling} tokens.`,
-			pathList,
+			`Error 413: Context overflowed by ${postBudget.overflow} tokens. Budget: ${ceiling} tokens.`,
+			`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted from previous turn.`,
+			`You have ~${freeTokens} free tokens. Demote irrelevant entries and promote fewer entries next time.`,
 		].join("\n");
 
 		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
