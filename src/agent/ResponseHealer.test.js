@@ -49,6 +49,17 @@ describe("ResponseHealer", () => {
 			assert.strictEqual(result.summaryText, null);
 			assert.strictEqual(result.updateText, "...");
 		});
+
+		it("malformed native tool call is glitch, not summary", () => {
+			const malformed =
+				'<|tool_call>call:set path="X">body</set><tool_call|>';
+			const result = ResponseHealer.healStatus(malformed, []);
+			// Must NOT be treated as summary — that would terminate the run
+			// after a single turn instead of letting the 3-strikes stall path
+			// give the model a chance to recover.
+			assert.strictEqual(result.summaryText, null);
+			assert.strictEqual(result.updateText, "...");
+		});
 	});
 
 	describe("assessProgress", () => {

@@ -67,8 +67,15 @@ export default class ResponseHealer {
 	static healStatus(content, commands) {
 		const trimmed = content.trim();
 
+		// Detect malformed-glitch content — model attempted a tool invocation
+		// (native call, malformed XML, etc.) that the parser couldn't dispatch.
+		// This is NOT an answer; it's a glitch that deserves the 3-strikes
+		// stall path so the model can recover. Without this check, the model
+		// emits one malformed call and the run terminates after a single turn.
+		const looksGlitched = /<\|tool_call>|<tool_call\|>/.test(trimmed);
+
 		// No commands + plain text = answered. Treat as summary.
-		if (commands.length === 0 && trimmed) {
+		if (commands.length === 0 && trimmed && !looksGlitched) {
 			console.warn("[RUMMY] Healed: plain text response treated as summary");
 			return { summaryText: trimmed.slice(0, 500), updateText: null };
 		}

@@ -136,11 +136,14 @@ export default class Telemetry {
 			);
 		}
 
-		// content://N — unparsed text
+		// content://N — unparsed text. Visible to the model so it sees parser
+		// feedback (e.g. malformed native tool call errors) on its next turn.
+		// Without this visibility, the model emits the same broken format
+		// repeatedly with no signal that anything went wrong.
 		if (unparsed) {
 			await store.upsert(runId, turn, `content://${turn}`, unparsed, 200, {
 				loopId,
-				fidelity: "archived",
+				fidelity: "promoted",
 			});
 		}
 
