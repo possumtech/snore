@@ -23,6 +23,17 @@ Transition all `{path}_*` data channels to terminal status:
 Rewrite the log entry at `path` with a summary: command, exit code,
 duration, and channel sizes.
 
+### `stream/aborted { run, path, reason?, duration? }`
+
+Client-initiated cancellation. Transition all `{path}_*` data channels
+to status **499 (Client Closed Request)** — the de-facto HTTP status
+for a request terminated by the client. Rewrite the log entry body to
+note the abort (with optional `reason` and `duration`).
+
+Client contract: kill the underlying process first, then call
+`stream/aborted`. Body of each data channel is preserved at whatever
+content was streamed before the kill.
+
 ## Producer Plugin Contract
 
 A streaming producer plugin:

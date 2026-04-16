@@ -22,10 +22,7 @@ const LINES = [
 		"* If you'd repeat the same <update></update> as last turn, the work is either stuck or done. Take a different action or <summarize></summarize>.",
 		"Points at the zombie-loop failure mode directly. Gives the model a trigger (same-text-as-prior-update) and two remedies.",
 	],
-	[
-		"* YOU MUST keep <update></update> to <= 80 characters",
-		"Length cap.",
-	],
+	["* YOU MUST keep <update></update> to <= 80 characters", "Length cap."],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

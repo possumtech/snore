@@ -475,7 +475,9 @@ lifecycle extends beyond 202→200:
 4. When the producer is done, `stream/completed { run, path, exit_code? }`
    transitions all `{path}_*` data entries to terminal status (200 on
    exit_code=0 or omitted; 500 otherwise) and rewrites the log entry
-   body with final stats.
+   body with final stats. For client-initiated cancellation, the
+   client calls `stream/aborted { run, path, reason? }` instead —
+   transitions channels to 499 (Client Closed Request).
 
 **Channel numbering:** Unix file descriptor convention — `_1` is the
 primary stream (stdout for shell, body for fetch, lines for tail);
@@ -486,7 +488,8 @@ additional producer-specific streams.
 only need to:
 - Create the proposal entry on dispatch (status=202)
 - Rely on `AgentLoop.resolve()` to create data channels on accept
-- Let clients/external producers call `stream` and `stream/completed`
+- Let clients/external producers call `stream`, `stream/completed`,
+  and `stream/aborted`
 
 No scheme registration or tooldoc for the stream plugin itself — it's
 pure RPC plumbing shared across all streaming producers.
@@ -503,7 +506,7 @@ pure RPC plumbing shared across all streaming producers.
 | `cp` | Core tool | Copy entry |
 | `sh` | Core tool | Shell command (act mode only). Streaming producer — see §8.1 |
 | `env` | Core tool | Exploratory command. Streaming producer — see §8.1 |
-| `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`) for sh/env and future producers |
+| `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
 | `summarize` | Structural | Signal completion |

@@ -2,8 +2,7 @@ const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES) || 3;
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD) || 4;
 const MAX_UPDATE_REPEATS = Number(process.env.RUMMY_MAX_UPDATE_REPEATS) || 3;
-const MAX_PATH_STAGNATION =
-	Number(process.env.RUMMY_MAX_PATH_STAGNATION) || 5;
+const MAX_PATH_STAGNATION = Number(process.env.RUMMY_MAX_PATH_STAGNATION) || 5;
 
 /**
  * Build a stable fingerprint for a single recorded entry.

@@ -194,9 +194,7 @@ export default class XmlParser {
 							const attrStr = Object.entries(attrs)
 								.map(([k, v]) => (v === "" ? k : `${k}="${v}"`))
 								.join(" ");
-							current.rawBody += attrStr
-								? `<${name} ${attrStr}>`
-								: `<${name}>`;
+							current.rawBody += attrStr ? `<${name} ${attrStr}>` : `<${name}>`;
 							current.nested ||= [];
 							current.nested.push(name);
 							return;
@@ -228,10 +226,7 @@ export default class XmlParser {
 					if (current) {
 						// Matching nested close — pop stack, keep as text.
 						const nested = current.nested;
-						if (
-							nested.length > 0 &&
-							nested[nested.length - 1] === name
-						) {
+						if (nested.length > 0 && nested[nested.length - 1] === name) {
 							nested.pop();
 							current.rawBody += `</${name}>`;
 							return;

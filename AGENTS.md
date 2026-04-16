@@ -227,8 +227,11 @@ distinguish in UI; the server treats them identically for streaming.
 - Concurrency: no wake-on-completion. Turns remain human-triggered.
   A command completing mid-idle queues the completion; next user
   prompt assembles context including the now-complete entry.
-- Abort: use the existing run/loop abort mechanism — no new
-  cancellation protocol.
+- Abort: client-initiated cancellation is first-class via
+  `stream/aborted { run, path, reason? }` — client kills the process,
+  then reports; data channels transition to 499 (Client Closed
+  Request). Server-initiated cancellation (server asks client to kill)
+  is deferred until someone needs it.
 - Connection fragility: no assumption of stable client connection.
   Chunks arrive when they arrive; if completion never signals (client
   died), entries sit at 102 forever — which is truthful. Later users
@@ -238,7 +241,7 @@ distinguish in UI; the server treats them identically for streaming.
 
 **Out of scope (explicitly):**
 
-- Cancellation UI
+- Client-side cancellation UX (keybinds, confirmation, etc. — client concern)
 - Sub-agents, forks, swarms
 - LLM-as-tool streaming reasoning
 - File watches / observer tools

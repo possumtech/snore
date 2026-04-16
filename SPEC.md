@@ -356,8 +356,9 @@ partial, will change; tokens grow as chunks arrive. Agents reading a
 for tail) to sample without promoting full body.
 
 **Status transition on completion** is terminal: 200 (exit_code=0 or
-N/A for non-process producers) or 500 (non-zero exit). The log entry
-is rewritten with final stats (exit code, duration, channel sizes).
+N/A for non-process producers), 500 (non-zero exit), or 499 (client
+aborted via `stream/aborted`). The log entry is rewritten with final
+stats (exit code, duration, channel sizes, or abort reason).
 
 **Budget demotion preserves status.** A 102 entry demoted by budget
 panic stays at 102 — status reflects operation outcome, fidelity
@@ -690,12 +691,15 @@ be added explicitly by the client).
 |--------|--------|
 | `stream` | `{ run, path, channel, chunk }` |
 | `stream/completed` | `{ run, path, exit_code?, duration? }` |
+| `stream/aborted` | `{ run, path, reason?, duration? }` |
 
 Producer-agnostic RPC for streaming output into data entries created by
 any plugin (sh/env today; search/fetch/watch as future consumers). The
 `stream` method appends `chunk` to `{path}_{channel}`; `stream/completed`
-transitions all `{path}_*` channels to terminal status and finalizes
-the log entry body.
+transitions all `{path}_*` channels to terminal status (200/500) and
+finalizes the log entry body; `stream/aborted` is the client-initiated
+cancellation counterpart, transitioning channels to **499** (Client
+Closed Request).
 
 #### Queries
 

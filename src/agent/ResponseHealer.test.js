@@ -51,8 +51,7 @@ describe("ResponseHealer", () => {
 		});
 
 		it("malformed native tool call is glitch, not summary", () => {
-			const malformed =
-				'<|tool_call>call:set path="X">body</set><tool_call|>';
+			const malformed = '<|tool_call>call:set path="X">body</set><tool_call|>';
 			const result = ResponseHealer.healStatus(malformed, []);
 			// Must NOT be treated as summary — that would terminate the run
 			// after a single turn instead of letting the 3-strikes stall path
@@ -317,7 +316,9 @@ describe("ResponseHealer", () => {
 			for (const fp of ["a", "b", "c", "d"]) {
 				const r = healer.assessRepetition({
 					actionCalls: [getCmd],
-					writeCalls: [{ ...setCmd, attributes: { ...setCmd.attributes, summary: fp } }],
+					writeCalls: [
+						{ ...setCmd, attributes: { ...setCmd.attributes, summary: fp } },
+					],
 				});
 				assert.strictEqual(r.continue, true);
 			}

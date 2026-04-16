@@ -43,7 +43,11 @@ describe("Streaming primitives", () => {
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === path);
 			assert.strictEqual(entry.body, "hello world\nline 2\n");
-			assert.strictEqual(entry.status, 102, "status stays at 102 during streaming");
+			assert.strictEqual(
+				entry.status,
+				102,
+				"status stays at 102 during streaming",
+			);
 			assert.ok(entry.tokens > 0, "tokens recomputed after append");
 		});
 
