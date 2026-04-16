@@ -425,7 +425,7 @@ export default class Rpc {
 						ctx.db.get_run_usage.get({ run_id: run.id }),
 						ctx.db.get_reasoning.all({ run_id: run.id }),
 						ctx.db.get_content.all({ run_id: run.id }),
-						ctx.db.get_history.all({ run_id: run.id }),
+						ctx.db.get_results.all({ run_id: run.id }),
 						ctx.db.get_latest_user_prompt.get({ run_id: run.id }),
 						ctx.db.get_latest_summary.get({ run_id: run.id }),
 					]);
@@ -455,17 +455,14 @@ export default class Rpc {
 							body: c.body,
 							turn: c.turn,
 						})),
-						history: history.map((h) => {
-							const scheme = h.path.split("://")[0];
-							return {
-								scheme,
-								path: h.path,
-								status: h.status,
-								body: h.body,
-								attributes: h.attributes ? JSON.parse(h.attributes) : null,
-								turn: h.turn,
-							};
-						}),
+						history: history.map((h) => ({
+							tool: h.tool,
+							path: h.path,
+							status: h.status,
+							body: h.body,
+							attributes: h.attributes ? JSON.parse(h.attributes) : null,
+							turn: h.turn,
+						})),
 					},
 					last_user_prompt: promptRow?.body,
 					last_summary: summaryRow?.body,

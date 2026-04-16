@@ -133,11 +133,32 @@ export default class Set {
 					{ loopId },
 				);
 			} else {
-				// Direct scheme write
-				await store.upsert(runId, turn, target, entry.body, 200, {
+				// Direct scheme write (known://, unknown://, etc.)
+				// Same result shape as file writes — diff against existing.
+				const existing = await store.getBody(runId, target);
+				const oldContent = existing ?? "";
+				const newContent = entry.body || "";
+				const udiff = generatePatch(target, oldContent, newContent);
+				const merge = oldContent
+					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
+					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
+				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
+				const afterTokens = countTokens(newContent);
+
+				await store.upsert(runId, turn, target, newContent, 200, {
 					fidelity: fidelityAttr || "promoted",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
+				});
+				await store.upsert(runId, turn, entry.resultPath, oldContent, 200, {
+					loopId,
+					attributes: {
+						file: target,
+						patch: udiff,
+						merge,
+						beforeTokens,
+						afterTokens,
+					},
 				});
 			}
 		}

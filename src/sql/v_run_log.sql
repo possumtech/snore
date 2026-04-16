@@ -7,13 +7,7 @@ SELECT
 	, ke.status
 	, ke.turn
 	, ke.scheme AS tool
-	, COALESCE(
-		json_extract(ke.attributes, '$.command')
-		, json_extract(ke.attributes, '$.file')
-		, json_extract(ke.attributes, '$.path')
-		, json_extract(ke.attributes, '$.question')
-		, ''
-	) AS target
+	, ke.attributes
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = ke.scheme
 WHERE

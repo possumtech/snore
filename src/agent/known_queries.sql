@@ -5,7 +5,7 @@ WHERE run_id = :run_id
 ORDER BY path;
 
 -- PREP: get_results
-SELECT tool, target, status, path, body, turn
+SELECT tool, status, path, body, turn, attributes
 FROM v_run_log
 WHERE run_id = :run_id;
 
@@ -62,15 +62,7 @@ WHERE
 ORDER BY id DESC
 LIMIT 1;
 
--- PREP: get_history
-SELECT ke.path, ke.status, ke.body, ke.attributes, ke.turn
-FROM known_entries AS ke
-JOIN schemes AS s ON s.name = ke.scheme
-WHERE
-	ke.run_id = :run_id
-	AND s.category IN ('logging', 'prompt', 'unknown')
-	AND ke.status != 202
-ORDER BY ke.id;
+-- get_history retired — use get_results (v_run_log) for both run/state and getRun.
 
 -- PREP: get_content
 SELECT path, body, turn
