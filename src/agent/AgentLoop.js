@@ -603,6 +603,42 @@ export default class AgentLoop {
 						await this.#knownStore.remove(runId, attrs.from);
 					}
 				}
+
+				// sh/env accept: proposal entry becomes the log entry at 200;
+				// create companion data entries `{path}_1` (stdout) and
+				// `{path}_2` (stderr) at status=102, demoted, empty body.
+				// The stream plugin will receive chunks via the `stream` RPC
+				// and append to these entries. On completion, they transition
+				// to 200/500. Unix FD numbering: 1=stdout, 2=stderr.
+				if (path.startsWith("sh://") || path.startsWith("env://")) {
+					const command = attrs?.command || attrs?.summary || "";
+					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
+						.next_turn;
+					const channels = [1, 2];
+					for (const ch of channels) {
+						await this.#knownStore.upsert(
+							runId,
+							turn,
+							`${path}_${ch}`,
+							"",
+							102,
+							{
+								fidelity: "demoted",
+								attributes: { command, summary: command, channel: ch },
+							},
+						);
+					}
+					// Overwrite the log entry body with a descriptive line that
+					// references the data entries. resolve() above already set
+					// status=200; this is just body replacement to make the log
+					// entry self-documenting in <performed>.
+					await this.#db.resolve_known_entry.run({
+						run_id: runId,
+						path,
+						body: `ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
+						status: 200,
+					});
+				}
 			}
 		} else if (action === "reject") {
 			await this.#knownStore.resolve(runId, path, 403, output || "rejected");

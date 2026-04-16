@@ -5,6 +5,8 @@ export default class Env {
 
 	constructor(core) {
 		this.#core = core;
+		// Same behavior as sh; different scheme name for ask-mode policy
+		// differentiation (env is safe/read-only; sh has side effects).
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
@@ -17,8 +19,9 @@ export default class Env {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		await store.upsert(runId, turn, entry.resultPath, entry.body, 202, {
-			attributes: entry.attributes,
+		const command = entry.attributes.command || entry.body || "";
+		await store.upsert(runId, turn, entry.resultPath, "", 202, {
+			attributes: { ...entry.attributes, summary: command },
 			loopId,
 		});
 	}

@@ -5,6 +5,9 @@ export default class Sh {
 
 	constructor(core) {
 		this.#core = core;
+		// Category "logging" on the proposal entry — it records an action.
+		// On accept, AgentLoop.resolve() creates companion _{channel} data
+		// entries (category "data") that hold streamed output.
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
@@ -17,8 +20,12 @@ export default class Sh {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		await store.upsert(runId, turn, entry.resultPath, entry.body, 202, {
-			attributes: entry.attributes,
+		// Proposal at 202 with the command as summary and empty body — the
+		// body fills in on accept (log message about the action). Data
+		// entries with stdout/stderr are created on accept in resolve().
+		const command = entry.attributes.command || entry.body || "";
+		await store.upsert(runId, turn, entry.resultPath, "", 202, {
+			attributes: { ...entry.attributes, summary: command },
 			loopId,
 		});
 	}
