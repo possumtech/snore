@@ -107,6 +107,16 @@ export default class KnownStore {
 		this.#emitChanged(runId, normalized, "upsert");
 	}
 
+	async appendBody(runId, path, chunk) {
+		const normalized = KnownStore.normalizePath(path);
+		await this.#db.append_entry_body.run({
+			run_id: runId,
+			path: normalized,
+			chunk,
+		});
+		this.#emitChanged(runId, normalized, "append");
+	}
+
 	async promote(runId, path, turn) {
 		const normalized = KnownStore.normalizePath(path);
 		await this.#db.promote_path.run({

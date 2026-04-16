@@ -26,6 +26,19 @@ UPDATE known_entries
 SET tokens = :tokens
 WHERE run_id = :run_id AND path = :path;
 
+-- PREP: append_entry_body
+-- Streaming entry body growth. Appends a chunk to the existing body and
+-- recomputes tokens. Used by the stream plugin to populate sh/env output
+-- entries (and any future streaming-producer entries) without replacing
+-- the body wholesale. Status is NOT touched — transitions happen via
+-- resolve_known_entry or dedicated transitions.
+UPDATE known_entries
+SET
+	body = body || :chunk
+	, tokens = countTokens(body || :chunk)
+	, updated_at = CURRENT_TIMESTAMP
+WHERE run_id = :run_id AND path = :path;
+
 -- PREP: get_stale_tokens
 SELECT path, body
 FROM known_entries
