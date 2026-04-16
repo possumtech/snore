@@ -32,10 +32,12 @@ export default class Get {
 		const preview = entry.attributes.preview !== undefined;
 		const isPattern = bodyFilter || normalized.includes("*");
 
-		const line =
-			entry.attributes.line != null
-				? Math.max(1, parseInt(entry.attributes.line, 10))
-				: null;
+		// Negative `line` is idiomatic tail-from-end: `line="-50"` means
+		// "start 50 lines from the end," enabling `tail -n N` behavior.
+		// Positive `line` is 1-indexed from start (classic). `limit` is
+		// always a positive count.
+		const lineRaw = entry.attributes.line;
+		const line = lineRaw != null ? parseInt(lineRaw, 10) : null;
 		const limit =
 			entry.attributes.limit != null
 				? Math.max(1, parseInt(entry.attributes.limit, 10))
@@ -92,7 +94,14 @@ export default class Get {
 			}
 			const allLines = matches[0].body.split("\n");
 			const total = allLines.length;
-			const startLine = line ?? 1;
+			// Negative line offsets from the end: line=-50 starts 50 lines
+			// before the end. Clamped to 1 if the offset exceeds total.
+			const startLine =
+				line == null
+					? 1
+					: line < 0
+						? Math.max(1, total + line + 1)
+						: Math.max(1, line);
 			const startIdx = startLine - 1;
 			const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
 			const slice = allLines.slice(startIdx, endIdx).join("\n");

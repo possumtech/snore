@@ -17,6 +17,10 @@ const LINES = [
     "Partial read. Returns lines 644–723 without promoting.",
   ],
   [
+    'Example: <get path="sh://turn_3/npm_test_1" line="-50"/>',
+    "Tail: negative line reads the last 50 lines. Works on any growing entry — streaming sh output, logs, knowns.",
+  ],
+  [
     "* Paths accept patterns: `src/**/*.js`, `known://api_*`",
     "Reinforces picomatch patterns work everywhere.",
   ],
@@ -25,8 +29,8 @@ const LINES = [
     "Body = filter, not just path.",
   ],
   [
-    "* `line` and `limit` read a slice without promoting the entry, which costs as many tokens as the slice contains.",
-    "Partial read is safe: context budget unaffected.",
+    "* `line` and `limit` read a slice without promoting the entry, which costs as many tokens as the slice contains. Negative `line` reads from the end (tail).",
+    "Partial read is safe: context budget unaffected. Tail idiom enables watching growing entries.",
   ],
 ];
 

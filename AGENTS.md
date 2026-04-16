@@ -255,14 +255,14 @@ Turn 1: <sh>npm run test:mab</sh>
 Turn 2 (command still running):
   <performed> shows:
     <sh path="sh://turn_1/npm_test_mab" turn="1" status="200" tokens="22">
-    ran 'npm run test:mab' (in progress). Output: sh://turn_1/npm_test_mab_0, sh://turn_1/npm_test_mab_1
+    ran 'npm run test:mab' (in progress). Output: sh://turn_1/npm_test_mab_1, sh://turn_1/npm_test_mab_2
     </sh>
   <knowns> shows:
-    <sh path="sh://turn_1/npm_test_mab_0" turn="1" status="102"
+    <sh path="sh://turn_1/npm_test_mab_1" turn="1" status="102"
         summary="npm run test:mab" fidelity="demoted" tokens="847"/>
 
   Model reads: "still running, 847 tokens of output so far."
-  Model can: <get path="sh://turn_1/npm_test_mab_0" line="800" limit="50"/>
+  Model can: <get path="sh://turn_1/npm_test_mab_1" line="800" limit="50"/>
   to tail recent output without promoting.
 
   Or continue unrelated work — agent isn't blocked.
@@ -270,10 +270,10 @@ Turn 2 (command still running):
 Turn 7 (command completed):
   <performed>:
     <sh path="sh://turn_1/npm_test_mab" turn="1" status="200" tokens="58">
-    ran 'npm run test:mab', exit=0 (4:23). Output: sh://turn_1/npm_test_mab_0 (12kb), sh://turn_1/npm_test_mab_1 (empty)
+    ran 'npm run test:mab', exit=0 (4:23). Output: sh://turn_1/npm_test_mab_1 (12kb), sh://turn_1/npm_test_mab_2 (empty)
     </sh>
   <knowns>:
-    <sh path="sh://turn_1/npm_test_mab_0" turn="1" status="200"
+    <sh path="sh://turn_1/npm_test_mab_1" turn="1" status="200"
         summary="npm run test:mab" fidelity="demoted" tokens="12443"/>
 
   Model sees terminal state. Promotes data entry if interested.

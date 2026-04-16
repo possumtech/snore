@@ -78,6 +78,73 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(!result.body.includes("d"));
 	});
 
+	it("negative line reads tail from end", async () => {
+		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
+			"\n",
+		);
+		const store = makeStore([
+			{ path: "sh://turn_3/npm_test_1", body, tokens: 500 },
+		]);
+		const rummy = makeRummy(store);
+		// line=-10 means "start 10 from the end" → lines 91..100
+		const entry = makeEntry({
+			path: "sh://turn_3/npm_test_1",
+			line: "-10",
+		});
+
+		await plugin.handler(entry, rummy);
+
+		const result = store.upserted[0];
+		assert.ok(
+			result.body.startsWith("[lines 91–100 / 100 total]"),
+			`unexpected header: ${result.body.slice(0, 40)}`,
+		);
+		assert.ok(result.body.includes("line 100"));
+		assert.ok(result.body.includes("line 91"));
+		assert.ok(!result.body.includes("line 90\n"));
+	});
+
+	it("negative line with limit reads a window from the end", async () => {
+		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
+			"\n",
+		);
+		const store = makeStore([
+			{ path: "sh://turn_3/npm_test_1", body, tokens: 500 },
+		]);
+		const rummy = makeRummy(store);
+		// line=-20, limit=5 → start at line 81, show 5 lines (81..85)
+		const entry = makeEntry({
+			path: "sh://turn_3/npm_test_1",
+			line: "-20",
+			limit: "5",
+		});
+
+		await plugin.handler(entry, rummy);
+
+		const result = store.upserted[0];
+		assert.ok(
+			result.body.startsWith("[lines 81–85 / 100 total]"),
+			`unexpected header: ${result.body.slice(0, 40)}`,
+		);
+		assert.ok(result.body.includes("line 81"));
+		assert.ok(result.body.includes("line 85"));
+		assert.ok(!result.body.includes("line 86"));
+	});
+
+	it("negative line clamps to line 1 when offset exceeds total", async () => {
+		const body = "a\nb\nc";
+		const store = makeStore([{ path: "x", body, tokens: 10 }]);
+		const rummy = makeRummy(store);
+		// line=-500 with only 3 lines clamps to line 1
+		const entry = makeEntry({ path: "x", line: "-500" });
+
+		await plugin.handler(entry, rummy);
+
+		const result = store.upserted[0];
+		assert.ok(result.body.startsWith("[lines 1–3 / 3 total]"));
+		assert.ok(result.body.includes("a\nb\nc"));
+	});
+
 	it("clamps end to total lines when limit exceeds file length", async () => {
 		const body = "x\ny\nz";
 		const store = makeStore([
