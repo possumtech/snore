@@ -19,13 +19,13 @@ through the standard tool handler chain via `dispatchTool`.
 
 ### 1. TurnExecutor#record — tool-specific handling
 
-**What:** `known`, `unknown`, `summarize`, `update` have special-case
-code in `#record` (dedup, slug paths, lifecycle classification).
+**What:** `known`, `unknown`, `update` have special-case code in
+`#record` (dedup, slug paths, lifecycle classification).
 **Bypasses:** These tools don't go through the same dispatch path as
 `get`, `set`, `rm` etc.
-**Justification:** Lifecycle signals (`summarize`, `update`) are state
-declarations, not tool operations — they always dispatch and cannot be
-409'd. `known` and `unknown` generate their own paths from body content
+**Justification:** `update` is a lifecycle signal (status=102 continues,
+status=200 terminates) — it always dispatches and cannot be 409'd.
+`known` and `unknown` generate their own paths from body content
 (slug paths). The classification is a fundamental architectural split
 (lifecycle vs action), not a protocol violation.
 

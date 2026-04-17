@@ -175,7 +175,7 @@ WHERE
 	AND hedmatch(:path, path)
 	AND (:body IS NULL OR hedsearch(:body, body));
 
--- PREP: restore_summarized_prompts
+-- PREP: restore_demoted_prompts
 -- Restore prompt entries demoted by a recovery phase that was
 -- interrupted (e.g. server crash). Safe to call unconditionally at loop
 -- start: if the full prompt would overflow, Prompt Demotion handles it.

@@ -570,8 +570,10 @@ export default class TurnExecutor {
 
 		const updateEntry = recorded.findLast((e) => e.scheme === "update");
 		const updateStatus = updateEntry?.attributes?.status ?? 102;
-		let summaryText = updateStatus === 200 ? updateEntry?.body || null : null;
-		let updateText = updateStatus !== 200 ? updateEntry?.body || null : null;
+		const isTerminal =
+			updateStatus === 200 || updateStatus === 204 || updateStatus === 422;
+		let summaryText = isTerminal ? updateEntry?.body || null : null;
+		let updateText = !isTerminal ? updateEntry?.body || null : null;
 
 		// If model says "done" (status=200) but actions failed, override
 		if (summaryText && hasErrors) {
@@ -597,6 +599,21 @@ export default class TurnExecutor {
 			summaryText = healed.summaryText;
 			updateText = healed.updateText;
 			statusHealed = true;
+		}
+
+		// If terminal (explicitly or healed), ensure the DB update entry
+		// has status=200 in attributes so get_latest_summary finds it.
+		if (summaryText) {
+			const dbUpdates = await this.#knownStore.getEntriesByPattern(
+				currentRunId,
+				`update://*`,
+			);
+			const latestUpdate = dbUpdates.filter((e) => e.turn === turn).at(-1);
+			if (latestUpdate) {
+				await this.#knownStore.setAttributes(currentRunId, latestUpdate.path, {
+					status: 200,
+				});
+			}
 		}
 
 		// --- Classify for return value ---

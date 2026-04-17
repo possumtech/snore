@@ -273,13 +273,13 @@ export default class AgentLoop {
 		let recovery = null; // { target, promptPath, strikes, lastTokens }
 
 		// Previous loop entries stay at full fidelity — the model is
-		// instructed to summarize and demote them. Budget enforcement
-		// catches overflow if the model fails to manage context.
+		// instructed to demote them. Budget enforcement catches overflow
+		// if the model fails to manage context.
 
 		// Restore any prompt entries left at summary fidelity by a recovery
 		// phase that was interrupted (server crash, restart). If the full
 		// prompt would overflow, Prompt Demotion on turn 1 handles it.
-		await this.#knownStore.restoreSummarizedPrompts(currentRunId);
+		await this.#knownStore.restoreDemotedPrompts(currentRunId);
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -443,6 +443,7 @@ export default class AgentLoop {
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
+					await this.#stampTerminalUpdate(currentRunId, result.turn);
 					await this.#db.update_run_status.run({
 						id: currentRunId,
 						status: 200,
@@ -460,6 +461,7 @@ export default class AgentLoop {
 				const progress = healer.assessProgress(result);
 				if (progress.continue) continue;
 
+				await this.#stampTerminalUpdate(currentRunId, result.turn);
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: 200,
@@ -525,6 +527,19 @@ export default class AgentLoop {
 					turns: loopIteration,
 				})
 				.catch(() => {});
+		}
+	}
+
+	async #stampTerminalUpdate(runId, turn) {
+		const updates = await this.#knownStore.getEntriesByPattern(
+			runId,
+			"update://*",
+		);
+		const latest = updates.filter((e) => e.turn === turn).at(-1);
+		if (latest) {
+			await this.#knownStore.setAttributes(runId, latest.path, {
+				status: 200,
+			});
 		}
 	}
 

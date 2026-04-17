@@ -136,7 +136,7 @@ All registration happens in the constructor via `core.on()`,
 Declares this plugin as a model-facing tool. Required for the tool
 to appear in the model's tool list. Called automatically by
 `core.on("handler", ...)` but must be called explicitly for tools
-without handlers (e.g., `summarize`, `update`, `unknown`).
+without handlers (e.g., `update`, `unknown`).
 
 ### §3.2 core.registerScheme(config?)
 
@@ -509,7 +509,7 @@ pure RPC plumbing shared across all streaming producers.
 | `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
-| `summarize` | Structural | Signal completion |
+| `update` | Structural | Status report + lifecycle signal (status=200 terminates) |
 | `update` | Structural | Signal continued work |
 | `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
 | `previous` | Assembly | Render `<previous>` loop history |

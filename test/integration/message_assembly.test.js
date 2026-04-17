@@ -186,7 +186,7 @@ describe("Message assembly", () => {
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			"summarize://test_sum",
+			"update://test_sum",
 			"The answer is 42",
 			200,
 			{ fidelity: "demoted" },

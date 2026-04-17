@@ -252,8 +252,8 @@ export default class KnownStore {
 		});
 	}
 
-	async restoreSummarizedPrompts(runId) {
-		await this.#db.restore_summarized_prompts.run({ run_id: runId });
+	async restoreDemotedPrompts(runId) {
+		await this.#db.restore_demoted_prompts.run({ run_id: runId });
 		this.#emitChanged(runId, "prompt://batch", "fidelity");
 	}
 
