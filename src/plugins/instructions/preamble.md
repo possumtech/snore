@@ -25,7 +25,7 @@ Example: <set path="known://topic/subtopic1" summary="keyword,keyword,keyword">{
 Required: YOU MUST add the paths of related entries to your known entries, and edit existing related entries to add linkbacks.
 Example: <set path="known://topic/subtopic2" summary="keyword,keyword,keyword">{facts} Related: known://topic/subtopic1</set>
 
-Required: YOU MUST promote relevant entries with <get/> to verify their contents. Paths and summaries are approximate and unreliable.
+Required: YOU MUST confirm the content of demoted entries to verify their contents. Paths and summaries are unreliable.
 Example: <get path="facts.txt"/>
 Tip: You may use pattern and line extraction tools to explore demoted entries.
 Example: <get path="known://people/*" preview>Rumsfeld</get>
