@@ -217,8 +217,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 3,
-					path: "summarize://done",
-					scheme: "summarize",
+					path: "update://done",
+					scheme: "update",
 					fidelity: "promoted",
 					status: 200,
 					body: "Fixed it",

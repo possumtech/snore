@@ -6,10 +6,10 @@ describe("XmlParser", () => {
 	describe("well-formed", () => {
 		it("parses summary", () => {
 			const { commands } = XmlParser.parse(
-				"<summarize>The answer is 42.</summarize>",
+				'<update status="200">The answer is 42.</update>',
 			);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].name, "summarize");
+			assert.strictEqual(commands[0].name, "update");
 			assert.strictEqual(commands[0].body, "The answer is 42.");
 		});
 
@@ -125,13 +125,13 @@ export default {};
 			const input = `<get path="src/config.js"/>
 <set path="unknown://database_adapter">which database adapter</set>
 <set path="/:known:framework">Express with passport</set>
-<summarize>Reading config to check port.</summarize>`;
+<update status="200">Reading config to check port.</update>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 4);
 			assert.strictEqual(commands[0].name, "get");
 			assert.strictEqual(commands[1].name, "set");
 			assert.strictEqual(commands[2].name, "set");
-			assert.strictEqual(commands[3].name, "summarize");
+			assert.strictEqual(commands[3].name, "update");
 		});
 
 		it("parses get with body filter", () => {
@@ -248,7 +248,9 @@ export default {};
 		});
 
 		it("summary: body in attr", () => {
-			const { commands } = XmlParser.parse('<summarize body="did the thing"/>');
+			const { commands } = XmlParser.parse(
+				'<update status="200" body="did the thing"/>',
+			);
 			assert.strictEqual(commands[0].body, "did the thing");
 		});
 
@@ -296,7 +298,7 @@ new
 	describe("malformed", () => {
 		it("captures unclosed summary", () => {
 			const { commands, warnings } = XmlParser.parse(
-				"<summarize>The answer is 42.",
+				'<update status="200">The answer is 42.',
 			);
 			assert.strictEqual(commands.length, 1);
 			assert.strictEqual(commands[0].body, "The answer is 42.");
@@ -322,7 +324,7 @@ new
 			const input = `Let me think about this...
 <get path="src/config.js"/>
 I need to check the port.
-<summarize>Checking config.</summarize>`;
+<update status="200">Checking config.</update>`;
 			const { commands, unparsed } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 2);
 			assert.ok(unparsed.includes("Let me think about this"));
@@ -354,7 +356,10 @@ I need to check the port.
 				`<set path="known://task_plan" summary="plan">- [x] find codename\n- [x] reply</set>
 <set path="known://project_info" summary="codename">The project codename is: phoenix</set>
 <rm path="unknown://project_codename"/>
-<summarize>phoenix</summarize>`.replace("</set>\n<set", "</update>\n<set");
+<update status="200">phoenix</update>`.replace(
+					"</set>\n<set",
+					"</update>\n<set",
+				);
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(
 				commands.length,
@@ -366,7 +371,7 @@ I need to check the port.
 			assert.strictEqual(commands[1].name, "set");
 			assert.strictEqual(commands[1].path, "known://project_info");
 			assert.strictEqual(commands[2].name, "rm");
-			assert.strictEqual(commands[3].name, "summarize");
+			assert.strictEqual(commands[3].name, "update");
 			assert.strictEqual(commands[3].body, "phoenix");
 			assert.ok(
 				warnings.some(
@@ -376,15 +381,17 @@ I need to check the port.
 		});
 
 		it("ignores tool tags inside markdown code spans", () => {
-			const input =
-				"Required: YOU MUST promote entries with `<get/>` to verify.\n<summarize>done</summarize>";
+			const input = [
+				"Required: YOU MUST promote entries with `<get/>` to verify.",
+				'<update status="200">done</update>',
+			].join("\n");
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(
 				commands.length,
 				1,
-				"only the summarize, not the backtick-quoted get",
+				"only the update, not the backtick-quoted get",
 			);
-			assert.strictEqual(commands[0].name, "summarize");
+			assert.strictEqual(commands[0].name, "update");
 			assert.strictEqual(commands[0].body, "done");
 		});
 
@@ -445,18 +452,18 @@ I need to check the port.
 
 		it("ignores native tool calls for unknown tools", () => {
 			const input = `<|tool_call>call:fakeTool{arg:"value"}<tool_call|>
-<summarize>Done.</summarize>`;
+<update status="200">Done.</update>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].name, "summarize");
+			assert.strictEqual(commands[0].name, "update");
 		});
 
 		it("ignores unknown tags", () => {
 			const input = `<thinking>internal thoughts</thinking>
-<summarize>The answer.</summarize>`;
+<update status="200">The answer.</update>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].name, "summarize");
+			assert.strictEqual(commands[0].name, "update");
 		});
 	});
 

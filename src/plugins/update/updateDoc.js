@@ -3,24 +3,32 @@
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
 	[
-		"## <update>[brief status]</update> - Heartbeat for ongoing work (one per turn, at the end)",
-		"Header defines position and frequency. Without this, model uses update as inline narration between tools — multiple updates per turn.",
+		'## <update status="N">[brief status]</update> - Status report (one per turn, at the end)',
+		"Header defines position, frequency, and status code requirement.",
 	],
 	[
-		"Example: <update>Reading config files</update>",
-		"Progress checkpoint. Status signal, not a log entry.",
+		'Example: <update status="102">Reading config files</update>',
+		"102 = processing, continue. Default if status omitted.",
 	],
 	[
-		"Example: <update>Found 3 issues, fixing first</update>",
-		"Multi-step progress. Ongoing work.",
+		'Example: <update status="200">The port is 8080</update>',
+		"200 = complete. This terminates the run with the answer.",
+	],
+	[
+		'Example: <update status="204">No matching entries found</update>',
+		"204 = complete, nothing to report.",
+	],
+	[
+		'Example: <update status="422">Cannot determine without API access</update>',
+		"422 = complete, unable to fulfill.",
 	],
 	[
 		"* Urgent: ONE <update></update> per turn, AT THE END. Not inline narration between tools.",
 		"Single-update-per-turn is the missing rule. Model was emitting 3-6 updates per turn as progress commentary.",
 	],
 	[
-		"* If you'd repeat the same <update></update> as last turn, the work is either stuck or done. Take a different action or <summarize></summarize>.",
-		"Points at the zombie-loop failure mode directly. Gives the model a trigger (same-text-as-prior-update) and two remedies.",
+		'* If you\'d repeat the same <update></update> as last turn, the work is either stuck or done. Take a different action or set status="200".',
+		"Points at the zombie-loop failure mode directly. Gives the model a trigger and a remedy.",
 	],
 	["* YOU MUST keep <update></update> to <= 80 characters", "Length cap."],
 ];

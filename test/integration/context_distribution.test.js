@@ -24,7 +24,7 @@ describe("turn_context distribution bucket correctness", () => {
 		});
 		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", 200);
 		await store.upsert(RUN_ID, 1, "search://1", "search results", 200);
-		await store.upsert(RUN_ID, 1, "summarize://1", "did a thing", 200, {
+		await store.upsert(RUN_ID, 1, "update://1", "did a thing", 200, {
 			fidelity: "demoted",
 		});
 		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", 200);

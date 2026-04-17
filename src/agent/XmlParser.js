@@ -9,7 +9,6 @@ export const ALL_TOOLS = new Set([
 	"sh",
 	"env",
 	"ask_user",
-	"summarize",
 	"update",
 	"think",
 ]);
@@ -91,9 +90,10 @@ function resolveCommand(name, attrs, rawBody) {
 		return { name, ...a, body };
 	}
 
-	if (name === "summarize" || name === "update") {
+	if (name === "update") {
 		const body = trimmed || a.body || "";
-		return { name, body };
+		const status = a.status ? Number(a.status) : 102;
+		return { name, body, status };
 	}
 
 	if (name === "get" || name === "rm") {

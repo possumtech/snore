@@ -389,7 +389,14 @@ export default class AgentLoop {
 					run_id: currentRunId,
 				});
 				const latestSummary = history
-					.filter((e) => e.status === 200 && e.path?.startsWith("summarize://"))
+					.filter((e) => {
+						if (e.tool !== "update") return false;
+						const attrs =
+							typeof e.attributes === "string"
+								? JSON.parse(e.attributes)
+								: e.attributes;
+						return attrs?.status === 200;
+					})
 					.at(-1);
 
 				await this.#hooks.run.state.emit({

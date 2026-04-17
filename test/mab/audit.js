@@ -169,7 +169,10 @@ async function auditQuestion(
 	const newEntries = postEntries.filter((e) => e.turn >= turnBefore);
 
 	// Extract response
-	const summaryEntry = newEntries.find((e) => e.scheme === "summarize");
+	const summaryEntry = newEntries.find(
+		(e) =>
+			e.scheme === "update" && JSON.parse(e.attributes || "{}").status === 200,
+	);
 	const assistantEntries = newEntries
 		.filter((e) => e.scheme === "assistant")
 		.toSorted((a, b) => b.turn - a.turn);

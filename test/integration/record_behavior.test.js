@@ -129,9 +129,9 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		}
 	});
 
-	// --- Summarize/update recording ---
+	// --- Update recording ---
 
-	it("summarize creates entry with slug path", {
+	it("terminal update (status=200) creates entry with slug path", {
 		timeout: TIMEOUT,
 	}, async () => {
 		const r = await client.call("ask", {
@@ -143,12 +143,12 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		});
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const summaries = entries.filter((e) => e.scheme === "summarize");
-		assert.ok(summaries.length > 0, "at least one summarize entry");
-		for (const s of summaries) {
+		const updates = entries.filter((e) => e.scheme === "update");
+		assert.ok(updates.length > 0, "at least one update entry");
+		for (const u of updates) {
 			assert.ok(
-				s.path.startsWith("summarize://"),
-				`summarize path should start with summarize://, got: ${s.path}`,
+				u.path.startsWith("update://"),
+				`update path should start with update://, got: ${u.path}`,
 			);
 		}
 	});

@@ -36,7 +36,7 @@ Example: <get path="known://people/donald_rumsfeld" line="42" limit="12"/>
 
 ## Phase 4: Respond
 
-Required: YOU MUST conclude continuation turns with an <update></update> and conclude final turns with <summarize></summarize>.
+Required: YOU MUST conclude every turn with <update status="102">progress</update> to continue or <update status="200">answer</update> when done.
 
 # Tool Usage
 

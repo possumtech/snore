@@ -220,7 +220,10 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
 	const newEntries = entries.filter((e) => e.turn >= turnBefore);
 
-	const summary = newEntries.find((e) => e.scheme === "summarize");
+	const summary = newEntries.find(
+		(e) =>
+			e.scheme === "update" && JSON.parse(e.attributes || "{}").status === 200,
+	);
 	if (summary?.body) return summary.body;
 
 	const assistant = newEntries
@@ -263,7 +266,11 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 	let judgeText = "";
 	if (dbRun) {
 		const entries = await db.get_known_entries.all({ run_id: dbRun.id });
-		const summary = entries.find((e) => e.scheme === "summarize");
+		const summary = entries.find(
+			(e) =>
+				e.scheme === "update" &&
+				JSON.parse(e.attributes || "{}").status === 200,
+		);
 		if (summary?.body) judgeText = summary.body;
 		if (!judgeText) {
 			const asst = entries

@@ -28,26 +28,19 @@ async function lastResponse(db, runAlias) {
 		run_id: runRow.id,
 	});
 
-	// 1. Summarize entry (the intended terminal signal)
+	// Terminal update (status=200) — the definitive answer
 	const summary = await db.get_latest_summary.get({
 		run_id: runRow.id,
 		loop_id: latestLoop?.id ?? null,
 	});
 	if (summary?.body) return summary.body;
 
+	// Fallback: content entry (raw model text, healed response)
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
-
-	// 2. Content entry (raw model text)
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);
 	if (content.length > 0) return content[0].body;
-
-	// 3. Latest known entry (model stored the answer but didn't summarize)
-	const known = entries
-		.filter((e) => e.scheme === "known" && e.status === 200)
-		.toSorted((a, b) => b.turn - a.turn);
-	if (known.length > 0) return known[0].body;
 
 	return "";
 }

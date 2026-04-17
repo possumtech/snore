@@ -18,8 +18,12 @@ export default class Update {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
+		const updateStatus = entry.attributes?.status ?? 102;
 		const statusPath = await store.slugPath(runId, "update", entry.body);
-		await store.upsert(runId, turn, statusPath, entry.body, 200, { loopId });
+		await store.upsert(runId, turn, statusPath, entry.body, 200, {
+			loopId,
+			attributes: { status: updateStatus },
+		});
 	}
 
 	full(entry) {

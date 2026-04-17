@@ -196,8 +196,11 @@ async function askQuestion(client, db, model, run, question) {
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
 	const newEntries = entries.filter((e) => e.turn >= turnBefore);
 
-	// 1. Summarize entry from the question's turns
-	const summary = newEntries.find((e) => e.scheme === "summarize");
+	// 1. Terminal update (status=200) from the question's turns
+	const summary = newEntries.find(
+		(e) =>
+			e.scheme === "update" && JSON.parse(e.attributes || "{}").status === 200,
+	);
 	if (summary?.body) return summary.body;
 
 	// 2. Raw assistant response — strip XML tags for evaluation

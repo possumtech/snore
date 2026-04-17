@@ -13,7 +13,6 @@ const TOOL_ORDER = [
 	"mv",
 	"ask_user",
 	"update",
-	"summarize",
 	"search",
 ];
 

@@ -58,7 +58,8 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND loop_id = :loop_id
-	AND scheme = 'summarize'
+	AND scheme = 'update'
+	AND json_extract(attributes, '$.status') = 200
 ORDER BY id DESC
 LIMIT 1;
 

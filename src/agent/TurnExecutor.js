@@ -568,40 +568,29 @@ export default class TurnExecutor {
 			});
 		}
 
-		const summaryEntry = recorded.findLast((e) => e.scheme === "summarize");
 		const updateEntry = recorded.findLast((e) => e.scheme === "update");
-		let summaryText = summaryEntry?.body || null;
-		let updateText = updateEntry?.body || null;
+		const updateStatus = updateEntry?.attributes?.status ?? 102;
+		let summaryText = updateStatus === 200 ? updateEntry?.body || null : null;
+		let updateText = updateStatus !== 200 ? updateEntry?.body || null : null;
 
-		// If model sent both, last signal wins — respects the model's final intent
-		if (summaryText && updateText) {
-			const lastLifecycle = recorded.findLast(
-				(e) => e.scheme === "summarize" || e.scheme === "update",
-			);
-			if (lastLifecycle.scheme === "summarize") updateText = null;
-			else summaryText = null;
-		}
-
-		// If model says "done" but actions failed, override — the model's
-		// assertion that it's done is false if it failed to do what it tried.
+		// If model says "done" (status=200) but actions failed, override
 		if (summaryText && hasErrors) {
 			console.warn(
-				"[RUMMY] Overriding <summarize> — actions in this turn failed. Continuing.",
+				'[RUMMY] Overriding <update status="200"> — actions in this turn failed. Continuing.',
 			);
-			// Mark the recorded summarize entry as 409 so the model sees it was rejected
-			if (summaryEntry?.path) {
+			if (updateEntry?.path) {
 				await this.#knownStore.resolve(
 					currentRunId,
-					summaryEntry.path,
+					updateEntry.path,
 					409,
-					"Overridden — actions in this turn failed. Use <update/> until resolved.",
+					"Overridden — actions in this turn failed. Continue with <update/>.",
 				);
 			}
 			updateText = summaryText;
 			summaryText = null;
 		}
 
-		// If model sent neither, heal from content
+		// If model sent no update, heal from content
 		let statusHealed = false;
 		if (!summaryText && !updateText) {
 			const healed = ResponseHealer.healStatus(content, commands);

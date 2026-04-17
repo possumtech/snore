@@ -29,13 +29,11 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.ok(tools.has("rm"), "rm tool registered");
 			assert.ok(tools.has("known"), "known tool registered");
 			assert.ok(tools.has("unknown"), "unknown tool registered");
-			assert.ok(tools.has("summarize"), "summarize tool registered");
 			assert.ok(tools.has("update"), "update tool registered");
 		});
 
 		it("§1.2 ensureTool makes tool appear in tool list", () => {
 			const names = tdb.hooks.tools.names;
-			assert.ok(names.includes("summarize"), "summarize in tool list");
 			assert.ok(names.includes("update"), "update in tool list");
 			assert.ok(names.includes("unknown"), "unknown in tool list");
 		});
@@ -80,9 +78,8 @@ describe("PLUGINS.md Spec Compliance", () => {
 		});
 
 		it("§3.1 ensureTool called explicitly for handler-less tools", () => {
-			// summarize, update, unknown have no on("handler") but are in tool list
+			// update, unknown have no on("handler") but are in tool list
 			const names = tdb.hooks.tools.names;
-			assert.ok(names.includes("summarize"));
 			assert.ok(names.includes("update"));
 			assert.ok(names.includes("unknown"));
 		});
