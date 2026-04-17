@@ -601,21 +601,6 @@ export default class TurnExecutor {
 			statusHealed = true;
 		}
 
-		// If terminal (explicitly or healed), ensure the DB update entry
-		// has status=200 in attributes so get_latest_summary finds it.
-		if (summaryText) {
-			const dbUpdates = await this.#knownStore.getEntriesByPattern(
-				currentRunId,
-				`update://*`,
-			);
-			const latestUpdate = dbUpdates.filter((e) => e.turn === turn).at(-1);
-			if (latestUpdate) {
-				await this.#knownStore.setAttributes(currentRunId, latestUpdate.path, {
-					status: 200,
-				});
-			}
-		}
-
 		// --- Classify for return value ---
 
 		const actionCalls = recorded.filter((e) => ACTION_SCHEMES.has(e.scheme));

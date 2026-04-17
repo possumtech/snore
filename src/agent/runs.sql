@@ -45,7 +45,6 @@ SELECT
 		WHERE
 			ke.run_id = r.id
 			AND ke.scheme = 'update'
-			AND json_extract(ke.attributes, '$.status') = 200
 		ORDER BY ke.id DESC
 		LIMIT 1
 	) AS summary

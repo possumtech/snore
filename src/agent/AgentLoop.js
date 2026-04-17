@@ -443,7 +443,6 @@ export default class AgentLoop {
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
-					await this.#stampTerminalUpdate(currentRunId, result.turn);
 					await this.#db.update_run_status.run({
 						id: currentRunId,
 						status: 200,
@@ -461,7 +460,6 @@ export default class AgentLoop {
 				const progress = healer.assessProgress(result);
 				if (progress.continue) continue;
 
-				await this.#stampTerminalUpdate(currentRunId, result.turn);
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: 200,
@@ -527,19 +525,6 @@ export default class AgentLoop {
 					turns: loopIteration,
 				})
 				.catch(() => {});
-		}
-	}
-
-	async #stampTerminalUpdate(runId, turn) {
-		const updates = await this.#knownStore.getEntriesByPattern(
-			runId,
-			"update://*",
-		);
-		const latest = updates.filter((e) => e.turn === turn).at(-1);
-		if (latest) {
-			await this.#knownStore.setAttributes(runId, latest.path, {
-				status: 200,
-			});
 		}
 	}
 

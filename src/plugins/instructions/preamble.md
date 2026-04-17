@@ -36,8 +36,6 @@ Example: <get path="known://people/donald_rumsfeld" line="42" limit="12"/>
 
 ## Phase 4: Respond
 
-Required: YOU MUST conclude every turn with <update status="102">progress</update> to continue or <update status="200">answer</update> when done.
-
 # Tool Usage
 
 Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require Tool Command operations.
