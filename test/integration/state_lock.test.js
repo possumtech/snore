@@ -24,7 +24,7 @@ describe("State lock: proposed entries block execution", () => {
 
 	it("getUnresolved returns proposed entries", async () => {
 		await store.upsert(RUN_ID, 1, "set://1", "diff content", 202, {
-			attributes: { file: "app.js" },
+			attributes: { path: "app.js" },
 		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);

@@ -132,7 +132,7 @@ describe("KnownStore integration", () => {
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
 			await store.upsert(RUN_ID, 1, "set://1", "", 202, {
-				attributes: { file: "src/app.js", search: "old", replace: "new" },
+				attributes: { path: "src/app.js", search: "old", replace: "new" },
 			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);

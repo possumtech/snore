@@ -13,11 +13,11 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].body, "The answer is 42.");
 		});
 
-		it("parses unknown", () => {
+		it("parses set with unknown path", () => {
 			const { commands } = XmlParser.parse(
-				"<unknown>which session store</unknown>",
+				'<set path="unknown://session_store">which session store</set>',
 			);
-			assert.strictEqual(commands[0].name, "unknown");
+			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].body, "which session store");
 		});
 
@@ -123,13 +123,13 @@ export default {};
 
 		it("parses multiple commands in one response", () => {
 			const input = `<get path="src/config.js"/>
-<unknown>which database adapter</unknown>
+<set path="unknown://database_adapter">which database adapter</set>
 <set path="/:known:framework">Express with passport</set>
 <summarize>Reading config to check port.</summarize>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 4);
 			assert.strictEqual(commands[0].name, "get");
-			assert.strictEqual(commands[1].name, "unknown");
+			assert.strictEqual(commands[1].name, "set");
 			assert.strictEqual(commands[2].name, "set");
 			assert.strictEqual(commands[3].name, "summarize");
 		});
@@ -240,9 +240,9 @@ export default {};
 			assert.strictEqual(commands[0].body, "OAuth2");
 		});
 
-		it("unknown: body in attr", () => {
+		it("set unknown: body in attr", () => {
 			const { commands } = XmlParser.parse(
-				'<unknown body="what is the auth flow?"/>',
+				'<set path="unknown://auth_flow" body="what is the auth flow?"/>',
 			);
 			assert.strictEqual(commands[0].body, "what is the auth flow?");
 		});
@@ -354,7 +354,7 @@ I need to check the port.
 				`<set path="known://task_plan" summary="plan">- [x] find codename\n- [x] reply</set>
 <set path="known://project_info" summary="codename">The project codename is: phoenix</set>
 <rm path="unknown://project_codename"/>
-<summarize>phoenix</summarize>`.replace("</set>\n<set", "</known>\n<set");
+<summarize>phoenix</summarize>`.replace("</set>\n<set", "</update>\n<set");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(
 				commands.length,
@@ -511,9 +511,9 @@ I need to check the port.
 			assert.ok(commands[0].body.includes('type="text"'));
 		});
 
-		it("preserves tags inside known entries", () => {
+		it("preserves tags inside set entries", () => {
 			const { commands } = XmlParser.parse(
-				'<known summary="html,snippet">The template uses <div class="container"><slot name="header"/></div></known>',
+				'<set path="known://html_snippet" summary="html,snippet">The template uses <div class="container"><slot name="header"/></div></set>',
 			);
 			assert.ok(commands[0].body.includes('class="container"'));
 			assert.ok(commands[0].body.includes('name="header"'));
@@ -528,7 +528,7 @@ I need to check the port.
 
 		it("preserves angle brackets in plain text context", () => {
 			const { commands } = XmlParser.parse(
-				"<known>The condition x > 5 && y < 10 is important</known>",
+				'<set path="known://condition">The condition x > 5 && y < 10 is important</set>',
 			);
 			assert.ok(commands[0].body.includes("> 5"));
 		});

@@ -6,13 +6,11 @@ import { parseSed } from "../plugins/hedberg/sed.js";
 const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
 export const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
-	"known",
 	"sh",
 	"env",
 	"ask_user",
 	"summarize",
 	"update",
-	"unknown",
 	"think",
 ]);
 
@@ -93,15 +91,9 @@ function resolveCommand(name, attrs, rawBody) {
 		return { name, ...a, body };
 	}
 
-	if (name === "summarize" || name === "update" || name === "unknown") {
+	if (name === "summarize" || name === "update") {
 		const body = trimmed || a.body || "";
 		return { name, body };
-	}
-
-	if (name === "known") {
-		const body = trimmed || a.body || "";
-		const path = a.path || null;
-		return { name, ...a, path, body };
 	}
 
 	if (name === "get" || name === "rm") {

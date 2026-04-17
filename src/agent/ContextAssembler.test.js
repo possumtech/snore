@@ -211,7 +211,7 @@ describe("ContextAssembler", () => {
 					status: 200,
 					body: "",
 					tokens: 0,
-					attributes: JSON.stringify({ file: "app.js" }),
+					attributes: JSON.stringify({ path: "app.js" }),
 					category: "logging",
 					source_turn: 1,
 				},

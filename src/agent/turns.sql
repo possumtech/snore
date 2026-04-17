@@ -39,12 +39,4 @@ WHERE run_id = :run_id AND context_tokens > 0
 ORDER BY sequence DESC
 LIMIT 1;
 
--- PREP: get_run_log
-SELECT ke.path, ke.status, ke.body, ke.attributes
-FROM known_entries AS ke
-JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
-WHERE
-	ke.run_id = :run_id
-	AND ke.scheme IS NOT NULL
-	AND s.category NOT IN ('knowledge')
-ORDER BY ke.id;
+-- get_run_log retired — use get_results (v_run_log) instead.
