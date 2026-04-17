@@ -443,6 +443,12 @@ export default class AgentLoop {
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
+					await this.#hooks.error.log.emit({
+						runId: currentRunId,
+						turn: result.turn,
+						loopId: currentLoopId,
+						message: repetition.reason,
+					});
 					await this.#db.update_run_status.run({
 						id: currentRunId,
 						status: 200,
@@ -458,6 +464,14 @@ export default class AgentLoop {
 				}
 
 				const progress = healer.assessProgress(result);
+				if (progress.reason) {
+					await this.#hooks.error.log.emit({
+						runId: currentRunId,
+						turn: result.turn,
+						loopId: currentLoopId,
+						message: progress.reason,
+					});
+				}
 				if (progress.continue) continue;
 
 				await this.#db.update_run_status.run({
@@ -492,21 +506,17 @@ export default class AgentLoop {
 				});
 				return { run: currentAlias, status: 499, turn: loopIteration };
 			}
-			console.warn(`[RUMMY] Run failed: ${err.message}`);
-			console.warn(`[RUMMY] Stack: ${err.stack}`);
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: 500,
 			});
 			try {
-				await this.#knownStore.upsert(
-					currentRunId,
-					loopIteration,
-					`error://${loopIteration}`,
-					`${err.message}\n${err.stack}`,
-					500,
-					{ loopId: currentLoopId },
-				);
+				await this.#hooks.error.log.emit({
+					runId: currentRunId,
+					turn: loopIteration,
+					loopId: currentLoopId,
+					message: `${err.message}\n${err.stack}`,
+				});
 			} catch {}
 			const out = {
 				run: currentAlias,

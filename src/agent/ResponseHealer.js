@@ -143,7 +143,6 @@ export default class ResponseHealer {
 		const cycle = detectCycle(this.#turnHistory);
 		if (cycle.detected) {
 			const reason = `Cyclic tool pattern (period ${cycle.period}, ${cycle.cycles} repetitions)`;
-			console.warn(`[RUMMY] Loop detected: ${reason}. Force-completing.`);
 			return { continue: false, reason };
 		}
 
@@ -168,7 +167,6 @@ export default class ResponseHealer {
 		for (const [path, run] of this.#pathRuns) {
 			if (run >= MAX_PATH_STAGNATION) {
 				const reason = `Path stagnation: ${path} touched ${run} consecutive turns`;
-				console.warn(`[RUMMY] ${reason}. Force-completing.`);
 				return { continue: false, reason };
 			}
 		}
@@ -203,8 +201,7 @@ export default class ResponseHealer {
 			if (updateText === this.#lastUpdateText && !madeProgress) {
 				this.#updateRepeatCount++;
 				if (this.#updateRepeatCount >= MAX_UPDATE_REPEATS) {
-					const reason = `Same <update/> repeated ${this.#updateRepeatCount} turns: "${updateText.slice(0, 60)}"`;
-					console.warn(`[RUMMY] Stalled: ${reason}. Force-completing.`);
+					const reason = `Same update repeated ${this.#updateRepeatCount} turns: "${updateText.slice(0, 60)}"`;
 					return { continue: false, reason };
 				}
 			} else {
@@ -218,15 +215,14 @@ export default class ResponseHealer {
 		this.#stallCount++;
 
 		if (this.#stallCount >= MAX_STALLS) {
-			const reason = `${this.#stallCount} turns with no <update/> or <update status="200"/>`;
-			console.warn(`[RUMMY] Stalled: ${reason}. Force-completing.`);
+			const reason = `${this.#stallCount} turns with no update`;
 			return { continue: false, reason };
 		}
 
-		console.warn(
-			`[RUMMY] No <update/> or <update status="200"/> (stall ${this.#stallCount}/${MAX_STALLS})`,
-		);
-		return { continue: true };
+		return {
+			continue: true,
+			reason: `Stall ${this.#stallCount}/${MAX_STALLS}: no update emitted`,
+		};
 	}
 
 	/**
