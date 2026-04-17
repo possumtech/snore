@@ -252,11 +252,6 @@ export default class KnownStore {
 		});
 	}
 
-	async restoreDemotedPrompts(runId) {
-		await this.#db.restore_demoted_prompts.run({ run_id: runId });
-		this.#emitChanged(runId, "prompt://batch", "fidelity");
-	}
-
 	async getLog(runId) {
 		return this.#db.get_results.all({ run_id: runId });
 	}

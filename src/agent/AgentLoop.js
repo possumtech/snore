@@ -1,4 +1,3 @@
-import { advanceRecovery } from "../plugins/budget/recovery.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
 
@@ -270,16 +269,10 @@ export default class AgentLoop {
 		const healer = new ResponseHealer();
 
 		let _lastAssembledTokens = 0;
-		let recovery = null; // { target, promptPath, strikes, lastTokens }
 
 		// Previous loop entries stay at full fidelity — the model is
 		// instructed to demote them. Budget enforcement catches overflow
 		// if the model fails to manage context.
-
-		// Restore any prompt entries left at summary fidelity by a recovery
-		// phase that was interrupted (server crash, restart). If the full
-		// prompt would overflow, Prompt Demotion on turn 1 handles it.
-		await this.#knownStore.restoreDemotedPrompts(currentRunId);
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -327,7 +320,6 @@ export default class AgentLoop {
 					loopIteration,
 					noRepo,
 					toolSet,
-					inRecovery: recovery !== null,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal,
@@ -356,30 +348,6 @@ export default class AgentLoop {
 				}
 
 				_lastAssembledTokens = result.assembledTokens;
-
-				// Budget recovery: enforce progress toward context target.
-				const ra = advanceRecovery(recovery, result);
-				recovery = ra.next;
-				if (ra.action === "restore" && ra.promptPath) {
-					await this.#knownStore.setFidelity(
-						currentRunId,
-						ra.promptPath,
-						"promoted",
-					);
-				}
-				if (ra.action === "hard413") {
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 413,
-					});
-					const out = {
-						run: currentAlias,
-						status: 413,
-						turn: result.turn,
-					};
-					await hook.completed.emit({ projectId, ...out });
-					return out;
-				}
 
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,
@@ -437,9 +405,6 @@ export default class AgentLoop {
 					turn: result.turn,
 					flags: result.flags,
 				});
-
-				// Don't exit while budget recovery is still active.
-				if (recovery !== null) continue;
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
@@ -724,13 +689,3 @@ export default class AgentLoop {
 		return this.#knownStore.getLog(runRow.id);
 	}
 }
-
-/**
- * Pure recovery state transition — exported for testing.
- *
- * @param {object|null} recovery  Current recovery state (mutated copy returned).
- * @param {{ assembledTokens: number, budgetRecovery?: { target: number, promptPath: string|null } }} result
- * @returns {{ next: object|null, action: null|'restore'|'hard413', promptPath: string|null }}
- */
-// Re-export for backward compatibility with tests
-export { advanceRecovery } from "../plugins/budget/recovery.js";

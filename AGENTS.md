@@ -86,51 +86,6 @@ TurnExecutor orchestrates the pipeline; plugins handle specifics:
 - `policy` — ask-mode restrictions via entry.recording filter
 - `think` — gated by RUMMY_THINK, tooldoc registration
 
-## Paradigmatic Refactor: Status vs Lifecycle (Precedes Streaming)
-
-**The confusion:** `known_entries.status` is currently used for two
-distinct concerns — the HTTP outcome of the last body operation AND the
-entry's lifecycle phase. Turn Demotion flips status to 413 on demoted
-entries, overwriting their real outcome with a lifecycle event. We've
-been papering this over with scheme-specific preservation exceptions
-(set/rm/mv/cp keep 200 through budget panic). Adding 102 streaming
-entries would require yet another exception. The exception list is a
-symptom, not a pattern.
-
-**The fix:** `status` reflects body operation outcome only. Lifecycle
-events (budget demotion, archive, supersede) change `fidelity` but
-never `status`. The model reads status for truth about the operation
-and fidelity for visibility — two orthogonal signals, legible separately.
-
-**Scope (minimum viable):**
-
-- `demote_turn_entries` SQL: only changes `fidelity` and `updated_at`.
-  Drop the scheme-specific status-preservation CASE — it becomes the
-  default for everything.
-- `budget/budget.js` post-dispatch: drop the get-result body rewrite
-  that forces status=413. The get-result entry's original outcome
-  (status=200, body "X promoted (N tokens)") stays truthful; fidelity
-  demoted signals it's no longer in context. The budget:// entry is
-  the canonical panic record.
-- Tests: `test/integration/budget_demotion.test.js` — update assertions
-  to expect preserved status (200 stays 200 after demotion).
-- Diff estimate: ~25 lines source + ~15 lines test. Clear cuts, no new
-  columns, no migration.
-
-**What we lose:** the "which entries were demoted by this turn's panic?"
-question becomes "which entries have fidelity=demoted AND were written
-on turn N?" instead of "which entries have status=413 AND turn=N." The
-budget:// entry already records the event authoritatively; per-entry
-status=413 was redundant signal.
-
-**What we gain:** streaming entries at status=102 pass through budget
-demotion without needing a special case. Future lifecycle events (sub-
-agent spawn, file watch start, whatever) don't accrete new status-
-preservation exceptions. The data model matches reality: operation
-outcome and lifecycle phase are different facts.
-
-This refactor lands first, then streaming builds on the cleaner base.
-
 ## Streaming Shell / Env (Design Sketch — v1)
 
 Shell and env commands vary in duration by orders of magnitude (0.5s for
@@ -303,58 +258,6 @@ distinction is semantic data the model reads, not an API boundary the
 system enforces. Parallel execution, cancellation, timeout — all
 uniform operations on entries rather than per-tool machinery.
 
-## Completed This Session (2026-04-15 — 2026-04-17)
-
-### Streaming v1
-- [x] `stream/aborted` — client-initiated cancellation (→ 499)
-- [x] `stream/cancel` — server-initiated cancellation + notification
-- [x] Stale 102 cleanup via `stream/cancel`
-
-### Client contract unification
-- [x] Unified history shape: `{ tool, path, status, body, turn, attributes }`
-- [x] Incremental `run/state` after every tool dispatch
-- [x] History includes prompt, unknown, and logging entries
-- [x] `get_history` retired — one query, one view, one contract
-
-### Parser hardening
-- [x] Retired `<known>`/`<unknown>` emission tags from tooldocs
-- [x] `#correctMismatchedCloses` preprocess in XmlParser
-- [x] `#neutralizeCodeSpans` — backtick-quoted tool tags ignored
-- [x] Removed `known` and `unknown` from ALL_TOOLS
-
-### `<summarize>` → `<update status="200">`
-- [x] Update tool carries status attribute for lifecycle
-- [x] Summarize plugin deleted, scheme retired
-- [x] All SQL queries, tests, benchmark runners updated
-- [x] ResponseHealer returns warning strings, no console.warn
-
-### Error plugin
-- [x] `error` scheme: `category: "logging", model_visible: 1`
-- [x] Error plugin: `hooks.error.log.emit()` → entry creation
-- [x] XmlParser warnings, missing status, healer, dispatch crashes,
-  cycle detection, stall detection — all emit error hook
-- [x] ResponseHealer: zero console calls, all feedback via entries
-
-### Set handler unification
-- [x] Uniform result shape for file writes and scheme writes
-- [x] `attrs.file` → `attrs.path` everywhere
-- [x] Direct scheme writes produce SEARCH/REPLACE diffs
-- [x] New file proposals auto-activate via file constraint
-
-### rummy.web
-- [x] `http`/`https` scheme registration (content was invisible)
-- [x] Search prefetch with real token counts
-- [x] Persistent browser context with 15-min idle timeout
-- [x] 5-second prefetch timeout, failed pages suppressed
-- [x] Get handler: prefetched URLs promote without refetch
-
-### Bug fixes
-- [x] Policy-rejected entries no longer dispatched (SQLite crash)
-- [x] Empty SEARCH block = full replacement, not prepend
-- [x] Sed replacement unescapes regex metacharacters (`\[x\]` → `[x]`)
-- [x] Resolve handler applies patches to new files (null body → "")
-- [x] Dispatch crash recovery (try/catch, error entry, abort cascade)
-
 ## Next: Modularization & Dead Code Review
 
 ### Goal
@@ -391,19 +294,61 @@ recovery. Remove it.
 - [ ] Budget warnings → error:// entries (only when exceeded)
 - [ ] Update LME system.md benchmark prompt
 
-### Phase 3: Budget code out of TurnExecutor
+### Phase 3: Plugin code out of TurnExecutor
 
-TurnExecutor currently:
-- Materializes context twice (pre-LLM and post-dispatch)
-- Calls `budget.enforce` and `budget.postDispatch` directly
-- Handles Prompt Demotion inline
-- Passes budget results back to AgentLoop
+**Principle:** TurnExecutor is an orchestrator. Its only jobs are turn
+row creation, RummyContext skeleton, hook emission sequencing, and the
+record+dispatch loop (sequential queue, abort cascade, proposal wait).
+Every scheme-specific or lifecycle-specific decision belongs in the
+plugin that owns it. Rough target: ~250 orchestration lines, down from
+~730. Prior refactors stopped at "budget is big, move budget" — the
+same rule applies to every plugin whose knowledge currently lives in
+core.
 
-All of this should be budget plugin concern:
-- [ ] `budget.enforce` moves to a `turn.started` or `llm.request` hook
-- [ ] `budget.postDispatch` moves to a `turn.completed` hook
-- [ ] Prompt Demotion moves into budget plugin
+**Tier 1 — core orchestration that's actually plugin work:**
+
+- [ ] `#materializeTurnContext` (lines 37-128) moves into budget or a
+  dedicated context plugin. TurnExecutor emits a hook and receives
+  messages. Currently called three times inline with budget logic
+  around each — the clearest smell.
+- [ ] `budget.enforce` call (255-265) moves to a `turn.started` or
+  `llm.request` hook
+- [ ] `budget.postDispatch` call (551-572) moves to a `turn.completed` hook
+- [ ] Prompt Demotion (267-324): first-turn 413 → demote prompt →
+  re-materialize → re-enforce — moves into budget plugin
+- [ ] Scheme classification constants (`ACTION_SCHEMES`,
+  `MUTATION_SCHEMES`, `READ_SCHEMES` at 7-18; `hasAct/hasReads/hasWrites`
+  at 627-638) die. Each plugin declares its scheme's category and
+  mutation/read flags at registration. Core queries via
+  `hooks.tools.classify(scheme)` or equivalent.
 - [ ] TurnExecutor drops all budget imports and variables
+
+**Tier 2 — plugin-specific logic leaking into core:**
+
+- [ ] `instructions://system` projection (208-226): path, scheme, and
+  category all hardcoded in core → `instructions` plugin exposes
+  `resolveSystemPrompt` or emits via hook
+- [ ] `<think>` tag → `reasoning_content` merge (411-421) → `think`
+  plugin subscribes to `turn.response` filter
+- [ ] `<update status="200">` override when actions failed (591-606):
+  core reaches into `knownStore.resolve` to force 409 → `update`
+  plugin owns this lifecycle rule via a post-dispatch hook
+- [ ] ResponseHealer "no update entry, heal from content" fallback
+  (608-623) → `update` plugin subscribes and fills the gap
+
+**Tier 3 — arguable, defer until Tier 1+2 land:**
+
+- [ ] LLM retry loop (338-378): 503/429/timeout backoff and
+  context-exceeded detection → `llm.request` hook chain or provider
+  wrapper. Carries two of the remaining `console.warn` calls flagged
+  in Phase 4.
+- [ ] Incremental `run.state` push after each dispatch (494-507):
+  plausibly a `state` plugin concern, but currently tightly coupled
+  to the dispatch loop's waterfall semantics. Leave for now.
+
+**Exit criterion:** TurnExecutor imports neither budget, instructions,
+think, update, nor scheme classification tables. What remains is hook
+emission and sequential queue mechanics.
 
 ### Phase 4: Dead code and stale patterns
 

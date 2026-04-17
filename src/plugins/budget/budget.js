@@ -119,10 +119,5 @@ export default class Budget {
 		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
 			loopId,
 		});
-
-		return {
-			target: ceiling,
-			promptPath: promptRow?.path ?? null,
-		};
 	}
 }

@@ -139,22 +139,10 @@ export default class TurnExecutor {
 		loopIteration,
 		noRepo,
 		toolSet,
-		inRecovery = false,
 		contextSize,
 		options,
 		signal,
 	}) {
-		const RECOVERY_EXCLUDED = new Set([
-			"sh",
-			"env",
-			"search",
-			"ask_user",
-			"set",
-		]);
-		const effectiveToolSet = inRecovery
-			? new Set([...toolSet].filter((t) => !RECOVERY_EXCLUDED.has(t)))
-			: toolSet;
-
 		const turn = await this.#knownStore.nextTurn(currentRunId);
 
 		const turnRow = await this.#db.create_turn.get({
@@ -187,7 +175,7 @@ export default class TurnExecutor {
 				loopId: currentLoopId,
 				turnId: turnRow.id,
 				noRepo,
-				toolSet: effectiveToolSet,
+				toolSet,
 				contextSize,
 				systemPrompt: null,
 				loopPrompt,
@@ -234,7 +222,7 @@ export default class TurnExecutor {
 				turn,
 				systemPrompt,
 				mode,
-				toolSet: effectiveToolSet,
+				toolSet,
 				contextSize,
 				demoted,
 			});
@@ -283,7 +271,7 @@ export default class TurnExecutor {
 					turn,
 					systemPrompt,
 					mode,
-					toolSet: effectiveToolSet,
+					toolSet,
 					contextSize,
 					demoted,
 				});
@@ -543,11 +531,8 @@ export default class TurnExecutor {
 		}
 
 		// Turn Demotion: if end-of-turn context exceeds ceiling, demote this
-		// turn's data entries and the incoming prompt to summary, then force a
-		// budget recovery phase before continuing.
-		let budgetRecovery = null;
-		// Use actual prompt_tokens from this turn's LLM response as the ground-truth
-		// Post-dispatch budget check — demotion handled by budget plugin
+		// turn's promoted entries. Budget plugin writes the budget:// entry;
+		// model reads it next turn and adjusts.
 		if (contextSize) {
 			const postMat = await this.#materializeTurnContext({
 				runId: currentRunId,
@@ -555,11 +540,11 @@ export default class TurnExecutor {
 				turn,
 				systemPrompt,
 				mode,
-				toolSet: effectiveToolSet,
+				toolSet,
 				contextSize,
 				demoted,
 			});
-			budgetRecovery = await this.#hooks.budget.postDispatch({
+			await this.#hooks.budget.postDispatch({
 				contextSize,
 				messages: postMat.messages,
 				rows: postMat.rows,
@@ -656,7 +641,6 @@ export default class TurnExecutor {
 			contextSize,
 			assembledTokens,
 			usage: result.usage,
-			budgetRecovery,
 		};
 
 		await this.#hooks.turn.completed.emit(turnResult);
