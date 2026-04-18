@@ -373,22 +373,41 @@ Plan in `SCHEMA_V2.md`. Phases B and C landed:
   integration) pass. Currently: all entries land at `scope=run:${runId}`
   — Phase D turns scope into a first-class plugin-declared concept.
 
-**Phase D (remaining): scope + permissions.**
+**Phase D landed.** Scope + permissions mechanism in place:
 
-- [ ] `schemes` table: add `default_scope` + `writable_by` columns.
-- [ ] Plugins declare `scope` and `writableBy` at `registerScheme`.
-  (e.g. wiki: `scope: "global", writableBy: ["plugin"]`.)
-- [ ] Repository resolves scope from scheme at `writeEntry` / `upsert`
-  (today hardcoded to `run:${runId}`).
-- [ ] Permission check: `writer` ∉ `writableBy` → reject with 403 +
-  error:// entry.
-- [ ] `policy` plugin's ask-mode filter reframed as a writer-capability
-  narrowing on top of the generalized permission system.
-- [ ] Write a `wiki` or similar demo plugin to validate end-to-end.
+- `schemes` table gains `default_scope` (`run` | `project` | `global`)
+  and `writable_by` (JSON array of `model` | `plugin` | `system`).
+- `registerScheme({ scope, writableBy })` on PluginContext, validated.
+- `KnownStore.upsert(..., { writer })` resolves scope via scheme lookup
+  and enforces `writer ∈ writable_by` (throws `403: writer "X" not
+  permitted for scheme "Y"` on violation).
+- `RummyContext.writer` carries writer identity for handlers (defaults
+  to `'model'`).
+- Audit schemes declared `writable_by=['system']`; prompt scheme
+  declared `writable_by=['plugin']`; other schemes stay
+  `['model', 'plugin']` (permissive, matches pre-D behavior).
+- Telemetry plugin explicitly passes `writer: 'system'` for audit
+  writes.
+- Lazy scheme loading in KnownStore — loads on first permission check,
+  so ad-hoc `new KnownStore(db)` (common in tests) works transparently.
 
-COALESCE(scheme, 'file') cleanup deferred to Phase D or beyond —
-wasn't load-bearing for the split. The `schemeOf` behavior stayed
-unchanged and the compat VIEW handles it.
+**Not yet done** (future, smaller):
+
+- Handlers (`set`, `rm`, etc.) don't yet plumb `writer: rummy.writer`
+  into store.upsert. Today the default `'plugin'` is permissive enough
+  because all model-facing schemes are `['model', 'plugin']`. When a
+  restrictive scheme lands (wiki-class, plugin-only), handlers will
+  need to pass writer explicitly to prevent model writes from
+  appearing as plugin writes.
+- `'project'` scope resolution falls back to `run:${runId}`
+  (projectId isn't plumbed to Repository). Add when the first
+  project-scoped scheme lands.
+- Policy plugin's ask-mode filter not yet reframed as a writer-
+  capability narrowing on top of the permission system. Works today
+  via the older `entry.recording` filter pattern; migration is a
+  cleanup when ask/act mode semantics evolve.
+
+COALESCE(scheme, 'file') cleanup still deferred — orthogonal.
 
 ### Phase 3: E2E reliability
 

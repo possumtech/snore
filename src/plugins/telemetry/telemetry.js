@@ -87,25 +87,18 @@ export default class Telemetry {
 		userMsg,
 	}) {
 		const { entries: store, runId, loopId } = rummy;
+		// Audit schemes are system-only writes (see initPlugins).
+		const systemOpts = { loopId, fidelity: "archived", writer: "system" };
 
 		// assistant://N — the model's raw response
-		await store.upsert(runId, turn, `assistant://${turn}`, content, 200, {
-			loopId,
-			fidelity: "archived",
-		});
+		await store.upsert(runId, turn, `assistant://${turn}`, content, 200, systemOpts);
 
 		// system://N, user://N — assembled messages as audit
 		if (systemMsg) {
-			await store.upsert(runId, turn, `system://${turn}`, systemMsg, 200, {
-				loopId,
-				fidelity: "archived",
-			});
+			await store.upsert(runId, turn, `system://${turn}`, systemMsg, 200, systemOpts);
 		}
 		if (userMsg) {
-			await store.upsert(runId, turn, `user://${turn}`, userMsg, 200, {
-				loopId,
-				fidelity: "archived",
-			});
+			await store.upsert(runId, turn, `user://${turn}`, userMsg, 200, systemOpts);
 		}
 
 		// model://N — raw API response diagnostics
@@ -121,7 +114,7 @@ export default class Telemetry {
 				model: result.model || null,
 			}),
 			200,
-			{ loopId, fidelity: "archived" },
+			systemOpts,
 		);
 
 		// reasoning://N
@@ -132,7 +125,7 @@ export default class Telemetry {
 				`reasoning://${turn}`,
 				responseMessage.reasoning_content,
 				200,
-				{ loopId, fidelity: "archived" },
+				systemOpts,
 			);
 		}
 
@@ -144,6 +137,7 @@ export default class Telemetry {
 			await store.upsert(runId, turn, `content://${turn}`, unparsed, 400, {
 				loopId,
 				fidelity: "promoted",
+				writer: "system",
 			});
 		}
 

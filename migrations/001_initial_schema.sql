@@ -11,6 +11,10 @@ CREATE TABLE IF NOT EXISTS schemes (
 	name TEXT PRIMARY KEY
 	, model_visible BOOLEAN NOT NULL DEFAULT 1
 	, category TEXT
+	, default_scope TEXT NOT NULL DEFAULT 'run'
+		CHECK (default_scope IN ('run', 'project', 'global'))
+	, writable_by JSON NOT NULL DEFAULT '["model","plugin"]'
+		CHECK (json_valid(writable_by))
 );
 
 -- Schemes are registered by plugins at startup via core.registerScheme().

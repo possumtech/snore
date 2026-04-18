@@ -83,6 +83,17 @@ export default class RummyContext {
 		return this.#context.loopPrompt || "";
 	}
 
+	/**
+	 * Writer identity for Repository permission checks. Defaults to
+	 * 'model' in the handler dispatch path — handlers write on behalf
+	 * of the model's emitted command. Non-handler plugin code (streaming
+	 * callbacks, background emissions) passes `writer: 'plugin'` or
+	 * `'system'` explicitly when calling the store.
+	 */
+	get writer() {
+		return this.#context.writer || "model";
+	}
+
 	get system() {
 		return this.#root.children.find((c) => c.tag === "system");
 	}

@@ -66,9 +66,15 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("audit entries hidden from model context", async () => {
-		await store.upsert(runId, 1, "system://1", "system prompt", 200);
-		await store.upsert(runId, 1, "assistant://1", "model response", 200);
-		await store.upsert(runId, 1, "model://1", "{}", 200);
+		// Audit schemes are system-only in production; tests simulating
+		// them use writer: "system" to match.
+		await store.upsert(runId, 1, "system://1", "system prompt", 200, {
+			writer: "system",
+		});
+		await store.upsert(runId, 1, "assistant://1", "model response", 200, {
+			writer: "system",
+		});
+		await store.upsert(runId, 1, "model://1", "{}", 200, { writer: "system" });
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const audit = rows.filter((r) =>
 			["system://1", "assistant://1", "model://1"].includes(r.path),

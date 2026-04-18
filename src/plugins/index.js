@@ -45,17 +45,26 @@ const PROMPT_SCHEMES = ["prompt"];
  */
 export async function initPlugins(db, store, hooks) {
 	for (const name of AUDIT_SCHEMES) {
+		// Audit schemes are written only by system-level code (reasoning,
+		// user/assistant/model messages, etc.). Closing the door on model
+		// writes and plugin writes here.
 		await db.upsert_scheme.run({
 			name,
 			model_visible: 0,
 			category: "audit",
+			default_scope: "run",
+			writable_by: JSON.stringify(["system"]),
 		});
 	}
 	for (const name of PROMPT_SCHEMES) {
+		// Prompt entries are created by the prompt plugin on user input;
+		// model doesn't emit <set path="prompt://...">.
 		await db.upsert_scheme.run({
 			name,
 			model_visible: 1,
 			category: "prompt",
+			default_scope: "run",
+			writable_by: JSON.stringify(["plugin"]),
 		});
 	}
 
@@ -82,11 +91,13 @@ export async function initPlugins(db, store, hooks) {
 				name: toolName,
 				model_visible: 1,
 				category: "logging",
+				default_scope: "run",
+				writable_by: JSON.stringify(["model", "plugin"]),
 			});
 		}
 	}
 
-	if (store) store.loadSchemes(db);
+	if (store) await store.loadSchemes(db);
 }
 
 function resolvePlugin(packageName) {

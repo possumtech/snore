@@ -48,22 +48,46 @@ export default class PluginContext {
 		return this.#schemes;
 	}
 
-	registerScheme({ name, modelVisible = 1, category = "logging" } = {}) {
+	registerScheme({
+		name,
+		modelVisible = 1,
+		category = "logging",
+		scope = "run",
+		writableBy = ["model", "plugin"],
+	} = {}) {
 		if (!PluginContext.CATEGORIES.has(category)) {
 			throw new Error(
 				`Invalid category "${category}". Must be one of: ${[...PluginContext.CATEGORIES].join(", ")}`,
 			);
 		}
+		if (!PluginContext.SCOPES.has(scope)) {
+			throw new Error(
+				`Invalid scope "${scope}". Must be one of: ${[...PluginContext.SCOPES].join(", ")}`,
+			);
+		}
+		for (const w of writableBy) {
+			if (!PluginContext.WRITERS.has(w)) {
+				throw new Error(
+					`Invalid writer "${w}" in writableBy. Must be one of: ${[...PluginContext.WRITERS].join(", ")}`,
+				);
+			}
+		}
 		this.#schemes.push({
 			name: name || this.#name,
 			model_visible: modelVisible,
 			category,
+			default_scope: scope,
+			writable_by: JSON.stringify(writableBy),
 		});
 	}
 
 	static CATEGORIES = Object.freeze(
 		new Set(["data", "logging", "unknown", "prompt"]),
 	);
+
+	static SCOPES = Object.freeze(new Set(["run", "project", "global"]));
+
+	static WRITERS = Object.freeze(new Set(["model", "plugin", "system"]));
 
 	ensureTool() {
 		this.#hooks.tools.ensureTool(this.#name);

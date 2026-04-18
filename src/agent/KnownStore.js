@@ -4,6 +4,7 @@ export default class KnownStore {
 	#db;
 	#onChanged;
 	#schemes = new Map();
+	#schemesLoaded = null;
 	#seq = 0;
 	#pendingResolutions = new Map();
 
@@ -12,12 +13,23 @@ export default class KnownStore {
 		this.#onChanged = onChanged || null;
 	}
 
+	/**
+	 * Populate the scheme cache. Can be called explicitly (e.g. at boot
+	 * after initPlugins finishes) or runs lazily on first need. Idempotent.
+	 */
 	async loadSchemes(db) {
 		const rows = await (db || this.#db).get_all_schemes.all();
 		this.#schemes.clear();
 		for (const row of rows) {
 			this.#schemes.set(row.name, row);
 		}
+	}
+
+	async #ensureSchemes() {
+		if (!this.#schemesLoaded) {
+			this.#schemesLoaded = this.loadSchemes();
+		}
+		return this.#schemesLoaded;
 	}
 
 	#emitChanged(runId, path, changeType) {
@@ -77,6 +89,39 @@ export default class KnownStore {
 		return `${prefix}${base}_${++this.#seq}`;
 	}
 
+	/**
+	 * Resolve a scheme's declared scope kind + writer list. Falls back to
+	 * generous defaults (run + model/plugin) if the scheme isn't loaded
+	 * or lacks declarations — preserves V1 behavior for legacy paths.
+	 */
+	async #schemeRules(scheme) {
+		await this.#ensureSchemes();
+		const row = scheme ? this.#schemes.get(scheme) : null;
+		const kind = row?.default_scope || "run";
+		let writers = ["model", "plugin"];
+		if (row?.writable_by) {
+			try {
+				const parsed =
+					typeof row.writable_by === "string"
+						? JSON.parse(row.writable_by)
+						: row.writable_by;
+				if (Array.isArray(parsed)) writers = parsed;
+			} catch {}
+		}
+		return { kind, writers };
+	}
+
+	#resolveScope(kind, runId) {
+		if (kind === "global") return "global";
+		if (kind === "project") {
+			// Phase D doesn't plumb projectId into the Repository yet; project-
+			// scoped schemes need a follow-up to pass it through. Falling back
+			// to run-scope keeps behavior sane until then.
+			return `run:${runId}`;
+		}
+		return `run:${runId}`;
+	}
+
 	async upsert(
 		runId,
 		turn,
@@ -88,11 +133,20 @@ export default class KnownStore {
 			attributes = null,
 			hash = null,
 			loopId = null,
+			writer = "plugin",
 		} = {},
 	) {
 		const normalized = KnownStore.normalizePath(path);
-		// Phase C: scope is always run-local. Phase D lets schemes declare scope.
-		const scope = `run:${runId}`;
+		const scheme = KnownStore.scheme(normalized);
+		const { kind, writers } = await this.#schemeRules(scheme);
+
+		if (!writers.includes(writer)) {
+			throw new Error(
+				`403: writer "${writer}" not permitted for scheme "${scheme ?? "file"}" (allowed: ${writers.join(", ")})`,
+			);
+		}
+
+		const scope = this.#resolveScope(kind, runId);
 		const entry = await this.#db.upsert_entry.get({
 			scope,
 			path: normalized,
