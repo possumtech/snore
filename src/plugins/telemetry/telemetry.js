@@ -163,7 +163,7 @@ export default class Telemetry {
 		// Use LLM's actual prompt_tokens as the ground-truth context size when available.
 		// This back-fills context_tokens so get_last_context_tokens reflects reality for the next turn.
 		const actualContextTokens = usage.prompt_tokens || assembledTokens || 0;
-		await rummy.db.update_turn_stats.run({
+		await rummy.entries.updateTurnStats({
 			id: rummy.turnId,
 			context_tokens: actualContextTokens,
 			reasoning_content: responseMessage?.reasoning_content || null,

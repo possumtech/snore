@@ -43,7 +43,7 @@ export default class Instructions {
 
 	async onTurnStarted({ rummy }) {
 		const { entries: store, sequence: turn, runId } = rummy;
-		const runRow = await rummy.db.get_run_by_id.get({ id: runId });
+		const runRow = await store.getRun(runId);
 		const toolSet = rummy.toolSet
 			? [...rummy.toolSet]
 			: this.#core.hooks.tools.names;

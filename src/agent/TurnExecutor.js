@@ -285,9 +285,7 @@ export default class TurnExecutor {
 
 			// Push incremental state so the client waterfall builds live.
 			const history = await this.#knownStore.getLog(currentRunId);
-			const unknowns = await this.#db.get_unknowns.all({
-				run_id: currentRunId,
-			});
+			const unknowns = await this.#knownStore.getUnknowns(currentRunId);
 			await this.#hooks.run.state.emit({
 				projectId,
 				run: currentAlias,
@@ -311,10 +309,10 @@ export default class TurnExecutor {
 					proposed: [p],
 				});
 				await this.#knownStore.waitForResolution(currentRunId, p.path);
-				const resolved = await this.#db.get_entry_state.get({
-					run_id: currentRunId,
-					path: p.path,
-				});
+				const resolved = await this.#knownStore.getState(
+					currentRunId,
+					p.path,
+				);
 				if (resolved?.status >= 400) {
 					hasErrors = true;
 					abortAfter = entry.scheme;
@@ -324,10 +322,7 @@ export default class TurnExecutor {
 			// Also check the entry itself for direct failures
 			if (!hasErrors) {
 				const entryPath = entry.resultPath || entry.path;
-				const row = await this.#db.get_entry_state.get({
-					run_id: currentRunId,
-					path: entryPath,
-				});
+				const row = await this.#knownStore.getState(currentRunId, entryPath);
 				if (row?.status >= 400) {
 					hasErrors = true;
 					abortAfter = entry.scheme;

@@ -87,22 +87,26 @@ export default class KnownStore {
 			fidelity = "promoted",
 			attributes = null,
 			hash = null,
-			updatedAt = null,
 			loopId = null,
 		} = {},
 	) {
 		const normalized = KnownStore.normalizePath(path);
-		await this.#db.upsert_known_entry.run({
-			run_id: runId,
-			loop_id: loopId,
-			turn,
+		// Phase C: scope is always run-local. Phase D lets schemes declare scope.
+		const scope = `run:${runId}`;
+		const entry = await this.#db.upsert_entry.get({
+			scope,
 			path: normalized,
 			body,
+			attributes: attributes ? JSON.stringify(attributes) : null,
+			hash,
+		});
+		await this.#db.upsert_run_view.run({
+			run_id: runId,
+			entry_id: entry.id,
+			loop_id: loopId,
+			turn,
 			status,
 			fidelity,
-			hash,
-			attributes: attributes ? JSON.stringify(attributes) : null,
-			updated_at: updatedAt,
 		});
 		this.#emitChanged(runId, normalized, "upsert");
 	}
@@ -218,23 +222,35 @@ export default class KnownStore {
 	}
 
 	async updateBodyByPattern(runId, path, body, newBody) {
-		await this.#db.update_body_by_pattern.run({
+		const args = {
 			run_id: runId,
 			path,
 			body: KnownStore.#bodyPattern(body),
 			new_body: newBody,
+		};
+		await this.#db.update_body_by_pattern.run(args);
+		await this.#db.bump_write_count_by_pattern.run({
+			run_id: runId,
+			path,
+			body: KnownStore.#bodyPattern(body),
 		});
 		this.#emitChanged(runId, path, "body");
 	}
 
 	async resolve(runId, path, status, body) {
 		const normalized = KnownStore.normalizePath(path);
-		await this.#db.resolve_known_entry.run({
+		await this.#db.resolve_known_entry_view.run({
 			run_id: runId,
 			path: normalized,
 			status,
-			body,
 		});
+		if (body != null) {
+			await this.#db.resolve_known_entry_body.run({
+				run_id: runId,
+				path: normalized,
+				body,
+			});
+		}
 		this.#emitChanged(runId, normalized, "resolve");
 		const key = `${runId}:${normalized}`;
 		const resolver = this.#pendingResolutions.get(key);
@@ -293,6 +309,56 @@ export default class KnownStore {
 	async getUnknownValues(runId) {
 		const rows = await this.#db.get_unknown_values.all({ run_id: runId });
 		return new Set(rows.map((r) => r.body));
+	}
+
+	/**
+	 * Unknown entries for a run, in DB order. Rows include path + body.
+	 */
+	async getUnknowns(runId) {
+		return this.#db.get_unknowns.all({ run_id: runId });
+	}
+
+	/**
+	 * Cheap view-only fork in V2. Today: copies all entries. Same signature
+	 * so the eventual swap is internal to this method.
+	 */
+	async forkEntries(parentRunId, childRunId) {
+		await this.#db.fork_known_entries.run({
+			new_run_id: childRunId,
+			parent_run_id: parentRunId,
+		});
+	}
+
+	/**
+	 * Demote all promoted entries for a run on a given turn. Returns the
+	 * affected rows (path, tokens) so callers can summarize.
+	 *
+	 * Implemented as SELECT-then-UPDATE because SQLite's RETURNING doesn't
+	 * support the cross-table lookup needed to report content paths/tokens
+	 * from the view-layer update.
+	 */
+	async demoteTurnEntries(runId, turn) {
+		const targets = await this.#db.get_turn_demotion_targets.all({
+			run_id: runId,
+			turn,
+		});
+		await this.#db.demote_turn_entries.run({ run_id: runId, turn });
+		return targets;
+	}
+
+	/**
+	 * Run metadata lookup. Exposed here so plugins don't reach into
+	 * core.db for run-scoped lookups.
+	 */
+	async getRun(runId) {
+		return this.#db.get_run_by_id.get({ id: runId });
+	}
+
+	/**
+	 * Turn-level usage stats write (telemetry). Same rationale as getRun.
+	 */
+	async updateTurnStats(stats) {
+		return this.#db.update_turn_stats.run(stats);
 	}
 
 	async getBody(runId, path) {

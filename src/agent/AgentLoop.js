@@ -49,10 +49,7 @@ export default class AgentLoop {
 				persona: options?.persona ?? null,
 				context_limit: options?.contextLimit ?? null,
 			});
-			await this.#db.fork_known_entries.run({
-				new_run_id: runRow.id,
-				parent_run_id: existingRun.id,
-			});
+			await this.#knownStore.forkEntries(existingRun.id, runRow.id);
 			await this.#hooks.run.created.emit({
 				runId: runRow.id,
 				alias,
@@ -353,9 +350,7 @@ export default class AgentLoop {
 					run_id: currentRunId,
 				});
 				const history = await this.#knownStore.getLog(currentRunId);
-				const unknowns = await this.#db.get_unknowns.all({
-					run_id: currentRunId,
-				});
+				const unknowns = await this.#knownStore.getUnknowns(currentRunId);
 				const latestSummary = history
 					.filter((e) => {
 						if (e.tool !== "update") return false;
@@ -615,12 +610,12 @@ export default class AgentLoop {
 					// references the data entries. resolve() above already set
 					// status=200; this is just body replacement to make the log
 					// entry self-documenting in <performed>.
-					await this.#db.resolve_known_entry.run({
-						run_id: runId,
+					await this.#knownStore.resolve(
+						runId,
 						path,
-						body: `ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
-						status: 200,
-					});
+						200,
+						`ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
+					);
 				}
 			}
 		} else if (action === "reject") {

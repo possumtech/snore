@@ -83,12 +83,7 @@ describe("Streaming primitives", () => {
 			await store.appendBody(runId, path, "ran ok\n");
 
 			// Simulate stream/completed — transition to terminal status.
-			await tdb.db.resolve_known_entry.run({
-				run_id: runId,
-				path,
-				body: "ran ok\n",
-				status: 200,
-			});
+			await store.resolve(runId, path, 200, "ran ok\n");
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -104,12 +99,7 @@ describe("Streaming primitives", () => {
 			await store.upsert(runId, 1, path, "", 102, { fidelity: "demoted" });
 			await store.appendBody(runId, path, "error output\n");
 
-			await tdb.db.resolve_known_entry.run({
-				run_id: runId,
-				path,
-				body: "error output\n",
-				status: 500,
-			});
+			await store.resolve(runId, path, 500, "error output\n");
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -151,12 +141,7 @@ describe("Streaming primitives", () => {
 			assert.strictEqual(channels.length, 2, "both channels found");
 
 			for (const ch of channels) {
-				await tdb.db.resolve_known_entry.run({
-					run_id: runId,
-					path: ch.path,
-					body: ch.body,
-					status: 200,
-				});
+				await store.resolve(runId, ch.path, 200, ch.body);
 			}
 
 			const all = await tdb.db.get_known_entries.all({ run_id: runId });

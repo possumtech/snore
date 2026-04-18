@@ -110,50 +110,88 @@ CREATE TABLE IF NOT EXISTS file_constraints (
 CREATE INDEX IF NOT EXISTS idx_file_constraints_project
 ON file_constraints (project_id);
 
--- Known K/V Store: the unified state machine.
--- Files, knowledge, tool results, audit — everything is a keyed entry.
+-- Entries: content-addressable by (scope, path). The actual payload.
+-- scope: 'global' | 'project:N' | 'run:N'. Determines read access.
 -- scheme: derived from path via schemeOf(). Generated column.
--- status: HTTP status code (2xx success, 4xx model error, 5xx system error).
--- fidelity: visibility level, independently managed by relevance engine.
-CREATE TABLE IF NOT EXISTS known_entries (
+-- No fidelity, status, turn, loop — those are view-side concerns.
+CREATE TABLE IF NOT EXISTS entries (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, scope TEXT NOT NULL
+	, path TEXT NOT NULL CHECK (length(path) <= 2048)
+	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
+	, body TEXT NOT NULL DEFAULT ''
+	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
+	, hash TEXT
+	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_scope_path
+ON entries (scope, path);
+CREATE INDEX IF NOT EXISTS idx_entries_scope_scheme
+ON entries (scope, scheme);
+
+-- Run views: per-run projection of entries. Fidelity/status/turn live here.
+-- A run has at most one view of any given entry. Absent view = not in context.
+CREATE TABLE IF NOT EXISTS run_views (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, entry_id INTEGER NOT NULL REFERENCES entries (id) ON DELETE CASCADE
 	, loop_id INTEGER REFERENCES loops (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
-	, path TEXT NOT NULL CHECK (length(path) <= 2048)
-	, body TEXT NOT NULL DEFAULT ''
-	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
 	, fidelity TEXT NOT NULL DEFAULT 'promoted' CHECK (
 		fidelity IN ('promoted', 'demoted', 'archived')
 	)
-	, hash TEXT
-	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
-	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
-	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
 	, write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
+	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_path
-ON known_entries (run_id, path);
-CREATE INDEX IF NOT EXISTS idx_known_entries_scheme_status
-ON known_entries (run_id, scheme, status);
-CREATE INDEX IF NOT EXISTS idx_known_entries_turn
-ON known_entries (run_id, turn);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_run_views_run_entry
+ON run_views (run_id, entry_id);
+CREATE INDEX IF NOT EXISTS idx_run_views_run_turn
+ON run_views (run_id, turn);
+CREATE INDEX IF NOT EXISTS idx_run_views_run_fidelity
+ON run_views (run_id, fidelity);
 
--- No state validation triggers — HTTP status codes are universal.
+-- Legacy-shape compatibility view. Joins run_views to entries; reads
+-- against this view behave exactly like the old known_entries table.
+-- Writes MUST target entries + run_views directly.
+CREATE VIEW IF NOT EXISTS known_entries AS
+SELECT
+	rv.id AS id
+	, rv.run_id AS run_id
+	, rv.loop_id AS loop_id
+	, rv.turn AS turn
+	, e.path AS path
+	, e.body AS body
+	, e.scheme AS scheme
+	, rv.status AS status
+	, rv.fidelity AS fidelity
+	, e.hash AS hash
+	, e.attributes AS attributes
+	, e.tokens AS tokens
+	, rv.refs AS refs
+	, rv.write_count AS write_count
+	, e.created_at AS created_at
+	, rv.updated_at AS updated_at
+	, e.id AS entry_id
+	, e.scope AS scope
+FROM run_views AS rv
+JOIN entries AS e ON e.id = rv.entry_id;
 
 -- UNRESOLVED VIEW: all entries awaiting user action (202 Accepted)
 CREATE VIEW IF NOT EXISTS v_unresolved AS
 SELECT
-	run_id
-	, path
-	, body
-	, attributes
-	, turn
-FROM known_entries
-WHERE status = 202;
+	rv.run_id
+	, e.path
+	, e.body
+	, e.attributes
+	, rv.turn
+FROM run_views AS rv
+JOIN entries AS e ON e.id = rv.entry_id
+WHERE rv.status = 202;
 
 -- Turn context: materialized snapshot of what the model sees each turn.
 -- known_entries is the warehouse. turn_context is the shipment.

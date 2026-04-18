@@ -237,10 +237,10 @@ describe("KnownStore integration", () => {
 			const log = await store.getLog(RUN_ID);
 			assert.ok(log.length > 0);
 
-			// All entries should have tool, target, status, key, body
+			// Contract: unified history shape is
+			// { tool, path, status, body, turn, attributes }
 			for (const entry of log) {
 				assert.ok("tool" in entry);
-				assert.ok("target" in entry);
 				assert.ok("status" in entry);
 				assert.ok("path" in entry);
 				assert.ok("body" in entry);
@@ -251,13 +251,6 @@ describe("KnownStore integration", () => {
 			const log = await store.getLog(RUN_ID);
 			const searchEntry = log.find((e) => e.path.startsWith("search://"));
 			assert.strictEqual(searchEntry.tool, "search");
-		});
-
-		it("derives target from meta", async () => {
-			const log = await store.getLog(RUN_ID);
-			const editEntry = log.find((e) => e.path === "set://1");
-			assert.ok(editEntry);
-			assert.strictEqual(editEntry.target, "src/app.js");
 		});
 	});
 

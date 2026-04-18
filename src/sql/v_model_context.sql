@@ -3,30 +3,31 @@ CREATE VIEW IF NOT EXISTS v_model_context AS
 WITH
 visible AS (
 	SELECT
-		ke.run_id
-		, ke.id
-		, ke.path
-		, ke.body
-		, ke.scheme
-		, ke.status
-		, ke.fidelity
-		, ke.turn
-		, ke.updated_at
-		, ke.attributes
-		, ke.tokens
+		rv.run_id
+		, rv.id
+		, e.path
+		, e.body
+		, e.scheme
+		, rv.status
+		, rv.fidelity
+		, rv.turn
+		, rv.updated_at
+		, e.attributes
+		, e.tokens
 		, COALESCE(s.category, 'logging') AS category
 		, CASE
 			-- Archived entries not in context
-			WHEN ke.fidelity = 'archived' THEN NULL
+			WHEN rv.fidelity = 'archived' THEN NULL
 			-- 202 Accepted (proposed) hidden until resolved
-			WHEN ke.status = 202 THEN NULL
+			WHEN rv.status = 202 THEN NULL
 			-- Audit schemes (model_visible = 0) hidden
 			WHEN s.model_visible = 0 THEN NULL
 			-- Everything else visible at its fidelity
-			ELSE ke.fidelity
+			ELSE rv.fidelity
 		END AS visible_fidelity
-	FROM known_entries AS ke
-	JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
+	FROM run_views AS rv
+	JOIN entries AS e ON e.id = rv.entry_id
+	JOIN schemes AS s ON s.name = COALESCE(e.scheme, 'file')
 ),
 projected AS (
 	SELECT

@@ -79,14 +79,15 @@ WHERE id = :run_id
 RETURNING next_turn - 1 AS turn;
 
 -- PREP: fork_known_entries
-INSERT INTO known_entries (
-	run_id, loop_id, turn, path, body, status, fidelity
-	, hash, attributes, tokens, refs, write_count
+-- V2 cheap fork: copy only view rows. Entries stay shared between parent
+-- and child. Child's subsequent writes diverge via upsert into a new
+-- run-scoped entry (Phase D permissions will enforce scope resolution).
+INSERT INTO run_views (
+	run_id, entry_id, loop_id, turn, status, fidelity, write_count, refs
 )
 SELECT
-	:new_run_id, NULL, turn, path, body, status, fidelity
-	, hash, attributes, tokens, refs, write_count
-FROM known_entries
+	:new_run_id, entry_id, NULL, turn, status, fidelity, write_count, refs
+FROM run_views
 WHERE run_id = :parent_run_id;
 
 -- PREP: get_active_runs

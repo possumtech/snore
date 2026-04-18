@@ -352,23 +352,65 @@ think, update, nor scheme classification tables. What remains is hook
 emission and sequential queue mechanics. Current: 441 lines (from 730
 at Phase 2 start — 40% reduction).
 
-### Phase 2: COALESCE(scheme, 'file') unification
+### Phase 2: Schema V2 — content/view split
 
-Deferred from dead-code sweep — bigger than the "3 instances" the
-previous plan claimed. Bare file paths have `scheme=NULL` in DB (via
-`schemeOf(path)` generated column returning null); JOINs map NULL →
-`'file'` via COALESCE. Unifying would require `schemeOf` to return
-`'file'` for bare paths, updating ~10 call sites (SQL JOINs, `scheme
-IS NULL` queries, JS `row.scheme || "file"` fallbacks, test fixtures),
-plus a DB nuke to recompute the STORED generated column. Working
-infrastructure, not dead code. Skip unless the NULL-as-magic-value
-actively bites.
+Plan in `SCHEMA_V2.md`. Phases B and C landed:
+
+- **Phase B (Repository surface)**: plugins no longer touch `core.db.*`
+  for entry/run/turn-stats ops; five new semantic methods on KnownStore
+  (`forkEntries`, `getUnknowns`, `demoteTurnEntries`, `getRun`,
+  `updateTurnStats`). Abstraction layer is the buffer against future
+  schema churn.
+- **Phase C (schema split)**: `entries` (content, `(scope, path)`
+  unique) + `run_views` (per-run projection with fidelity/status/turn)
+  now the storage. `known_entries` reborn as a compat VIEW for reads;
+  writes target the real tables. `v_model_context` / `v_unresolved`
+  rewritten. ~20 preps in `known_store.sql` rewritten with subquery
+  patterns (SQLite's `UPDATE...FROM` with target alias didn't carry
+  cleanly). `KnownStore.upsert`, `resolve`, `updateBodyByPattern`,
+  `demoteTurnEntries` each multi-prep flows. Fork is now cheap —
+  view rows only, no body copies. All 418 tests (246 unit + 172
+  integration) pass. Currently: all entries land at `scope=run:${runId}`
+  — Phase D turns scope into a first-class plugin-declared concept.
+
+**Phase D (remaining): scope + permissions.**
+
+- [ ] `schemes` table: add `default_scope` + `writable_by` columns.
+- [ ] Plugins declare `scope` and `writableBy` at `registerScheme`.
+  (e.g. wiki: `scope: "global", writableBy: ["plugin"]`.)
+- [ ] Repository resolves scope from scheme at `writeEntry` / `upsert`
+  (today hardcoded to `run:${runId}`).
+- [ ] Permission check: `writer` ∉ `writableBy` → reject with 403 +
+  error:// entry.
+- [ ] `policy` plugin's ask-mode filter reframed as a writer-capability
+  narrowing on top of the generalized permission system.
+- [ ] Write a `wiki` or similar demo plugin to validate end-to-end.
+
+COALESCE(scheme, 'file') cleanup deferred to Phase D or beyond —
+wasn't load-bearing for the split. The `schemeOf` behavior stayed
+unchanged and the compat VIEW handles it.
 
 ### Phase 3: E2E reliability
 
 - [ ] All 26+ E2E tests pass consistently
 - [ ] Each failure investigated to root cause
 - [ ] Persona/fork timeout investigated (120s on trivial question)
+
+## Future Concerns (not blocking current work)
+
+- **Plugin load dependency / ordering.** Plugins load in filesystem
+  order via `scanDir`. Runtime calls like
+  `hooks.instructions.resolveSystemPrompt` assume the provider loaded
+  first. Works today because load is synchronous at boot; will bite
+  with external plugins (RUMMY_PLUGIN_*), sub-agents, or late-bound
+  registration. Revisit when wiki plugin / MCP integration lands.
+  Shape: declarative `dependsOn: ["instructions"]` + loader enforces
+  order, fails loudly if a required provider is missing.
+- **Client protocol versioning.** No explicit version on the
+  server↔client handshake; CLIENT_CHANGES.md tracks breaks manually.
+  Worth adding a `rummyVersion` on handshake before rummy.nvim
+  stabilizes. Small change; prevents silent client misbehavior when
+  the wire contract shifts.
 
 ## Road to Production
 
