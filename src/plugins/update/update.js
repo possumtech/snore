@@ -56,6 +56,7 @@ export default class Update {
 		runId,
 		turn,
 		loopId,
+		rummy,
 	}) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		const status = entry?.attributes?.status ?? 102;
@@ -64,7 +65,8 @@ export default class Update {
 		let updateText = !isTerminal ? entry?.body || null : null;
 
 		if (entry && !entry.attributes?.status) {
-			await this.#core.hooks.error.log.emit({
+			await rummy.hooks.error.log.emit({
+				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
@@ -77,7 +79,7 @@ export default class Update {
 		// Override to a continuation and mark the update entry 409.
 		if (summaryText && hasErrors) {
 			if (entry?.path) {
-				await this.#core.entries.resolve(
+				await rummy.entries.resolve(
 					runId,
 					entry.path,
 					409,
@@ -96,7 +98,8 @@ export default class Update {
 			updateText = healed.updateText;
 			statusHealed = true;
 			if (healed.warning) {
-				await this.#core.hooks.error.log.emit({
+				await rummy.hooks.error.log.emit({
+					store: rummy.entries,
 					runId,
 					turn,
 					loopId,

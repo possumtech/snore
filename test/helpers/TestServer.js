@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import createHooks from "../../src/hooks/Hooks.js";
-import { registerPlugins } from "../../src/plugins/index.js";
+import { initPlugins, registerPlugins } from "../../src/plugins/index.js";
 import RpcRegistry from "../../src/server/RpcRegistry.js";
 import SocketServer from "../../src/server/SocketServer.js";
 
@@ -26,6 +26,7 @@ export default class TestServer {
 
 		const pluginsDir = join(__dirname, "../../src/plugins");
 		await registerPlugins([pluginsDir], hooks);
+		await initPlugins(db, hooks);
 
 		// Bootstrap models from env vars (same as service.js)
 		for (const key of Object.keys(process.env)) {

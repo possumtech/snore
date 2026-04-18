@@ -11,8 +11,6 @@ function getGlobalPrefix() {
 	return globalPrefix;
 }
 
-const instances = new Map();
-
 /**
  * Two-pass plugin loader:
  *   1. Walk filesystem + env vars to collect plugin descriptors
@@ -20,6 +18,9 @@ const instances = new Map();
  *   2. Topological sort by `static dependsOn = ["other-plugin"]`
  *      declarations; fail loudly on cycle or missing dependency.
  *   3. Instantiate in topological order.
+ *
+ * Returns a Map of name → PluginContext for the caller to pass to
+ * initPlugins. No module-global state — each caller owns its set.
  *
  * A plugin declares a dependency like:
  *   export default class MyPlugin {
@@ -58,14 +59,16 @@ export async function registerPlugins(dirs = [], hooks) {
 		}
 	}
 
+	const instances = new Map();
 	const sorted = topoSortPlugins(resolved);
 	for (const r of sorted) {
 		try {
-			await instantiatePlugin(r, hooks);
+			await instantiatePlugin(r, hooks, instances);
 		} catch (err) {
 			console.warn(`[RUMMY] Plugin load failed: ${r.name} — ${err.message}`);
 		}
 	}
+	return instances;
 }
 
 function topoSortPlugins(plugins) {
@@ -100,7 +103,7 @@ function topoSortPlugins(plugins) {
 	return sorted;
 }
 
-async function instantiatePlugin({ name, Plugin, source }, hooks) {
+async function instantiatePlugin({ name, Plugin, source }, hooks, instances) {
 	if (typeof Plugin?.register === "function") {
 		await withTimeout(
 			Plugin.register(hooks),
@@ -131,10 +134,12 @@ const AUDIT_SCHEMES = [
 const PROMPT_SCHEMES = ["prompt"];
 
 /**
- * After DB is ready, inject db and store into all PluginContext instances,
- * upsert declared schemes, and bootstrap audit schemes.
+ * After DB is ready, upsert declared schemes and bootstrap audit/prompt
+ * schemes. Takes the plugin collection returned by registerPlugins.
+ * Per-plugin store/db access is provided per-turn via RummyContext;
+ * PluginContext itself holds only name + hooks.
  */
-export async function initPlugins(db, store, hooks) {
+export async function initPlugins(db, hooks, instances) {
 	for (const name of AUDIT_SCHEMES) {
 		// Audit schemes are written only by system-level code (reasoning,
 		// user/assistant/model messages, etc.). Closing the door on model
@@ -160,35 +165,29 @@ export async function initPlugins(db, store, hooks) {
 	}
 
 	for (const ctx of instances.values()) {
-		ctx.db = db;
-		ctx.entries = store;
 		for (const scheme of ctx.schemes) {
 			await db.upsert_scheme.run(scheme);
 		}
 	}
 
 	// Register default schemes for tools that plugins ensured but didn't registerScheme for
-	if (hooks) {
-		const registered = new Set();
-		for (const ctx of instances.values()) {
-			for (const s of ctx.schemes) registered.add(s.name);
-		}
-		for (const name of AUDIT_SCHEMES) registered.add(name);
-		for (const name of PROMPT_SCHEMES) registered.add(name);
-
-		for (const toolName of hooks.tools.names) {
-			if (registered.has(toolName)) continue;
-			await db.upsert_scheme.run({
-				name: toolName,
-				model_visible: 1,
-				category: "logging",
-				default_scope: "run",
-				writable_by: JSON.stringify(["model", "plugin"]),
-			});
-		}
+	const registered = new Set();
+	for (const ctx of instances.values()) {
+		for (const s of ctx.schemes) registered.add(s.name);
 	}
+	for (const name of AUDIT_SCHEMES) registered.add(name);
+	for (const name of PROMPT_SCHEMES) registered.add(name);
 
-	if (store) await store.loadSchemes(db);
+	for (const toolName of hooks.tools.names) {
+		if (registered.has(toolName)) continue;
+		await db.upsert_scheme.run({
+			name: toolName,
+			model_visible: 1,
+			category: "logging",
+			default_scope: "run",
+			writable_by: JSON.stringify(["model", "plugin"]),
+		});
+	}
 }
 
 function resolvePlugin(packageName) {

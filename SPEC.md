@@ -6,63 +6,129 @@ model-facing behavior. This document defines everything else.
 
 ---
 
-## 0. Design Philosophy
+## 0. The Contract
 
-### 0.1 Model State Is Entries
+Rummy has one contract. Every actor speaks it.
 
-Everything the model reads or writes is a keyed entry. Tool results,
-knowns, unknowns, plans, streaming output, prior conversation — all
-keyed by a URI path, carrying a body, attributes, and per-run status
-and fidelity. The model learns one idiom (`scheme://path` + read /
-write / promote / demote) and applies it to every tool it meets.
+### 0.1 Entries
 
-Physical layout (Schema V2):
+An entry is the sole unit of state the contract names. Every entry
+carries:
 
-- **`entries`** — content layer. `(scope, path)` unique. Body,
-  attributes, hash, tokens. Scope ∈ `{global, project:N, run:N}`
-  governs who can read, and (via scheme declarations) who can write.
-- **`run_views`** — per-run projection. Fidelity, status, turn, loop.
-  A run sees an entry only if it has a view row; the view row carries
-  the run's relationship to the entry.
-- **`known_entries`** — compatibility VIEW joining the two for legacy
-  SELECT queries. Not writable.
+| Field | Meaning |
+|-------|---------|
+| **path** | Identity. `scheme://locator` or bare filepath. |
+| **body** | Content (text). |
+| **attributes** | JSON bag of structured metadata. |
+| **fidelity** | `promoted \| demoted \| archived`. What the model sees of this entry next turn. Visibility. |
+| **state** | `proposed \| streaming \| resolved \| failed \| cancelled`. Where the entry is in its lifecycle. |
+| **outcome** | Short reason string when state ∈ {failed, cancelled}. Opaque to most callers; a few plugins parse it. |
+| **writer** | Which tier wrote it last. |
+| **scope** | `run:N \| project:N \| global`. Determines namespace and readership. |
 
-The rest of the database (runs, loops, turns, projects, models,
-schemes, file_constraints, turn_context, rpc_log) is server-side
-bookkeeping — the model never directly addresses these tables. The
-"everything is an entry" idiom describes the **model-facing** surface,
-not the full schema.
+Fidelity and state are independent axes. An entry can be `state=resolved,
+fidelity=archived` (complete and hidden) or `state=streaming,
+fidelity=demoted` (in-flight, shown as summary) or `state=proposed,
+fidelity=promoted` (visible, awaiting resolution).
 
-Read/write operations speak a universal grammar; any plugin that
-produces entries composes with any plugin that consumes them without
-coordination. New capabilities (streaming shell, web fetch, sub-
-agents, file watches) slot in by producing entries in the same
-substrate.
+### 0.2 Six primitives
 
-### 0.2 Events & Filters
+The entire grammar for changing entries:
 
-Rummy is a hooks-and-filters system. Every structural seam in the
-pipeline is a hookable checkpoint. Plugins subscribe to events
-(fire-and-forget side effects) and filters (transformation chains
-that thread a value through subscribers in priority order).
+| Verb | Effect |
+|------|--------|
+| **set** | Create or update an entry. Writes content, state, fidelity, attributes. |
+| **get** | Promote an entry to `fidelity=promoted`. The read-with-side-effect. |
+| **rm** | Remove an entry from the caller's view (or delete it when scope permits). |
+| **cp** | Copy an entry to a new path. |
+| **mv** | Rename an entry to a new path. |
+| **update** | Record a turn's continuation or terminal signal. |
+
+Every tool in rummy (`<sh>`, `<ask_user>`, `<search>`, `<env>`, `<think>`,
+`<known>`, `<unknown>`, …) is a **plugin that composes the six
+primitives**. A `<sh>` invocation becomes a `set` that creates a
+proposed entry; on user accept, a stream plugin drives body appends
+via `set` and eventually a state transition to `resolved`. The
+primitives are the atoms; tools are the molecules.
+
+### 0.3 Three surfaces, one grammar
+
+| Actor | Syntax |
+|-------|--------|
+| **Model** | XML tags: `<set path="..." />` |
+| **Plugin** | RummyContext methods: `rummy.set({...})` |
+| **Client** | JSON-RPC: `{"method":"set","params":{...}}` |
+
+Syntactic skins over the same semantics. A plugin calling
+`rummy.set(...)`, a client sending `{"method":"set",...}`, and a model
+emitting `<set/>` are the same event at the store layer, authorized by
+the respective writer identity against the scheme's permissions.
+
+### 0.4 Four writer tiers
+
+A strict hierarchy of writer identities. Each tier is a superset of
+what's below it:
+
+| Tier | Access |
+|------|--------|
+| **system** | Internal plumbing (TurnExecutor, AgentLoop audit writes — `instructions://`, `reasoning://`, message schemes). |
+| **plugin** | Declares schemes, registers hooks and filters, calls store methods directly. Everything below plus plugin-scope infrastructure. |
+| **client** | RPC surface. Writes to client-writable schemes (`run://`, proposed-entry state transitions, config) and reads via subscribed notifications. |
+| **model** | XML-tag surface. Writes to model-writable schemes (`known://`, `unknown://`, `update://`, tool-result schemes) as restricted by the active run's capability set. |
+
+Every scheme declares `writable_by` as a subset of `{system, plugin,
+client, model}`. A write from an identity outside that subset rejects
+with state=failed, outcome="permission:403".
+
+### 0.5 Runs are entries
+
+Starting a run is not a separate API — it is a `set` to
+`run://{alias}` with a prompt body and attributes carrying model,
+restrictions, and resolution strategy. A run plugin observes `run://`
+entry writes and starts the turn loop. Cancelling is a state
+transition to `cancelled` on the same path. Resolving a proposed entry
+is a state transition on that entry's path.
+
+The lifecycle API is the entry grammar. No parallel verb set.
+
+### 0.6 Events & filters
+
+Between the primitive-write layer and the actual work, rummy is a
+hooks-and-filters system. Plugins subscribe to events (fire-and-forget
+side effects) and filters (transformation chains that thread a value
+through subscribers in priority order).
 
 **Every `<tag>` the model sees is a plugin.** `<knowns>` → known
 plugin. `<unknowns>` → unknown plugin. `<performed>` → performed
-plugin. `<previous>` → previous plugin. `<prompt mode="..."
-tokenBudget="N" tokenUsage="M">body</prompt>` → prompt plugin (which
-also carries the Token Budget math as attributes). No monolithic
-assembler decides what goes where. Each plugin filters for its own
-data from the shared row set, renders its section, and returns.
+plugin. `<previous>` → previous plugin. `<prompt>` → prompt plugin.
+No monolithic assembler decides what goes where. Each plugin filters
+for its own data from the shared row set, renders its section, returns.
 
 **Plugins compose, they don't coordinate.** A plugin subscribes to a
-filter at a priority. It receives the accumulator value, appends its
-contribution, and returns. It doesn't know what other plugins exist.
+filter at a priority, receives the accumulator value, appends its
+contribution, returns. It doesn't know what other plugins exist.
 Priority determines ordering. Lower numbers run first.
 
 **The core is a filter chain invocation.** `ContextAssembler` computes
 `loopStartTurn` from the latest prompt entry's `source_turn`, then
 calls `assembly.system.filter(systemPrompt, ctx)` and
 `assembly.user.filter("", ctx)`. Everything else is plugins.
+
+### 0.7 Physical layout
+
+The contract is realized across two tables plus a compat view:
+
+- **`entries`** — content layer. `(scope, path)` unique. Body,
+  attributes, hash, tokens.
+- **`run_views`** — per-run projection. Fidelity, state, outcome,
+  turn, loop. A run sees an entry only if it has a view row.
+- **`known_entries`** — compatibility VIEW joining the two for legacy
+  SELECT queries. Not writable.
+
+Server-side bookkeeping (runs, loops, turns, projects, models,
+schemes, file_constraints, turn_context, rpc_log) exists to support
+the contract; the contract's actors never address these tables
+directly.
 
 ---
 

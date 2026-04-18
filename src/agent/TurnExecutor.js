@@ -83,7 +83,7 @@ export default class TurnExecutor {
 
 		// Project instructions://system through the instructions tool's projection
 		const systemPrompt =
-			await this.#hooks.instructions.resolveSystemPrompt(currentRunId);
+			await this.#hooks.instructions.resolveSystemPrompt(rummy);
 
 		// Materialize turn_context: VIEW rows projected through tools
 		const demoted = [];
@@ -123,6 +123,7 @@ export default class TurnExecutor {
 			rows: initial.rows,
 			lastPromptTokens: initial.lastContextTokens,
 			ctx: budgetCtx,
+			rummy,
 		});
 		const messages = budgetResult.messages;
 		const assembledTokens = budgetResult.assembledTokens;
@@ -193,6 +194,7 @@ export default class TurnExecutor {
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
 		for (const w of warnings) {
 			await this.#hooks.error.log.emit({
+				store: this.#knownStore,
 				runId: currentRunId,
 				turn,
 				message: w,
@@ -271,6 +273,7 @@ export default class TurnExecutor {
 				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			} catch (dispatchErr) {
 				await this.#hooks.error.log.emit({
+					store: this.#knownStore,
 					runId: currentRunId,
 					turn,
 					loopId: currentLoopId,
@@ -332,6 +335,7 @@ export default class TurnExecutor {
 		await this.#hooks.budget.postDispatch({
 			contextSize,
 			ctx: budgetCtx,
+			rummy,
 		});
 
 		const { summaryText, updateText, statusHealed } =
@@ -343,6 +347,7 @@ export default class TurnExecutor {
 				runId: currentRunId,
 				turn,
 				loopId: currentLoopId,
+				rummy,
 			});
 
 		const askUserEntry = recorded.find((e) => e.scheme === "ask_user");
@@ -417,7 +422,7 @@ export default class TurnExecutor {
 		// Filter: plugins can validate/transform before recording
 		const filtered = await this.#hooks.entry.recording.filter(
 			{ scheme, path: resultPath, body, attributes, status: 200 },
-			{ runId, turn, loopId, mode },
+			{ store: this.#knownStore, runId, turn, loopId, mode },
 		);
 		if (filtered.status >= 400) return filtered;
 

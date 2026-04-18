@@ -50,7 +50,14 @@ export default class Budget {
 	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted,
 	 *         loopIteration }
 	 */
-	async enforce({ contextSize, messages, rows, lastPromptTokens = 0, ctx }) {
+	async enforce({
+		contextSize,
+		messages,
+		rows,
+		lastPromptTokens = 0,
+		ctx,
+		rummy,
+	}) {
 		if (!contextSize) {
 			return { messages, rows, assembledTokens: 0, status: 200 };
 		}
@@ -68,15 +75,11 @@ export default class Budget {
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
 		if (promptRow) {
-			await this.#core.entries.setFidelity(
-				ctx.runId,
-				promptRow.path,
-				"demoted",
-			);
+			await rummy.entries.setFidelity(ctx.runId, promptRow.path, "demoted");
 		}
 		const reMat = await materializeContext({
-			db: this.#core.db,
-			hooks: this.#core.hooks,
+			db: rummy.db,
+			hooks: rummy.hooks,
 			runId: ctx.runId,
 			loopId: ctx.loopId,
 			turn: ctx.turn,
@@ -102,11 +105,11 @@ export default class Budget {
 	 *
 	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted }
 	 */
-	async postDispatch({ contextSize, ctx }) {
+	async postDispatch({ contextSize, ctx, rummy }) {
 		if (!contextSize) return;
 		const postMat = await materializeContext({
-			db: this.#core.db,
-			hooks: this.#core.hooks,
+			db: rummy.db,
+			hooks: rummy.hooks,
 			runId: ctx.runId,
 			loopId: ctx.loopId,
 			turn: ctx.turn,
@@ -123,7 +126,7 @@ export default class Budget {
 		});
 		if (post.status !== 413) return;
 
-		const store = this.#core.entries;
+		const store = rummy.entries;
 		const demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
 		const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
 		if (promptRow) {

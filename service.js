@@ -80,7 +80,7 @@ async function main() {
 	mkdirSync(userPluginsDir, { recursive: true });
 
 	// 4. Register Plugins
-	await registerPlugins([pluginsDir, userPluginsDir], hooks);
+	const plugins = await registerPlugins([pluginsDir, userPluginsDir], hooks);
 
 	// 5. Bootstrap Persistence
 	const dbPath = process.env.RUMMY_DB_PATH;
@@ -101,8 +101,8 @@ async function main() {
 		},
 	});
 
-	// 6. Initialize plugins (inject DB, register schemes)
-	await initPlugins(db, null, hooks);
+	// 6. Initialize plugins (register schemes)
+	await initPlugins(db, hooks);
 
 	// 7. Bootstrap models from env vars
 	{

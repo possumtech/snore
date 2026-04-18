@@ -14,6 +14,7 @@ import KnownStore from "../../src/agent/KnownStore.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import { registerPlugins } from "../../src/plugins/index.js";
+import RpcRegistry from "../../src/server/RpcRegistry.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
@@ -63,6 +64,7 @@ describe("Handler dispatch", () => {
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		hooks = createHooks();
+		hooks.rpc.registry = new RpcRegistry();
 		const { dirname, join } = await import("node:path");
 		const { fileURLToPath } = await import("node:url");
 		const pluginsDir = join(

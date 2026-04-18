@@ -21,8 +21,8 @@ export default class Instructions {
 	 * instructions://system entry, project it through the promoted view.
 	 * TurnExecutor calls this once per turn before context assembly.
 	 */
-	async resolveSystemPrompt(runId) {
-		const store = this.#core.entries;
+	async resolveSystemPrompt(rummy) {
+		const { entries: store, runId, hooks } = rummy;
 		const entries = await store.getEntriesByPattern(
 			runId,
 			"instructions://system",
@@ -31,7 +31,7 @@ export default class Instructions {
 		const attributes = entries[0]
 			? await store.getAttributes(runId, "instructions://system")
 			: null;
-		return this.#core.hooks.tools.view("instructions", {
+		return hooks.tools.view("instructions", {
 			path: "instructions://system",
 			scheme: "instructions",
 			body: entries[0]?.body || "",

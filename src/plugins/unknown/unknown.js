@@ -24,6 +24,7 @@ export default class Unknown {
 		const existingValues = await store.getUnknownValues(runId);
 		if (existingValues.has(entry.body)) {
 			await this.#core.hooks.error.log.emit({
+				store,
 				runId,
 				turn,
 				loopId,

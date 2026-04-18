@@ -10,8 +10,6 @@
 export default class PluginContext {
 	#name;
 	#hooks;
-	#db = null;
-	#store = null;
 
 	constructor(name, hooks) {
 		this.#name = name;
@@ -20,22 +18,6 @@ export default class PluginContext {
 
 	get name() {
 		return this.#name;
-	}
-
-	get db() {
-		return this.#db;
-	}
-
-	set db(value) {
-		this.#db = value;
-	}
-
-	get entries() {
-		return this.#store;
-	}
-
-	set entries(value) {
-		this.#store = value;
 	}
 
 	#schemes = [];

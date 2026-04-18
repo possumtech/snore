@@ -96,7 +96,8 @@ describe("RummyContext", () => {
 	describe("tool verbs delegate to entries", () => {
 		function fakeStore() {
 			const calls = [];
-			const record = (method) =>
+			const record =
+				(method) =>
 				(...args) => {
 					calls.push([method, args]);
 					return method === "getBody" ? "some body" : undefined;
@@ -223,7 +224,10 @@ describe("RummyContext", () => {
 	describe("tag() helper", () => {
 		it("builds a node with attrs and children", () => {
 			const rummy = new RummyContext(makeRoot(), {});
-			const node = rummy.tag("x", { foo: "bar" }, ["text", { tag: "y", attrs: {}, children: [] }]);
+			const node = rummy.tag("x", { foo: "bar" }, [
+				"text",
+				{ tag: "y", attrs: {}, children: [] },
+			]);
 			assert.strictEqual(node.tag, "x");
 			assert.deepStrictEqual(node.attrs, { foo: "bar" });
 			assert.strictEqual(node.content, "text");

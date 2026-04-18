@@ -10,6 +10,7 @@ export default class Policy {
 
 	async #reject(ctx, message) {
 		await this.#core.hooks.error.log.emit({
+			store: ctx.store,
 			runId: ctx.runId,
 			turn: ctx.turn,
 			loopId: ctx.loopId,

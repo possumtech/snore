@@ -403,6 +403,7 @@ export default class AgentLoop {
 				const repetition = healer.assessRepetition(result.recorded);
 				if (!repetition.continue) {
 					await this.#hooks.error.log.emit({
+						store: this.#knownStore,
 						runId: currentRunId,
 						turn: result.turn,
 						loopId: currentLoopId,
@@ -425,6 +426,7 @@ export default class AgentLoop {
 				const progress = healer.assessProgress(result);
 				if (progress.reason) {
 					await this.#hooks.error.log.emit({
+						store: this.#knownStore,
 						runId: currentRunId,
 						turn: result.turn,
 						loopId: currentLoopId,
@@ -471,6 +473,7 @@ export default class AgentLoop {
 			});
 			try {
 				await this.#hooks.error.log.emit({
+					store: this.#knownStore,
 					runId: currentRunId,
 					turn: loopIteration,
 					loopId: currentLoopId,
