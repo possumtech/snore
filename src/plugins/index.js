@@ -14,17 +14,108 @@ function getGlobalPrefix() {
 const instances = new Map();
 
 /**
- * Dynamically loads and registers plugins from provided directories
- * and RUMMY_PLUGIN_* env vars.
+ * Two-pass plugin loader:
+ *   1. Walk filesystem + env vars to collect plugin descriptors
+ *      (name, import URL, Plugin class, declared dependencies).
+ *   2. Topological sort by `static dependsOn = ["other-plugin"]`
+ *      declarations; fail loudly on cycle or missing dependency.
+ *   3. Instantiate in topological order.
+ *
+ * A plugin declares a dependency like:
+ *   export default class MyPlugin {
+ *       static dependsOn = ["instructions", "budget"];
+ *       constructor(core) { ... }
+ *   }
+ *
+ * Dependencies are soft today (no plugin currently needs another
+ * plugin's `core.hooks.X` at construction time). This system exists
+ * so future plugins can safely assume load order.
  */
 export async function registerPlugins(dirs = [], hooks) {
 	const uniqueDirs = [...new Set(dirs.map((d) => join(d)))];
 
+	const descriptors = [];
 	for (const dir of uniqueDirs) {
-		await scanDir(dir, hooks, true);
+		await collectFromDir(dir, true, descriptors);
+	}
+	await collectFromEnv(descriptors);
+
+	const resolved = [];
+	for (const d of descriptors) {
+		try {
+			const module = await withTimeout(
+				import(d.url),
+				PLUGIN_LOAD_TIMEOUT,
+				`Plugin import timed out: ${d.source}`,
+			);
+			const Plugin = module.default;
+			const dependsOn = Array.isArray(Plugin?.dependsOn)
+				? Plugin.dependsOn
+				: [];
+			resolved.push({ ...d, Plugin, dependsOn });
+		} catch (err) {
+			console.warn(`[RUMMY] Plugin import failed: ${d.name} — ${err.message}`);
+		}
 	}
 
-	await loadEnvPlugins(hooks);
+	const sorted = topoSortPlugins(resolved);
+	for (const r of sorted) {
+		try {
+			await instantiatePlugin(r, hooks);
+		} catch (err) {
+			console.warn(`[RUMMY] Plugin load failed: ${r.name} — ${err.message}`);
+		}
+	}
+}
+
+function topoSortPlugins(plugins) {
+	const byName = new Map(plugins.map((p) => [p.name, p]));
+	for (const p of plugins) {
+		for (const dep of p.dependsOn) {
+			if (!byName.has(dep)) {
+				throw new Error(
+					`Plugin "${p.name}" depends on "${dep}" which is not present. ` +
+						`Available: ${[...byName.keys()].join(", ") || "none"}`,
+				);
+			}
+		}
+	}
+	const sorted = [];
+	const state = new Map(plugins.map((p) => [p.name, "pending"]));
+	function visit(name, trail) {
+		const s = state.get(name);
+		if (s === "done") return;
+		if (s === "visiting") {
+			throw new Error(
+				`Plugin dependency cycle: ${[...trail, name].join(" → ")}`,
+			);
+		}
+		state.set(name, "visiting");
+		const p = byName.get(name);
+		for (const dep of p.dependsOn) visit(dep, [...trail, name]);
+		state.set(name, "done");
+		sorted.push(p);
+	}
+	for (const p of plugins) visit(p.name, []);
+	return sorted;
+}
+
+async function instantiatePlugin({ name, Plugin, source }, hooks) {
+	if (typeof Plugin?.register === "function") {
+		await withTimeout(
+			Plugin.register(hooks),
+			PLUGIN_LOAD_TIMEOUT,
+			`Plugin register timed out: ${source}`,
+		);
+		return;
+	}
+	if (typeof Plugin !== "function") return;
+	const ctx = new PluginContext(name, hooks);
+	new Plugin(ctx);
+	instances.set(name, ctx);
+	if (source.startsWith("env:")) {
+		console.log(`[RUMMY] Plugin ${name}: ${source.slice(4)}`);
+	}
 }
 
 const AUDIT_SCHEMES = [
@@ -118,51 +209,43 @@ async function importPlugin(packageName) {
 	return import(pathToFileURL(join(dir, entry)).href);
 }
 
-async function loadEnvPlugins(hooks) {
+async function collectFromEnv(descriptors) {
 	for (const [key, value] of Object.entries(process.env)) {
 		if (!key.startsWith("RUMMY_PLUGIN_") || !value) continue;
 		const name = key.replace("RUMMY_PLUGIN_", "").toLowerCase();
 		try {
-			const importPromise = isAbsolute(value)
-				? importAbsolute(value)
-				: importPlugin(value);
-			const { default: Plugin } = await withTimeout(
-				importPromise,
-				PLUGIN_LOAD_TIMEOUT,
-				`Plugin import timed out: ${value}`,
-			);
-			if (typeof Plugin?.register === "function") {
-				await withTimeout(
-					Plugin.register(hooks),
-					PLUGIN_LOAD_TIMEOUT,
-					`Plugin register timed out: ${value}`,
-				);
-			} else if (typeof Plugin === "function") {
-				const ctx = new PluginContext(name, hooks);
-				new Plugin(ctx);
-				instances.set(name, ctx);
-			}
-			console.log(`[RUMMY] Plugin ${name}: ${value}`);
+			const url = isAbsolute(value)
+				? await resolveAbsoluteUrl(value)
+				: await resolvePackageUrl(value);
+			descriptors.push({ name, url, source: `env:${value}` });
 		} catch (err) {
 			console.warn(`[RUMMY] Plugin ${name} (${value}): ${err.message}`);
 		}
 	}
 }
 
-async function importAbsolute(dir) {
+async function resolvePackageUrl(packageName) {
+	const dir = resolvePlugin(packageName);
+	const pkg = JSON.parse(
+		(await import("node:fs")).readFileSync(join(dir, "package.json"), "utf8"),
+	);
+	const entry = pkg.exports?.["."] || pkg.main || "index.js";
+	return pathToFileURL(join(dir, entry)).href;
+}
+
+async function resolveAbsoluteUrl(dir) {
 	const pkgPath = join(dir, "package.json");
 	if (!existsSync(pkgPath)) {
-		// Bare .js file
-		return import(pathToFileURL(dir).href);
+		return pathToFileURL(dir).href;
 	}
 	const pkg = JSON.parse(
 		(await import("node:fs")).readFileSync(pkgPath, "utf8"),
 	);
 	const entry = pkg.exports?.["."] || pkg.main || "index.js";
-	return import(pathToFileURL(join(dir, entry)).href);
+	return pathToFileURL(join(dir, entry)).href;
 }
 
-async function scanDir(dir, hooks, isRoot = false) {
+async function collectFromDir(dir, isRoot, descriptors) {
 	if (!existsSync(dir)) return;
 
 	let dirStats;
@@ -203,47 +286,23 @@ async function scanDir(dir, hooks, isRoot = false) {
 		}
 
 		if (stats.isFile() && name.endsWith(".js")) {
-			if (name === "index.js" || name === `${basename(dir)}.js`) {
-				await loadPlugin(fullPath, hooks);
-			} else if (isRoot && name !== "index.js") {
-				await loadPlugin(fullPath, hooks);
+			const isEntryFile =
+				name === "index.js" || name === `${basename(dir)}.js`;
+			if (isEntryFile || (isRoot && name !== "index.js")) {
+				descriptors.push({
+					name: basename(fullPath, ".js"),
+					url: pathToFileURL(fullPath).href,
+					source: fullPath,
+				});
 			}
 		} else if (stats.isDirectory()) {
 			if (existsSync(join(fullPath, "DISABLED"))) continue;
-			await scanDir(fullPath, hooks, false);
+			await collectFromDir(fullPath, false, descriptors);
 		}
 	}
 }
 
 const PLUGIN_LOAD_TIMEOUT = 10000;
-
-async function loadPlugin(filePath, hooks) {
-	try {
-		const url = pathToFileURL(filePath).href;
-		const { default: Plugin } = await withTimeout(
-			import(url),
-			PLUGIN_LOAD_TIMEOUT,
-			`Plugin import timed out: ${filePath}`,
-		);
-
-		if (typeof Plugin?.register === "function") {
-			await withTimeout(
-				Plugin.register(hooks),
-				PLUGIN_LOAD_TIMEOUT,
-				`Plugin register timed out: ${filePath}`,
-			);
-		} else if (typeof Plugin === "function") {
-			const name = basename(filePath, ".js");
-			const ctx = new PluginContext(name, hooks);
-			const _instance = new Plugin(ctx);
-			instances.set(name, ctx);
-		}
-	} catch (err) {
-		console.warn(
-			`[RUMMY] Plugin load failed: ${basename(filePath)} — ${err.message}`,
-		);
-	}
-}
 
 function withTimeout(promise, ms, message) {
 	return Promise.race([

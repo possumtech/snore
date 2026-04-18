@@ -475,6 +475,10 @@ export default class Rpc {
 
 		// --- Notifications ---
 
+		r.registerNotification(
+			"rummy/hello",
+			"Server greeting with protocol version, sent on client connect.",
+		);
 		r.registerNotification("run/state", "Turn state update.");
 		r.registerNotification("run/progress", "Turn status.");
 		r.registerNotification("run/proposal", "Proposal awaiting resolution.");

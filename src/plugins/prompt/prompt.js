@@ -26,9 +26,11 @@ export default class Prompt {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
+			// prompt:// writable_by: ["plugin"] — explicit for clarity.
 			await store.upsert(runId, turn, `prompt://${turn}`, prompt, 200, {
 				attributes: { mode },
 				loopId,
+				writer: "plugin",
 			});
 		}
 	}

@@ -1,5 +1,6 @@
 -- PREP: get_known_entries
-SELECT path, scheme, status, fidelity, body, turn, hash, attributes, tokens
+SELECT
+	path, scheme, status, fidelity, body, turn, hash, attributes, tokens, scope
 FROM known_entries
 WHERE run_id = :run_id
 ORDER BY path;

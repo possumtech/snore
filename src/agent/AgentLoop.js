@@ -654,7 +654,7 @@ export default class AgentLoop {
 			`prompt://${nextTurn}`,
 			message,
 			200,
-			{ attributes: { mode: "ask" } },
+			{ attributes: { mode: "ask" }, writer: "plugin" },
 		);
 
 		if (this.#activeRuns.has(runRow.id)) {

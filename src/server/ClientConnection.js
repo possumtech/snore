@@ -1,5 +1,6 @@
 import msg from "../agent/messages.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
+import { RUMMY_PROTOCOL_VERSION } from "./protocol.js";
 
 export default class ClientConnection {
 	#ws;
@@ -24,6 +25,9 @@ export default class ClientConnection {
 		this.#ws.on("close", () => this.#teardown());
 
 		this.#setupNotifications();
+		this.#sendNotification("rummy/hello", {
+			rummyVersion: RUMMY_PROTOCOL_VERSION,
+		});
 	}
 
 	#onProgress = (payload) => {

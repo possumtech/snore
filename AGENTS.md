@@ -391,21 +391,34 @@ Plan in `SCHEMA_V2.md`. Phases B and C landed:
 - Lazy scheme loading in KnownStore — loads on first permission check,
   so ad-hoc `new KnownStore(db)` (common in tests) works transparently.
 
-**Not yet done** (future, smaller):
+Verified end-to-end by `test/integration/scope_permissions.test.js`:
+permissive schemes accept both `model` and `plugin`; audit schemes
+reject non-`system` writers; prompt scheme rejects `model` writer;
+entries land at `scope=run:${runId}`.
 
-- Handlers (`set`, `rm`, etc.) don't yet plumb `writer: rummy.writer`
-  into store.upsert. Today the default `'plugin'` is permissive enough
-  because all model-facing schemes are `['model', 'plugin']`. When a
-  restrictive scheme lands (wiki-class, plugin-only), handlers will
-  need to pass writer explicitly to prevent model writes from
-  appearing as plugin writes.
-- `'project'` scope resolution falls back to `run:${runId}`
-  (projectId isn't plumbed to Repository). Add when the first
-  project-scoped scheme lands.
-- Policy plugin's ask-mode filter not yet reframed as a writer-
-  capability narrowing on top of the permission system. Works today
-  via the older `entry.recording` filter pattern; migration is a
-  cleanup when ask/act mode semantics evolve.
+**Policy plugin — decision to keep as-is.** The original plan item
+envisioned reframing policy as a writer-capability narrowing on top
+of `writable_by`. That doesn't fit: policy's ask-mode rejections are
+path-content-dependent (reject `<set>` only when the target is a file;
+reject `<rm>` only when the path is a file; etc.) — they require
+inspecting entry attributes, not just the scheme name. Static
+`writable_by` lists can't express that. Policy stays as an
+`entry.recording` filter; its rejections already emit `error://` via
+the shared mechanism, so it coexists cleanly with the permission system.
+
+**Handler writer plumbing — partial.** Fixed the three known latent
+bugs where non-handler plugin code writes restrictive schemes
+(instructions → `writer: "system"`, prompt + AgentLoop.inject →
+`writer: "plugin"`, telemetry audit writes → `writer: "system"`).
+Tool handlers (`set`, `rm`, etc.) still default to `'plugin'` via
+KnownStore's default; fine today because all model-facing schemes are
+permissive. When a restrictive scheme lands that needs to distinguish
+model-originated writes from plugin-originated writes, handlers will
+plumb `writer: rummy.writer` through.
+
+**`'project'` scope resolution** falls back to `run:${runId}`
+(projectId isn't plumbed to Repository yet). Add when the first
+project-scoped scheme lands.
 
 COALESCE(scheme, 'file') cleanup still deferred — orthogonal.
 
@@ -415,21 +428,19 @@ COALESCE(scheme, 'file') cleanup still deferred — orthogonal.
 - [ ] Each failure investigated to root cause
 - [ ] Persona/fork timeout investigated (120s on trivial question)
 
-## Future Concerns (not blocking current work)
+## Infrastructure
 
-- **Plugin load dependency / ordering.** Plugins load in filesystem
-  order via `scanDir`. Runtime calls like
-  `hooks.instructions.resolveSystemPrompt` assume the provider loaded
-  first. Works today because load is synchronous at boot; will bite
-  with external plugins (RUMMY_PLUGIN_*), sub-agents, or late-bound
-  registration. Revisit when wiki plugin / MCP integration lands.
-  Shape: declarative `dependsOn: ["instructions"]` + loader enforces
-  order, fails loudly if a required provider is missing.
-- **Client protocol versioning.** No explicit version on the
-  server↔client handshake; CLIENT_CHANGES.md tracks breaks manually.
-  Worth adding a `rummyVersion` on handshake before rummy.nvim
-  stabilizes. Small change; prevents silent client misbehavior when
-  the wire contract shifts.
+- **Plugin load dependency.** Loader refactored into collect-then-
+  topo-sort-then-instantiate (see `src/plugins/index.js`). Plugins can
+  declare `static dependsOn = ["other-plugin"]` on their default export
+  class; loader orders accordingly and fails loudly on missing deps or
+  cycles. No current plugin declares dependencies — the mechanism is
+  in place for external plugins / MCP / sub-agent plugins.
+- **Client protocol version.** `src/server/protocol.js` exports
+  `RUMMY_PROTOCOL_VERSION` (currently `"1.0.0"`). Server sends
+  `rummy/hello` notification with `{ rummyVersion }` on client connect.
+  Clients SHOULD check MAJOR and refuse to operate on mismatch.
+  Bump MAJOR when RPC shapes break; MINOR for additive changes.
 
 ## Road to Production
 
