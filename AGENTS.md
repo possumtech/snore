@@ -131,33 +131,41 @@ Gate: every run has a corresponding `run://<alias>` entry whose state
 tracks the run's lifecycle via `#setRunStatus`. 258 unit + 183 non-LLM
 integration tests green.
 
-### Phase 4 — Client surface
+### Phase 4 — Client surface ✓ landed
 
-Collapse the RPC surface to the primitive grammar plus connection
-lifecycle. Because Phase 3 put runs into the entry grammar, this is
-mechanical.
+The wire is a thin projection of the plugin API.
 
-- Kill `ask`, `act`, `init`, `run/resolve`, `run/cancel`, `startRun`,
+- Primitive RPC verbs: `set`, `get`, `rm`, `cp`, `mv`, `update`. Each
+  takes an object of entry-grammar params, delegates to Repository
+  with `writer: "client"`.
+- `rummy/hello` is the connection handshake. Client sends on connect
+  with `{ name, projectRoot, configPath?, clientVersion? }`; server
+  responds with `{ rummyVersion, projectId, projectRoot }`. MAJOR
+  version mismatch rejects with a clear error. Absorbs what `init`
+  used to do. Server no longer sends an unsolicited `rummy/hello`
+  notification — handshake is client-initiated.
+- Starting a run: `set { path: "run://<alias>", body: <prompt>,
+  attributes: { model, mode?, persona?, ... } }`. New alias → server
+  kicks off the loop (fire-and-forget; client watches via entry
+  notifications).
+- Cancelling a run: `set { path: "run://<alias>", state: "cancelled" }`.
+- Resolving a proposal: `set { run, path: "<entry>", state: "resolved"
+  | "failed" | "cancelled", body?: <output> }`. The primitive `set`
+  detects state transitions on proposed entries and routes through
+  `AgentLoop.resolve` so scheme-specific side effects fire (patch
+  application, file removal, stream setup).
+- **Killed RPCs:** `ask`, `act`, `init`, `startRun`, `run/resolve`,
   `run/abort`, `run/rename`, `run/inject`, `run/config`, `store`,
-  `getEntries`, `get` (legacy), `addModel`, `removeModel`, `getModels`
-  (if folded into entry reads).
-- Add RPC methods `set`, `get`, `rm`, `cp`, `mv`, `update` — each
-  takes a params object matching the entry grammar.
-- `rummy/hello` handshake absorbs init. First notification after
-  `hello` carries `{ rummyVersion, projectId, projectRoot }`.
-- Starting a run: client sends `set { path: "run://<alias>",
-  body: <prompt>, attributes: { model, restrictions, resolution } }`.
-- Cancelling: `set { path: "run://<alias>", state: "cancelled" }`.
-- Resolving a proposed entry: `set { path: "<entry-path>",
-  state: "resolved" | "cancelled", body: <optional override> }`.
-- Notifications simplified to entry deltas. Client subscribes once;
-  server pushes as entries change.
-- Protocol version: `RUMMY_PROTOCOL_VERSION = "2.0.0"`. Clients on
-  1.x bounce with clean mismatch.
+  legacy `get`, `getEntries`.
+- **Kept (dedicated shape):** `ping`, `discover`, `rummy/hello`,
+  `set`/`get`/`rm`/`cp`/`mv`/`update`, `getModels`/`addModel`/`removeModel`,
+  `getRuns`/`getRun`, plus plugin-specific (`stream*`, `skill*`,
+  `persona*`).
+- Protocol version bumped to `2.0.0`. Clients on `1.x` bounce at
+  `rummy/hello` with protocol-mismatch.
 
-**Gate:** client can start a run, watch it complete, resolve
-proposals, cancel, all via the 6 primitives. No legacy RPC method
-remains registered.
+Gate: no legacy RPC method remains registered. `npm run lint` + 258
+unit + 183 non-LLM integration tests green.
 
 ### Phase 5 — Plugin hygiene
 

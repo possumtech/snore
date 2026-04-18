@@ -27,7 +27,7 @@ describe("E2E: run/state notification shape", () => {
 		tserver = await TestServer.start(tdb.db);
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
-		await client.call("init", {
+		await client.call("rummy/hello", {
 			name: "StateTest",
 			projectRoot,
 		});

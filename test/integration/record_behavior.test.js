@@ -28,7 +28,7 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		tserver = await TestServer.start(tdb.db);
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
-		await client.call("init", {
+		await client.call("rummy/hello", {
 			name: "RecordTest",
 			projectRoot,
 		});

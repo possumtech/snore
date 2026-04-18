@@ -279,7 +279,7 @@ async function main() {
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
-	await client.call("init", {
+	await client.call("rummy/hello", {
 		name: "MABAudit",
 		projectRoot: "/tmp/rummy-mab-audit",
 	});

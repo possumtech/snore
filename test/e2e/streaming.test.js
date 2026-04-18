@@ -27,7 +27,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		tserver = await TestServer.start(tdb.db);
 		client = new RpcClient(tserver.url);
 		await client.connect();
-		await client.call("init", {
+		await client.call("rummy/hello", {
 			name: "StreamingTest",
 			projectRoot: "/tmp",
 		});

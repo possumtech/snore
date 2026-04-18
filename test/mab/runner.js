@@ -407,7 +407,10 @@ async function main() {
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
-	await client.call("init", { name: "MAB", projectRoot: "/tmp/rummy-mab" });
+	await client.call("rummy/hello", {
+		name: "MAB",
+		projectRoot: "/tmp/rummy-mab",
+	});
 
 	console.log(`Database: ${dbPath}`);
 

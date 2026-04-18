@@ -113,27 +113,27 @@ export default class AgentLoop {
 
 		if (run) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun)
-				throw new Error(msg("error.run_not_found", { runId: run }));
+			if (existingRun) {
+				const existing = this.#activeRuns.get(existingRun.id);
+				if (existing) existing.abort();
 
-			const existing = this.#activeRuns.get(existingRun.id);
-			if (existing) existing.abort();
-
-			// Clean up stale proposals from interrupted runs
-			const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
-			for (const u of unresolved) {
-				await this.#knownStore.set({
-					runId: existingRun.id,
-					path: u.path,
-					state: "cancelled",
-					body: "Stale proposal from interrupted run",
-					outcome: "interrupted",
-				});
+				// Clean up stale proposals from interrupted runs
+				const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
+				for (const u of unresolved) {
+					await this.#knownStore.set({
+						runId: existingRun.id,
+						path: u.path,
+						state: "cancelled",
+						body: "Stale proposal from interrupted run",
+						outcome: "interrupted",
+					});
+				}
+				return { runId: existingRun.id, alias: existingRun.alias };
 			}
-			return { runId: existingRun.id, alias: existingRun.alias };
+			// Client-specified alias for a brand-new run — accept it verbatim.
 		}
 
-		const alias = await this.#generateAlias(requestedModel);
+		const alias = run || (await this.#generateAlias(requestedModel));
 		const runRow = await this.#db.create_run.get({
 			project_id: projectId,
 			parent_run_id: null,

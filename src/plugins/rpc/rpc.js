@@ -1,6 +1,5 @@
 import msg from "../../agent/messages.js";
 import RummyContext from "../../hooks/RummyContext.js";
-import File from "../file/file.js";
 
 export default class Rpc {
 	#core;
@@ -22,21 +21,175 @@ export default class Rpc {
 			description: "Returns { methods, notifications } catalog.",
 		});
 
-		r.register("init", {
+		// --- Primitives (SPEC §0.2) ---
+		// The client surface is a thin projection of the plugin API.
+		// Six verbs, each takes an object of entry-grammar params.
+		// Writer is fixed to "client"; permissions enforced per scheme.
+
+		r.register("set", {
 			handler: async (params, ctx) => {
+				return await this.#dispatchSet(params, ctx);
+			},
+			description:
+				"Create or update an entry. Wide semantic: write content, change " +
+				"fidelity/state, merge attributes, append (streaming), pattern update. " +
+				"Writing to run://<alias> starts or cancels a run.",
+			params: {
+				run: "string — run alias (except for new run:// writes, where the alias is in the path)",
+				path: "string — entry path (e.g. known://fact or run://abc)",
+				body: "string? — entry body",
+				state: "string? — proposed | streaming | resolved | failed | cancelled",
+				fidelity: "string? — promoted | demoted | archived",
+				outcome: "string? — reason when state ∈ {failed, cancelled}",
+				attributes: "object? — JSON attributes",
+				append: "boolean? — append body rather than overwrite",
+				pattern: "boolean? — treat path as a glob pattern for bulk update",
+				bodyFilter: "string? — narrow pattern matches by body content",
+			},
+			requiresInit: true,
+			longRunning: true,
+		});
+
+		r.register("get", {
+			handler: async (params, ctx) => {
+				return await this.#dispatchGet(params, ctx);
+			},
+			description:
+				"Promote an entry (or matching pattern) to visible fidelity.",
+			params: {
+				run: "string — run alias",
+				path: "string — entry path or glob pattern",
+				bodyFilter: "string? — narrow pattern matches by body content",
+				fidelity: "string? — target fidelity (default: promoted)",
+			},
+			requiresInit: true,
+		});
+
+		r.register("rm", {
+			handler: async (params, ctx) => {
+				return await this.#dispatchRm(params, ctx);
+			},
+			description: "Remove an entry's view (or matching pattern).",
+			params: {
+				run: "string — run alias",
+				path: "string — entry path or glob pattern",
+				bodyFilter: "string? — narrow pattern matches by body content",
+			},
+			requiresInit: true,
+		});
+
+		r.register("cp", {
+			handler: async (params, ctx) => {
+				const runRow = await this.#resolveRun(params.run, ctx);
+				await ctx.projectAgent.entries.cp({
+					runId: runRow.id,
+					from: params.from,
+					to: params.to,
+					fidelity: params.fidelity,
+					writer: "client",
+				});
+				return { ok: true };
+			},
+			description: "Copy an entry to a new path.",
+			params: {
+				run: "string — run alias",
+				from: "string — source path",
+				to: "string — destination path",
+				fidelity: "string? — target fidelity (default: promoted)",
+			},
+			requiresInit: true,
+		});
+
+		r.register("mv", {
+			handler: async (params, ctx) => {
+				const runRow = await this.#resolveRun(params.run, ctx);
+				await ctx.projectAgent.entries.mv({
+					runId: runRow.id,
+					from: params.from,
+					to: params.to,
+					fidelity: params.fidelity,
+					writer: "client",
+				});
+				return { ok: true };
+			},
+			description: "Rename an entry (copy then remove source).",
+			params: {
+				run: "string — run alias",
+				from: "string — source path",
+				to: "string — destination path",
+				fidelity: "string? — target fidelity (default: promoted)",
+			},
+			requiresInit: true,
+		});
+
+		r.register("update", {
+			handler: async (params, ctx) => {
+				const runRow = await this.#resolveRun(params.run, ctx);
+				const path = await ctx.projectAgent.entries.update({
+					runId: runRow.id,
+					body: params.body,
+					status: params.status ?? 102,
+					attributes: params.attributes ?? {},
+					writer: "client",
+				});
+				return { ok: true, path };
+			},
+			description:
+				"Write an update:// entry carrying a turn's continuation/terminal " +
+				"signal. Not general — this is the lifecycle verb.",
+			params: {
+				run: "string — run alias",
+				body: "string — update text",
+				status:
+					"number? — 102 (continue) | 200/204 (terminal) | 422 (can't answer)",
+				attributes: "object? — extra attributes",
+			},
+			requiresInit: true,
+		});
+
+		// Connection handshake. First call a client makes. Establishes
+		// the project identity for this connection and announces the
+		// server's protocol version. Absorbed what `init` used to do.
+		r.register("rummy/hello", {
+			handler: async (params, ctx) => {
+				const { RUMMY_PROTOCOL_VERSION } = await import(
+					"../../server/protocol.js"
+				);
+				if (params.clientVersion) {
+					const clientMajor = String(params.clientVersion).split(".")[0];
+					const serverMajor = RUMMY_PROTOCOL_VERSION.split(".")[0];
+					if (clientMajor !== serverMajor) {
+						throw new Error(
+							`protocol mismatch: server ${RUMMY_PROTOCOL_VERSION}, client ${params.clientVersion}. Clients must match MAJOR.`,
+						);
+					}
+				}
+				if (!params.name) throw new Error("rummy/hello: name is required");
+				if (!params.projectRoot) {
+					throw new Error("rummy/hello: projectRoot is required");
+				}
 				const result = await ctx.projectAgent.init(
 					params.name,
 					params.projectRoot,
 					params.configPath,
 				);
 				ctx.setContext(result.projectId, params.projectRoot);
-				return result;
+				return {
+					rummyVersion: RUMMY_PROTOCOL_VERSION,
+					projectId: result.projectId,
+					projectRoot: params.projectRoot,
+				};
 			},
-			description: "Initialize project. Returns { projectId }.",
+			description:
+				"Connection handshake. First call a client makes. Establishes the " +
+				"project identity and returns the server's protocol version. " +
+				"Clients must match MAJOR or the call rejects.",
 			params: {
 				name: "string — project name (unique identifier)",
 				projectRoot: "string — absolute path to source code",
 				configPath: "string? — path to rummy config directory",
+				clientVersion:
+					"string? — client's protocol version; server rejects MAJOR mismatch",
 			},
 		});
 
@@ -87,319 +240,7 @@ export default class Rpc {
 			params: { alias: "string — model alias to remove" },
 		});
 
-		// --- Entry operations (same dispatch as model) ---
-
-		// Override: get has persist flag for file constraint management
-		r.register("get", {
-			handler: async (params, ctx) => {
-				if (!params.path) throw new Error("path is required");
-
-				if (params.persist) {
-					const visibility = params.readonly ? "readonly" : "active";
-					await File.setConstraint(
-						ctx.db,
-						ctx.projectId,
-						params.path,
-						visibility,
-					);
-				}
-
-				if (!params.run) throw new Error("run is required");
-				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "get", params.path, "", {
-					path: params.path,
-				});
-				return { status: "ok" };
-			},
-			description: "Promote entry fidelity.",
-			params: {
-				path: "string — file path or glob pattern",
-				run: "string — run alias",
-				persist: "boolean? — also create file constraint",
-				readonly: "boolean? — with persist, set readonly instead of active",
-			},
-			requiresInit: true,
-		});
-
 		// store is not a tool — it manages file constraints
-		r.register("store", {
-			handler: async (params, ctx) => {
-				if (!params.path) throw new Error("path is required");
-
-				if (params.clear) {
-					await File.dropConstraint(ctx.db, ctx.projectId, params.path);
-					return { status: "ok" };
-				}
-				if (params.persist) {
-					const visibility = params.ignore ? "ignore" : "active";
-					await File.setConstraint(
-						ctx.db,
-						ctx.projectId,
-						params.path,
-						visibility,
-					);
-				}
-
-				if (!params.run) throw new Error("run is required");
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				if (!runRow) throw new Error(`Run not found: ${params.run}`);
-				const store = ctx.projectAgent.entries;
-				await store.set({
-					runId: runRow.id,
-					path: params.path,
-					fidelity: "demoted",
-					pattern: true,
-				});
-				return { status: "ok" };
-			},
-			description: "Demote entry to stored state.",
-			params: {
-				path: "string — file path or glob pattern",
-				run: "string? — run alias (required without persist)",
-				persist: "boolean? — also create file constraint",
-				ignore: "boolean? — with persist, exclude from scan",
-				clear: "boolean? — remove existing constraint",
-			},
-			requiresInit: true,
-		});
-
-		r.register("getEntries", {
-			handler: async (params, ctx) => {
-				let run;
-				if (params.run) {
-					run = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				} else {
-					run = await ctx.db.get_latest_run.get({ project_id: ctx.projectId });
-				}
-				if (!run) return [];
-				const entries = await ctx.projectAgent.entries.getEntriesByPattern(
-					run.id,
-					params.pattern ?? "*",
-					params.body ?? null,
-					{ limit: params.limit ?? null, offset: params.offset ?? null },
-				);
-				return entries.map((e) => ({
-					path: e.path,
-					scheme: e.scheme,
-					status: e.status,
-					fidelity: e.fidelity,
-					tokens: e.tokens,
-				}));
-			},
-			description: "Query entries by pattern.",
-			params: {
-				pattern: "string? — glob pattern (default: *)",
-				body: "string? — filter by body content",
-				run: "string? — run alias (default: latest run)",
-				limit: "number? — max results",
-				offset: "number? — skip first N results",
-			},
-			requiresInit: true,
-		});
-
-		// --- Runs ---
-
-		r.register("startRun", {
-			handler: async (params, ctx) => {
-				if (!params.model) throw new Error("model is required");
-				const alias = `${params.model}_${Date.now()}`;
-				const runRow = await ctx.db.create_run.get({
-					project_id: ctx.projectId,
-					parent_run_id: null,
-					model: params.model ?? null,
-					alias,
-					temperature: params.temperature ?? null,
-					persona: params.persona ?? null,
-					context_limit: params.contextLimit ?? null,
-				});
-				return { run: alias, id: runRow.id };
-			},
-			description: "Pre-create a run. Returns { run, id }.",
-			params: {
-				model: "string — model alias (required)",
-				temperature: "number? — 0 to 2",
-				persona: "string?",
-				contextLimit: "number?",
-			},
-			requiresInit: true,
-		});
-
-		r.register("ask", {
-			handler: async (params, ctx) => {
-				if (!params.model) throw new Error("model is required");
-				return ctx.projectAgent.ask(
-					ctx.projectId,
-					params.model,
-					params.prompt,
-					params.run,
-					{
-						temperature: params.temperature ?? null,
-						persona: params.persona ?? null,
-						contextLimit: params.contextLimit,
-						noRepo: params.noRepo,
-						noInteraction: params.noInteraction,
-						noProposals: params.noProposals,
-						noWeb: params.noWeb,
-						fork: params.fork,
-					},
-				);
-			},
-			description: "Non-mutating query. Model required.",
-			longRunning: true,
-			params: {
-				prompt: "string — user message",
-				model: "string — model alias (required)",
-				run: "string? — continue existing run",
-				temperature: "number?",
-				persona: "string?",
-				contextLimit: "number?",
-				noRepo: "boolean?",
-				noInteraction: "boolean? — disable ask_user tool",
-				noWeb: "boolean? — disable search and URL fetch",
-				fork: "boolean?",
-			},
-			requiresInit: true,
-		});
-
-		r.register("act", {
-			handler: async (params, ctx) => {
-				if (!params.model) throw new Error("model is required");
-				return ctx.projectAgent.act(
-					ctx.projectId,
-					params.model,
-					params.prompt,
-					params.run,
-					{
-						temperature: params.temperature ?? null,
-						persona: params.persona ?? null,
-						contextLimit: params.contextLimit,
-						noRepo: params.noRepo,
-						noInteraction: params.noInteraction,
-						noProposals: params.noProposals,
-						noWeb: params.noWeb,
-						fork: params.fork,
-					},
-				);
-			},
-			description: "Mutating directive. Model required.",
-			longRunning: true,
-			params: {
-				prompt: "string — user message",
-				model: "string — model alias (required)",
-				run: "string? — continue existing run",
-				temperature: "number?",
-				persona: "string?",
-				contextLimit: "number?",
-				noRepo: "boolean?",
-				noInteraction: "boolean? — disable ask_user tool",
-				noWeb: "boolean? — disable search and URL fetch",
-				fork: "boolean?",
-			},
-			requiresInit: true,
-		});
-
-		r.register("run/resolve", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.resolve(params.run, params.resolution),
-			description: "Resolve a proposed entry. Returns { run, status }.",
-			longRunning: true,
-			params: {
-				run: "string — run alias",
-				resolution: "{ path, action: 'accept'|'reject', output? }",
-			},
-			requiresInit: true,
-		});
-
-		r.register("run/abort", {
-			handler: async (params, ctx) => {
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				if (!runRow)
-					throw new Error(msg("error.run_not_found", { runId: params.run }));
-				ctx.projectAgent.abortRun(runRow.id);
-				await ctx.db.update_run_status.run({
-					id: runRow.id,
-					status: 499,
-				});
-				await ctx.projectAgent.entries.set({
-					runId: runRow.id,
-					path: `run://${runRow.alias}`,
-					state: "cancelled",
-					writer: "client",
-				});
-				return { status: "ok" };
-			},
-			description: "Abort run.",
-			params: { run: "string — run alias" },
-			requiresInit: true,
-		});
-
-		r.register("run/rename", {
-			handler: async (params, ctx) => {
-				const { run, name } = params;
-				if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
-					throw new Error(msg("error.run_name_invalid"));
-				}
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: run });
-				if (!runRow)
-					throw new Error(msg("error.run_not_found", { runId: run }));
-				try {
-					await ctx.db.rename_run.run({
-						id: runRow.id,
-						old_alias: runRow.alias,
-						new_alias: name,
-					});
-				} catch (err) {
-					if (err.message.includes("UNIQUE"))
-						throw new Error(msg("error.run_name_taken", { name }));
-					throw err;
-				}
-				return { run: name };
-			},
-			description: "Rename a run.",
-			params: {
-				run: "string — current run alias",
-				name: "string — new name",
-			},
-			requiresInit: true,
-		});
-
-		r.register("run/inject", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.inject(params.run, params.message),
-			description: "Inject a message into a run.",
-			longRunning: true,
-			params: {
-				run: "string — run alias",
-				message: "string — message to inject",
-			},
-			requiresInit: true,
-		});
-
-		r.register("run/config", {
-			handler: async (params, ctx) => {
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				if (!runRow)
-					throw new Error(msg("error.run_not_found", { runId: params.run }));
-				await ctx.db.update_run_config.run({
-					id: runRow.id,
-					temperature: params.temperature ?? null,
-					persona: params.persona ?? null,
-					context_limit: params.contextLimit ?? null,
-					model: params.model ?? null,
-				});
-				return { status: "ok" };
-			},
-			description: "Update run configuration.",
-			params: {
-				run: "string — run alias",
-				temperature: "number?",
-				persona: "string?",
-				contextLimit: "number?",
-				model: "string?",
-			},
-			requiresInit: true,
-		});
-
 		// --- Queries ---
 
 		r.register("getRuns", {
@@ -486,10 +327,6 @@ export default class Rpc {
 
 		// --- Notifications ---
 
-		r.registerNotification(
-			"rummy/hello",
-			"Server greeting with protocol version, sent on client connect.",
-		);
 		r.registerNotification("run/state", "Turn state update.");
 		r.registerNotification("run/progress", "Turn status.");
 		r.registerNotification("run/proposal", "Proposal awaiting resolution.");
@@ -503,6 +340,152 @@ export default class Rpc {
 		// Auto-dispatch: any registered tool is callable via RPC.
 		// Checked at request time — no timing dependency on plugin load order.
 		r.setToolFallback(hooks, buildRunContext, dispatchTool);
+	}
+
+	// --- Primitive dispatch helpers ---
+
+	async #resolveRun(runAlias, ctx) {
+		if (!runAlias) throw new Error("run is required");
+		const runRow = await ctx.db.get_run_by_alias.get({ alias: runAlias });
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		return runRow;
+	}
+
+	async #dispatchSet(params, ctx) {
+		if (!params.path) throw new Error("set: path is required");
+
+		// run:// is the lifecycle surface. A set to a brand-new run://
+		// alias starts a run loop; a state transition cancels or resolves.
+		if (params.path.startsWith("run://")) {
+			return await this.#dispatchRunSet(params, ctx);
+		}
+
+		const runRow = await this.#resolveRun(params.run, ctx);
+
+		// State transition on an existing proposed entry → route through
+		// AgentLoop.resolve, which applies scheme-specific side effects
+		// (patch application for set://, file removal for rm://, stream
+		// setup for sh:// / env://, etc.).
+		if (params.state && !params.append && !params.pattern) {
+			const current = await ctx.projectAgent.entries.getState(
+				runRow.id,
+				params.path,
+			);
+			if (current?.state === "proposed") {
+				const action =
+					params.state === "resolved"
+						? "accept"
+						: params.state === "failed"
+							? "error"
+							: params.state === "cancelled"
+								? "reject"
+								: null;
+				if (action) {
+					return await ctx.projectAgent.resolve(params.run, {
+						path: params.path,
+						action,
+						output: params.body ?? null,
+					});
+				}
+			}
+		}
+
+		await ctx.projectAgent.entries.set({
+			runId: runRow.id,
+			projectId: ctx.projectId,
+			path: params.path,
+			body: params.body,
+			state: params.state,
+			fidelity: params.fidelity,
+			outcome: params.outcome,
+			attributes: params.attributes,
+			append: params.append,
+			pattern: params.pattern,
+			bodyFilter: params.bodyFilter,
+			writer: "client",
+		});
+		return { ok: true };
+	}
+
+	async #dispatchRunSet(params, ctx) {
+		const alias = params.path.slice("run://".length);
+		if (!alias) throw new Error("set run://: alias missing from path");
+		const existing = await ctx.db.get_run_by_alias
+			.get({ alias })
+			.catch(() => null);
+
+		// State transition on an existing run.
+		if (existing && params.state) {
+			if (params.state === "cancelled") {
+				ctx.projectAgent.abortRun(existing.id);
+			}
+			await ctx.projectAgent.entries.set({
+				runId: existing.id,
+				path: params.path,
+				state: params.state,
+				outcome: params.outcome,
+				writer: "client",
+			});
+			return { ok: true, alias };
+		}
+
+		// New run — kick off the loop. AgentLoop handles row + entry creation.
+		if (!existing) {
+			const attrs = params.attributes || {};
+			if (!attrs.model) {
+				throw new Error(
+					"set run://: attributes.model is required for a new run",
+				);
+			}
+			const mode = attrs.mode ?? "ask";
+			// Fire-and-forget: client watches state via entry notifications.
+			ctx.projectAgent
+				.run(mode, ctx.projectId, attrs.model, params.body || "", null, alias, {
+					temperature: attrs.temperature,
+					persona: attrs.persona,
+					contextLimit: attrs.contextLimit,
+					noRepo: attrs.noRepo,
+					noInteraction: attrs.noInteraction,
+					noWeb: attrs.noWeb,
+					noProposals: attrs.noProposals,
+					fork: attrs.fork,
+				})
+				.catch((err) => {
+					console.error(`[RUMMY] run ${alias} crashed: ${err.message}`);
+				});
+			return { ok: true, alias };
+		}
+
+		// Existing run with body-only update (continuation prompt). Inject.
+		if (params.body) {
+			await ctx.projectAgent.inject(alias, params.body);
+			return { ok: true, alias };
+		}
+
+		return { ok: true, alias };
+	}
+
+	async #dispatchGet(params, ctx) {
+		const runRow = await this.#resolveRun(params.run, ctx);
+		await ctx.projectAgent.entries.get({
+			runId: runRow.id,
+			turn: await ctx.projectAgent.entries.nextTurn(runRow.id),
+			path: params.path,
+			bodyFilter: params.bodyFilter,
+			fidelity: params.fidelity,
+		});
+		return { ok: true };
+	}
+
+	async #dispatchRm(params, ctx) {
+		const runRow = await this.#resolveRun(params.run, ctx);
+		await ctx.projectAgent.entries.rm({
+			runId: runRow.id,
+			path: params.path,
+			bodyFilter: params.bodyFilter,
+		});
+		return { ok: true };
 	}
 }
 

@@ -38,7 +38,7 @@ describe("E2E: Custom Plugin Registration", () => {
 
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
-		await client.call("init", {
+		await client.call("rummy/hello", {
 			name: "PluginTest",
 			projectRoot,
 		});

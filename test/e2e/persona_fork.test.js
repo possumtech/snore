@@ -35,7 +35,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 		tserver = await TestServer.start(tdb.db, { home: turnsHome });
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
-		await client.call("init", {
+		await client.call("rummy/hello", {
 			name: "PersonaTest",
 			projectRoot,
 		});
