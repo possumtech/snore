@@ -1,27 +1,43 @@
-import msg from "../agent/messages.js";
+import msg from "../../agent/messages.js";
 
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
-export default class XaiClient {
+const PREFIX = "xai/";
+
+/**
+ * xAI (Grok) LLM provider plugin. Registers with hooks.llm.providers if
+ * XAI_BASE_URL is set; inert otherwise. Normalizes xAI's distinct
+ * response shape into the common OpenAI-shaped envelope.
+ */
+export default class Xai {
 	#baseUrl;
 	#apiKey;
 	#contextCache = new Map();
 
-	constructor(baseUrl, apiKey) {
+	constructor(core) {
+		const baseUrl = process.env.XAI_BASE_URL;
+		if (!baseUrl) return;
 		this.#baseUrl = baseUrl;
-		this.#apiKey = apiKey;
+		this.#apiKey = process.env.XAI_API_KEY || "";
+
+		core.hooks.llm.providers.push({
+			name: "xai",
+			matches: (model) => model.startsWith(PREFIX),
+			completion: (messages, model, options) =>
+				this.#completion(messages, model.slice(PREFIX.length), options),
+			getContextSize: (model) =>
+				this.#getContextSize(model.slice(PREFIX.length)),
+		});
 	}
 
-	async completion(messages, model, options = {}) {
+	async #completion(messages, model, options = {}) {
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
 		const body = { model, input: messages };
-		if (options.temperature !== undefined)
-			body.temperature = options.temperature;
+		if (options.temperature !== undefined) body.temperature = options.temperature;
 
-		const timeout = FETCH_TIMEOUT;
-		const timeoutSignal = AbortSignal.timeout(timeout);
+		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
@@ -40,20 +56,15 @@ export default class XaiClient {
 			const error = await response.text();
 			if (response.status === 401 || response.status === 403) {
 				throw new Error(
-					msg("error.xai_auth", {
-						status: `${response.status} - ${error}`,
-					}),
+					msg("error.xai_auth", { status: `${response.status} - ${error}` }),
 				);
 			}
 			throw new Error(
-				msg("error.xai_api", {
-					status: `${response.status} - ${error}`,
-				}),
+				msg("error.xai_api", { status: `${response.status} - ${error}` }),
 			);
 		}
 
-		const data = await response.json();
-		return this.#normalize(data);
+		return this.#normalize(await response.json());
 	}
 
 	#normalize(data) {
@@ -111,18 +122,15 @@ export default class XaiClient {
 		);
 	}
 
-	async getContextSize(model) {
+	async #getContextSize(model) {
 		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
-
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
-		// Query xAI models endpoint
 		const modelsUrl = this.#baseUrl.replace(/\/responses$/, "/models");
 		const res = await fetch(modelsUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(5000),
 		});
-
 		if (res.ok) {
 			const data = await res.json();
 			const models = data.data || data.models || [];
@@ -135,7 +143,6 @@ export default class XaiClient {
 			}
 		}
 
-		// Try /v1/language-models for richer metadata
 		const langUrl = this.#baseUrl.replace(
 			/\/responses$/,
 			`/language-models/${model}`,
@@ -144,7 +151,6 @@ export default class XaiClient {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(5000),
 		}).catch(() => null);
-
 		if (langRes?.ok) {
 			const langData = await langRes.json();
 			if (langData?.context_length) {

@@ -82,6 +82,20 @@ export default function createHooks(debug = false) {
 			},
 			messages: createFilter("llm.messages"),
 			response: createFilter("llm.response"),
+			// LLM provider registry. Plugins contribute entries shaped:
+			//   {
+			//     name: string,
+			//     matches: (modelAlias) => boolean,
+			//     completion: (messages, modelAlias, options) => Promise<response>,
+			//     getContextSize: (modelAlias) => Promise<number>,
+			//   }
+			// Each provider owns a prefix namespace (e.g. "openai/", "ollama/",
+			// "openrouter/"). LlmProvider picks the first provider whose
+			// matches() returns true. No catchall — if a model alias doesn't
+			// match any registered provider, the request fails with a clear
+			// "no provider registered" error. External plugins add new
+			// prefixes without namespace collision.
+			providers: [],
 		},
 		file: {},
 		prompt: {

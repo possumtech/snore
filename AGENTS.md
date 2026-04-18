@@ -441,6 +441,18 @@ COALESCE(scheme, 'file') cleanup still deferred — orthogonal.
   `rummy/hello` notification with `{ rummyVersion }` on client connect.
   Clients SHOULD check MAJOR and refuse to operate on mismatch.
   Bump MAJOR when RPC shapes break; MINOR for additive changes.
+- **LLM provider protocol.** `hooks.llm.providers` is a registry of
+  `{ name, matches, completion, getContextSize }` entries. Each
+  provider owns a path-segment-prefix namespace (`openai/`, `ollama/`,
+  `xai/`, `openrouter/`); the first segment picks the provider, the
+  rest is the provider-internal model identifier passed through
+  verbatim. N-level aliases (`openrouter/xai/grok-beta`) fall out
+  naturally. Vendor-specific HTTP is owned by plugins under
+  `src/plugins/{openai,ollama,xai,openrouter}/` — adding a new vendor
+  is a new plugin, not a patch to core. `LlmProvider` (src/llm/)
+  thinned to DB model-alias resolution + retry + registry dispatch;
+  old per-vendor client classes retired. External plugins (anthropic,
+  google, etc.) can drop in without core changes.
 
 ## Road to Production
 

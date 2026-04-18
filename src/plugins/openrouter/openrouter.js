@@ -1,31 +1,46 @@
-import msg from "../agent/messages.js";
+import msg from "../../agent/messages.js";
 
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
 const DEFAULT_CONTEXT_SIZE = 131072;
+const PREFIX = "openrouter/";
 
-export default class OpenRouterClient {
+/**
+ * OpenRouter LLM provider plugin. Claims "openrouter/" prefixed model
+ * aliases (the remainder after the prefix is passed through to the
+ * OpenRouter API as the model identifier — including its own
+ * publisher-prefixed form, e.g. "openrouter/anthropic/claude-3-opus").
+ *
+ * Inert if OPENROUTER_API_KEY / OPENROUTER_BASE_URL aren't set.
+ */
+export default class OpenRouter {
 	#apiKey;
 	#baseUrl;
+	#contextCache = new Map();
 
-	constructor(apiKey) {
+	constructor(core) {
+		const apiKey = process.env.OPENROUTER_API_KEY;
+		const baseUrl = process.env.OPENROUTER_BASE_URL;
+		if (!apiKey || !baseUrl) return;
 		this.#apiKey = apiKey;
-		this.#baseUrl = process.env.OPENROUTER_BASE_URL;
+		this.#baseUrl = baseUrl;
+
+		core.hooks.llm.providers.push({
+			name: "openrouter",
+			matches: (model) => model.startsWith(PREFIX),
+			completion: (messages, model, options) =>
+				this.#completion(messages, model.slice(PREFIX.length), options),
+			getContextSize: (model) =>
+				this.#getContextSize(model.slice(PREFIX.length)),
+		});
 	}
 
-	async completion(messages, model, options = {}) {
-		if (!this.#apiKey) throw new Error(msg("error.openrouter_api_key_missing"));
-		return this.#fetch(messages, model, options);
-	}
-
-	async #fetch(messages, model, options) {
+	async #completion(messages, model, options = {}) {
 		const body = { model, messages, include_reasoning: true };
-		if (options.temperature !== undefined)
-			body.temperature = options.temperature;
+		if (options.temperature !== undefined) body.temperature = options.temperature;
 
-		const timeout = FETCH_TIMEOUT;
-		const timeoutSignal = AbortSignal.timeout(timeout);
+		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
@@ -75,9 +90,7 @@ export default class OpenRouterClient {
 		return data;
 	}
 
-	#contextCache = new Map();
-
-	async getContextSize(model) {
+	async #getContextSize(model) {
 		if (process.env.RUMMY_CONTEXT_SIZE)
 			return Number(process.env.RUMMY_CONTEXT_SIZE);
 

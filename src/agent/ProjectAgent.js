@@ -13,7 +13,7 @@ export default class ProjectAgent {
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
-		this.#llm = new LlmProvider(db);
+		this.#llm = new LlmProvider(db, hooks);
 		this.#knownStore = new KnownStore(db, {
 			onChanged: (event) => hooks.entry.changed.emit(event).catch(() => {}),
 		});

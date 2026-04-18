@@ -1,27 +1,38 @@
-import msg from "../agent/messages.js";
+import msg from "../../agent/messages.js";
 
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
-export default class OllamaClient {
+const PREFIX = "ollama/";
+
+/**
+ * Ollama LLM provider plugin. Registers with hooks.llm.providers if
+ * OLLAMA_BASE_URL is set; inert otherwise. Handles "ollama/" prefixed
+ * model aliases.
+ */
+export default class Ollama {
 	#baseUrl;
 
-	constructor(baseUrl) {
-		if (!baseUrl) {
-			throw new Error(
-				"OLLAMA_BASE_URL must be set to use ollama/* models. Example: OLLAMA_BASE_URL=http://127.0.0.1:11434",
-			);
-		}
+	constructor(core) {
+		const baseUrl = process.env.OLLAMA_BASE_URL;
+		if (!baseUrl) return;
 		this.#baseUrl = baseUrl;
+
+		core.hooks.llm.providers.push({
+			name: "ollama",
+			matches: (model) => model.startsWith(PREFIX),
+			completion: (messages, model, options) =>
+				this.#completion(messages, model.slice(PREFIX.length), options),
+			getContextSize: (model) =>
+				this.#getContextSize(model.slice(PREFIX.length)),
+		});
 	}
 
-	async completion(messages, model, options = {}) {
+	async #completion(messages, model, options = {}) {
 		const body = { model, messages, think: true };
-		if (options.temperature !== undefined)
-			body.temperature = options.temperature;
+		if (options.temperature !== undefined) body.temperature = options.temperature;
 
-		const timeout = FETCH_TIMEOUT;
-		const timeoutSignal = AbortSignal.timeout(timeout);
+		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
@@ -43,19 +54,19 @@ export default class OllamaClient {
 		const data = await response.json();
 
 		for (const choice of data.choices || []) {
-			const msg = choice.message;
-			if (!msg) continue;
-			const parts = [msg.reasoning_content, msg.reasoning, msg.thinking].filter(
+			const m = choice.message;
+			if (!m) continue;
+			const parts = [m.reasoning_content, m.reasoning, m.thinking].filter(
 				Boolean,
 			);
-			msg.reasoning_content =
+			m.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 		}
 
 		return data;
 	}
 
-	async getContextSize(model) {
+	async #getContextSize(model) {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			try {
 				const response = await fetch(`${this.#baseUrl}/api/show`, {
