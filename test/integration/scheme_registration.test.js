@@ -42,7 +42,7 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("bare file paths visible in model context", async () => {
-		await store.upsert(runId, 0, "src/app.js", "const x = 1;", 200);
+		await store.upsert(runId, 0, "src/app.js", "const x = 1;", "resolved");
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "src/app.js");
 		assert.ok(entry, "bare path visible in model context");
@@ -50,7 +50,13 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("known:// entries visible in model context", async () => {
-		await store.upsert(runId, 1, "known://test_fact", "earth is round", 200);
+		await store.upsert(
+			runId,
+			1,
+			"known://test_fact",
+			"earth is round",
+			"resolved",
+		);
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "known://test_fact");
 		assert.ok(entry, "known entry visible in model context");
@@ -58,7 +64,13 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("unknown:// entries visible in model context", async () => {
-		await store.upsert(runId, 1, "unknown://what_is_x", "what is x", 200);
+		await store.upsert(
+			runId,
+			1,
+			"unknown://what_is_x",
+			"what is x",
+			"resolved",
+		);
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "unknown://what_is_x");
 		assert.ok(entry, "unknown entry visible in model context");
@@ -68,13 +80,22 @@ describe("Scheme registration via plugins", () => {
 	it("audit entries hidden from model context", async () => {
 		// Audit schemes are system-only in production; tests simulating
 		// them use writer: "system" to match.
-		await store.upsert(runId, 1, "system://1", "system prompt", 200, {
+		await store.upsert(runId, 1, "system://1", "system prompt", "resolved", {
 			writer: "system",
 		});
-		await store.upsert(runId, 1, "assistant://1", "model response", 200, {
+		await store.upsert(
+			runId,
+			1,
+			"assistant://1",
+			"model response",
+			"resolved",
+			{
+				writer: "system",
+			},
+		);
+		await store.upsert(runId, 1, "model://1", "{}", "resolved", {
 			writer: "system",
 		});
-		await store.upsert(runId, 1, "model://1", "{}", 200, { writer: "system" });
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const audit = rows.filter((r) =>
 			["system://1", "assistant://1", "model://1"].includes(r.path),
@@ -83,14 +104,14 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("202 proposed entries hidden from model context", async () => {
-		await store.upsert(runId, 1, "set://proposed_edit", "edit", 202);
+		await store.upsert(runId, 1, "set://proposed_edit", "edit", "proposed");
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "set://proposed_edit");
 		assert.ok(!entry, "proposed entry should be hidden");
 	});
 
 	it("stored fidelity entries hidden from model context", async () => {
-		await store.upsert(runId, 1, "known://stored_fact", "archive", 200, {
+		await store.upsert(runId, 1, "known://stored_fact", "archive", "resolved", {
 			fidelity: "archived",
 		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
@@ -99,7 +120,7 @@ describe("Scheme registration via plugins", () => {
 	});
 
 	it("prompt entries visible in model context", async () => {
-		await store.upsert(runId, 1, "prompt://1", "what is this?", 200, {
+		await store.upsert(runId, 1, "prompt://1", "what is this?", "resolved", {
 			attributes: { mode: "ask" },
 		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });

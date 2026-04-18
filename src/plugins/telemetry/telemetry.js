@@ -96,7 +96,7 @@ export default class Telemetry {
 			turn,
 			`assistant://${turn}`,
 			content,
-			200,
+			"resolved",
 			systemOpts,
 		);
 
@@ -107,7 +107,7 @@ export default class Telemetry {
 				turn,
 				`system://${turn}`,
 				systemMsg,
-				200,
+				"resolved",
 				systemOpts,
 			);
 		}
@@ -117,7 +117,7 @@ export default class Telemetry {
 				turn,
 				`user://${turn}`,
 				userMsg,
-				200,
+				"resolved",
 				systemOpts,
 			);
 		}
@@ -134,7 +134,7 @@ export default class Telemetry {
 				usage: result.usage || null,
 				model: result.model || null,
 			}),
-			200,
+			"resolved",
 			systemOpts,
 		);
 
@@ -145,7 +145,7 @@ export default class Telemetry {
 				turn,
 				`reasoning://${turn}`,
 				responseMessage.reasoning_content,
-				200,
+				"resolved",
 				systemOpts,
 			);
 		}
@@ -155,7 +155,8 @@ export default class Telemetry {
 		// tool call attempts, reasoning bleed). Visible to the model so it
 		// sees the rejection on its next turn and can correct.
 		if (unparsed) {
-			await store.upsert(runId, turn, `content://${turn}`, unparsed, 400, {
+			await store.upsert(runId, turn, `content://${turn}`, unparsed, "failed", {
+				outcome: "unparsed",
 				loopId,
 				fidelity: "promoted",
 				writer: "system",

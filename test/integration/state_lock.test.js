@@ -23,7 +23,7 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("getUnresolved returns proposed entries", async () => {
-		await store.upsert(RUN_ID, 1, "set://1", "diff content", 202, {
+		await store.upsert(RUN_ID, 1, "set://1", "diff content", "proposed", {
 			attributes: { path: "app.js" },
 		});
 
@@ -33,14 +33,14 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("multiple proposed entries all returned", async () => {
-		await store.upsert(RUN_ID, 1, "sh://1", "echo hi", 202);
+		await store.upsert(RUN_ID, 1, "sh://1", "echo hi", "proposed");
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 2);
 	});
 
 	it("resolving an entry removes it from unresolved", async () => {
-		await store.resolve(RUN_ID, "set://1", 200, "applied");
+		await store.resolve(RUN_ID, "set://1", "resolved", { body: "applied" });
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 1);
@@ -48,15 +48,15 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("resolving all entries clears the lock", async () => {
-		await store.resolve(RUN_ID, "sh://1", 403, "rejected");
+		await store.resolve(RUN_ID, "sh://1", "failed", { body: "rejected" });
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 0);
 	});
 
 	it("non-proposed result entries do not block", async () => {
-		await store.upsert(RUN_ID, 1, "env://2", "contents", 200);
-		await store.upsert(RUN_ID, 1, "update://2", "summary text", 200, {
+		await store.upsert(RUN_ID, 1, "env://2", "contents", "resolved");
+		await store.upsert(RUN_ID, 1, "update://2", "summary text", "resolved", {
 			fidelity: "demoted",
 		});
 

@@ -32,10 +32,17 @@ describe("Budget demotion", () => {
 		it("demotes promoted entries to fidelity=demoted without changing status", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_1" });
 
-			await store.upsert(runId, 3, "known://fact-a", "fact content", 200, {
-				fidelity: "promoted",
-			});
-			await store.upsert(runId, 3, "known://fact-b", "more facts", 200, {
+			await store.upsert(
+				runId,
+				3,
+				"known://fact-a",
+				"fact content",
+				"resolved",
+				{
+					fidelity: "promoted",
+				},
+			);
+			await store.upsert(runId, 3, "known://fact-b", "more facts", "resolved", {
 				fidelity: "promoted",
 			});
 
@@ -46,35 +53,56 @@ describe("Budget demotion", () => {
 			const b = entries.find((e) => e.path === "known://fact-b");
 
 			assert.strictEqual(a.fidelity, "demoted", "fact-a demoted");
-			assert.strictEqual(a.status, 200, "fact-a status preserved at 200");
+			assert.strictEqual(a.state, "resolved", "fact-a status preserved at 200");
 			assert.strictEqual(b.fidelity, "demoted", "fact-b demoted");
-			assert.strictEqual(b.status, 200, "fact-b status preserved at 200");
+			assert.strictEqual(b.state, "resolved", "fact-b status preserved at 200");
 		});
 
 		it("demotes logging entries at the same turn, status preserved", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_log" });
 
-			await store.upsert(runId, 5, "get://turn_5/file.js", "file body", 200, {
-				fidelity: "promoted",
-			});
+			await store.upsert(
+				runId,
+				5,
+				"get://turn_5/file.js",
+				"file body",
+				"resolved",
+				{
+					fidelity: "promoted",
+				},
+			);
 
 			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 5 });
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "get://turn_5/file.js");
 			assert.strictEqual(entry.fidelity, "demoted", "logging entry demoted");
-			assert.strictEqual(entry.status, 200, "status preserved");
+			assert.strictEqual(entry.state, "resolved", "status preserved");
 		});
 
 		it("does not demote entries from other turns", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_2" });
 
-			await store.upsert(runId, 2, "known://turn2-fact", "earlier fact", 200, {
-				fidelity: "promoted",
-			});
-			await store.upsert(runId, 4, "known://turn4-fact", "later fact", 200, {
-				fidelity: "promoted",
-			});
+			await store.upsert(
+				runId,
+				2,
+				"known://turn2-fact",
+				"earlier fact",
+				"resolved",
+				{
+					fidelity: "promoted",
+				},
+			);
+			await store.upsert(
+				runId,
+				4,
+				"known://turn4-fact",
+				"later fact",
+				"resolved",
+				{
+					fidelity: "promoted",
+				},
+			);
 
 			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 3 });
 
@@ -88,7 +116,7 @@ describe("Budget demotion", () => {
 		it("does not demote entries already in error state", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_3" });
 
-			await store.upsert(runId, 6, "known://errored", "body", 400, {
+			await store.upsert(runId, 6, "known://errored", "body", "failed", {
 				fidelity: "promoted",
 			});
 
@@ -102,7 +130,7 @@ describe("Budget demotion", () => {
 		it("demotes budget entries too (onView renders full at summary)", async () => {
 			const { runId } = await tdb.seedRun({ alias: "dte_budget" });
 
-			await store.upsert(runId, 7, "budget://1/7", "413 report", 200, {
+			await store.upsert(runId, 7, "budget://1/7", "413 report", "resolved", {
 				fidelity: "promoted",
 			});
 

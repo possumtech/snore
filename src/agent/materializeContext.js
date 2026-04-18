@@ -37,7 +37,8 @@ export default async function materializeContext({
 			ordinal: row.ordinal,
 			path: row.path,
 			fidelity: row.fidelity,
-			status: row.status,
+			state: row.state,
+			outcome: row.outcome,
 			body: projectedBody ?? "",
 			// Full-body token count, not projected. This is the cost to
 			// promote the entry — the number the model needs to do Token

@@ -80,9 +80,16 @@ describe("Handler dispatch", () => {
 
 	describe("get handler", () => {
 		it("promotes target and writes confirmation", async () => {
-			await store.upsert(RUN_ID, 0, "src/target.js", "const x = 1;", 200, {
-				fidelity: "demoted",
-			});
+			await store.upsert(
+				RUN_ID,
+				0,
+				"src/target.js",
+				"const x = 1;",
+				"resolved",
+				{
+					fidelity: "demoted",
+				},
+			);
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -90,7 +97,7 @@ describe("Handler dispatch", () => {
 				path: "get://src%2Ftarget.js",
 				body: "",
 				attributes: { path: "src/target.js" },
-				status: 200,
+				state: "resolved",
 				resultPath: "get://src%2Ftarget.js",
 			};
 
@@ -114,7 +121,7 @@ describe("Handler dispatch", () => {
 				1,
 				"src/edit_me.js",
 				"const port = 3000;",
-				200,
+				"resolved",
 			);
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
@@ -128,7 +135,7 @@ describe("Handler dispatch", () => {
 						{ search: "const port = 3000;", replace: "const port = 8080;" },
 					],
 				},
-				status: 200,
+				state: "resolved",
 				resultPath: "set://src%2Fedit_me.js",
 			};
 
@@ -162,7 +169,11 @@ describe("Handler dispatch", () => {
 			const writeResult = entries.find(
 				(e) => e.path === "set://src/edit_me.js",
 			);
-			assert.strictEqual(writeResult.status, 202, "file edit is proposed");
+			assert.strictEqual(
+				writeResult.state,
+				"proposed",
+				"file edit is proposed",
+			);
 		});
 
 		it("merges multiple edits to the same file into one proposal", async () => {
@@ -171,7 +182,7 @@ describe("Handler dispatch", () => {
 				1,
 				"src/math.txt",
 				"a + 4 = 6\n7 - a = \nb / 4 = 3\na + b = \n",
-				200,
+				"resolved",
 			);
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
@@ -185,7 +196,7 @@ describe("Handler dispatch", () => {
 					search: "7 - a = ",
 					replace: "7 - a = 5",
 				},
-				status: 200,
+				state: "resolved",
 				resultPath: "set://src/math.txt",
 			};
 			await hooks.tools.dispatch("set", entry1, rummy);
@@ -199,7 +210,7 @@ describe("Handler dispatch", () => {
 					search: "a + b = ",
 					replace: "a + b = 14",
 				},
-				status: 200,
+				state: "resolved",
 				resultPath: "set://src/math.txt",
 			};
 			await hooks.tools.dispatch("set", entry2, rummy);
@@ -216,11 +227,11 @@ describe("Handler dispatch", () => {
 			assert.ok(attrs.merge.includes("a + b = 14"), "merge has second block");
 
 			const row = await store.getState(RUN_ID, "set://src/math.txt");
-			assert.strictEqual(row.status, 202, "merged result is proposed");
+			assert.strictEqual(row.state, "proposed", "merged result is proposed");
 		});
 
 		it("applies patch immediately for known:// entries", async () => {
-			await store.upsert(RUN_ID, 1, "known://config", "port=3000", 200);
+			await store.upsert(RUN_ID, 1, "known://config", "port=3000", "resolved");
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -232,7 +243,7 @@ describe("Handler dispatch", () => {
 					search: "3000",
 					replace: "8080",
 				},
-				status: 200,
+				state: "resolved",
 				resultPath: "set://known%3A%2F%2Fconfig",
 			};
 
@@ -251,7 +262,7 @@ describe("Handler dispatch", () => {
 		it("sets entry to proposed", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const resultPath = await store.slugPath(RUN_ID, "sh", "npm test");
-			await store.upsert(RUN_ID, 1, resultPath, "npm test", 200, {
+			await store.upsert(RUN_ID, 1, resultPath, "npm test", "resolved", {
 				attributes: { command: "npm test" },
 			});
 
@@ -260,7 +271,7 @@ describe("Handler dispatch", () => {
 				path: resultPath,
 				body: "npm test",
 				attributes: { command: "npm test" },
-				status: 200,
+				state: "resolved",
 				resultPath,
 			};
 
@@ -270,7 +281,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: resultPath,
 			});
-			assert.strictEqual(row.status, 202, "sh entry set to proposed");
+			assert.strictEqual(row.state, "proposed", "sh entry set to proposed");
 		});
 	});
 
@@ -278,7 +289,7 @@ describe("Handler dispatch", () => {
 		it("sets entry to proposed", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const resultPath = await store.slugPath(RUN_ID, "env", "node --version");
-			await store.upsert(RUN_ID, 1, resultPath, "node --version", 200, {
+			await store.upsert(RUN_ID, 1, resultPath, "node --version", "resolved", {
 				attributes: { command: "node --version" },
 			});
 
@@ -287,7 +298,7 @@ describe("Handler dispatch", () => {
 				path: resultPath,
 				body: "node --version",
 				attributes: { command: "node --version" },
-				status: 200,
+				state: "resolved",
 				resultPath,
 			};
 
@@ -297,13 +308,19 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: resultPath,
 			});
-			assert.strictEqual(row.status, 202, "env entry set to proposed");
+			assert.strictEqual(row.state, "proposed", "env entry set to proposed");
 		});
 	});
 
 	describe("set fidelity control", () => {
 		it("archives entry via stored attribute", async () => {
-			await store.upsert(RUN_ID, 1, "known://demote_me", "some data", 200);
+			await store.upsert(
+				RUN_ID,
+				1,
+				"known://demote_me",
+				"some data",
+				"resolved",
+			);
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -311,7 +328,7 @@ describe("Handler dispatch", () => {
 				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
 				attributes: { path: "known://demote_me", fidelity: "archived" },
-				status: 200,
+				state: "resolved",
 				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};
 
@@ -327,7 +344,7 @@ describe("Handler dispatch", () => {
 
 	describe("rm handler", () => {
 		it("proposes deletion for files", async () => {
-			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", 200);
+			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "resolved");
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -335,7 +352,7 @@ describe("Handler dispatch", () => {
 				path: "rm://src%2Fdoomed.js",
 				body: "",
 				attributes: { path: "src/doomed.js" },
-				status: 200,
+				state: "resolved",
 				resultPath: "rm://src%2Fdoomed.js",
 			};
 
@@ -343,11 +360,11 @@ describe("Handler dispatch", () => {
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const result = entries.find((e) => e.path === "rm://src/doomed.js");
-			assert.strictEqual(result.status, 202, "file delete is proposed");
+			assert.strictEqual(result.state, "proposed", "file delete is proposed");
 		});
 
 		it("immediately removes known:// entries", async () => {
-			await store.upsert(RUN_ID, 1, "known://ephemeral", "temp", 200);
+			await store.upsert(RUN_ID, 1, "known://ephemeral", "temp", "resolved");
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -355,7 +372,7 @@ describe("Handler dispatch", () => {
 				path: "rm://known%3A%2F%2Fephemeral",
 				body: "",
 				attributes: { path: "known://ephemeral" },
-				status: 200,
+				state: "resolved",
 				resultPath: "rm://known%3A%2F%2Fephemeral",
 			};
 
@@ -366,9 +383,9 @@ describe("Handler dispatch", () => {
 		});
 
 		it("multi-match produces one aggregate result entry", async () => {
-			await store.upsert(RUN_ID, 2, "known://bulk_a", "data-a", 200);
-			await store.upsert(RUN_ID, 2, "known://bulk_b", "data-b", 200);
-			await store.upsert(RUN_ID, 2, "known://bulk_c", "data-c", 200);
+			await store.upsert(RUN_ID, 2, "known://bulk_a", "data-a", "resolved");
+			await store.upsert(RUN_ID, 2, "known://bulk_b", "data-b", "resolved");
+			await store.upsert(RUN_ID, 2, "known://bulk_c", "data-c", "resolved");
 
 			const allBefore = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const rmCountBefore = allBefore.filter((e) => e.scheme === "rm").length;
@@ -380,7 +397,7 @@ describe("Handler dispatch", () => {
 				path: resultPath,
 				body: "",
 				attributes: { path: "known://bulk_*" },
-				status: 200,
+				state: "resolved",
 				resultPath,
 			};
 
@@ -404,7 +421,7 @@ describe("Handler dispatch", () => {
 			);
 			const rmEntry = rmEntries.find((e) => e.body?.includes("known://bulk_a"));
 			assert.ok(rmEntry, "aggregate entry exists");
-			assert.strictEqual(rmEntry.status, 200);
+			assert.strictEqual(rmEntry.state, "resolved");
 			assert.ok(
 				rmEntry.body.includes("known://bulk_b"),
 				"body lists removed paths",
@@ -430,7 +447,7 @@ describe("Handler dispatch", () => {
 
 			// Core get handler is already at priority 10
 			// We just need to verify our priority-5 handler ran first
-			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", 200, {
+			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", "resolved", {
 				fidelity: "demoted",
 			});
 
@@ -440,7 +457,7 @@ describe("Handler dispatch", () => {
 				path: "get://priority_test",
 				body: "",
 				attributes: { path: "src/priority_test.js" },
-				status: 200,
+				state: "resolved",
 				resultPath: "get://priority_test",
 			};
 

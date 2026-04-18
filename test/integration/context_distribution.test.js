@@ -18,17 +18,23 @@ describe("turn_context distribution bucket correctness", () => {
 		RUN_ID = seed.runId;
 
 		// Populate known_entries
-		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", 200);
-		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", 200, {
+		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "resolved");
+		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", "resolved", {
 			fidelity: "demoted",
 		});
-		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", 200);
-		await store.upsert(RUN_ID, 1, "search://1", "search results", 200);
-		await store.upsert(RUN_ID, 1, "update://1", "did a thing", 200, {
+		await store.upsert(
+			RUN_ID,
+			1,
+			"known://auth_flow",
+			"JWT tokens",
+			"resolved",
+		);
+		await store.upsert(RUN_ID, 1, "search://1", "search results", "resolved");
+		await store.upsert(RUN_ID, 1, "update://1", "did a thing", "resolved", {
 			fidelity: "demoted",
 		});
-		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", 200);
-		await store.upsert(RUN_ID, 1, "prompt://1", "test question", 200, {
+		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "resolved");
+		await store.upsert(RUN_ID, 1, "prompt://1", "test question", "resolved", {
 			attributes: { mode: "ask" },
 		});
 

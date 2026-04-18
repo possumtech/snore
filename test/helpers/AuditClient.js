@@ -128,7 +128,7 @@ export default class AuditClient extends RpcClient {
 		);
 
 		console.log(
-			`\n=== AUDIT: ${alias} (${runRow.status}, ${entries.length} entries) ===`,
+			`\n=== AUDIT: ${alias} (${runRow.state}, ${entries.length} entries) ===`,
 		);
 		for (const t of turns) {
 			const turnEntries = entries.filter((e) => e.turn === t);
@@ -148,10 +148,10 @@ export default class AuditClient extends RpcClient {
 		const statuses = Array.isArray(validStatuses)
 			? validStatuses
 			: [validStatuses];
-		if (!statuses.includes(result.status)) {
+		if (!statuses.includes(result.state)) {
 			await this.dumpRun(result.run);
 			throw new Error(
-				`${label}: expected ${statuses.join("|")}, got ${result.status} (run: ${result.run})`,
+				`${label}: expected ${statuses.join("|")}, got ${result.state} (run: ${result.run})`,
 			);
 		}
 	}

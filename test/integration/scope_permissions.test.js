@@ -28,10 +28,10 @@ describe("Scope + permissions (Phase D)", () => {
 	it("permissive scheme accepts both model and plugin writers", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_ok" });
 
-		await store.upsert(runId, 1, "known://a", "fact a", 200, {
+		await store.upsert(runId, 1, "known://a", "fact a", "resolved", {
 			writer: "model",
 		});
-		await store.upsert(runId, 1, "known://b", "fact b", 200, {
+		await store.upsert(runId, 1, "known://b", "fact b", "resolved", {
 			writer: "plugin",
 		});
 
@@ -45,7 +45,7 @@ describe("Scope + permissions (Phase D)", () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_plugin" });
 
 		await assert.rejects(
-			store.upsert(runId, 1, "system://probe", "attempt", 200, {
+			store.upsert(runId, 1, "system://probe", "attempt", "resolved", {
 				writer: "plugin",
 			}),
 			/403.*writer "plugin" not permitted for scheme "system"/,
@@ -56,7 +56,7 @@ describe("Scope + permissions (Phase D)", () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_model" });
 
 		await assert.rejects(
-			store.upsert(runId, 1, "reasoning://probe", "attempt", 200, {
+			store.upsert(runId, 1, "reasoning://probe", "attempt", "resolved", {
 				writer: "model",
 			}),
 			/403.*writer "model" not permitted for scheme "reasoning"/,
@@ -66,7 +66,7 @@ describe("Scope + permissions (Phase D)", () => {
 	it("audit scheme accepts system writer", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_ok" });
 
-		await store.upsert(runId, 1, "assistant://1", "response body", 200, {
+		await store.upsert(runId, 1, "assistant://1", "response body", "resolved", {
 			writer: "system",
 		});
 		const body = await store.getBody(runId, "assistant://1");
@@ -77,7 +77,7 @@ describe("Scope + permissions (Phase D)", () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_prompt_model" });
 
 		await assert.rejects(
-			store.upsert(runId, 1, "prompt://1", "forged prompt", 200, {
+			store.upsert(runId, 1, "prompt://1", "forged prompt", "resolved", {
 				writer: "model",
 			}),
 			/403.*writer "model" not permitted for scheme "prompt"/,
@@ -87,7 +87,7 @@ describe("Scope + permissions (Phase D)", () => {
 	it("prompt scheme accepts plugin writer", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_prompt_ok" });
 
-		await store.upsert(runId, 1, "prompt://1", "user prompt", 200, {
+		await store.upsert(runId, 1, "prompt://1", "user prompt", "resolved", {
 			writer: "plugin",
 			attributes: { mode: "ask" },
 		});
@@ -98,7 +98,7 @@ describe("Scope + permissions (Phase D)", () => {
 	it("entries land at 'run:<runId>' scope by default", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_scope" });
 
-		await store.upsert(runId, 1, "known://scoped", "content", 200, {
+		await store.upsert(runId, 1, "known://scoped", "content", "resolved", {
 			writer: "model",
 		});
 

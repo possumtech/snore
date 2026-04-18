@@ -101,7 +101,7 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 		const known = entries.filter(
-			(e) => e.scheme === "known" && e.status === 200,
+			(e) => e.scheme === "known" && e.state === "resolved",
 		);
 		assert.ok(known.length > 0, "at least one known entry accepted");
 	});

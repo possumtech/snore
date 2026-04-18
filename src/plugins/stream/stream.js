@@ -67,29 +67,26 @@ export default class Stream {
 
 				const exitCode = params.exit_code ?? 0;
 				const duration = params.duration ?? null;
-				const terminalStatus = exitCode === 0 ? 200 : 500;
+				const terminalState = exitCode === 0 ? "resolved" : "failed";
+				const terminalOutcome = exitCode === 0 ? null : `exit:${exitCode}`;
 
 				// Find all `{path}_*` data entries (channels 1, 2, ...).
-				const channels = await ctx.projectAgent.entries.getEntriesByPattern(
+				const store = ctx.projectAgent.entries;
+				const channels = await store.getEntriesByPattern(
 					runId,
 					`${params.path}_*`,
 					null,
 				);
 				for (const ch of channels) {
-					await ctx.db.resolve_known_entry.run({
-						run_id: runId,
-						path: ch.path,
+					await store.resolve(runId, ch.path, terminalState, {
 						body: ch.body,
-						status: terminalStatus,
+						outcome: terminalOutcome,
 					});
 				}
 
 				// Update the log entry body with final stats. Keep it terse —
 				// one line summarizing exit code, duration, and channel sizes.
-				const logEntry = await ctx.projectAgent.entries.getAttributes(
-					runId,
-					params.path,
-				);
+				const logEntry = await store.getAttributes(runId, params.path);
 				const command = logEntry?.command || logEntry?.summary || "";
 				const channelSummary = channels
 					.map((c) => {
@@ -98,16 +95,11 @@ export default class Stream {
 					})
 					.join(", ");
 				const dur = duration ? ` (${duration})` : "";
-				const outcome = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
-				const body = `ran '${command}', ${outcome}${dur}. Output: ${channelSummary}`;
-				await ctx.db.resolve_known_entry.run({
-					run_id: runId,
-					path: params.path,
-					body,
-					status: 200,
-				});
+				const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
+				const body = `ran '${command}', ${exitLabel}${dur}. Output: ${channelSummary}`;
+				await store.resolve(runId, params.path, "resolved", { body });
 
-				return { status: "ok", channels: channels.length };
+				return { ok: true, channels: channels.length };
 			},
 			description:
 				"Finalize a streaming producer. Transitions all `{path}_*` data channels to terminal status (200 on exit_code=0, 500 otherwise) and rewrites the log entry body with exit code, duration, and channel sizes.",
@@ -140,24 +132,20 @@ export default class Stream {
 				const duration = params.duration ?? null;
 				const reason = params.reason ?? null;
 
-				const channels = await ctx.projectAgent.entries.getEntriesByPattern(
+				const store = ctx.projectAgent.entries;
+				const channels = await store.getEntriesByPattern(
 					runId,
 					`${params.path}_*`,
 					null,
 				);
 				for (const ch of channels) {
-					await ctx.db.resolve_known_entry.run({
-						run_id: runId,
-						path: ch.path,
+					await store.resolve(runId, ch.path, "cancelled", {
 						body: ch.body,
-						status: 499,
+						outcome: reason || "aborted",
 					});
 				}
 
-				const logEntry = await ctx.projectAgent.entries.getAttributes(
-					runId,
-					params.path,
-				);
+				const logEntry = await store.getAttributes(runId, params.path);
 				const command = logEntry?.command || logEntry?.summary || "";
 				const channelSummary = channels
 					.map((c) => {
@@ -172,12 +160,7 @@ export default class Stream {
 					? ` (${qualifiers.join(", ")})`
 					: "";
 				const body = `aborted '${command}'${qualifier}. Output: ${channelSummary}`;
-				await ctx.db.resolve_known_entry.run({
-					run_id: runId,
-					path: params.path,
-					body,
-					status: 200,
-				});
+				await store.resolve(runId, params.path, "resolved", { body });
 
 				return { status: "ok", channels: channels.length };
 			},
@@ -212,24 +195,20 @@ export default class Stream {
 
 				const reason = params.reason ?? null;
 
-				const channels = await ctx.projectAgent.entries.getEntriesByPattern(
+				const store = ctx.projectAgent.entries;
+				const channels = await store.getEntriesByPattern(
 					runId,
 					`${params.path}_*`,
 					null,
 				);
 				for (const ch of channels) {
-					await ctx.db.resolve_known_entry.run({
-						run_id: runId,
-						path: ch.path,
+					await store.resolve(runId, ch.path, "cancelled", {
 						body: ch.body,
-						status: 499,
+						outcome: reason || "cancelled",
 					});
 				}
 
-				const logEntry = await ctx.projectAgent.entries.getAttributes(
-					runId,
-					params.path,
-				);
+				const logEntry = await store.getAttributes(runId, params.path);
 				const command = logEntry?.command || logEntry?.summary || "";
 				const channelSummary = channels
 					.map((c) => {
@@ -239,12 +218,7 @@ export default class Stream {
 					.join(", ");
 				const qualifier = reason ? ` (${reason})` : "";
 				const body = `cancelled '${command}'${qualifier}. Output: ${channelSummary}`;
-				await ctx.db.resolve_known_entry.run({
-					run_id: runId,
-					path: params.path,
-					body,
-					status: 200,
-				});
+				await store.resolve(runId, params.path, "resolved", { body });
 
 				// Notify connected clients so they can kill local processes.
 				hooks.stream.cancelled.emit({
@@ -254,7 +228,7 @@ export default class Stream {
 					reason,
 				});
 
-				return { status: "ok", channels: channels.length };
+				return { ok: true, channels: channels.length };
 			},
 			description:
 				"Server-initiated cancellation. Transitions all `{path}_*` data channels to status 499 and pushes a stream/cancelled notification to connected clients. Also used for stale 102 cleanup when the originating client is gone.",

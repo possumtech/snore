@@ -18,15 +18,17 @@ RETURNING id;
 -- PREP: upsert_run_view
 -- View-layer upsert. Called after upsert_entry with the returned entry id.
 INSERT INTO run_views (
-	run_id, entry_id, loop_id, turn, status, fidelity, updated_at
+	run_id, entry_id, loop_id, turn, state, outcome, fidelity, updated_at
 )
 VALUES (
-	:run_id, :entry_id, :loop_id, :turn, :status, :fidelity, CURRENT_TIMESTAMP
+	:run_id, :entry_id, :loop_id, :turn, :state, :outcome, :fidelity
+	, CURRENT_TIMESTAMP
 )
 ON CONFLICT (run_id, entry_id) DO UPDATE SET
 	loop_id = excluded.loop_id
 	, turn = excluded.turn
-	, status = excluded.status
+	, state = excluded.state
+	, outcome = excluded.outcome
 	, fidelity = excluded.fidelity
 	, write_count = run_views.write_count + 1
 	, updated_at = CURRENT_TIMESTAMP;
@@ -90,7 +92,8 @@ WHERE run_id = :run_id AND entry_id IN (
 -- PREP: resolve_known_entry_view
 UPDATE run_views
 SET
-	status = :status
+	state = :state
+	, outcome = :outcome
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id = (
 	SELECT e.id FROM entries AS e
@@ -130,7 +133,8 @@ WHERE run_id = :run_id AND entry_id IN (
 UPDATE run_views
 SET
 	fidelity = 'promoted'
-	, status = 200
+	, state = 'resolved'
+	, outcome = NULL
 	, turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id = (
@@ -171,13 +175,13 @@ JOIN entries AS e ON e.id = rv.entry_id
 WHERE rv.run_id = :run_id AND e.path = :path;
 
 -- PREP: get_entry_state
-SELECT rv.status, rv.fidelity, e.scheme, rv.turn
+SELECT rv.state, rv.outcome, rv.fidelity, e.scheme, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE rv.run_id = :run_id AND e.path = :path;
 
 -- PREP: get_file_states_by_pattern
-SELECT e.path, rv.status, rv.fidelity, rv.turn
+SELECT e.path, rv.state, rv.outcome, rv.fidelity, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE
@@ -208,7 +212,8 @@ WHERE rv.run_id = :run_id AND e.path = :path;
 UPDATE run_views
 SET
 	fidelity = 'promoted'
-	, status = 200
+	, state = 'resolved'
+	, outcome = NULL
 	, turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id IN (
@@ -236,7 +241,8 @@ WHERE run_id = :run_id AND entry_id IN (
 
 -- PREP: get_entries_by_pattern
 SELECT
-	e.path, e.body, e.scheme, rv.status, rv.fidelity, e.tokens, e.attributes
+	e.path, e.body, e.scheme, rv.state, rv.outcome, rv.fidelity
+	, e.tokens, e.attributes
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE
@@ -292,6 +298,8 @@ WHERE run_id = :run_id AND entry_id IN (
 -- PREP: get_turn_demotion_targets
 -- Rows that demote_turn_entries is about to flip. Return shape
 -- matches the old RETURNING (path, tokens) for caller compatibility.
+-- State filter: skip failed/cancelled entries (they're already not
+-- contributing visible context — demoting them would be misleading).
 SELECT e.path, e.tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
@@ -299,10 +307,10 @@ WHERE
 	rv.run_id = :run_id
 	AND rv.turn = :turn
 	AND rv.fidelity = 'promoted'
-	AND rv.status < 400;
+	AND rv.state NOT IN ('failed', 'cancelled');
 
 -- PREP: demote_turn_entries
--- View-layer only — fidelity lives on run_views. Status untouched.
+-- View-layer only — fidelity lives on run_views. State untouched.
 -- Call get_turn_demotion_targets first if you need the list of what
 -- was demoted (required by budget plugin for the budget:// summary).
 UPDATE run_views
@@ -313,4 +321,4 @@ WHERE
 	run_id = :run_id
 	AND turn = :turn
 	AND fidelity = 'promoted'
-	AND status < 400;
+	AND state NOT IN ('failed', 'cancelled');

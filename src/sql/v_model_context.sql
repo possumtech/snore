@@ -8,7 +8,8 @@ visible AS (
 		, e.path
 		, e.body
 		, e.scheme
-		, rv.status
+		, rv.state
+		, rv.outcome
 		, rv.fidelity
 		, rv.turn
 		, rv.updated_at
@@ -18,8 +19,8 @@ visible AS (
 		, CASE
 			-- Archived entries not in context
 			WHEN rv.fidelity = 'archived' THEN NULL
-			-- 202 Accepted (proposed) hidden until resolved
-			WHEN rv.status = 202 THEN NULL
+			-- Proposed entries hidden until the client resolves them
+			WHEN rv.state = 'proposed' THEN NULL
 			-- Audit schemes (model_visible = 0) hidden
 			WHEN s.model_visible = 0 THEN NULL
 			-- Everything else visible at its fidelity
@@ -35,7 +36,8 @@ projected AS (
 		, id
 		, path
 		, scheme
-		, status
+		, state
+		, outcome
 		, visible_fidelity AS fidelity
 		, turn
 		, updated_at
@@ -55,7 +57,8 @@ SELECT
 	, path
 	, scheme
 	, fidelity
-	, status
+	, state
+	, outcome
 	, body
 	, attributes
 	, category

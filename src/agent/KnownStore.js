@@ -127,8 +127,9 @@ export default class KnownStore {
 		turn,
 		path,
 		body,
-		status,
+		state = "resolved",
 		{
+			outcome = null,
 			fidelity = "promoted",
 			attributes = null,
 			hash = null,
@@ -159,7 +160,8 @@ export default class KnownStore {
 			entry_id: entry.id,
 			loop_id: loopId,
 			turn,
-			status,
+			state,
+			outcome,
 			fidelity,
 		});
 		this.#emitChanged(runId, normalized, "upsert");
@@ -192,7 +194,7 @@ export default class KnownStore {
 			fidelity,
 		});
 		if (result.changes === 0) {
-			await this.upsert(runId, 0, pattern, "", 200, { fidelity });
+			await this.upsert(runId, 0, pattern, "", "resolved", { fidelity });
 		}
 		this.#emitChanged(runId, pattern, "fidelity");
 	}
@@ -291,12 +293,13 @@ export default class KnownStore {
 		this.#emitChanged(runId, path, "body");
 	}
 
-	async resolve(runId, path, status, body) {
+	async resolve(runId, path, state, { body = null, outcome = null } = {}) {
 		const normalized = KnownStore.normalizePath(path);
 		await this.#db.resolve_known_entry_view.run({
 			run_id: runId,
 			path: normalized,
-			status,
+			state,
+			outcome,
 		});
 		if (body != null) {
 			await this.#db.resolve_known_entry_body.run({

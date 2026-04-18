@@ -44,8 +44,12 @@ export default class Set {
 					turn,
 					entry.resultPath,
 					`${target} not found`,
-					404,
-					{ fidelity: "archived", loopId },
+					"failed",
+					{
+						outcome: "not_found",
+						fidelity: "archived",
+						loopId,
+					},
 				);
 				return;
 			}
@@ -63,7 +67,7 @@ export default class Set {
 				turn,
 				entry.resultPath,
 				`${matches.map((m) => m.path).join(", ")} ${label}`,
-				200,
+				"resolved",
 				{ fidelity: "archived", loopId },
 			);
 			return;
@@ -105,10 +109,17 @@ export default class Set {
 				const merge = oldContent
 					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
 					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
-				await store.upsert(runId, turn, entry.resultPath, oldContent, 202, {
-					attributes: { path: target, patch: udiff, merge },
-					loopId,
-				});
+				await store.upsert(
+					runId,
+					turn,
+					entry.resultPath,
+					oldContent,
+					"proposed",
+					{
+						attributes: { path: target, patch: udiff, merge },
+						loopId,
+					},
+				);
 			} else if (attrs.filter || target.includes("*")) {
 				// Pattern update
 				const matches = await store.getEntriesByPattern(
@@ -145,21 +156,28 @@ export default class Set {
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
-				await store.upsert(runId, turn, target, newContent, 200, {
+				await store.upsert(runId, turn, target, newContent, "resolved", {
 					fidelity: fidelityAttr || "promoted",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
 				});
-				await store.upsert(runId, turn, entry.resultPath, oldContent, 200, {
-					loopId,
-					attributes: {
-						path: target,
-						patch: udiff,
-						merge,
-						beforeTokens,
-						afterTokens,
+				await store.upsert(
+					runId,
+					turn,
+					entry.resultPath,
+					oldContent,
+					"resolved",
+					{
+						loopId,
+						attributes: {
+							path: target,
+							patch: udiff,
+							merge,
+							beforeTokens,
+							afterTokens,
+						},
 					},
-				});
+				);
 			}
 		}
 
@@ -198,7 +216,8 @@ export default class Set {
 		const matches = await store.getEntriesByPattern(runId, target, attrs.body);
 
 		if (matches.length === 0) {
-			await store.upsert(runId, turn, entry.resultPath, "", 404, {
+			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+				outcome: "not_found",
 				attributes: { path: target, error: `${target} not found in context` },
 				loopId,
 			});
@@ -212,7 +231,7 @@ export default class Set {
 				const existingAttrs = await rummy.getAttributes(canonicalPath);
 				const revisions = existingAttrs?.revisions || [];
 				revisions.push(revision);
-				await store.upsert(runId, turn, canonicalPath, "", 200, {
+				await store.upsert(runId, turn, canonicalPath, "", "resolved", {
 					attributes: { path: match.path, revisions },
 					loopId,
 				});
@@ -225,7 +244,8 @@ export default class Set {
 			const { patch, searchText, replaceText, warning, error } =
 				Set.#applyRevision(match.body, attrs);
 
-			const status = error ? 409 : 200;
+			const state = error ? "failed" : "resolved";
+			const outcome = error ? "conflict" : null;
 			const resultPath = `set://${match.path}`;
 			const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
 			const merge =
@@ -235,7 +255,8 @@ export default class Set {
 			const beforeTokens = match.tokens || 0;
 			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
-			await store.upsert(runId, turn, resultPath, match.body, status, {
+			await store.upsert(runId, turn, resultPath, match.body, state, {
+				outcome,
 				attributes: {
 					path: match.path,
 					patch: udiff,
@@ -248,8 +269,8 @@ export default class Set {
 				loopId,
 			});
 
-			if (status === 200 && patch) {
-				await store.upsert(runId, turn, match.path, patch, match.status, {
+			if (state === "resolved" && patch) {
+				await store.upsert(runId, turn, match.path, patch, match.state, {
 					loopId,
 				});
 			}
@@ -293,7 +314,8 @@ export default class Set {
 				}
 			}
 
-			const state = lastError ? 409 : 202;
+			const state = lastError ? "failed" : "proposed";
+			const outcome = lastError ? "conflict" : null;
 			const udiff =
 				current !== original
 					? generatePatch(entryPath, original, current)
@@ -303,6 +325,7 @@ export default class Set {
 			const afterTokens = current ? countTokens(current) : beforeTokens;
 
 			await store.upsert(runId, turn, entry.path, original, state, {
+				outcome,
 				attributes: {
 					path: entryPath,
 					patch: udiff,

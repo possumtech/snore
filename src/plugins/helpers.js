@@ -18,5 +18,8 @@ export async function storePatternResult(
 	const listing = matches.map((m) => `${m.path} (${m.tokens})`).join("\n");
 	const prefix = preview ? "PREVIEW " : "";
 	const body = `${prefix}${scheme} path="${path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
-	await store.upsert(runId, turn, slug, body, 200, { loopId, attributes });
+	await store.upsert(runId, turn, slug, body, "resolved", {
+		loopId,
+		attributes,
+	});
 }

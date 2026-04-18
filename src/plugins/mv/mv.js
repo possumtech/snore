@@ -35,7 +35,7 @@ export default class Mv {
 				turn,
 				entry.resultPath,
 				`${matches.map((m) => m.path).join(", ")} ${label}`,
-				200,
+				"resolved",
 				{ fidelity: "archived", loopId },
 			);
 			return;
@@ -53,14 +53,17 @@ export default class Mv {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
-			await store.upsert(runId, turn, entry.resultPath, body, 202, {
+			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
 				attributes: { from: path, to, isMove: true, warning },
 				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, 200, { fidelity, loopId });
+			await store.upsert(runId, turn, to, source, "resolved", {
+				fidelity,
+				loopId,
+			});
 			await store.remove(runId, path);
-			await store.upsert(runId, turn, entry.resultPath, body, 200, {
+			await store.upsert(runId, turn, entry.resultPath, body, "resolved", {
 				attributes: { from: path, to, isMove: true, warning },
 				loopId,
 			});

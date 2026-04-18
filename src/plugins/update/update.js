@@ -26,7 +26,7 @@ export default class Update {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const updateStatus = entry.attributes?.status ?? 102;
 		const statusPath = await store.slugPath(runId, "update", entry.body);
-		await store.upsert(runId, turn, statusPath, entry.body, 200, {
+		await store.upsert(runId, turn, statusPath, entry.body, "resolved", {
 			loopId,
 			attributes: { status: updateStatus },
 		});
@@ -76,15 +76,13 @@ export default class Update {
 		}
 
 		// Terminal update but actions failed → the model overstated success.
-		// Override to a continuation and mark the update entry 409.
+		// Override to a continuation and mark the update entry failed/conflict.
 		if (summaryText && hasErrors) {
 			if (entry?.path) {
-				await rummy.entries.resolve(
-					runId,
-					entry.path,
-					409,
-					"Overridden — actions in this turn failed. Continue with <update/>.",
-				);
+				await rummy.entries.resolve(runId, entry.path, "failed", {
+					body: "Overridden — actions in this turn failed. Continue with <update/>.",
+					outcome: "conflict",
+				});
 			}
 			updateText = summaryText;
 			summaryText = null;

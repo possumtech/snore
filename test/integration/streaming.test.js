@@ -34,7 +34,9 @@ describe("Streaming primitives", () => {
 			const path = "sh://turn_1/npm_test_1";
 
 			// Streaming entry starts at 102, empty body (created on accept).
-			await store.upsert(runId, 1, path, "", 102, { fidelity: "demoted" });
+			await store.upsert(runId, 1, path, "", "streaming", {
+				fidelity: "demoted",
+			});
 
 			await store.appendBody(runId, path, "hello ");
 			await store.appendBody(runId, path, "world\n");
@@ -44,8 +46,8 @@ describe("Streaming primitives", () => {
 			const entry = entries.find((e) => e.path === path);
 			assert.strictEqual(entry.body, "hello world\nline 2\n");
 			assert.strictEqual(
-				entry.status,
-				102,
+				entry.state,
+				"streaming",
 				"status stays at 102 during streaming",
 			);
 			assert.ok(entry.tokens > 0, "tokens recomputed after append");
@@ -55,7 +57,9 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_tokens" });
 			const path = "sh://turn_1/grow_1";
 
-			await store.upsert(runId, 1, path, "", 102, { fidelity: "demoted" });
+			await store.upsert(runId, 1, path, "", "streaming", {
+				fidelity: "demoted",
+			});
 
 			await store.appendBody(runId, path, "a".repeat(100));
 			const first = (
@@ -79,16 +83,18 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_success" });
 			const path = "sh://turn_1/ok_1";
 
-			await store.upsert(runId, 1, path, "", 102, { fidelity: "demoted" });
+			await store.upsert(runId, 1, path, "", "streaming", {
+				fidelity: "demoted",
+			});
 			await store.appendBody(runId, path, "ran ok\n");
 
 			// Simulate stream/completed — transition to terminal status.
-			await store.resolve(runId, path, 200, "ran ok\n");
+			await store.resolve(runId, path, "resolved", { body: "ran ok\n" });
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
 			).find((e) => e.path === path);
-			assert.strictEqual(entry.status, 200);
+			assert.strictEqual(entry.state, "resolved");
 			assert.strictEqual(entry.body, "ran ok\n");
 		});
 
@@ -96,15 +102,17 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_fail" });
 			const path = "sh://turn_1/bad_1";
 
-			await store.upsert(runId, 1, path, "", 102, { fidelity: "demoted" });
+			await store.upsert(runId, 1, path, "", "streaming", {
+				fidelity: "demoted",
+			});
 			await store.appendBody(runId, path, "error output\n");
 
-			await store.resolve(runId, path, 500, "error output\n");
+			await store.resolve(runId, path, "failed", { body: "error output\n" });
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
 			).find((e) => e.path === path);
-			assert.strictEqual(entry.status, 500);
+			assert.strictEqual(entry.state, "failed");
 		});
 	});
 
@@ -114,16 +122,16 @@ describe("Streaming primitives", () => {
 			const base = "sh://turn_1/cmd";
 
 			// Log entry (200, logging-shaped)
-			await store.upsert(runId, 1, base, "ran 'cmd'", 200, {
+			await store.upsert(runId, 1, base, "ran 'cmd'", "resolved", {
 				fidelity: "demoted",
 				attributes: { command: "cmd" },
 			});
 			// Data channels at 102
-			await store.upsert(runId, 1, `${base}_1`, "", 102, {
+			await store.upsert(runId, 1, `${base}_1`, "", "streaming", {
 				fidelity: "demoted",
 				attributes: { command: "cmd", channel: 1 },
 			});
-			await store.upsert(runId, 1, `${base}_2`, "", 102, {
+			await store.upsert(runId, 1, `${base}_2`, "", "streaming", {
 				fidelity: "demoted",
 				attributes: { command: "cmd", channel: 2 },
 			});
@@ -141,14 +149,14 @@ describe("Streaming primitives", () => {
 			assert.strictEqual(channels.length, 2, "both channels found");
 
 			for (const ch of channels) {
-				await store.resolve(runId, ch.path, 200, ch.body);
+				await store.resolve(runId, ch.path, "resolved", { body: ch.body });
 			}
 
 			const all = await tdb.db.get_known_entries.all({ run_id: runId });
 			const stdout = all.find((e) => e.path === `${base}_1`);
 			const stderr = all.find((e) => e.path === `${base}_2`);
-			assert.strictEqual(stdout.status, 200);
-			assert.strictEqual(stderr.status, 200);
+			assert.strictEqual(stdout.state, "resolved");
+			assert.strictEqual(stderr.state, "resolved");
 		});
 	});
 
@@ -157,7 +165,9 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_tail" });
 			const path = "sh://turn_1/long_1";
 
-			await store.upsert(runId, 1, path, "", 102, { fidelity: "demoted" });
+			await store.upsert(runId, 1, path, "", "streaming", {
+				fidelity: "demoted",
+			});
 			// Simulate 100 lines of streamed output
 			for (let i = 1; i <= 100; i++) {
 				await store.appendBody(runId, path, `line ${i}\n`);

@@ -128,11 +128,12 @@ export default class TurnExecutor {
 		const messages = budgetResult.messages;
 		const assembledTokens = budgetResult.assembledTokens;
 
-		if (budgetResult.status === 413) {
+		if (!budgetResult.ok) {
 			return {
 				turn,
 				turnId: turnRow.id,
-				status: 413,
+				state: "failed",
+				outcome: `overflow:${budgetResult.overflow}`,
 				assembledTokens,
 				contextSize,
 				overflow: budgetResult.overflow,
@@ -163,7 +164,8 @@ export default class TurnExecutor {
 				return {
 					turn,
 					turnId: turnRow.id,
-					status: 413,
+					state: "failed",
+					outcome: "overflow:llm",
 					assembledTokens,
 					contextSize,
 				};
@@ -252,7 +254,7 @@ export default class TurnExecutor {
 		let abortAfter = null;
 
 		for (const entry of recorded) {
-			if (entry.status >= 400) continue;
+			if (entry.state === "failed" || entry.state === "cancelled") continue;
 
 			if (abortAfter) {
 				const errorMsg = `Aborted — preceding <${abortAfter}> failed.`;
@@ -261,8 +263,12 @@ export default class TurnExecutor {
 					turn,
 					entry.resultPath || entry.path,
 					errorMsg,
-					409,
-					{ attributes: { error: errorMsg }, loopId: currentLoopId },
+					"failed",
+					{
+						outcome: "aborted",
+						attributes: { error: errorMsg },
+						loopId: currentLoopId,
+					},
 				);
 				hasErrors = true;
 				continue;
@@ -393,15 +399,16 @@ export default class TurnExecutor {
 				turn,
 				rejectPath,
 				`Invalid path: too long or contains non-printing characters`,
-				400,
-				{ loopId },
+				"failed",
+				{ outcome: "validation", loopId },
 			);
 			return {
 				scheme,
 				path: rejectPath,
 				body: "",
 				attributes: {},
-				status: 400,
+				state: "failed",
+				outcome: "validation",
 				resultPath: rejectPath,
 			};
 		}
@@ -421,17 +428,26 @@ export default class TurnExecutor {
 
 		// Filter: plugins can validate/transform before recording
 		const filtered = await this.#hooks.entry.recording.filter(
-			{ scheme, path: resultPath, body, attributes, status: 200 },
+			{
+				scheme,
+				path: resultPath,
+				body,
+				attributes,
+				state: "resolved",
+				outcome: null,
+			},
 			{ store: this.#knownStore, runId, turn, loopId, mode },
 		);
-		if (filtered.status >= 400) return filtered;
+		if (filtered.state === "failed" || filtered.state === "cancelled") {
+			return filtered;
+		}
 
 		return {
 			scheme: filtered.scheme,
 			path: filtered.path,
 			body: filtered.body,
 			attributes: filtered.attributes,
-			status: 200,
+			state: "resolved",
 			resultPath: filtered.path,
 		};
 	}

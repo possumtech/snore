@@ -91,7 +91,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const store = new (await import("../../src/agent/KnownStore.js")).default(
 				tdb.db,
 			);
-			await store.upsert(runId, 1, "known://scheme_test", "test", 200);
+			await store.upsert(runId, 1, "known://scheme_test", "test", "resolved");
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "known://scheme_test");
 			assert.ok(entry, "known entry created");
@@ -234,13 +234,13 @@ describe("PLUGINS.md Spec Compliance", () => {
 				? new (await import("../../src/agent/KnownStore.js")).default(tdb.db)
 				: null;
 			if (!store) return;
-			await store.upsert(runId, 1, "known://test", "test body", 200);
+			await store.upsert(runId, 1, "known://test", "test body", "resolved");
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "known://test");
 			assert.ok(entry, "entry created");
 			assert.strictEqual(entry.scheme, "known");
 			assert.strictEqual(entry.body, "test body");
-			assert.strictEqual(entry.status, 200);
+			assert.strictEqual(entry.state, "resolved");
 		});
 	});
 
@@ -253,7 +253,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
-			await store.upsert(runId, 1, "known://test_changed", "body", 200);
+			await store.upsert(runId, 1, "known://test_changed", "body", "resolved");
 			assert.ok(events.length > 0, "onChanged should fire on upsert");
 			assert.strictEqual(events[0].changeType, "upsert");
 		});
@@ -265,7 +265,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
-			await store.upsert(runId, 1, "known://fidelity_test", "body", 200);
+			await store.upsert(runId, 1, "known://fidelity_test", "body", "resolved");
 			events.length = 0;
 			await store.setFidelity(runId, "known://fidelity_test", "demoted");
 			assert.ok(
@@ -281,7 +281,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
-			await store.upsert(runId, 1, "known://remove_test", "body", 200);
+			await store.upsert(runId, 1, "known://remove_test", "body", "resolved");
 			events.length = 0;
 			await store.remove(runId, "known://remove_test");
 			assert.ok(
@@ -367,9 +367,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const attrs = await rummy.getAttributes("known://query_a");
 			assert.strictEqual(attrs.tag, "test");
 
-			// getStatus
-			const status = await rummy.getStatus("known://query_a");
-			assert.strictEqual(status, 200);
+			// getState
+			const state = await rummy.getState("known://query_a");
+			assert.strictEqual(state, "resolved");
 
 			// getEntry
 			const entry = await rummy.getEntry("known://query_a");
@@ -395,25 +395,25 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 	// §7.5 Budget enforce
 	describe("§7.5 Budget Enforce", () => {
-		it("§7.5.1 budget.enforce returns 413 with overflow on over-budget", async () => {
+		it("§7.5.1 budget.enforce returns overflow on over-budget", async () => {
 			const bigMessage = "x".repeat(100000);
 			const result = await tdb.hooks.budget.enforce({
 				contextSize: 1000,
 				messages: [{ role: "system", content: bigMessage }],
 				rows: [],
 			});
-			assert.strictEqual(result.status, 413);
+			assert.strictEqual(result.ok, false);
 			assert.ok(result.overflow > 0, "overflow is positive");
 			assert.ok(result.assembledTokens > 1000, "assembled exceeds ceiling");
 		});
 
-		it("§7.5.2 budget.enforce returns 200 when under budget", async () => {
+		it("§7.5.2 budget.enforce returns ok when under budget", async () => {
 			const result = await tdb.hooks.budget.enforce({
 				contextSize: 100000,
 				messages: [{ role: "system", content: "small" }],
 				rows: [],
 			});
-			assert.strictEqual(result.status, 200);
+			assert.strictEqual(result.ok, true);
 		});
 	});
 
@@ -424,7 +424,13 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const KnownStore = (await import("../../src/agent/KnownStore.js"))
 				.default;
 			const store = new KnownStore(tdb.db);
-			await store.upsert(runId, 1, "known://lifecycle_vis", "visible", 200);
+			await store.upsert(
+				runId,
+				1,
+				"known://lifecycle_vis",
+				"visible",
+				"resolved",
+			);
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_vis");
@@ -437,9 +443,16 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const KnownStore = (await import("../../src/agent/KnownStore.js"))
 				.default;
 			const store = new KnownStore(tdb.db);
-			await store.upsert(runId, 1, "known://lifecycle_stored", "hidden", 200, {
-				fidelity: "archived",
-			});
+			await store.upsert(
+				runId,
+				1,
+				"known://lifecycle_stored",
+				"hidden",
+				"resolved",
+				{
+					fidelity: "archived",
+				},
+			);
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_stored");

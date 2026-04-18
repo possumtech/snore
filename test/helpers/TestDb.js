@@ -67,8 +67,8 @@ export default class TestDb {
 			dirname(fileURLToPath(import.meta.url)),
 			"../../src/plugins",
 		);
-		await registerPlugins([pluginsDir], hooks);
-		await initPlugins(db, hooks);
+		const pluginInstances = await registerPlugins([pluginsDir], hooks);
+		await initPlugins(db, hooks, pluginInstances);
 		return new TestDb(db, dbPath, hooks, suiteName);
 	}
 

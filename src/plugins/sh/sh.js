@@ -24,7 +24,7 @@ export default class Sh {
 		// body fills in on accept (log message about the action). Data
 		// entries with stdout/stderr are created on accept in resolve().
 		const command = entry.attributes.command || entry.body || "";
-		await store.upsert(runId, turn, entry.resultPath, "", 202, {
+		await store.upsert(runId, turn, entry.resultPath, "", "proposed", {
 			attributes: { ...entry.attributes, summary: command },
 			loopId,
 		});

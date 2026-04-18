@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -11,33 +11,43 @@ if (!rummyHome) {
 	process.exit(1);
 }
 
-// 0a. Seed and load env from RUMMY_HOME.
+// 0a. Env resolution: local project config wins over RUMMY_HOME.
 //
-// The cascade is: `${RUMMY_HOME}/.env.example` (canonical defaults,
-// shipped with the package) → `${RUMMY_HOME}/.env` (user overrides) →
-// existing process.env (wins). On first run we copy the bundled
-// .env.example into RUMMY_HOME so the user has a file to edit. Users
-// who edit .env.example directly just change the defaults — no silent
-// no-op; it's forgiving by design.
+// If CWD has a rummy-shaped `.env.example` (contains any RUMMY_* var),
+// this is an authoritative local config — the npm script's
+// --env-file-if-exists flags already loaded it, and RUMMY_HOME would
+// only pollute it with machine-wide config that doesn't belong to this
+// instance.
 //
-// For repo-local development (`npm start`), env is already populated
-// by the npm script's `--env-file-if-exists` flags before node starts,
-// so these loads are either no-ops or reinforce the same values.
+// If CWD has no rummy-shaped config, fall back to
+// `${RUMMY_HOME}/.env.example` (canonical defaults, shipped with the
+// package) → `${RUMMY_HOME}/.env` (user overrides). On first run we
+// seed the bundled .env.example into RUMMY_HOME so the user has
+// something to edit.
+//
+// This makes multiple rummy instances on the same box cleanly
+// independent: each owns its own .env.example in its CWD.
 {
-	mkdirSync(rummyHome, { recursive: true });
-	const homeExample = join(rummyHome, ".env.example");
-	const homeEnv = join(rummyHome, ".env");
-	const bundledExample = fileURLToPath(new URL("./.env.example", import.meta.url));
-	if (!existsSync(homeExample) && existsSync(bundledExample)) {
-		copyFileSync(bundledExample, homeExample);
-		console.log(`[RUMMY] Seeded ${homeExample} from package defaults.`);
-	}
-	for (const path of [homeExample, homeEnv]) {
-		if (!existsSync(path)) continue;
-		try {
-			process.loadEnvFile(path);
-		} catch (err) {
-			console.warn(`[RUMMY] Failed to load ${path}: ${err.message}`);
+	const cwdExample = join(process.cwd(), ".env.example");
+	const isLocalRummyConfig =
+		existsSync(cwdExample) && /^\s*(#\s*)?RUMMY_\w+\s*=/m.test(readFileSync(cwdExample, "utf8"));
+
+	if (!isLocalRummyConfig) {
+		mkdirSync(rummyHome, { recursive: true });
+		const homeExample = join(rummyHome, ".env.example");
+		const homeEnv = join(rummyHome, ".env");
+		const bundledExample = fileURLToPath(new URL("./.env.example", import.meta.url));
+		if (!existsSync(homeExample) && existsSync(bundledExample)) {
+			copyFileSync(bundledExample, homeExample);
+			console.log(`[RUMMY] Seeded ${homeExample} from package defaults.`);
+		}
+		for (const path of [homeExample, homeEnv]) {
+			if (!existsSync(path)) continue;
+			try {
+				process.loadEnvFile(path);
+			} catch (err) {
+				console.warn(`[RUMMY] Failed to load ${path}: ${err.message}`);
+			}
 		}
 	}
 }
@@ -80,7 +90,10 @@ async function main() {
 	mkdirSync(userPluginsDir, { recursive: true });
 
 	// 4. Register Plugins
-	const plugins = await registerPlugins([pluginsDir, userPluginsDir], hooks);
+	const pluginInstances = await registerPlugins(
+		[pluginsDir, userPluginsDir],
+		hooks,
+	);
 
 	// 5. Bootstrap Persistence
 	const dbPath = process.env.RUMMY_DB_PATH;
@@ -102,7 +115,7 @@ async function main() {
 	});
 
 	// 6. Initialize plugins (register schemes)
-	await initPlugins(db, hooks);
+	await initPlugins(db, hooks, pluginInstances);
 
 	// 7. Bootstrap models from env vars
 	{

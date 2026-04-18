@@ -20,7 +20,7 @@ export default class Env {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const command = entry.attributes.command || entry.body || "";
-		await store.upsert(runId, turn, entry.resultPath, "", 202, {
+		await store.upsert(runId, turn, entry.resultPath, "", "proposed", {
 			attributes: { ...entry.attributes, summary: command },
 			loopId,
 		});

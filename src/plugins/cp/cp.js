@@ -36,13 +36,16 @@ export default class Cp {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
-			await store.upsert(runId, turn, entry.resultPath, body, 202, {
+			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, 200, { fidelity, loopId });
-			await store.upsert(runId, turn, entry.resultPath, body, 200, {
+			await store.upsert(runId, turn, to, source, "resolved", {
+				fidelity,
+				loopId,
+			});
+			await store.upsert(runId, turn, entry.resultPath, body, "resolved", {
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,
 			});

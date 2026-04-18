@@ -1,6 +1,6 @@
 -- PREP: get_promoted_entries
 SELECT
-	ke.path, ke.scheme, ke.status, ke.fidelity, ke.turn
+	ke.path, ke.scheme, ke.state, ke.outcome, ke.fidelity, ke.turn
 	, ke.tokens, ke.refs
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')

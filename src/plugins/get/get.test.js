@@ -9,8 +9,8 @@ function makeStore(entries = []) {
 		getEntriesByPattern: async () => entries,
 		promoteByPattern: async () => {},
 		setFidelity: async () => {},
-		upsert: async (_runId, _turn, path, body, status, _opts) => {
-			upserted.push({ path, body, status });
+		upsert: async (_runId, _turn, path, body, state, opts) => {
+			upserted.push({ path, body, state, outcome: opts?.outcome ?? null });
 		},
 	};
 }
@@ -52,7 +52,7 @@ describe("Get partial read (line/limit)", () => {
 
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
-		assert.strictEqual(result.status, 200);
+		assert.strictEqual(result.state, "resolved");
 		assert.ok(
 			result.body.startsWith("[lines 10–14 / 100 total]"),
 			`unexpected header: ${result.body.slice(0, 40)}`,
@@ -160,24 +160,25 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(result.body.includes("y\nz"));
 	});
 
-	it("glob with line/limit returns 400", async () => {
+	it("glob with line/limit fails with validation outcome", async () => {
 		const store = makeStore([]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ path: "src/**/*.js", line: "1", limit: "10" });
 
 		await plugin.handler(entry, rummy);
 
-		assert.strictEqual(store.upserted[0].status, 400);
+		assert.strictEqual(store.upserted[0].state, "failed");
+		assert.strictEqual(store.upserted[0].outcome, "validation");
 	});
 
-	it("not found with line/limit returns 200 not-found message", async () => {
+	it("not found with line/limit resolves with not-found message", async () => {
 		const store = makeStore([]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ line: "1", limit: "10" });
 
 		await plugin.handler(entry, rummy);
 
-		assert.strictEqual(store.upserted[0].status, 200);
+		assert.strictEqual(store.upserted[0].state, "resolved");
 		assert.ok(store.upserted[0].body.includes("not found"));
 	});
 
@@ -193,8 +194,8 @@ describe("Get partial read (line/limit)", () => {
 				promoted = true;
 			},
 			setFidelity: async () => {},
-			upsert: async (_runId, _turn, path, b, status) => {
-				store.upserted.push({ path, body: b, status });
+			upsert: async (_runId, _turn, path, b, state) => {
+				store.upserted.push({ path, body: b, state });
 			},
 		};
 		const rummy = makeRummy(store);

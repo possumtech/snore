@@ -34,11 +34,11 @@ export default class Budget {
 				messages,
 				rows,
 				assembledTokens,
-				status: 413,
 				overflow: assembledTokens - ceiling,
+				ok: false,
 			};
 		}
-		return { messages, rows, assembledTokens, status: 200 };
+		return { messages, rows, assembledTokens, ok: true };
 	}
 
 	/**
@@ -59,7 +59,7 @@ export default class Budget {
 		rummy,
 	}) {
 		if (!contextSize) {
-			return { messages, rows, assembledTokens: 0, status: 200 };
+			return { messages, rows, assembledTokens: 0, ok: true };
 		}
 
 		const first = this.#check({
@@ -68,7 +68,7 @@ export default class Budget {
 			rows,
 			lastPromptTokens,
 		});
-		if (first.status !== 413) return first;
+		if (first.ok) return first;
 		if (ctx?.loopIteration !== 1) return first;
 
 		const promptRow = rows.findLast(
@@ -124,7 +124,7 @@ export default class Budget {
 			messages: postMat.messages,
 			rows: postMat.rows,
 		});
-		if (post.status !== 413) return;
+		if (post.ok) return;
 
 		const store = rummy.entries;
 		const demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
@@ -133,14 +133,14 @@ export default class Budget {
 			await store.setFidelity(ctx.runId, promptRow.path, "demoted");
 		}
 
-		// NOTE: we do NOT rewrite get-result bodies or flip their status.
-		// The get succeeded (status=200); budget demotion is a lifecycle
-		// event, not a failure of the get. The body still says "promoted"
-		// (which was true at the moment of the get); fidelity=demoted tells
-		// the model the entry is no longer in the promoted view. The budget://
-		// entry is the canonical record of the panic. Model reads three
-		// consistent signals: status=200 (get worked), fidelity=demoted (it's
-		// out of context now), budget://... (this turn overflowed).
+		// NOTE: we do NOT rewrite get-result bodies or flip their state.
+		// The get succeeded (state=resolved); budget demotion is a lifecycle
+		// event, not a failure of the get. Body still reflects what was
+		// true at the moment of the get; fidelity=demoted tells the model
+		// the entry is no longer in the promoted view. The budget:// entry
+		// is the canonical record of the panic. Model reads three consistent
+		// signals: state=resolved (get worked), fidelity=demoted (it's out
+		// of context now), budget://... (this turn overflowed).
 
 		// The 50% rule is the key directive: it forces the model to sum
 		// promotion costs (which is the behavior we want), and the threshold
@@ -149,7 +149,7 @@ export default class Budget {
 		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
 		const body = [
-			`413 Token Budget Error: overflowed by ${post.overflow} tokens. Token Budget: ${ceiling}.`,
+			`Token Budget overflow: exceeded by ${post.overflow} tokens. Token Budget: ${ceiling}.`,
 			`Your ${demotedEntries.length} promotions from last turn (${totalDemoted} tokens total) were demoted to fit.`,
 			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
 		].join("\n");
@@ -159,8 +159,8 @@ export default class Budget {
 			ctx.turn,
 			`budget://${ctx.loopId}/${ctx.turn}`,
 			body,
-			413,
-			{ loopId: ctx.loopId },
+			"failed",
+			{ outcome: `overflow:${post.overflow}`, loopId: ctx.loopId },
 		);
 	}
 }

@@ -81,7 +81,7 @@ describe("Progress math", () => {
 	describe("used tokens", () => {
 		it("used = 0 when no promoted controllable entries", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_used_zero" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
@@ -93,11 +93,11 @@ describe("Progress math", () => {
 
 		it("used equals tokens of single promoted known", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_used_one" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
 			const body = pad(50);
-			await store.upsert(runId, 1, "known://fact", body, 200, {
+			await store.upsert(runId, 1, "known://fact", body, "resolved", {
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
@@ -113,13 +113,13 @@ describe("Progress math", () => {
 
 		it("used sums across multiple promoted entries", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_used_sum" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
-			await store.upsert(runId, 1, "known://a", pad(40), 200, {
+			await store.upsert(runId, 1, "known://a", pad(40), "resolved", {
 				fidelity: "promoted",
 			});
-			await store.upsert(runId, 1, "known://b", pad(60), 200, {
+			await store.upsert(runId, 1, "known://b", pad(60), "resolved", {
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
@@ -137,13 +137,13 @@ describe("Progress math", () => {
 
 		it("demoted entries do not contribute to used", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_used_demoted" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
-			await store.upsert(runId, 1, "known://kept", pad(40), 200, {
+			await store.upsert(runId, 1, "known://kept", pad(40), "resolved", {
 				fidelity: "promoted",
 			});
-			await store.upsert(runId, 1, "known://hidden", pad(80), 200, {
+			await store.upsert(runId, 1, "known://hidden", pad(80), "resolved", {
 				fidelity: "demoted",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
@@ -163,12 +163,19 @@ describe("Progress math", () => {
 
 		it("prompt/unknown/system entries do not contribute to used", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_used_categories" });
-			await store.upsert(runId, 1, "prompt://1", pad(20), 200, {
+			await store.upsert(runId, 1, "prompt://1", pad(20), "resolved", {
 				attributes: { mode: "ask" },
 			});
-			await store.upsert(runId, 1, "unknown://gap", "what about X?", 200, {
-				fidelity: "promoted",
-			});
+			await store.upsert(
+				runId,
+				1,
+				"unknown://gap",
+				"what about X?",
+				"resolved",
+				{
+					fidelity: "promoted",
+				},
+			);
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages } = await assemble(tdb, runId, 1);
 			const nums = parsePromptAttrs(messages[1].content);
@@ -181,7 +188,7 @@ describe("Progress math", () => {
 			const { runId } = await tdb.seedRun({ alias: "p_budget" });
 			const contextSize = 32768;
 			const ceiling = Math.floor(contextSize * CEILING_RATIO);
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
@@ -199,10 +206,10 @@ describe("Progress math", () => {
 	describe("model action causality", () => {
 		it("promoting a demoted known increases used by exactly entry.tokens", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_promote" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
-			await store.upsert(runId, 1, "known://x", pad(75), 200, {
+			await store.upsert(runId, 1, "known://x", pad(75), "resolved", {
 				fidelity: "demoted",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
@@ -232,10 +239,10 @@ describe("Progress math", () => {
 
 		it("demoting a promoted known decreases used by exactly entry.tokens", async () => {
 			const { runId } = await tdb.seedRun({ alias: "p_demote" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
+			await store.upsert(runId, 1, "prompt://1", "do thing", "resolved", {
 				attributes: { mode: "ask" },
 			});
-			await store.upsert(runId, 1, "known://y", pad(60), 200, {
+			await store.upsert(runId, 1, "known://y", pad(60), "resolved", {
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });

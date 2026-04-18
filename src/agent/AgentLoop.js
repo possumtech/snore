@@ -69,12 +69,10 @@ export default class AgentLoop {
 			// Clean up stale proposals from interrupted runs
 			const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
 			for (const u of unresolved) {
-				await this.#knownStore.resolve(
-					existingRun.id,
-					u.path,
-					499,
-					"Stale proposal from interrupted run",
-				);
+				await this.#knownStore.resolve(existingRun.id, u.path, "cancelled", {
+					body: "Stale proposal from interrupted run",
+					outcome: "interrupted",
+				});
 			}
 			return { runId: existingRun.id, alias: existingRun.alias };
 		}
@@ -516,14 +514,19 @@ export default class AgentLoop {
 				attrs,
 				output,
 			);
-			const status = action === "error" ? 500 : 200;
-			await this.#knownStore.resolve(runId, path, status, resolvedBody);
+			const state = action === "error" ? "failed" : "resolved";
+			const outcome = action === "error" ? "error" : null;
+			await this.#knownStore.resolve(runId, path, state, {
+				body: resolvedBody,
+				outcome,
+			});
 
 			// Store answer in attributes for ask_user
 			if (path.startsWith("ask_user://") && output) {
 				const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 					.next_turn;
-				await this.#knownStore.upsert(runId, turn, path, resolvedBody, status, {
+				await this.#knownStore.upsert(runId, turn, path, resolvedBody, state, {
+					outcome,
 					attributes: { ...attrs, answer: output },
 				});
 			}
@@ -554,7 +557,7 @@ export default class AgentLoop {
 					}
 					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 						.next_turn;
-					await this.#knownStore.upsert(runId, turn, attrs.path, patched, 200);
+					await this.#knownStore.upsert(runId, turn, attrs.path, patched);
 					if (projectRoot) {
 						const { writeFile } = await import("node:fs/promises");
 						const { join } = await import("node:path");
@@ -602,7 +605,7 @@ export default class AgentLoop {
 							turn,
 							`${path}_${ch}`,
 							"",
-							102,
+							"streaming",
 							{
 								fidelity: "demoted",
 								attributes: { command, summary: command, channel: ch },
@@ -610,19 +613,19 @@ export default class AgentLoop {
 						);
 					}
 					// Overwrite the log entry body with a descriptive line that
-					// references the data entries. resolve() above already set
-					// status=200; this is just body replacement to make the log
+					// references the data entries. resolve() above set the state
+					// to resolved; this is body replacement to make the log
 					// entry self-documenting in <performed>.
-					await this.#knownStore.resolve(
-						runId,
-						path,
-						200,
-						`ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
-					);
+					await this.#knownStore.resolve(runId, path, "resolved", {
+						body: `ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
+					});
 				}
 			}
 		} else if (action === "reject") {
-			await this.#knownStore.resolve(runId, path, 403, output || "rejected");
+			await this.#knownStore.resolve(runId, path, "failed", {
+				body: output || "rejected",
+				outcome: "permission",
+			});
 		} else {
 			throw new Error(msg("error.resolution_invalid", { action }));
 		}
@@ -656,7 +659,7 @@ export default class AgentLoop {
 			nextTurn,
 			`prompt://${nextTurn}`,
 			message,
-			200,
+			"resolved",
 			{ attributes: { mode: "ask" }, writer: "plugin" },
 		);
 

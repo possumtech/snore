@@ -112,7 +112,14 @@ export default class RummyContext {
 
 	// --- Tool methods (same operations the model uses) ---
 
-	async set({ path, body, status = 200, fidelity, attributes } = {}) {
+	async set({
+		path,
+		body,
+		state = "resolved",
+		outcome = null,
+		fidelity,
+		attributes,
+	} = {}) {
 		if (!path) {
 			path = await this.entries.slugPath(
 				this.runId,
@@ -126,8 +133,8 @@ export default class RummyContext {
 			this.sequence,
 			path,
 			body || "",
-			status,
-			{ fidelity, attributes, loopId: this.loopId },
+			state,
+			{ outcome, fidelity, attributes, loopId: this.loopId },
 		);
 		return path;
 	}
@@ -147,7 +154,7 @@ export default class RummyContext {
 	async mv(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, 200, {
+		await this.entries.upsert(this.runId, this.sequence, to, body, "resolved", {
 			loopId: this.loopId,
 		});
 		await this.entries.remove(this.runId, from);
@@ -156,7 +163,7 @@ export default class RummyContext {
 	async cp(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, 200, {
+		await this.entries.upsert(this.runId, this.sequence, to, body, "resolved", {
 			loopId: this.loopId,
 		});
 	}
@@ -171,9 +178,14 @@ export default class RummyContext {
 		return this.entries.getAttributes(this.runId, path);
 	}
 
-	async getStatus(path) {
+	async getState(path) {
 		const row = await this.entries.getState(this.runId, path);
-		return row?.status ?? null;
+		return row?.state ?? null;
+	}
+
+	async getOutcome(path) {
+		const row = await this.entries.getState(this.runId, path);
+		return row?.outcome ?? null;
 	}
 
 	async getEntry(path) {
@@ -195,7 +207,13 @@ export default class RummyContext {
 
 	async log(message) {
 		const path = `content://${Date.now()}`;
-		await this.entries.upsert(this.runId, this.sequence, path, message, 200);
+		await this.entries.upsert(
+			this.runId,
+			this.sequence,
+			path,
+			message,
+			"resolved",
+		);
 	}
 
 	// --- Node tree methods ---

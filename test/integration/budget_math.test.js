@@ -39,7 +39,7 @@ describe("Budget math", () => {
 	describe("turn_context token accuracy", () => {
 		it("full entry tokens match body cost", async () => {
 			const body = pad(50);
-			await store.upsert(RUN_ID, 1, "known://full_entry", body, 200, {
+			await store.upsert(RUN_ID, 1, "known://full_entry", body, "resolved", {
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, {
@@ -62,7 +62,7 @@ describe("Budget math", () => {
 
 		it("archived entry does not appear in turn_context", async () => {
 			const body = pad(200);
-			await store.upsert(RUN_ID, 1, "test_file.js", body, 200, {
+			await store.upsert(RUN_ID, 1, "test_file.js", body, "resolved", {
 				fidelity: "archived",
 			});
 			await materialize(tdb.db, {
@@ -88,7 +88,7 @@ describe("Budget math", () => {
 			// helper) transforms it to summary text. This test verifies the
 			// view's behavior; E2E tests verify the full pipeline.
 			const body = pad(200);
-			await store.upsert(RUN_ID, 1, "known://summary_entry", body, 200, {
+			await store.upsert(RUN_ID, 1, "known://summary_entry", body, "resolved", {
 				fidelity: "demoted",
 				attributes: { summary: "test,keywords,here" },
 			});
@@ -114,11 +114,18 @@ describe("Budget math", () => {
 			const { runId } = await tdb.seedRun({ alias: "math_enforce" });
 
 			// Create a large entry at archive — should NOT count toward budget
-			await store.upsert(runId, 1, "big_archive_file.js", pad(500), 200, {
-				fidelity: "archived",
-			});
+			await store.upsert(
+				runId,
+				1,
+				"big_archive_file.js",
+				pad(500),
+				"resolved",
+				{
+					fidelity: "archived",
+				},
+			);
 			// Create a small entry at full — should count
-			await store.upsert(runId, 1, "known://small", "tiny fact", 200, {
+			await store.upsert(runId, 1, "known://small", "tiny fact", "resolved", {
 				fidelity: "promoted",
 			});
 
@@ -167,7 +174,7 @@ describe("Budget math", () => {
 			const { runId } = await tdb.seedRun({ alias: "math_postdispatch" });
 
 			// Simulate: entries exist from dispatch (promoted files)
-			await store.upsert(runId, 1, "known://big", pad(100), 200, {
+			await store.upsert(runId, 1, "known://big", pad(100), "resolved", {
 				fidelity: "promoted",
 			});
 
@@ -197,7 +204,7 @@ describe("Budget math", () => {
 				lastPromptTokens: 0,
 			});
 
-			assert.strictEqual(result.status, 413, "should overflow");
+			assert.strictEqual(result.ok, false, "should overflow");
 			assert.ok(
 				result.assembledTokens > 0,
 				"assembled tokens measured from messages, not from 0",
@@ -212,7 +219,7 @@ describe("Budget math", () => {
 			const body = pad(100);
 			const expectedTokens = countTokens(body);
 
-			await store.upsert(runId, 1, "known://fact", body, 200, {
+			await store.upsert(runId, 1, "known://fact", body, "resolved", {
 				fidelity: "promoted",
 			});
 			let entries = await tdb.db.get_known_entries.all({ run_id: runId });
@@ -245,7 +252,7 @@ describe("Budget math", () => {
 			const body = pad(100);
 
 			// Entry at full
-			await store.upsert(runId, 1, "known://tc_test", body, 200, {
+			await store.upsert(runId, 1, "known://tc_test", body, "resolved", {
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, {

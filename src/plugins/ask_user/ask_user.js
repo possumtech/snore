@@ -28,7 +28,7 @@ export default class AskUser {
 					.filter(Boolean)
 			: [];
 
-		await store.upsert(runId, turn, entry.resultPath, entry.body, 202, {
+		await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
 			attributes: { question, options },
 			loopId,
 		});

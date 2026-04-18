@@ -20,7 +20,8 @@ export default class Rm {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.upsert(runId, turn, entry.resultPath, "", 400, {
+			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+				outcome: "validation",
 				attributes: { error: "path is required" },
 				loopId,
 			});
@@ -34,7 +35,8 @@ export default class Rm {
 		);
 
 		if (matches.length === 0) {
-			await store.upsert(runId, turn, entry.resultPath, "", 404, {
+			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+				outcome: "not_found",
 				attributes: { path: target, error: `${target} not found` },
 				loopId,
 			});
@@ -48,13 +50,13 @@ export default class Rm {
 		for (const match of schemeMatches) await store.remove(runId, match.path);
 		if (schemeMatches.length > 0) {
 			const paths = schemeMatches.map((m) => m.path).join("\n");
-			await store.upsert(runId, turn, entry.resultPath, paths, 200, {
+			await store.upsert(runId, turn, entry.resultPath, paths, "resolved", {
 				attributes: { path: target },
 				loopId,
 			});
 		}
 
-		// File entries: individual 202 proposals (require user resolution)
+		// File entries: individual proposals (require user resolution)
 		if (fileMatches.length > 0 && schemeMatches.length > 0)
 			await store.remove(runId, entry.resultPath);
 		for (const match of fileMatches) {
@@ -62,7 +64,7 @@ export default class Rm {
 				schemeMatches.length === 0 && fileMatches.length === 1
 					? entry.resultPath
 					: await store.dedup(runId, "rm", match.path, turn);
-			await store.upsert(runId, turn, resultPath, match.path, 202, {
+			await store.upsert(runId, turn, resultPath, match.path, "proposed", {
 				attributes: { path: match.path },
 				loopId,
 			});

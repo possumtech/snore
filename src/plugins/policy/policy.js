@@ -23,7 +23,7 @@ export default class Policy {
 
 		if (entry.scheme === "sh") {
 			await this.#reject(ctx, "Rejected <sh> in ask mode");
-			return { ...entry, status: 403 };
+			return { ...entry, state: "failed", outcome: "permission" };
 		}
 
 		if (entry.scheme === "set" && entry.attributes?.path) {
@@ -33,7 +33,7 @@ export default class Policy {
 					ctx,
 					`Rejected file edit to ${entry.attributes.path} in ask mode`,
 				);
-				return { ...entry, status: 403 };
+				return { ...entry, state: "failed", outcome: "permission" };
 			}
 		}
 
@@ -42,7 +42,7 @@ export default class Policy {
 			const scheme = KnownStore.scheme(pathAttr);
 			if (scheme === null) {
 				await this.#reject(ctx, `Rejected file rm of ${pathAttr} in ask mode`);
-				return { ...entry, status: 403 };
+				return { ...entry, state: "failed", outcome: "permission" };
 			}
 		}
 
@@ -53,7 +53,7 @@ export default class Policy {
 					ctx,
 					`Rejected ${entry.scheme} to file ${entry.attributes?.to} in ask mode`,
 				);
-				return { ...entry, status: 403 };
+				return { ...entry, state: "failed", outcome: "permission" };
 			}
 		}
 

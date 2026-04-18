@@ -51,27 +51,39 @@ describe("Budget — ceiling check", () => {
 		});
 	}
 
-	it("status 200 when under budget", async () => {
-		await store.upsert(RUN_ID, 1, "known://small", "a small fact", 200);
+	it("ok when under budget", async () => {
+		await store.upsert(RUN_ID, 1, "known://small", "a small fact", "resolved");
 		const result = await assembleAndEnforce(100000);
-		assert.strictEqual(result.status, 200);
+		assert.strictEqual(result.ok, true);
 	});
 
-	it("status 413 when over budget", async () => {
+	it("overflow when over budget", async () => {
 		for (let i = 0; i < 10; i++) {
-			await store.upsert(RUN_ID, i + 1, `known://fact_${i}`, pad(50), 200);
+			await store.upsert(
+				RUN_ID,
+				i + 1,
+				`known://fact_${i}`,
+				pad(50),
+				"resolved",
+			);
 		}
 		const result = await assembleAndEnforce(100);
-		assert.strictEqual(result.status, 413);
+		assert.strictEqual(result.ok, false);
 		assert.ok(result.overflow > 0, "should report overflow amount");
 	});
 
 	it("overflow reports exact token count over ceiling", async () => {
 		for (let i = 0; i < 5; i++) {
-			await store.upsert(RUN_ID, i + 1, `known://fact_${i}`, pad(20), 200);
+			await store.upsert(
+				RUN_ID,
+				i + 1,
+				`known://fact_${i}`,
+				pad(20),
+				"resolved",
+			);
 		}
 		const result = await assembleAndEnforce(100);
-		assert.strictEqual(result.status, 413);
+		assert.strictEqual(result.ok, false);
 		assert.strictEqual(
 			result.overflow,
 			result.assembledTokens - Math.floor(100 * 0.9),
@@ -79,16 +91,22 @@ describe("Budget — ceiling check", () => {
 		);
 	});
 
-	it("assembledTokens returned on both 200 and 413", async () => {
-		await store.upsert(RUN_ID, 1, "known://a", "fact", 200);
+	it("assembledTokens returned whether ok or overflow", async () => {
+		await store.upsert(RUN_ID, 1, "known://a", "fact", "resolved");
 
 		const ok = await assembleAndEnforce(100000);
-		assert.ok(ok.assembledTokens > 0, "200 should include assembledTokens");
+		assert.ok(
+			ok.assembledTokens > 0,
+			"ok result should include assembledTokens",
+		);
 
 		for (let i = 0; i < 10; i++) {
-			await store.upsert(RUN_ID, i + 2, `known://b_${i}`, pad(50), 200);
+			await store.upsert(RUN_ID, i + 2, `known://b_${i}`, pad(50), "resolved");
 		}
 		const over = await assembleAndEnforce(100);
-		assert.ok(over.assembledTokens > 0, "413 should include assembledTokens");
+		assert.ok(
+			over.assembledTokens > 0,
+			"overflow result should include assembledTokens",
+		);
 	});
 });

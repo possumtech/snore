@@ -21,7 +21,8 @@ export default class Get {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.upsert(runId, turn, entry.resultPath, "", 400, {
+			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+				outcome: "validation",
 				attributes: { error: "path is required" },
 				loopId,
 			});
@@ -76,8 +77,12 @@ export default class Get {
 					turn,
 					entry.resultPath,
 					"line/limit requires a single path, not a glob or body filter",
-					400,
-					{ loopId, attributes: { path: target } },
+					"failed",
+					{
+						outcome: "validation",
+						loopId,
+						attributes: { path: target },
+					},
 				);
 				return;
 			}
@@ -87,7 +92,7 @@ export default class Get {
 					turn,
 					entry.resultPath,
 					`${target} not found`,
-					200,
+					"resolved",
 					{ loopId, attributes: { path: target } },
 				);
 				return;
@@ -112,7 +117,7 @@ export default class Get {
 				turn,
 				entry.resultPath,
 				`${header}\n${slice}`,
-				200,
+				"resolved",
 				{ loopId, attributes: { path: target } },
 			);
 			return;
@@ -151,7 +156,7 @@ export default class Get {
 				matches.length > 0
 					? `${paths} promoted (${total} tokens)`
 					: `${target} not found`;
-			await store.upsert(runId, turn, entry.resultPath, body, 200, {
+			await store.upsert(runId, turn, entry.resultPath, body, "resolved", {
 				loopId,
 				attributes: { path: target },
 			});

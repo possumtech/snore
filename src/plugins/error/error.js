@@ -6,7 +6,10 @@ export default class ErrorLog {
 
 		core.hooks.error.log.on(async ({ store, runId, turn, message, loopId }) => {
 			const path = await store.dedup(runId, "error", message, turn);
-			await store.upsert(runId, turn, path, message, 422, { loopId });
+			await store.upsert(runId, turn, path, message, "failed", {
+				outcome: "validation",
+				loopId,
+			});
 		});
 	}
 }

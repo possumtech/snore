@@ -125,14 +125,18 @@ describe("RummyContext", () => {
 				sequence: 2,
 				loopId: 9,
 			});
-			await rummy.set({ path: "known://fact", body: "the body", status: 200 });
+			await rummy.set({
+				path: "known://fact",
+				body: "the body",
+				state: "resolved",
+			});
 			const [method, args] = store.calls[0];
 			assert.strictEqual(method, "upsert");
 			assert.strictEqual(args[0], 5);
 			assert.strictEqual(args[1], 2);
 			assert.strictEqual(args[2], "known://fact");
 			assert.strictEqual(args[3], "the body");
-			assert.strictEqual(args[4], 200);
+			assert.strictEqual(args[4], "resolved");
 		});
 
 		it("rm() delegates to entries.remove", async () => {
@@ -193,12 +197,14 @@ describe("RummyContext", () => {
 	});
 
 	describe("query helpers", () => {
-		it("getStatus() returns the status from getState", async () => {
+		it("getState() returns the state from getState", async () => {
 			const rummy = new RummyContext(makeRoot(), {
-				store: { getState: async () => ({ status: 413, fidelity: "demoted" }) },
+				store: {
+					getState: async () => ({ state: "failed", fidelity: "demoted" }),
+				},
 				runId: 1,
 			});
-			assert.strictEqual(await rummy.getStatus("x"), 413);
+			assert.strictEqual(await rummy.getState("x"), "failed");
 		});
 
 		it("getEntry() returns first entry from pattern match", async () => {

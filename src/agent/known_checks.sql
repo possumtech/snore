@@ -17,26 +17,29 @@ SELECT path, body, attributes, turn
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND status = 202;
+	AND state = 'proposed';
 
 -- PREP: has_rejections
+-- Any failed entry in this loop counts as a rejection. Callers use
+-- this to mark the turn as having errors. Specific failure categories
+-- live in run_views.outcome (permission:, overflow:, validation:, ...).
 SELECT COUNT(*) AS count
 FROM known_entries
 WHERE
 	run_id = :run_id
 	AND loop_id = :loop_id
-	AND status = 403;
+	AND state = 'failed';
 
 -- PREP: has_accepted_actions
 SELECT COUNT(*) AS count
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND status = 200
+	AND state = 'resolved'
 	AND scheme IN ('set', 'sh', 'rm', 'mv', 'cp');
 
 -- PREP: get_file_entries
-SELECT path, status, fidelity, hash, updated_at
+SELECT path, state, outcome, fidelity, hash, updated_at
 FROM known_entries
 WHERE
 	run_id = :run_id

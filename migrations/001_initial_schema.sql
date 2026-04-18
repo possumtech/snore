@@ -4,9 +4,10 @@ PRAGMA mmap_size = $mmap_size;
 -- INIT: initial_schema
 
 -- Scheme registry: single source of truth for all scheme metadata.
--- Status codes are HTTP: 2xx success, 3xx redirect, 4xx model error, 5xx system error.
--- No valid_states — HTTP semantics are universal.
--- No fidelity — entries don't decide their own importance.
+-- writable_by: JSON array of {system, plugin, client, model} — four writer tiers.
+-- capability_class: optional restriction group (e.g. "shell", "files", "web")
+-- so the policy plugin can compute the effective toolset from a run's
+-- restriction list. Null means the scheme is always available.
 CREATE TABLE IF NOT EXISTS schemes (
 	name TEXT PRIMARY KEY
 	, model_visible BOOLEAN NOT NULL DEFAULT 1
@@ -15,6 +16,7 @@ CREATE TABLE IF NOT EXISTS schemes (
 	CHECK (default_scope IN ('run', 'project', 'global'))
 	, writable_by JSON NOT NULL DEFAULT '["model","plugin"]'
 	CHECK (json_valid(writable_by))
+	, capability_class TEXT
 );
 
 -- Schemes are registered by plugins at startup via core.registerScheme().
@@ -135,15 +137,20 @@ ON entries (scope, path);
 CREATE INDEX IF NOT EXISTS idx_entries_scope_scheme
 ON entries (scope, scheme);
 
--- Run views: per-run projection of entries. Fidelity/status/turn live here.
+-- Run views: per-run projection of entries. State, fidelity, turn live here.
 -- A run has at most one view of any given entry. Absent view = not in context.
+-- state: lifecycle. fidelity: visibility. Orthogonal axes (SPEC §0.1).
+-- outcome: short reason string when state ∈ {failed, cancelled}; NULL otherwise.
 CREATE TABLE IF NOT EXISTS run_views (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, entry_id INTEGER NOT NULL REFERENCES entries (id) ON DELETE CASCADE
 	, loop_id INTEGER REFERENCES loops (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
-	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
+	, state TEXT NOT NULL DEFAULT 'resolved' CHECK (
+		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
+	)
+	, outcome TEXT
 	, fidelity TEXT NOT NULL DEFAULT 'promoted' CHECK (
 		fidelity IN ('promoted', 'demoted', 'archived')
 	)
@@ -160,8 +167,8 @@ CREATE INDEX IF NOT EXISTS idx_run_views_run_fidelity
 ON run_views (run_id, fidelity);
 
 -- Legacy-shape compatibility view. Joins run_views to entries; reads
--- against this view behave exactly like the old known_entries table.
--- Writes MUST target entries + run_views directly.
+-- against this view keep one shape. Writes MUST target entries +
+-- run_views directly.
 CREATE VIEW IF NOT EXISTS known_entries AS
 SELECT
 	rv.id AS id
@@ -171,7 +178,8 @@ SELECT
 	, e.path AS path
 	, e.body AS body
 	, e.scheme AS scheme
-	, rv.status AS status
+	, rv.state AS state
+	, rv.outcome AS outcome
 	, rv.fidelity AS fidelity
 	, e.hash AS hash
 	, e.attributes AS attributes
@@ -185,7 +193,8 @@ SELECT
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id;
 
--- UNRESOLVED VIEW: all entries awaiting user action (202 Accepted)
+-- UNRESOLVED VIEW: entries that haven't reached a terminal state.
+-- Proposed (awaiting user decision) or streaming (in-flight).
 CREATE VIEW IF NOT EXISTS v_unresolved AS
 SELECT
 	rv.run_id
@@ -195,7 +204,7 @@ SELECT
 	, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
-WHERE rv.status = 202;
+WHERE rv.state IN ('proposed', 'streaming');
 
 -- Turn context: materialized snapshot of what the model sees each turn.
 -- known_entries is the warehouse. turn_context is the shipment.
@@ -207,7 +216,10 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, ordinal INTEGER NOT NULL CHECK (ordinal >= 0)
 	, path TEXT NOT NULL
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
-	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
+	, state TEXT NOT NULL DEFAULT 'resolved' CHECK (
+		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
+	)
+	, outcome TEXT
 	, fidelity TEXT NOT NULL CHECK (fidelity IN ('promoted', 'demoted'))
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)

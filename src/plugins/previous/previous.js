@@ -1,3 +1,5 @@
+import { stateToStatus } from "../../agent/httpStatus.js";
+
 export default class Previous {
 	#core;
 
@@ -40,7 +42,8 @@ async function renderToolTag(entry, _core) {
 
 	const target = attrs?.path || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const status = entry.status ? ` status="${entry.status}"` : "";
+	const statusCode = stateToStatus(entry.state, entry.outcome);
+	const status = ` status="${statusCode}"`;
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const summary =

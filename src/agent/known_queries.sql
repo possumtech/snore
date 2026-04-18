@@ -1,12 +1,13 @@
 -- PREP: get_known_entries
 SELECT
-	path, scheme, status, fidelity, body, turn, hash, attributes, tokens, scope
+	path, scheme, state, outcome, fidelity, body, turn, hash
+	, attributes, tokens, scope
 FROM known_entries
 WHERE run_id = :run_id
 ORDER BY path;
 
 -- PREP: get_results
-SELECT tool, status, path, body, turn, attributes
+SELECT tool, state, outcome, path, body, turn, attributes
 FROM v_run_log
 WHERE run_id = :run_id;
 
@@ -19,7 +20,7 @@ WHERE
 ORDER BY id;
 
 -- PREP: get_turn_audit
-SELECT path, scheme, status, fidelity, turn, body, attributes
+SELECT path, scheme, state, outcome, fidelity, turn, body, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id

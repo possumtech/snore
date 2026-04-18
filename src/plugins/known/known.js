@@ -1,3 +1,4 @@
+import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS) || 512;
@@ -31,8 +32,8 @@ export default class Known {
 				turn,
 				rejectPath,
 				`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
-				413,
-				{ loopId },
+				"failed",
+				{ outcome: `overflow:${entryTokens}`, loopId },
 			);
 			return;
 		}
@@ -59,13 +60,13 @@ export default class Known {
 				turn,
 				existing[0].path,
 				entry.body || existing[0].body,
-				200,
+				"resolved",
 				{ attributes: entry.attributes, loopId },
 			);
 			return;
 		}
 
-		await store.upsert(runId, turn, knownPath, entry.body, 200, {
+		await store.upsert(runId, turn, knownPath, entry.body, "resolved", {
 			attributes: entry.attributes,
 			loopId,
 		});
@@ -94,7 +95,8 @@ function renderKnownTag(entry, demotedSet) {
 	const tag = entry.scheme || "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
-	const status = entry.status ? ` status="${entry.status}"` : "";
+	const statusCode = stateToStatus(entry.state, entry.outcome);
+	const status = ` status="${statusCode}"`;
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
 

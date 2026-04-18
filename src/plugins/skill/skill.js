@@ -25,12 +25,19 @@ export default class Skill {
 
 				const body = await loadFile("skills", params.name);
 				const store = ctx.projectAgent.entries;
-				await store.upsert(runRow.id, 0, `skill://${params.name}`, body, 200, {
-					attributes: {
-						name: params.name,
-						source: filePath("skills", params.name),
+				await store.upsert(
+					runRow.id,
+					0,
+					`skill://${params.name}`,
+					body,
+					"resolved",
+					{
+						attributes: {
+							name: params.name,
+							source: filePath("skills", params.name),
+						},
 					},
-				});
+				);
 
 				return { status: "ok", skill: params.name };
 			},

@@ -41,8 +41,8 @@ describe("Engine integration", () => {
 
 	describe("context materialization", () => {
 		it("materializes entries into turn_context", async () => {
-			await store.upsert(RUN_ID, 1, "src/small.js", pad(100), 200);
-			await store.upsert(RUN_ID, 1, "known://note", "short", 200);
+			await store.upsert(RUN_ID, 1, "src/small.js", pad(100), "resolved");
+			await store.upsert(RUN_ID, 1, "known://note", "short", "resolved");
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -86,7 +86,7 @@ describe("Engine integration", () => {
 
 	describe("tokens accounting", () => {
 		it("tokens unchanged through demote and promote cycle", async () => {
-			await store.upsert(RUN_ID, 1, "known://test_entry", pad(200), 200);
+			await store.upsert(RUN_ID, 1, "known://test_entry", pad(200), "resolved");
 
 			const original = await store.getEntriesByPattern(
 				RUN_ID,
@@ -124,7 +124,7 @@ describe("Engine integration", () => {
 
 	describe("symbol file fidelity via VIEW", () => {
 		it("files at summary fidelity appear in turn_context", async () => {
-			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), 200, {
+			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), "resolved", {
 				fidelity: "demoted",
 				attributes: { symbols: "function foo()" },
 			});
@@ -149,9 +149,16 @@ describe("Engine integration", () => {
 		});
 
 		it("demoted files have demoted fidelity with body passed through (engine symbol view)", async () => {
-			await store.upsert(RUN_ID, 3, "src/active.js", "function bar() {}", 200, {
-				fidelity: "demoted",
-			});
+			await store.upsert(
+				RUN_ID,
+				3,
+				"src/active.js",
+				"function bar() {}",
+				"resolved",
+				{
+					fidelity: "demoted",
+				},
+			);
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -177,10 +184,17 @@ describe("Engine integration", () => {
 		});
 
 		it("promoted view returns body", async () => {
-			await store.upsert(RUN_ID, 5, "src/described.js", "const x = 1;", 200, {
-				fidelity: "promoted",
-				attributes: { summary: "Utility module for X" },
-			});
+			await store.upsert(
+				RUN_ID,
+				5,
+				"src/described.js",
+				"const x = 1;",
+				"resolved",
+				{
+					fidelity: "promoted",
+					attributes: { summary: "Utility module for X" },
+				},
+			);
 
 			const viewResult = await tdb.hooks.tools.view("file", {
 				path: "src/described.js",
@@ -197,10 +211,17 @@ describe("Engine integration", () => {
 		});
 
 		it("demoted view returns empty body (tag attribute carries summary)", async () => {
-			await store.upsert(RUN_ID, 6, "src/noview.js", "const y = 2;", 200, {
-				fidelity: "demoted",
-				attributes: { summary: "Helper for Y calculations" },
-			});
+			await store.upsert(
+				RUN_ID,
+				6,
+				"src/noview.js",
+				"const y = 2;",
+				"resolved",
+				{
+					fidelity: "demoted",
+					attributes: { summary: "Helper for Y calculations" },
+				},
+			);
 
 			const viewResult = await tdb.hooks.tools.view("file", {
 				path: "src/noview.js",

@@ -25,8 +25,8 @@ export default class TestServer {
 		hooks.rpc.registry = new RpcRegistry();
 
 		const pluginsDir = join(__dirname, "../../src/plugins");
-		await registerPlugins([pluginsDir], hooks);
-		await initPlugins(db, hooks);
+		const pluginInstances = await registerPlugins([pluginsDir], hooks);
+		await initPlugins(db, hooks, pluginInstances);
 
 		// Bootstrap models from env vars (same as service.js)
 		for (const key of Object.keys(process.env)) {

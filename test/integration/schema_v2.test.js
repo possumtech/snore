@@ -32,9 +32,16 @@ describe("Schema V2 invariants", () => {
 		it("accepts the three canonical values", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_accept" });
 			for (const fidelity of ["promoted", "demoted", "archived"]) {
-				await store.upsert(runId, 1, `known://fid-${fidelity}`, "body", 200, {
-					fidelity,
-				});
+				await store.upsert(
+					runId,
+					1,
+					`known://fid-${fidelity}`,
+					"body",
+					"resolved",
+					{
+						fidelity,
+					},
+				);
 			}
 			// No throw = accepted.
 		});
@@ -43,7 +50,7 @@ describe("Schema V2 invariants", () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_reject" });
 			for (const stale of ["full", "summary", "index", "archive"]) {
 				await assert.rejects(
-					store.upsert(runId, 1, `known://fid-${stale}`, "body", 200, {
+					store.upsert(runId, 1, `known://fid-${stale}`, "body", "resolved", {
 						fidelity: stale,
 					}),
 					/constraint|CHECK|fidelity/i,
@@ -56,7 +63,7 @@ describe("Schema V2 invariants", () => {
 	describe("entries + run_views separation", () => {
 		it("entries.scope defaults to 'run:<runId>' for default-scope schemes", async () => {
 			const { runId } = await tdb.seedRun({ alias: "scope_default" });
-			await store.upsert(runId, 1, "known://scoped", "content", 200, {
+			await store.upsert(runId, 1, "known://scoped", "content", "resolved", {
 				writer: "model",
 			});
 			const all = await tdb.db.get_known_entries.all({ run_id: runId });
@@ -68,8 +75,8 @@ describe("Schema V2 invariants", () => {
 		it("writing an entry creates one content row and one view row", async () => {
 			const { runId: a } = await tdb.seedRun({ alias: "dup_a" });
 			const { runId: b } = await tdb.seedRun({ alias: "dup_b" });
-			await store.upsert(a, 1, "known://sharedpath", "A body", 200);
-			await store.upsert(b, 1, "known://sharedpath", "B body", 200);
+			await store.upsert(a, 1, "known://sharedpath", "A body", "resolved");
+			await store.upsert(b, 1, "known://sharedpath", "B body", "resolved");
 
 			// Two runs, two content rows (different scopes), two view rows.
 			const aRows = await tdb.db.get_known_entries.all({ run_id: a });

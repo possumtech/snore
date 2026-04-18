@@ -79,14 +79,16 @@ WHERE id = :run_id
 RETURNING next_turn - 1 AS turn;
 
 -- PREP: fork_known_entries
--- V2 cheap fork: copy only view rows. Entries stay shared between parent
+-- Cheap fork: copy only view rows. Entries stay shared between parent
 -- and child. Child's subsequent writes diverge via upsert into a new
--- run-scoped entry (Phase D permissions will enforce scope resolution).
+-- run-scoped entry.
 INSERT INTO run_views (
-	run_id, entry_id, loop_id, turn, status, fidelity, write_count, refs
+	run_id, entry_id, loop_id, turn, state, outcome, fidelity
+	, write_count, refs
 )
 SELECT
-	:new_run_id, entry_id, NULL, turn, status, fidelity, write_count, refs
+	:new_run_id, entry_id, NULL, turn, state, outcome, fidelity
+	, write_count, refs
 FROM run_views
 WHERE run_id = :parent_run_id;
 

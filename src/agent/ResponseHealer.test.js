@@ -181,7 +181,9 @@ describe("ResponseHealer", () => {
 
 		it("repeated update text without non-update work terminates", () => {
 			const healer = new ResponseHealer();
-			const updateOnly = [{ scheme: "update", attributes: { status: 102 } }];
+			const updateOnly = [
+				{ scheme: "update", attributes: { state: "streaming" } },
+			];
 			for (let i = 0; i < 2; i++) {
 				const r = healer.assessProgress({
 					updateText: "still working",
@@ -203,7 +205,7 @@ describe("ResponseHealer", () => {
 				const r = healer.assessProgress({
 					updateText: "investigating",
 					recorded: [
-						{ scheme: "update", attributes: { status: 102 } },
+						{ scheme: "update", attributes: { state: "streaming" } },
 						{ scheme: "get", attributes: { path: `src/file${i}.js` } },
 					],
 				});
