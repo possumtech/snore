@@ -422,7 +422,31 @@ project-scoped scheme lands.
 
 COALESCE(scheme, 'file') cleanup still deferred — orthogonal.
 
-### Phase 3: E2E reliability
+## Hardening Roadmap
+
+Transitioning from adapting the service to iteratively hardening it.
+Six phases, roughly sequential:
+
+1. **Spec-Driven Integration/E2E** — walk SPEC.md + PLUGINS.md
+   numbered-section by numbered-section; audit each claim for truth,
+   staleness, or vestigiality; rewrite or delete; write the tests that
+   enforce remaining claims. Catches "minor issues" en route (compat-
+   VIEW read-only assertion, error-type consistency, dead plugin-dep
+   system, etc.) because each surfaces when you try to test its claim.
+2. **Documentation Meta-Review** — broader doc audit (CLIENT_CHANGES,
+   FIDELITY_CONTRACT, READMEs, plugin docs). Staleness sweep.
+3. **Linting** — code hygiene pass. Unused imports, dead code,
+   formatting, naming consistency.
+4. **Demo Drills** — real end-to-end use cases exercised. Validates
+   the system works for the workflows it claims to support.
+5. **MAB Budget Drills** — MemoryAgentBench runs focused on budget
+   behavior under real load.
+6. **LME Performance Drills** — LME benchmark runs; memory/recall
+   performance validation.
+
+Currently in Phase 1.
+
+### Phase 3: E2E reliability (superseded by Hardening Roadmap)
 
 - [ ] All 26+ E2E tests pass consistently
 - [ ] Each failure investigated to root cause

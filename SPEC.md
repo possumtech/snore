@@ -8,25 +8,36 @@ model-facing behavior. This document defines everything else.
 
 ## 0. Design Philosophy
 
-### 0.1 Everything Is an Entry
+### 0.1 Model State Is Entries
 
-Rummy's substrate is the `known_entries` table. Files, tool results,
-knowns, unknowns, plans, running processes, streaming output, past
-conversation — all keyed entries with a URI path, body, attributes,
-and status.
+Everything the model reads or writes is a keyed entry. Tool results,
+knowns, unknowns, plans, streaming output, prior conversation — all
+keyed by a URI path, carrying a body, attributes, and per-run status
+and fidelity. The model learns one idiom (`scheme://path` + read /
+write / promote / demote) and applies it to every tool it meets.
 
-This is the Unix "everything is a file" principle applied to agent
-systems. Read/write operations (`<get>`/`<set>`) speak a universal
-grammar; any plugin that produces entries composes with any plugin
-that consumes them, without coordination. New capabilities (streaming
-shell, web fetch, sub-agents, file watches) slot in by producing
-entries in the same substrate. The model learns one idiom —
-scheme://path, read, write, promote, demote — and applies it to every
-tool it meets.
+Physical layout (Schema V2):
 
-The bet: uniform substrate beats specialized abstractions. Unix's
-forty-five-year payoff on this bet scaled from PDP-11 to smartphones.
-Rummy's bet is the same wager applied to LLM-driven systems.
+- **`entries`** — content layer. `(scope, path)` unique. Body,
+  attributes, hash, tokens. Scope ∈ `{global, project:N, run:N}`
+  governs who can read, and (via scheme declarations) who can write.
+- **`run_views`** — per-run projection. Fidelity, status, turn, loop.
+  A run sees an entry only if it has a view row; the view row carries
+  the run's relationship to the entry.
+- **`known_entries`** — compatibility VIEW joining the two for legacy
+  SELECT queries. Not writable.
+
+The rest of the database (runs, loops, turns, projects, models,
+schemes, file_constraints, turn_context, rpc_log) is server-side
+bookkeeping — the model never directly addresses these tables. The
+"everything is an entry" idiom describes the **model-facing** surface,
+not the full schema.
+
+Read/write operations speak a universal grammar; any plugin that
+produces entries composes with any plugin that consumes them without
+coordination. New capabilities (streaming shell, web fetch, sub-
+agents, file watches) slot in by producing entries in the same
+substrate.
 
 ### 0.2 Events & Filters
 
@@ -35,69 +46,98 @@ pipeline is a hookable checkpoint. Plugins subscribe to events
 (fire-and-forget side effects) and filters (transformation chains
 that thread a value through subscribers in priority order).
 
-**Every `<tag>` the model sees is a plugin.** The `<known>` section
-of the system message is rendered by the known plugin. The `<prompt
-tokenBudget tokenUsage>` tag is rendered by the prompt plugin (which
+**Every `<tag>` the model sees is a plugin.** `<knowns>` → known
+plugin. `<unknowns>` → unknown plugin. `<performed>` → performed
+plugin. `<previous>` → previous plugin. `<prompt mode="..."
+tokenBudget="N" tokenUsage="M">body</prompt>` → prompt plugin (which
 also carries the Token Budget math as attributes). No monolithic
-assembler decides what goes where.
-Each plugin filters for its own data from the shared row set, renders
-its section, and returns.
+assembler decides what goes where. Each plugin filters for its own
+data from the shared row set, renders its section, and returns.
 
 **Plugins compose, they don't coordinate.** A plugin subscribes to a
 filter at a priority. It receives the accumulator value, appends its
 contribution, and returns. It doesn't know what other plugins exist.
 Priority determines ordering. Lower numbers run first.
 
-**The core is a filter chain invocation.** The TurnExecutor computes
-`loopStartTurn` (one value from one row), then calls
-`assembly.system.filter(instructions, ctx)` and
+**The core is a filter chain invocation.** `ContextAssembler` computes
+`loopStartTurn` from the latest prompt entry's `source_turn`, then
+calls `assembly.system.filter(systemPrompt, ctx)` and
 `assembly.user.filter("", ctx)`. Everything else is plugins.
 
 ---
 
 ## 1. The Known Store
 
-All model-facing state lives in `known_entries`. Files, knowledge, tool
-results, skills, audit — everything is a keyed entry with a URI scheme,
-body, attributes, and state.
+All model-facing state is stored across two tables joined via the
+`known_entries` compatibility VIEW. Files, knowledge, tool results,
+skills, audit — everything is a keyed entry with a URI path, body,
+attributes, per-run status, and per-run fidelity.
 
 ### 1.1 Schema
 
+**Content layer** — `entries` (shared, scope-owned):
+
 ```sql
-known_entries (
-    id, run_id, loop_id, turn, path, body, scheme,
-    status INTEGER, fidelity TEXT, hash,
-    attributes, tokens, refs, write_count,
-    created_at, updated_at
+entries (
+    id, scope, path, scheme, body, attributes,
+    hash, tokens, created_at, updated_at,
+    UNIQUE (scope, path)
 )
 ```
 
 | Column | Purpose |
 |--------|---------|
-| `path` | Entry identity. Bare paths (`src/app.js`) or URIs (`known://auth`). Max 2048 chars. |
-| `body` | Tag body text. File content, tool output, skill docs. |
-| `attributes` | Tag attributes as JSON. Handler-private workspace. `CHECK (json_valid)` |
-| `scheme` | Generated from path via `schemeOf()`. Drives dispatch and view routing |
-| `status` | HTTP status code (200, 202, 400, 413, etc.) |
-| `fidelity` | Visibility level: full, summary, archive |
-| `hash` | SHA-256 for file change detection |
+| `scope` | `global`, `project:N`, or `run:N`. Determines who can read; per-scheme `writable_by` determines who can write. |
+| `path` | Entry identity within scope. Bare paths (`src/app.js`) or URIs (`known://auth`). Max 2048 chars. |
+| `scheme` | GENERATED from `schemeOf(path)`. Drives dispatch and view routing. |
+| `body` | Content. File text, tool output, skill docs. |
+| `attributes` | Tag attributes as JSON. `CHECK (json_valid)`. |
+| `hash` | SHA-256 for file change detection. |
 | `tokens` | Full-body token cost. Never changes on demotion/promotion. |
-| `turn` | Freshness — when was this entry last touched |
+
+**View layer** — `run_views` (per-run projection):
+
+```sql
+run_views (
+    id, run_id, entry_id, loop_id, turn,
+    status INTEGER, fidelity TEXT,
+    write_count, refs, created_at, updated_at,
+    UNIQUE (run_id, entry_id)
+)
+```
+
+| Column | Purpose |
+|--------|---------|
+| `run_id`, `entry_id` | (run, entry) unique pair. Absent view = not in context. |
+| `loop_id`, `turn` | Freshness — when this run last touched the entry. |
+| `status` | HTTP status code — outcome of the run's last operation on this entry. |
+| `fidelity` | `promoted` \| `demoted` \| `archived`. The run's relationship to the entry. |
+| `write_count` | How many times this run has written this entry. |
+
+**Compatibility view** — `known_entries` joins the two tables so
+legacy SELECT queries keep working. Not writable; new write code must
+target `entries` + `run_views` directly (see §1.4).
 
 ### 1.2 Schemes, Status & Fidelity
 
-Every entry has two independent dimensions: **status** (HTTP integer)
-and **fidelity** (visibility level). These are separate concerns.
+Every entry has two independent dimensions: **status** (HTTP integer —
+view-side) and **fidelity** (visibility level — view-side). These are
+separate concerns.
 
-**Status** (lifecycle): 200 (OK), 202 (proposed), 400 (bad request),
-404 (not found), 409 (conflict), 413 (too large), 499 (aborted),
-500 (error).
+**Status** (operation outcome): 200 (OK), 202 (proposed), 400 (bad
+request), 403 (permission denied), 404 (not found), 409 (conflict),
+413 (too large), 499 (aborted), 500 (error).
 
-**Fidelity** (visibility): `full` (body visible), `summary`
-(model-authored summary), `index` (path only), `archive` (invisible,
-retrievable via `<get>`).
+**Fidelity** (visibility in the run's context): `promoted` (body
+visible), `demoted` (path + attrs visible, body hidden; promote via
+`<get>`), `archived` (invisible; retrievable via pattern search).
 
-Paths use URI scheme syntax. Bare paths (no `://`) are files.
+Lifecycle events (budget Turn Demotion, fork copy) change `fidelity`
+but never `status` — status stays truthful about the last body
+operation. See `demote_turn_entries` in `known_store.sql`.
+
+Paths use URI scheme syntax. Bare paths (no `://`) are files, stored
+with `scheme IS NULL` (JOINs treat NULL as `'file'` via COALESCE).
 
 Every entry plays one of four roles:
 
@@ -110,32 +150,52 @@ Every entry plays one of four roles:
 
 `logging` is the default category. Plugins opt into `data` explicitly.
 
-| Scheme | Category | Description |
-|--------|----------|-------------|
-| `NULL` (bare path) | data | File content. JOINs via `COALESCE(scheme, 'file')`. `file://` prefix stripped by hedberg. |
-| `known://` | data | Model-registered knowledge. One fact per entry. |
-| `skill://` | data | Skill docs. Rendered in system message. |
-| `http://`, `https://` | data | Web content. |
-| `unknown://` | unknown | Unresolved questions. |
-| `prompt://` | prompt | User prompt with `mode` attribute (`ask`/`act`). |
-| `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | Tool result entries. |
-| `update://` | logging | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
-| `budget://` | logging | Turn Demotion panic record (413 overflow). |
-| `error://` | logging | Runtime errors (policy rejection, healer warnings, dispatch crashes, etc.). |
-| `tool://` | audit | Internal plugin metadata. `model_visible = 0`. |
-| `system://`, `reasoning://`, `model://`, `error://`, `user://`, `assistant://`, `content://` | audit | Audit entries. `model_visible = 0`. |
+| Scheme | Category | `writable_by` | Description |
+|--------|----------|---------------|-------------|
+| `NULL` (bare path) | data | `model, plugin` | File content. JOINs via `COALESCE(scheme, 'file')`. |
+| `known://` | data | `model, plugin` | Model-registered knowledge. One fact per entry. |
+| `skill://` | data | `model, plugin` | Skill docs. Rendered in system message. |
+| `http://`, `https://` | data | `model, plugin` | Web content. |
+| `unknown://` | unknown | `model, plugin` | Unresolved questions. |
+| `prompt://` | prompt | `plugin` | User prompt with `mode` attribute. Written by prompt plugin, never by model. |
+| `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | `model, plugin` | Tool result entries. |
+| `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
+| `budget://` | logging | `model, plugin` | Turn Demotion panic record (413 overflow). |
+| `error://` | logging | `model, plugin` | Runtime errors (policy rejection, healer warnings, dispatch crashes, etc.). |
+| `tool://` | audit | `system` | Internal plugin metadata. `model_visible = 0`. |
+| `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | audit | `system` | Audit entries. `model_visible = 0`. Written only by server-level code. |
 
 ### 1.3 Scheme Registry
 
-The `schemes` table is a bootstrap registry — static rows of
-`(name, model_visible, category)`. Plugins register their scheme
-via `core.registerScheme()` in the constructor. The `model_visible`
-flag controls whether entries appear in `v_model_context`.
+The `schemes` table is a bootstrap registry — rows of
+`(name, model_visible, category, default_scope, writable_by)`.
+Plugins register their scheme via `core.registerScheme({name, category,
+scope, writableBy})` in the constructor. Defaults:
+`scope = "run"`, `writableBy = ["model", "plugin"]`.
+
+- `model_visible` — whether entries appear in `v_model_context` (`0`
+  hides audit schemes from the model).
+- `default_scope` — `run` \| `project` \| `global`. Resolved to a
+  concrete scope string at write time (`run:N`, `project:N`, `global`).
+  Project resolution currently falls back to run (projectId isn't
+  plumbed to the Repository yet).
+- `writable_by` — JSON array of allowed writer types
+  (`model` \| `plugin` \| `system`). Repository rejects writes where
+  the caller's writer isn't in the list, with `403`.
 
 ### 1.4 UPSERT Semantics
 
-INSERT OR REPLACE on `(run_id, path)`. Each write increments `write_count`.
-Blank body is valid. Deletion uses `<rm>`, which removes the row entirely.
+Writes go through `KnownStore.upsert(runId, turn, path, body, status,
+{fidelity, attributes, hash, loopId, writer})` — two-prep flow:
+
+1. `upsert_entry` — INSERT OR UPDATE on `(scope, path)`. Scope comes
+   from scheme's `default_scope`. Returns the `entry_id`.
+2. `upsert_run_view` — INSERT OR UPDATE on `(run_id, entry_id)`.
+   Increments `write_count` on conflict.
+
+Blank body is valid. Deletion uses `<rm>`, which removes the
+`run_views` row; the shared `entries` row is left for now (GC is a
+future concern).
 
 ---
 
