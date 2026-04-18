@@ -124,10 +124,7 @@ export default class Budget {
 		if (post.status !== 413) return;
 
 		const store = this.#core.entries;
-		const demotedEntries = await store.demoteTurnEntries(
-			ctx.runId,
-			ctx.turn,
-		);
+		const demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
 		const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
 		if (promptRow) {
 			await store.setFidelity(ctx.runId, promptRow.path, "demoted");

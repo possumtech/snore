@@ -95,7 +95,7 @@ describe("Scope + permissions (Phase D)", () => {
 		assert.strictEqual(body, "user prompt");
 	});
 
-	it("entries land at scope=run:${runId} by default", async () => {
+	it("entries land at 'run:<runId>' scope by default", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_scope" });
 
 		await store.upsert(runId, 1, "known://scoped", "content", 200, {

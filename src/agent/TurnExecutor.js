@@ -309,10 +309,7 @@ export default class TurnExecutor {
 					proposed: [p],
 				});
 				await this.#knownStore.waitForResolution(currentRunId, p.path);
-				const resolved = await this.#knownStore.getState(
-					currentRunId,
-					p.path,
-				);
+				const resolved = await this.#knownStore.getState(currentRunId, p.path);
 				if (resolved?.status >= 400) {
 					hasErrors = true;
 					abortAfter = entry.scheme;

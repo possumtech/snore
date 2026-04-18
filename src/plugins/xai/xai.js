@@ -37,7 +37,8 @@ export default class Xai {
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
 		const body = { model, input: messages };
-		if (options.temperature !== undefined) body.temperature = options.temperature;
+		if (options.temperature !== undefined)
+			body.temperature = options.temperature;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal

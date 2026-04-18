@@ -32,14 +32,9 @@ describe("Schema V2 invariants", () => {
 		it("accepts the three canonical values", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_accept" });
 			for (const fidelity of ["promoted", "demoted", "archived"]) {
-				await store.upsert(
-					runId,
-					1,
-					`known://fid-${fidelity}`,
-					"body",
-					200,
-					{ fidelity },
-				);
+				await store.upsert(runId, 1, `known://fid-${fidelity}`, "body", 200, {
+					fidelity,
+				});
 			}
 			// No throw = accepted.
 		});
@@ -59,7 +54,7 @@ describe("Schema V2 invariants", () => {
 	});
 
 	describe("entries + run_views separation", () => {
-		it("entries.scope defaults to run:${runId} for default-scope schemes", async () => {
+		it("entries.scope defaults to 'run:<runId>' for default-scope schemes", async () => {
 			const { runId } = await tdb.seedRun({ alias: "scope_default" });
 			await store.upsert(runId, 1, "known://scoped", "content", 200, {
 				writer: "model",

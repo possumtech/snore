@@ -81,7 +81,8 @@ DELETE FROM run_views
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:pattern, e.path)
 		AND e.scheme IS NULL
 );
@@ -119,7 +120,8 @@ SET
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:pattern, e.path)
 		AND e.scheme IS NULL
 );
@@ -178,7 +180,8 @@ WHERE rv.run_id = :run_id AND e.path = :path;
 SELECT e.path, rv.status, rv.fidelity, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
-WHERE rv.run_id = :run_id
+WHERE
+	rv.run_id = :run_id
 	AND hedmatch(:pattern, e.path)
 	AND e.scheme IS NULL
 ORDER BY e.path;
@@ -211,7 +214,8 @@ SET
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:path, e.path)
 		AND (:body IS NULL OR hedsearch(:body, e.body))
 );
@@ -224,7 +228,8 @@ SET
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:path, e.path)
 		AND (:body IS NULL OR hedsearch(:body, e.body))
 );
@@ -234,19 +239,22 @@ SELECT
 	e.path, e.body, e.scheme, rv.status, rv.fidelity, e.tokens, e.attributes
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
-WHERE rv.run_id = :run_id
+WHERE
+	rv.run_id = :run_id
 	AND hedmatch(:path, e.path)
 	AND (:body IS NULL OR hedsearch(:body, e.body))
 ORDER BY e.path
-LIMIT COALESCE(:limit, -1)
-OFFSET COALESCE(:offset, 0);
+LIMIT
+	COALESCE(:limit, -1)
+	OFFSET COALESCE(:offset, 0);
 
 -- PREP: delete_entries_by_pattern
 DELETE FROM run_views
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:path, e.path)
 		AND (:body IS NULL OR hedsearch(:body, e.body))
 );
@@ -260,7 +268,8 @@ SET
 WHERE id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:path, e.path)
 		AND (:body IS NULL OR hedsearch(:body, e.body))
 );
@@ -274,7 +283,8 @@ SET
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
 	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id
+	WHERE
+		rv.run_id = :run_id
 		AND hedmatch(:path, e.path)
 		AND (:body IS NULL OR hedsearch(:body, e.body))
 );
@@ -285,7 +295,8 @@ WHERE run_id = :run_id AND entry_id IN (
 SELECT e.path, e.tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
-WHERE rv.run_id = :run_id
+WHERE
+	rv.run_id = :run_id
 	AND rv.turn = :turn
 	AND rv.fidelity = 'promoted'
 	AND rv.status < 400;
@@ -298,7 +309,8 @@ UPDATE run_views
 SET
 	fidelity = 'demoted'
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id
+WHERE
+	run_id = :run_id
 	AND turn = :turn
 	AND fidelity = 'promoted'
 	AND status < 400;

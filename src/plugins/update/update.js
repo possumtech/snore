@@ -48,7 +48,15 @@ export default class Update {
 	 *                                         (resolve update entry to 409)
 	 *   no update emitted                   → heal from raw content
 	 */
-	async resolve({ recorded, hasErrors, content, commands, runId, turn, loopId }) {
+	async resolve({
+		recorded,
+		hasErrors,
+		content,
+		commands,
+		runId,
+		turn,
+		loopId,
+	}) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		const status = entry?.attributes?.status ?? 102;
 		const isTerminal = TERMINAL_STATUSES.has(status);

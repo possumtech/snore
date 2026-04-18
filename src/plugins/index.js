@@ -200,7 +200,7 @@ function resolvePlugin(packageName) {
 	throw new Error(`Package '${packageName}' not found locally or globally`);
 }
 
-async function importPlugin(packageName) {
+async function _importPlugin(packageName) {
 	const dir = resolvePlugin(packageName);
 	const pkg = JSON.parse(
 		(await import("node:fs")).readFileSync(join(dir, "package.json"), "utf8"),
@@ -286,8 +286,7 @@ async function collectFromDir(dir, isRoot, descriptors) {
 		}
 
 		if (stats.isFile() && name.endsWith(".js")) {
-			const isEntryFile =
-				name === "index.js" || name === `${basename(dir)}.js`;
+			const isEntryFile = name === "index.js" || name === `${basename(dir)}.js`;
 			if (isEntryFile || (isRoot && name !== "index.js")) {
 				descriptors.push({
 					name: basename(fullPath, ".js"),

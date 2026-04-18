@@ -34,7 +34,8 @@ export default class OpenAi {
 
 	async #completion(messages, model, options = {}) {
 		const body = { model, messages, think: true };
-		if (options.temperature !== undefined) body.temperature = options.temperature;
+		if (options.temperature !== undefined)
+			body.temperature = options.temperature;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal

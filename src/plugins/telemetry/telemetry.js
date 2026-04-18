@@ -91,14 +91,35 @@ export default class Telemetry {
 		const systemOpts = { loopId, fidelity: "archived", writer: "system" };
 
 		// assistant://N — the model's raw response
-		await store.upsert(runId, turn, `assistant://${turn}`, content, 200, systemOpts);
+		await store.upsert(
+			runId,
+			turn,
+			`assistant://${turn}`,
+			content,
+			200,
+			systemOpts,
+		);
 
 		// system://N, user://N — assembled messages as audit
 		if (systemMsg) {
-			await store.upsert(runId, turn, `system://${turn}`, systemMsg, 200, systemOpts);
+			await store.upsert(
+				runId,
+				turn,
+				`system://${turn}`,
+				systemMsg,
+				200,
+				systemOpts,
+			);
 		}
 		if (userMsg) {
-			await store.upsert(runId, turn, `user://${turn}`, userMsg, 200, systemOpts);
+			await store.upsert(
+				runId,
+				turn,
+				`user://${turn}`,
+				userMsg,
+				200,
+				systemOpts,
+			);
 		}
 
 		// model://N — raw API response diagnostics

@@ -34,9 +34,7 @@ export default class LlmProvider {
 	}
 
 	#selectProvider(modelAlias) {
-		return (
-			this.#hooks.llm.providers.find((p) => p.matches(modelAlias)) || null
-		);
+		return this.#hooks.llm.providers.find((p) => p.matches(modelAlias)) || null;
 	}
 
 	async completion(messages, model, options = {}) {
@@ -68,7 +66,10 @@ export default class LlmProvider {
 				if (isContextExceededMessage(err.message)) {
 					throw new ContextExceededError(err.message, { cause: err });
 				}
-				if (isTransientMessage(err.message) && attempt < MAX_TRANSIENT_RETRIES) {
+				if (
+					isTransientMessage(err.message) &&
+					attempt < MAX_TRANSIENT_RETRIES
+				) {
 					const delay = 1000 * 2 ** attempt;
 					await new Promise((r) => setTimeout(r, delay));
 					continue;

@@ -28,8 +28,7 @@ export default class HeuristicMatcher {
 		let lastExactIdx = -1;
 		let exactCount = 0;
 		while (exactIdx !== -1) {
-			const atLineBoundary =
-				exactIdx === 0 || entryBody[exactIdx - 1] === "\n";
+			const atLineBoundary = exactIdx === 0 || entryBody[exactIdx - 1] === "\n";
 			if (atLineBoundary) {
 				exactCount++;
 				lastExactIdx = exactIdx;
