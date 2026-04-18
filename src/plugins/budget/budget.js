@@ -55,7 +55,12 @@ export default class Budget {
 			return { messages, rows, assembledTokens: 0, status: 200 };
 		}
 
-		const first = this.#check({ contextSize, messages, rows, lastPromptTokens });
+		const first = this.#check({
+			contextSize,
+			messages,
+			rows,
+			lastPromptTokens,
+		});
 		if (first.status !== 413) return first;
 		if (ctx?.loopIteration !== 1) return first;
 
