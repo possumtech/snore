@@ -4,13 +4,15 @@ const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
 const DEFAULT_CONTEXT_SIZE = 131072;
-const PREFIX = "openrouter/";
+const PROVIDER = "openrouter";
 
 /**
- * OpenRouter LLM provider plugin. Claims "openrouter/" prefixed model
- * aliases (the remainder after the prefix is passed through to the
- * OpenRouter API as the model identifier — including its own
- * publisher-prefixed form, e.g. "openrouter/anthropic/claude-3-opus").
+ * OpenRouter LLM provider plugin. Handles model aliases of the form
+ * `openrouter/{publisher}/{modelName}`. Strips only the provider
+ * segment — OpenRouter's own API expects the `publisher/model` form,
+ * so that's exactly what's passed through to it (e.g.
+ * `openrouter/anthropic/claude-3-opus` → API receives
+ * `anthropic/claude-3-opus`).
  *
  * Inert if OPENROUTER_API_KEY / OPENROUTER_BASE_URL aren't set.
  */
@@ -26,13 +28,14 @@ export default class OpenRouter {
 		this.#apiKey = apiKey;
 		this.#baseUrl = baseUrl;
 
+		const wireModel = (alias) => alias.split("/").slice(1).join("/");
+
 		core.hooks.llm.providers.push({
-			name: "openrouter",
-			matches: (model) => model.startsWith(PREFIX),
+			name: PROVIDER,
+			matches: (model) => model.split("/")[0] === PROVIDER,
 			completion: (messages, model, options) =>
-				this.#completion(messages, model.slice(PREFIX.length), options),
-			getContextSize: (model) =>
-				this.#getContextSize(model.slice(PREFIX.length)),
+				this.#completion(messages, wireModel(model), options),
+			getContextSize: (model) => this.#getContextSize(wireModel(model)),
 		});
 	}
 

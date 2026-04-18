@@ -3,15 +3,13 @@ import msg from "../../agent/messages.js";
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
-const PREFIX = "openai/";
+const PROVIDER = "openai";
 
 /**
  * OpenAI-compatible LLM provider plugin. Registers with hooks.llm.providers
- * if OPENAI_BASE_URL is set in env; silently inert otherwise. Handles any
- * model alias prefixed with "openai/".
- *
- * Strips the "openai/" prefix before making the HTTP call. Normalizes
- * reasoning fields into `message.reasoning_content`.
+ * if OPENAI_BASE_URL is set in env; silently inert otherwise. Handles
+ * model aliases of the form `openai/{modelName}` — the first path
+ * segment picks the provider, the rest is whatever the API expects.
  */
 export default class OpenAi {
 	#baseUrl;
@@ -23,13 +21,14 @@ export default class OpenAi {
 		this.#baseUrl = String(baseUrl).replace(/\/v1\/?$/, "");
 		this.#apiKey = process.env.OPENAI_API_KEY || "";
 
+		const wireModel = (alias) => alias.split("/").slice(1).join("/");
+
 		core.hooks.llm.providers.push({
-			name: "openai",
-			matches: (model) => model.startsWith(PREFIX),
+			name: PROVIDER,
+			matches: (model) => model.split("/")[0] === PROVIDER,
 			completion: (messages, model, options) =>
-				this.#completion(messages, model.slice(PREFIX.length), options),
-			getContextSize: (model) =>
-				this.#getContextSize(model.slice(PREFIX.length)),
+				this.#completion(messages, wireModel(model), options),
+			getContextSize: (model) => this.#getContextSize(wireModel(model)),
 		});
 	}
 

@@ -3,12 +3,13 @@ import msg from "../../agent/messages.js";
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
-const PREFIX = "xai/";
+const PROVIDER = "xai";
 
 /**
  * xAI (Grok) LLM provider plugin. Registers with hooks.llm.providers if
- * XAI_BASE_URL is set; inert otherwise. Normalizes xAI's distinct
- * response shape into the common OpenAI-shaped envelope.
+ * XAI_BASE_URL is set; inert otherwise. Handles model aliases of the
+ * form `xai/{modelName}`. Normalizes xAI's distinct response shape
+ * into the common OpenAI-shaped envelope.
  */
 export default class Xai {
 	#baseUrl;
@@ -21,13 +22,14 @@ export default class Xai {
 		this.#baseUrl = baseUrl;
 		this.#apiKey = process.env.XAI_API_KEY || "";
 
+		const wireModel = (alias) => alias.split("/").slice(1).join("/");
+
 		core.hooks.llm.providers.push({
-			name: "xai",
-			matches: (model) => model.startsWith(PREFIX),
+			name: PROVIDER,
+			matches: (model) => model.split("/")[0] === PROVIDER,
 			completion: (messages, model, options) =>
-				this.#completion(messages, model.slice(PREFIX.length), options),
-			getContextSize: (model) =>
-				this.#getContextSize(model.slice(PREFIX.length)),
+				this.#completion(messages, wireModel(model), options),
+			getContextSize: (model) => this.#getContextSize(wireModel(model)),
 		});
 	}
 

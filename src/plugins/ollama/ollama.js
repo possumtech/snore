@@ -3,12 +3,14 @@ import msg from "../../agent/messages.js";
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
-const PREFIX = "ollama/";
+const PROVIDER = "ollama";
 
 /**
  * Ollama LLM provider plugin. Registers with hooks.llm.providers if
- * OLLAMA_BASE_URL is set; inert otherwise. Handles "ollama/" prefixed
- * model aliases.
+ * OLLAMA_BASE_URL is set; inert otherwise. Handles model aliases of the
+ * form `ollama/{modelName}` — e.g. `ollama/llama3.1:8b` or
+ * `ollama/library/qwen:7b` (Ollama accepts both bare and
+ * registry-qualified model names).
  */
 export default class Ollama {
 	#baseUrl;
@@ -18,13 +20,14 @@ export default class Ollama {
 		if (!baseUrl) return;
 		this.#baseUrl = baseUrl;
 
+		const wireModel = (alias) => alias.split("/").slice(1).join("/");
+
 		core.hooks.llm.providers.push({
-			name: "ollama",
-			matches: (model) => model.startsWith(PREFIX),
+			name: PROVIDER,
+			matches: (model) => model.split("/")[0] === PROVIDER,
 			completion: (messages, model, options) =>
-				this.#completion(messages, model.slice(PREFIX.length), options),
-			getContextSize: (model) =>
-				this.#getContextSize(model.slice(PREFIX.length)),
+				this.#completion(messages, wireModel(model), options),
+			getContextSize: (model) => this.#getContextSize(wireModel(model)),
 		});
 	}
 
