@@ -111,13 +111,15 @@ export default class Repository {
 		return { kind, writers };
 	}
 
-	#resolveScope(kind, runId) {
+	#resolveScope(kind, runId, projectId) {
 		if (kind === "global") return "global";
 		if (kind === "project") {
-			// Phase D doesn't plumb projectId into the Repository yet; project-
-			// scoped schemes need a follow-up to pass it through. Falling back
-			// to run-scope keeps behavior sane until then.
-			return `run:${runId}`;
+			if (!projectId) {
+				throw new Error(
+					"project-scoped write requires projectId; caller must pass it to set()",
+				);
+			}
+			return `project:${projectId}`;
 		}
 		return `run:${runId}`;
 	}
@@ -135,6 +137,7 @@ export default class Repository {
 	 */
 	async set({
 		runId,
+		projectId = null,
 		turn = 0,
 		path,
 		body,
@@ -247,7 +250,7 @@ export default class Repository {
 				`403: writer "${writer}" not permitted for scheme "${scheme ?? "file"}" (allowed: ${writers.join(", ")})`,
 			);
 		}
-		const scope = this.#resolveScope(kind, runId);
+		const scope = this.#resolveScope(kind, runId, projectId);
 		const entry = await this.#db.upsert_entry.get({
 			scope,
 			path: normalized,

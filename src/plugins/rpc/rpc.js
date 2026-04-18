@@ -320,6 +320,12 @@ export default class Rpc {
 					id: runRow.id,
 					status: 499,
 				});
+				await ctx.projectAgent.entries.set({
+					runId: runRow.id,
+					path: `run://${runRow.alias}`,
+					state: "cancelled",
+					writer: "client",
+				});
 				return { status: "ok" };
 			},
 			description: "Abort run.",

@@ -100,36 +100,66 @@ Gate: grep for `db.upsert_entry` / `db.upsert_run_view` / ad-hoc prep
 calls outside Repository returns empty. `npm run lint` + `npm run test:unit`
 (259 tests) + non-LLM integration (183 tests) all green.
 
-### Phase 3 — Client surface
+### Phase 3 — Semantic alignment ✓ landed
+
+Context-layer concepts that belong in the entry grammar move into it.
+Scoped narrowly to runs: they have a real lifecycle, they're the
+unit clients address, and making them addressable via `set`/`state`
+on `run://<alias>` makes Phase 4's RPC reshape trivially clean.
+
+- **Runs as entries.** `run://<alias>` scheme, run-scoped (self-
+  referencing run_view). Body is the initial prompt; attributes
+  carry model, persona, temperature, contextLimit, projectId,
+  parentRunId. State maps lifecycle: `proposed` (queued) → `streaming`
+  (running) → `resolved` / `failed` / `cancelled`. The `runs` table
+  remains for server bookkeeping (FKs from loops/turns/run_views);
+  the run:// entry is the client-addressable mirror. AgentLoop's
+  `#setRunStatus` helper writes both the row and the entry in the
+  same transition path; no drift.
+- `client` added as a fourth writer tier alongside `system`, `plugin`,
+  `model`. Run scheme declares `writable_by = ["system","plugin","client"]`.
+- `Repository.set` gained `projectId` parameter for forthcoming
+  project-scoped schemes (unused in Phase 3; future-proofing).
+
+**Deliberately out of scope**: file constraints (overfit — config,
+not lifecycle; appears dormant), models, skills, personas (dedicated
+shape, no lifecycle, no per-run view). These keep their dedicated
+tables + RPC verbs. Plugin API and RPC stay 1:1 aligned for them
+without needing entry-grammar uniformity.
+
+Gate: every run has a corresponding `run://<alias>` entry whose state
+tracks the run's lifecycle via `#setRunStatus`. 258 unit + 183 non-LLM
+integration tests green.
+
+### Phase 4 — Client surface
 
 Collapse the RPC surface to the primitive grammar plus connection
-lifecycle.
+lifecycle. Because Phase 3 put runs into the entry grammar, this is
+mechanical.
 
-- Kill `ask`, `act`, `init`, `run/resolve`, `run/cancel`.
+- Kill `ask`, `act`, `init`, `run/resolve`, `run/cancel`, `startRun`,
+  `run/abort`, `run/rename`, `run/inject`, `run/config`, `store`,
+  `getEntries`, `get` (legacy), `addModel`, `removeModel`, `getModels`
+  (if folded into entry reads).
 - Add RPC methods `set`, `get`, `rm`, `cp`, `mv`, `update` — each
   takes a params object matching the entry grammar.
-- `rummy/hello` handshake establishes project identity (was the
-  argument to the old `init`). First notification after `hello`
-  carries `{ rummyVersion, projectId, projectRoot }`.
+- `rummy/hello` handshake absorbs init. First notification after
+  `hello` carries `{ rummyVersion, projectId, projectRoot }`.
 - Starting a run: client sends `set { path: "run://<alias>",
   body: <prompt>, attributes: { model, restrictions, resolution } }`.
-  A run plugin subscribes to `entry.created` for `run://` scheme and
-  starts the turn loop.
 - Cancelling: `set { path: "run://<alias>", state: "cancelled" }`.
 - Resolving a proposed entry: `set { path: "<entry-path>",
   state: "resolved" | "cancelled", body: <optional override> }`.
-- Notifications (`run/progress`, `run/state`, `stream/cancelled`,
-  `ui/render`, `ui/notify`) simplified to carry entry deltas instead
-  of aggregate payloads. Client subscribes once; server pushes as
-  entries change.
+- Notifications simplified to entry deltas. Client subscribes once;
+  server pushes as entries change.
 - Protocol version: `RUMMY_PROTOCOL_VERSION = "2.0.0"`. Clients on
   1.x bounce with clean mismatch.
 
 **Gate:** client can start a run, watch it complete, resolve
-proposals, cancel, all via the primitive verbs. No legacy RPC method
+proposals, cancel, all via the 6 primitives. No legacy RPC method
 remains registered.
 
-### Phase 4 — Plugin hygiene
+### Phase 5 — Plugin hygiene
 
 Remove every structural obstacle to the contract working cleanly.
 
@@ -161,7 +191,7 @@ Remove every structural obstacle to the contract working cleanly.
 **Gate:** no "Plugin load failed" output anywhere. `npm test` green.
 No test helper wires infrastructure that `createHooks()` should own.
 
-### Phase 5 — External plugins
+### Phase 6 — External plugins
 
 Rewrite the plugins we own against the landed contract.
 
@@ -176,7 +206,7 @@ Rewrite the plugins we own against the landed contract.
 **Gate:** both plugins loadable, no `[RUMMY] Plugin load failed`,
 their tests green, their behavior exercised by at least one E2E test.
 
-### Phase 6 — Verification
+### Phase 7 — Verification
 
 - Documentation walked end-to-end: SPEC.md, PLUGINS.md, README.md,
   per-plugin READMEs. Every claim matches the landed code. Drift

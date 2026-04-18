@@ -69,7 +69,9 @@ export default class PluginContext {
 
 	static SCOPES = Object.freeze(new Set(["run", "project", "global"]));
 
-	static WRITERS = Object.freeze(new Set(["model", "plugin", "system"]));
+	static WRITERS = Object.freeze(
+		new Set(["model", "plugin", "client", "system"]),
+	);
 
 	ensureTool() {
 		this.#hooks.tools.ensureTool(this.#name);

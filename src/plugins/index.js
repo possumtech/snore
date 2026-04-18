@@ -133,6 +133,11 @@ const AUDIT_SCHEMES = [
 
 const PROMPT_SCHEMES = ["prompt"];
 
+// Lifecycle schemes: client-addressable entries that reflect server
+// state. Writable by system (internal bookkeeping), plugin (extensions),
+// and client (RPC in Phase 4).
+const LIFECYCLE_SCHEMES = ["run"];
+
 /**
  * After DB is ready, upsert declared schemes and bootstrap audit/prompt
  * schemes. Takes the plugin collection returned by registerPlugins.
@@ -161,6 +166,18 @@ export async function initPlugins(db, hooks, instances) {
 			category: "prompt",
 			default_scope: "run",
 			writable_by: JSON.stringify(["plugin"]),
+		});
+	}
+	for (const name of LIFECYCLE_SCHEMES) {
+		// Lifecycle entries are client-addressable mirrors of server state.
+		// Not model-visible. System writes internally; plugins and clients
+		// write via the 6 primitives.
+		await db.upsert_scheme.run({
+			name,
+			model_visible: 0,
+			category: "logging",
+			default_scope: "run",
+			writable_by: JSON.stringify(["system", "plugin", "client"]),
 		});
 	}
 

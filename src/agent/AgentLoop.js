@@ -1,6 +1,15 @@
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
 
+const HTTP_TO_RUN_STATE = {
+	100: "proposed",
+	102: "streaming",
+	200: "resolved",
+	202: "streaming",
+	499: "cancelled",
+	500: "failed",
+};
+
 export default class AgentLoop {
 	#db;
 	#llmProvider;
@@ -30,7 +39,43 @@ export default class AgentLoop {
 		return `Turn ${turn}/${maxTurns}`;
 	}
 
-	async #ensureRun(projectId, model, run, options) {
+	async #setRunStatus(runId, alias, httpStatus) {
+		await this.#db.update_run_status.run({ id: runId, status: httpStatus });
+		const state = HTTP_TO_RUN_STATE[httpStatus];
+		if (!state) return;
+		await this.#knownStore.set({
+			runId,
+			path: `run://${alias}`,
+			state,
+			writer: "system",
+		});
+	}
+
+	async #writeRunEntry(
+		runId,
+		alias,
+		prompt,
+		{ projectId, parentRunId, model, persona, temperature, contextLimit },
+	) {
+		await this.#knownStore.set({
+			runId,
+			turn: 0,
+			path: `run://${alias}`,
+			body: prompt || "",
+			state: "proposed",
+			attributes: {
+				projectId,
+				parentRunId,
+				model,
+				persona: persona ?? null,
+				temperature: temperature ?? null,
+				contextLimit: contextLimit ?? null,
+			},
+			writer: "system",
+		});
+	}
+
+	async #ensureRun(projectId, model, run, prompt, options) {
 		const _noRepo = options?.noRepo === true;
 		const isFork = options?.fork === true;
 		const requestedModel = model;
@@ -50,6 +95,14 @@ export default class AgentLoop {
 				context_limit: options?.contextLimit ?? null,
 			});
 			await this.#knownStore.forkEntries(existingRun.id, runRow.id);
+			await this.#writeRunEntry(runRow.id, alias, prompt, {
+				projectId,
+				parentRunId: existingRun.id,
+				model: requestedModel,
+				persona: options?.persona,
+				temperature: options?.temperature,
+				contextLimit: options?.contextLimit,
+			});
 			await this.#hooks.run.created.emit({
 				runId: runRow.id,
 				alias,
@@ -90,6 +143,14 @@ export default class AgentLoop {
 			persona: options?.persona ?? null,
 			context_limit: options?.contextLimit ?? null,
 		});
+		await this.#writeRunEntry(runRow.id, alias, prompt, {
+			projectId,
+			parentRunId: null,
+			model: requestedModel,
+			persona: options?.persona,
+			temperature: options?.temperature,
+			contextLimit: options?.contextLimit,
+		});
 		await this.#hooks.run.created.emit({ runId: runRow.id, alias });
 		return { runId: runRow.id, alias };
 	}
@@ -122,7 +183,13 @@ export default class AgentLoop {
 		const noProposals = options?.noProposals === true;
 		const requestedModel = model;
 
-		const runInfo = await this.#ensureRun(projectId, model, run, options);
+		const runInfo = await this.#ensureRun(
+			projectId,
+			model,
+			run,
+			prompt,
+			options,
+		);
 		const { runId: currentRunId, alias: currentAlias } = runInfo;
 
 		const loopSeq = await this.#db.next_loop.get({ run_id: currentRunId });
@@ -244,10 +311,7 @@ export default class AgentLoop {
 	}) {
 		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 		if (runRow.status !== 102) {
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: 102,
-			});
+			await this.#setRunStatus(currentRunId, currentAlias, 102);
 		}
 
 		const modelContextSize =
@@ -282,10 +346,7 @@ export default class AgentLoop {
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				if (signal.aborted) {
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 499,
-					});
+					await this.#setRunStatus(currentRunId, currentAlias, 499);
 					const out = {
 						run: currentAlias,
 						status: 499,
@@ -329,10 +390,7 @@ export default class AgentLoop {
 						status: 413,
 						result: null,
 					});
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 200,
-					});
+					await this.#setRunStatus(currentRunId, currentAlias, 200);
 					const out = {
 						run: currentAlias,
 						status: 413,
@@ -410,10 +468,7 @@ export default class AgentLoop {
 						loopId: currentLoopId,
 						message: repetition.reason,
 					});
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 200,
-					});
+					await this.#setRunStatus(currentRunId, currentAlias, 200);
 					const out = {
 						run: currentAlias,
 						status: 200,
@@ -436,10 +491,7 @@ export default class AgentLoop {
 				}
 				if (progress.continue) continue;
 
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: 200,
-				});
+				await this.#setRunStatus(currentRunId, currentAlias, 200);
 				const out = {
 					run: currentAlias,
 					status: 200,
@@ -449,10 +501,7 @@ export default class AgentLoop {
 				return out;
 			}
 
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: 200,
-			});
+			await this.#setRunStatus(currentRunId, currentAlias, 200);
 			const out = {
 				run: currentAlias,
 				status: 200,
@@ -462,16 +511,10 @@ export default class AgentLoop {
 			return out;
 		} catch (err) {
 			if (signal.aborted) {
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: 499,
-				});
+				await this.#setRunStatus(currentRunId, currentAlias, 499);
 				return { run: currentAlias, status: 499, turn: loopIteration };
 			}
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: 500,
-			});
+			await this.#setRunStatus(currentRunId, currentAlias, 500);
 			try {
 				await this.#hooks.error.log.emit({
 					store: this.#knownStore,
