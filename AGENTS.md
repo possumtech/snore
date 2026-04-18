@@ -433,8 +433,13 @@ Six phases, roughly sequential:
    enforce remaining claims. Catches "minor issues" en route (compat-
    VIEW read-only assertion, error-type consistency, dead plugin-dep
    system, etc.) because each surfaces when you try to test its claim.
-2. **Documentation Meta-Review** — broader doc audit (CLIENT_CHANGES,
-   FIDELITY_CONTRACT, READMEs, plugin docs). Staleness sweep.
+2. **Documentation Meta-Review** — dissolve the scratch-pad docs
+   (`RUMMY_ADVANCED.md`, `FIDELITY_CONTRACT.md`, `EXCEPTIONS.md`,
+   `CLIENT_CHANGES.md`, `STREAMING.md`, `SCHEMA_V2.md`) into the
+   canonical ones (`README.md`, `SPEC.md`, `PLUGINS.md`, per-plugin
+   READMEs). Each scratch pad gets read, relevant content folded into
+   its proper home, then the scratch pad is deleted. Staleness sweep
+   over the survivors.
 3. **Linting** — code hygiene pass. Unused imports, dead code,
    formatting, naming consistency.
 4. **Demo Drills** — real end-to-end use cases exercised. Validates
@@ -497,20 +502,46 @@ with code; tests added where testable at the current layer.
   the panic-loop description. Historical note preserved at the end.
   Also fixed `src/plugins/known/known.js` comment that used stale
   fidelity vocab ("summary → full" → "demoted → promoted").
-- [ ] §5 RPC Protocol — not yet audited. Suspect `run/inject` and
-  similar — methods listed may be stale.
-- [ ] §6 Plugin System — not yet audited.
-- [ ] §7 Tool Documentation Design — not yet audited.
-- [ ] §8 Hedberg — not yet audited.
-- [ ] §9 Response Healing — heavily simplified this session; spec
-  probably describes the old classification taxonomy.
-- [ ] §10 Testing — not yet audited.
-- [ ] §11 SQL Functions — likely accurate.
-- [ ] §12 Configuration — likely mostly accurate; may miss new env vars.
-- [ ] §13 Debugging — not yet audited.
+- [x] §5 RPC Protocol — method registrations verified against rpc.js /
+  skill.js / persona.js. §5.2 notifications table was missing
+  `rummy/hello`, `run/proposal`, `stream/cancelled` — added.
+- [x] §6 Plugin System — pointer-only section to PLUGINS.md; accurate.
+- [x] §7 Tool Documentation Design — "Lifecycle continuity" examples
+  referenced stale `<set path="..." fidelity="summary"/>` and
+  non-existent `<set path="known://..." archive/>` syntax; replaced
+  with current examples. Rest of section verified.
+- [x] §8 Hedberg Editing Syntax — all 8 parser format normalizations
+  verified in XmlParser.js (gemma code fences, tool_call, OpenAI
+  function_call, Mistral TOOL_CALLS).
+- [x] §9 Response Healing — verified; healStatus's
+  investigation-vs-action-only classification still lives (hardcoded
+  scheme list in the healer). Section accurate.
+- [x] §10 Testing — accurate; tiers match `test/` directory structure.
+- [x] §11 SQL Functions — all 6 listed functions exist in
+  `src/sql/functions/`.
+- [x] §12 Configuration — rewrote from 9-entry placeholder to a full
+  categorized reference (Runtime, Budget, Loop controls, LLM
+  providers, Model aliases, External plugins, Search, Testing).
+  Also cleaned `.env.example`: removed `RUMMY_MAX_PATH_STAGNATION`
+  (dead, removed with healer simplification) and
+  `RUMMY_MAX_UNKNOWN_WARNINGS` (dead, no code reads it).
+- [x] §13 Debugging — replaced stale "BudgetGuard errors" bullet with
+  budget://  / error:// / 403 bullets that match the current error
+  reporting pathways.
 
-Then PLUGINS.md (paired with SPEC.md audit) and FIDELITY_CONTRACT.md
-(small, already mostly current after this session's Schema V2 work).
+**PLUGINS.md audit done** in the same pass as SPEC.md. Same class of
+drift: `"full"/"summary"` event names → `"promoted"/"demoted"`; stale
+"uniform params shape" claim corrected to describe actual three
+dispatch paths; `registerScheme` signature expanded for Phase D
+(`scope`, `writableBy`); RummyContext verb signatures aligned with
+impl; turn pipeline table rewritten to include `budget.postDispatch`
+and per-entry dispatch sub-steps; plugin listing expanded (error,
+policy, stream, openai/ollama/xai/openrouter, persona, skill) and
+duplicate `update` row + `budget "panic mode, BudgetGuard"` references
+removed; `rummy/hello` / `run/proposal` / `stream/cancelled`
+notifications added.
+
+FIDELITY_CONTRACT.md is one of the scratch pads → handled in Phase 2.
 
 Tests added so far: `test/integration/schema_v2.test.js` — 4 tests:
 fidelity accepts the three canonical values, rejects stale ones,

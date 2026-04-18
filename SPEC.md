@@ -791,12 +791,15 @@ Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
 
 ### 5.2 Notifications
 
-| Notification | Scoped by |
-|-------------|-----------|
-| `run/state` | projectId |
-| `run/progress` | projectId |
-| `ui/render` | projectId |
-| `ui/notify` | projectId |
+| Notification | Scoped by | Purpose |
+|-------------|-----------|---------|
+| `rummy/hello` | connection | Server greeting on client connect. Carries `rummyVersion` (semver). Clients check MAJOR and refuse on mismatch. |
+| `run/state` | projectId | Incremental turn state (history + unknowns + telemetry) pushed after every tool dispatch. |
+| `run/progress` | projectId | Turn status transitions (`thinking`/`processing`). |
+| `run/proposal` | projectId | A 202 entry is awaiting resolution. |
+| `stream/cancelled` | projectId | Server-initiated streaming cancellation. |
+| `ui/render` | projectId | Streaming UI output (e.g. tool progress). |
+| `ui/notify` | projectId | Toast notification. |
 
 ### 5.3 Resolution
 
@@ -835,12 +838,13 @@ simple to powerful — weak models learn from examples 1-2, strong models
 pick up the pattern from example 3.
 
 **Lifecycle continuity.** Examples weave stories across tools. The get
-docs end with `<set path="..." fidelity="summary"/>`. The known docs
-reference `<get path="known://*">keyword</get>` for recall and
-`<set path="known://..." archive/>` for archiving. The unknown docs
-reference `<get/>` for investigation and `<rm/>` for cleanup. A model
-reading the full tool docs encounters a coherent workflow:
-discover → load → reason → edit → archive → recall.
+docs demonstrate `<get path="known://*">keyword</get>` for pattern recall
+and `<get path="..." line="N" limit="M"/>` for partial reads that don't
+promote. The known docs reference `<get path="known://*">keyword</get>`
+for recall. The unknown docs reference `<set path="unknown://..."
+fidelity="archived"/>` for retiring resolved questions, `<get/>` for
+investigation. A model reading the full tool docs encounters a coherent
+workflow: discover → load → reason → edit → archive → recall.
 
 **RFC 2119 semantics.** Constraint bullets use YOU MUST, YOU MUST NOT,
 YOU SHOULD, YOU MAY from RFC 2119. Every LLM has extensive pretraining
@@ -988,10 +992,11 @@ The dump format is: `scheme:state path {attributes}\n  body (120 chars)` grouped
 
 Key things to look for in a dump:
 - **202**: unresolved proposals — model issued `<sh>`, `<rm>`, or `<mv>` that needs approval
-- **413**: budget overflow — assembled context exceeded ceiling before LLM call
-- **BudgetGuard errors**: per-tool rejections mid-turn (`Budget exceeded: N tokens requested`)
-- **`<sh>` in act/panic mode**: model fell back to shell when blocked (doc/prompt gap)
-- Loop sequence: look for `mode` in `instructions://system` attrs to see which loop type ran
+- **413**: budget overflow — assembled context exceeded ceiling (see §4.5 Prompt/Turn Demotion)
+- **403**: policy rejection (ask-mode file writes) or permission denial (writer ∉ `writable_by`)
+- **`budget://` entries**: Turn Demotion fired — model received a directive to demote promotions next turn
+- **`error://` entries**: runtime errors (parser warnings, cycle/stall detection, policy rejections, dispatch crashes)
+- **`<sh>` in ask mode**: the policy plugin rejected it; check for the corresponding `error://` entry
 
 ### MAB benchmark
 
@@ -1017,18 +1022,77 @@ Run with: `npm run test:lme`
 
 ## 12. Configuration
 
-```env
-RUMMY_HOME=~/.rummy
-RUMMY_TOKEN_DIVISOR=2
-RUMMY_MAX_TURNS=99
-RUMMY_MAX_STALLS=3
-RUMMY_MIN_CYCLES=3
-RUMMY_MAX_CYCLE_PERIOD=4
-RUMMY_MAX_UPDATE_REPEATS=3
-RUMMY_RETENTION_DAYS=31
-RUMMY_TEMPERATURE=0.5
-RUMMY_DEBUG=false
-```
+Full reference is `.env.example` — these are the load-bearing vars.
 
-Model aliases: `RUMMY_MODEL_{alias}={provider/model}`. Seeded into
-`models` table at startup.
+**Runtime:**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `PORT` | 3044 | WebSocket port |
+| `RUMMY_HOME` | `~/.rummy` | Skills, personas, local config |
+| `RUMMY_DB_PATH` | `rummy.db` | SQLite path |
+| `RUMMY_MMAP_MB` | 0 | SQLite mmap hint (MB; 0 disables) |
+| `RUMMY_DEBUG` | false | Verbose logging |
+
+**Budget & token math:**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `RUMMY_BUDGET_CEILING` | 0.9 | Fraction of `contextSize` used as ceiling |
+| `RUMMY_MAX_ENTRY_TOKENS` | 512 | `known://` write rejection threshold |
+| `RUMMY_TOKEN_DIVISOR` | 2 | `ceil(chars/N)` token estimate divisor |
+
+**Loop controls:**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `RUMMY_MAX_TURNS` | 15 | Hard loop iteration cap |
+| `RUMMY_MAX_COMMANDS` | 99 | Max parsed tool calls per turn |
+| `RUMMY_MAX_STALLS` | 3 | Turns without `<update>` before force-complete |
+| `RUMMY_MAX_UPDATE_REPEATS` | 3 | Same-text repeat threshold without progress |
+| `RUMMY_MIN_CYCLES` | 3 | Consecutive repetitions to trigger cycle detection |
+| `RUMMY_MAX_CYCLE_PERIOD` | 4 | Max cycle period checked by healer |
+| `RUMMY_RETENTION_DAYS` | 31 | Days of completed/aborted runs kept |
+| `RUMMY_THINK` | 1 | Enable `<think>` tag reasoning |
+| `RUMMY_TEMPERATURE` | 0.5 | Default LLM temperature |
+| `RUMMY_RPC_TIMEOUT` | 30000 | RPC timeout (ms) |
+| `RUMMY_FETCH_TIMEOUT` | 300000 | LLM HTTP timeout (ms) |
+
+**LLM providers** (plugin-scoped; a provider with no config is inert):
+
+| Var | Purpose |
+|-----|---------|
+| `OPENROUTER_BASE_URL` / `OPENROUTER_API_KEY` | OpenRouter |
+| `OPENAI_BASE_URL` / `OPENAI_API_KEY` | OpenAI-compatible (llama.cpp, OpenAI, etc.) |
+| `OLLAMA_BASE_URL` | Ollama |
+| `XAI_BASE_URL` / `XAI_API_KEY` | xAI |
+| `RUMMY_HTTP_REFERER` / `RUMMY_X_TITLE` | OpenRouter attribution headers |
+
+**Model aliases:**
+
+`RUMMY_MODEL_{alias}={provider/model}` or `{provider/publisher/model}` —
+seeded into `models` table at startup. First path segment picks the
+provider plugin; the rest is the provider's own model identifier. E.g.
+`RUMMY_MODEL_gpt4=openai/gpt-4`, `RUMMY_MODEL_claude=openrouter/anthropic/claude-3-opus`.
+Optional companion: `RUMMY_CONTEXT_{alias}={tokens}` overrides the
+auto-discovered context length.
+
+**External plugins:**
+
+`RUMMY_PLUGIN_{name}={path or npm package}` loads an external plugin
+at startup. Absolute path or published package name (resolved via
+local `node_modules` then global).
+
+**Search:**
+
+| Var | Purpose |
+|-----|---------|
+| `RUMMY_SEARCH` | `brave` \| `searxng` |
+| `BRAVE_API_KEY` | Brave Search API key |
+| `RUMMY_SEARXNG_URL` | SearXNG instance URL |
+
+**Testing:**
+
+| Var | Purpose |
+|-----|---------|
+| `RUMMY_TEST_MODEL` | Model alias used by test/live/e2e runners |

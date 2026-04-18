@@ -20,7 +20,8 @@ export default class Ping {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("full", this.full.bind(this));
+        core.on("promoted", this.full.bind(this));
+        core.on("demoted", this.summary.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
             docsMap.ping = docs;
             return docsMap;
@@ -37,9 +38,8 @@ export default class Ping {
         });
     }
 
-    full(entry) {
-        return entry.body;
-    }
+    full(entry) { return entry.body; }
+    summary(entry) { return ""; }
 }
 ```
 
@@ -78,8 +78,8 @@ export default class MyTool {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("full", this.full.bind(this));
-        core.on("summary", this.summary.bind(this));
+        core.on("promoted", this.full.bind(this));
+        core.on("demoted", this.summary.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
             docsMap.mytool = docs;
             return docsMap;
@@ -90,13 +90,8 @@ export default class MyTool {
         // What the tool does (rummy is per-turn RummyContext)
     }
 
-    full(entry) {
-        return entry.body;
-    }
-
-    summary(entry) {
-        return entry.body;
-    }
+    full(entry)    { return entry.body; }
+    summary(entry) { return entry.body; }
 }
 ```
 
@@ -112,19 +107,31 @@ RUMMY_PLUGIN_REPO=@possumtech/rummy.repo
 
 ## §2 Unified API
 
-The model, the client, and plugins all use the same interface. Each
-tier is a superset of the one below. `name` (model) = `method` (client)
-= method name (plugin). The params shape is the same at every tier.
+Three tiers share the tool vocabulary, but the invocation shape and
+dispatch path differ.
 
 ```
-Model:  <rm path="file.txt"/>           → { name: "rm", path: "file.txt" }
+Model:  <rm path="file.txt"/>     → { name: "rm", path: "file.txt" }
+                                  → TurnExecutor.#record()
+                                  → hooks.tools.dispatch("rm", entry, rummy)
 Client: { method: "rm", params: { path: "file.txt" } }
-Plugin: rummy.rm({ path: "file.txt" })
+                                  → rpc.js dispatchTool(...)
+                                  → hooks.tools.dispatch("rm", entry, rummy)
+Plugin: rummy.rm("file.txt")      → rummy.entries.remove(...) (direct store)
 ```
 
-All three tiers go through the same tool handler. Budget enforcement
-applies equally. A client `get` is subject to the same budget check
-as a model `<get>`.
+Model and client tiers both land in `hooks.tools.dispatch` and invoke
+the scheme's handler. Model-tier additionally goes through
+`TurnExecutor.#record()` (policy filtering, turn-scoped recording,
+abort cascade) and the surrounding budget-check lifecycle (pre-LLM
+`budget.enforce`, post-dispatch `budget.postDispatch`). Client-tier
+`dispatchTool` is synchronous — no budget enforcement; the caller is
+responsible for not blowing context. Plugin-tier convenience verbs
+(`rummy.rm`, `rummy.set`, ...) are thin wrappers over the store — they
+don't invoke the handler chain. Plugin code that wants full handler
+semantics calls `hooks.tools.dispatch` directly.
+
+Verb signatures vary. See §4.1.
 
 ## §3 Registration
 
@@ -145,35 +152,48 @@ constructor.
 
 ```js
 core.registerScheme({
-    modelVisible: 1,     // 1 or 0 — appears in v_model_context
-    category: "logging",  // "data", "logging", "unknown", "prompt"
+    name:         "mytool",             // defaults to plugin name
+    modelVisible: 1,                    // 1 or 0 — appears in v_model_context
+    category:     "logging",            // "data" | "logging" | "unknown" | "prompt"
+    scope:        "run",                // "run" | "project" | "global" — default scope
+    writableBy:   ["model", "plugin"],  // allowed writer types
 });
 ```
 
 All fields optional. `core.registerScheme()` with no args gives a
-sensible result-type scheme.
+sensible result-type scheme (logging category, run scope, writable by
+model + plugin).
+
+`scope` determines where entries at this scheme land (see SPEC §1.1 /
+§1.3). `writableBy` is enforced at `KnownStore.upsert` — writes from
+a writer not in the list are rejected with 403 and an `error://`
+entry is emitted.
 
 ### §3.3 core.on(event, callback, priority?)
 
 | Event | Payload | Purpose |
 |-------|---------|---------|
 | `"handler"` | `(entry, rummy)` | Tool handler — called when model/client invokes this tool |
-| `"full"` | `(entry)` | Full fidelity projection — what the model sees at full |
-| `"summary"` | `(entry)` | Summary fidelity projection — what the model sees at summary |
-| `"turn.started"` | `(ctx)` | Turn beginning — write prompt/progress/instructions entries |
-| `"turn.response"` | `(result, rummy)` | LLM responded — write audit entries, commit usage |
-| `"turn.proposing"` | `(rummy)` | All dispatches done — materialize file edit proposals |
-| `"entry.created"` | `({ runId, path, scheme })` | Entry created during dispatch |
-| `"entry.changed"` | `({ runId, path, changeType })` | Entry content, fidelity, or status modified |
-| Any `"dotted.name"` | varies | Resolves to the matching hook in the hook tree |
+| `"promoted"` | `(entry)` | Promoted-fidelity projection — body shown in `<knowns>` / `<performed>` |
+| `"demoted"` | `(entry)` | Demoted-fidelity projection — path + summary only (body hidden) |
+| `"turn.started"` | `({rummy, mode, prompt, loopIteration, isContinuation})` | Turn beginning — plugins write prompt/instructions entries |
+| `"turn.response"` | `({rummy, turn, result, responseMessage, content, commands, ...})` | LLM responded — write audit entries, commit usage |
+| `"turn.proposing"` | `({rummy, recorded})` | Tool dispatched — materialize proposals (e.g. file edit 202 revisions) |
+| `"turn.proposal"` | `({projectId, run, proposed})` | Proposal awaits client resolution |
+| `"turn.completed"` | `(turnResult)` | Turn resolved — full turnResult |
+| `"entry.created"` | `(entry)` | Entry created during dispatch |
+| `"entry.changed"` | `({runId, path, changeType})` | Entry content, fidelity, or status modified |
+| `"run.state"` | `({projectId, run, turn, status, summary, history, unknowns, telemetry})` | Incremental client-facing state push |
+| `"error.log"` | `({runId, turn, loopId, message})` | Runtime error — creates an `error://` entry |
+| Any `"dotted.name"` | varies | Resolves to the matching hook in `src/hooks/Hooks.js` |
 
 ```js
 // One-liner examples
 core.on("handler", async (entry, rummy) => { /* tool logic */ });
-core.on("full", (entry) => entry.body);
-core.on("summary", (entry) => entry.body?.slice(0, 200));
-core.on("turn.started", async (ctx) => { /* write entries */ });
-core.on("turn.response", async (result, rummy) => { /* audit */ });
+core.on("promoted", (entry) => entry.body);
+core.on("demoted", (entry) => entry.attributes?.summary || "");
+core.on("turn.started", async ({ rummy, mode }) => { /* write entries */ });
+core.on("turn.response", async ({ rummy, result }) => { /* audit */ });
 core.on("entry.changed", ({ runId, path, changeType }) => { /* react */ });
 ```
 
@@ -275,48 +295,62 @@ invocation. Has tool verbs, per-turn state, database access.
 
 ### §4.1 Tool Verbs (on RummyContext)
 
+Convenience wrappers over `rummy.entries.*`. Signatures vary per verb
+— each takes what's natural. For full handler-chain semantics
+(including policy filtering and post-dispatch hooks), use
+`rummy.hooks.tools.dispatch(scheme, entry, rummy)` instead.
+
 | Method | Effect |
 |--------|--------|
-| `rummy.set({ path, body, status, fidelity, attributes })` | Create/update entry |
-| `rummy.get({ path })` | Promote to full fidelity |
-| `rummy.rm({ path })` | Delete permanently |
-| `rummy.mv({ path, to })` | Move entry |
-| `rummy.cp({ path, to })` | Copy entry |
+| `rummy.set({ path?, body?, status?, fidelity?, attributes? })` | Create/update entry. If `path` omitted, slugifies from body/summary. |
+| `rummy.get(path)` | Promote entries matching a pattern to promoted fidelity |
+| `rummy.rm(path)` | Delete entry |
+| `rummy.mv(from, to)` | Move entry |
+| `rummy.cp(from, to)` | Copy entry |
 
 ### §4.2 Query Methods
 
 | Method | Returns |
 |--------|---------|
 | `rummy.getBody(path)` | Body text or null |
-| `rummy.getState(path)` | Status code or null |
-| `rummy.getAttributes(path)` | Parsed attributes `{}` |
-| `rummy.getEntries(pattern, body?)` | Array of matching entries |
+| `rummy.getStatus(path)` | Status code or null |
+| `rummy.getAttributes(path)` | Parsed attributes `{}` or null |
+| `rummy.getEntry(path)` | First matching entry or null |
+| `rummy.getEntries(pattern, bodyFilter?)` | Array of matching entries |
+| `rummy.setAttributes(path, attrs)` | Merge attributes via json_patch |
 
 ### §4.3 Properties
 
-| Property | Type | Scope |
+| Property | Type | Notes |
 |----------|------|-------|
-| `rummy.entries` | KnownStore instance | Both |
-| `rummy.db` | Database | Both |
-| `rummy.runId` | Current run ID | RummyContext |
-| `rummy.projectId` | Current project ID | Both |
-| `rummy.sequence` | Current turn number | RummyContext |
-| `rummy.contextSize` | Model context window | RummyContext |
-| `rummy.noRepo` | Skip filesystem scanning | RummyContext |
+| `rummy.entries` | KnownStore instance | The Repository (also on PluginContext) |
+| `rummy.db` | SqlRite db | Prefer `entries` for plugin-facing data access |
+| `rummy.hooks` | Hook registry | |
+| `rummy.runId` | number | Current run |
+| `rummy.projectId` | number | |
+| `rummy.sequence` | number | Current turn number |
+| `rummy.loopId` / `rummy.turnId` | number | |
+| `rummy.type` | `"ask"` \| `"act"` | Current mode |
+| `rummy.toolSet` | Set<string> \| null | Active tool list for this loop |
+| `rummy.contextSize` | number \| null | Model context window |
+| `rummy.systemPrompt` / `rummy.loopPrompt` | string | |
+| `rummy.noRepo` / `rummy.noInteraction` / `rummy.noWeb` | boolean | Loop flags |
+| `rummy.writer` | `"model"` \| `"plugin"` \| `"system"` | Default `"model"` — who is initiating writes this turn. Passed through `store.upsert({writer})` for permission checks (see SPEC §1.3). |
 
 ## §5 Tool Display Order
 
 Tools are presented to the model in priority order:
 gather → reason → act → communicate.
 
-Defined in `ToolRegistry.TOOL_ORDER`. The `resolveForLoop(mode, flags)`
-method handles all exclusions through one mechanism:
+Defined in `ToolRegistry.TOOL_ORDER`. `resolveForLoop(mode, flags)`
+handles all exclusions:
 
-| Flag | Excludes |
-|------|----------|
+| Condition | Excludes |
+|-----------|----------|
 | `mode === "ask"` | `sh` |
-| `noInteraction` | `ask_user` |
-| `noWeb` | `search` |
+| `noInteraction` flag | `ask_user` |
+| `noWeb` flag | `search` |
+| `noProposals` flag | `ask_user`, `env`, `sh` |
 
 ## §6 Hedberg
 
@@ -373,24 +407,31 @@ Hooks fire in this order every turn:
 
 | # | Hook | Type | When |
 |---|------|------|------|
-| 1 | `turn.started` | event | Plugins write prompt/progress/instructions entries |
+| 1 | `turn.started` | event | Plugins write prompt/instructions entries |
 | 2 | `context.materialized` | event | turn_context populated from v_model_context |
 | 3 | `assembly.system` | filter | Build system message from entries |
-| 4 | `assembly.user` | filter | Build user message from entries |
-| 5 | `budget.enforce` | hook | Measure assembled tokens, 413 if over |
+| 4 | `assembly.user` | filter | Build user message (prompt plugin adds `<prompt tokenBudget tokenUsage>`) |
+| 5 | `budget.enforce` | call | Measure assembled tokens; if over and it's turn 1, demote prompt, re-materialize, re-check; still over → 413 |
 | 6 | `llm.messages` | filter | Transform messages before LLM call |
 | 7 | `llm.request.started` | event | LLM call about to fire |
 | 8 | `llm.response` | filter | Transform raw LLM response |
 | 9 | `llm.request.completed` | event | LLM call finished |
-| 10 | `turn.response` | event | Plugins write audit entries |
-| 11 | `entry.recording` | filter | Before each entry is stored (validate/transform) |
-| 12 | `tool.before` | event | Before tool handler dispatch |
-| 13 | Tool handler dispatch | — | Lifecycle always, actions sequential |
-| 14 | `tool.after` | event | After tool handler dispatch |
-| 15 | `entry.created` | event | After each new entry dispatched |
-| 16 | `entry.changed` | event | After entry content, fidelity, or status modified |
-| 17 | `turn.proposing` | event | All dispatches done — materialize proposals |
-| 18 | `turn.completed` | event | Turn fully resolved with final status |
+| 10 | `turn.response` | event | Plugins write audit entries (telemetry) |
+| 11 | `entry.recording` | filter | Per command, during `#record()`. Returning `status >= 400` rejects the entry. |
+| 12 | Per recorded entry (sequential, abort-on-failure): | | |
+|    | `tool.before` | event | Before handler dispatch |
+|    | `tools.dispatch` | — | Scheme's registered handler runs |
+|    | `tool.after` | event | Handler finished |
+|    | `entry.created` | event | Entry written to store |
+|    | `run.state` | event | Incremental state push to connected clients |
+|    | `turn.proposing` | event | This entry's dispatch may have created proposals (e.g. set → 202 revisions) |
+| 13 | `budget.postDispatch` | call | Re-materialize + check. If over ceiling → Turn Demotion (fidelity=demoted on turn's promoted rows) + write `budget://` entry. |
+| 14 | `hooks.update.resolve` | call | Update plugin classifies this turn's `<update>` (terminal/continuation, override-to-continuation if actions failed, heal from raw content if missing) |
+| 15 | `turn.completed` | event | Turn fully resolved with final status |
+
+`entry.changed` fires asynchronously from mutation points — not
+pipeline-ordered. Subscribe when you need to react to any entry
+modification (used by budget remeasurement and file-on-disk detection).
 
 ### §7.4 Entry Events
 
@@ -414,17 +455,22 @@ update, fidelity change, status change, attribute update. Payload:
 
 | Hook | Type | When |
 |------|------|------|
-| `budget.enforce` | hook | After assembly, before LLM call. Returns 413 if over context limit. |
+| `hooks.budget.enforce` | method | Pre-LLM ceiling check. On first-turn 413 → Prompt Demotion + re-check. |
+| `hooks.budget.postDispatch` | method | Post-dispatch re-check. On 413 → Turn Demotion + `budget://` entry. |
 
-The budget plugin measures `countTokens()` on assembled messages —
-the actual content being sent to the LLM. No estimates, no DB token
-math. The assembled message IS the measurement.
+The budget plugin measures tokens on the assembled messages — the
+actual content being sent to the LLM. No estimates at the ceiling,
+no SQL token sums. The assembled message IS the measurement. When
+turn 2+ information is available, `budget.enforce` prefers the actual
+API-reported token count (`turns.context_tokens` from the prior
+turn) over re-measuring the assembled string.
 
-**DB tokens vs assembled tokens:** The `tokens` column on entries is
-strictly for DISPLAY — showing token counts in `<knowns>` tags so
+**DB tokens vs assembled tokens:** The `tokens` column on `entries`
+is strictly for DISPLAY — showing token costs in `<knowns>` tags so
 the model can reason about entry sizes. It is NEVER used for budget
 decisions. Budget math uses only assembled message token counts.
-These are two separate numbers that must never be conflated.
+These are two separate numbers that must never be conflated. See
+SPEC §4.5 for the three-measure table.
 
 ### §7.6 Client Notifications
 
@@ -437,17 +483,21 @@ These are two separate numbers that must never be conflated.
 
 Every entry follows the same lifecycle regardless of origin:
 
-1. **Created** — `known_entries` row with scheme, path, body, status
-2. **Dispatched** — tool handler chain executes
-3. **Status set** — handler sets 200, 202, 400, 413, etc.
-4. **Materialized** — `v_model_context` projects into `turn_context`
-5. **Assembled** — filter chain renders into system/user messages
-6. **Visible** — model sees the entry in its context
+1. **Created** — `entries` row (content) + `run_views` row (per-run
+   projection) via the two-prep upsert flow (SPEC §1.4).
+2. **Dispatched** — tool handler chain executes.
+3. **Status set** — handler sets 200, 202, 400, 413, etc. on the
+   `run_views` row (status is view-side).
+4. **Materialized** — `v_model_context` joins entries + run_views,
+   projects into `turn_context`.
+5. **Assembled** — filter chain renders into system/user messages.
+6. **Visible** — model sees the entry in its context.
 
-Entries at `archive` fidelity skip steps 4-6 (invisible to model).
-Entries at `index` fidelity render as path-only tags (no body).
-Entries at `summary` fidelity render with `attributes.summary`
-prepended above the plugin's summary view output.
+Entries at `fidelity = 'archived'` skip steps 4–6 (invisible to
+model, discoverable via pattern search). Entries at `fidelity =
+'demoted'` render with `attributes.summary` (model-authored keyword
+description) prepended above the plugin's `demoted` view output —
+the body is hidden; promoting with `<get>` brings it back.
 
 ### §8.1 Streaming Entries
 
@@ -509,23 +559,23 @@ pure RPC plumbing shared across all streaming producers.
 | `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
-| `update` | Structural | Status report + lifecycle signal (status=200 terminates) |
-| `update` | Structural | Signal continued work |
+| `update` | Structural | Status report + lifecycle signal. `status="200\|204\|422"` terminates; `status="102"` continues. Exposes `hooks.update.resolve` for TurnExecutor. |
 | `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
 | `previous` | Assembly | Render `<previous>` loop history |
 | `performed` | Assembly | Render `<performed>` active loop work |
-| `prompt` | Assembly | Render `<prompt mode="ask|act" tokenBudget="N" tokenUsage="M">` tag; token budget math via attrs |
+| `prompt` | Assembly | Render `<prompt mode="ask\|act" tokenBudget="N" tokenUsage="M">` tag |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
-| `instructions` | Internal | Preamble + tool docs + persona assembly |
-| `file` | Internal | File entry projections and constraints |
-| `rpc` | Internal | RPC method registration |
+| `instructions` | Internal | Preamble + tool docs + persona assembly; exposes `hooks.instructions.resolveSystemPrompt` |
+| `file` | Internal | File entry projections and constraints (`scheme IS NULL`) |
+| `rpc` | Internal | RPC method registration + tool-fallback dispatch |
 | `telemetry` | Internal | Audit entries, usage stats, reasoning_content |
-| `budget` | Internal | Context ceiling enforcement (413), panic mode, BudgetGuard |
-| `think` | Internal | Model reasoning tag (`model_visible = 0`) |
-| `mcp` | Core tool | Model Context Protocol server management |
-
-Removed: `crunch` (dead code, replaced by model-owned context management),
-`store` (merged into `set` fidelity attributes).
+| `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Exposes `hooks.budget.enforce` / `hooks.budget.postDispatch`. |
+| `policy` | Internal | Ask-mode per-invocation rejections via `entry.recording` filter |
+| `error` | Internal | `error.log` hook → `error://` entries |
+| `stream` | Internal | Streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) |
+| `think` | Tool | Private reasoning tag (body stripped from subsequent context) |
+| `openai` / `ollama` / `xai` / `openrouter` | LLM provider | Register with `hooks.llm.providers`; handle `{prefix}/...` model aliases. Silently inert if their env isn't configured. |
+| `persona` / `skill` | Internal | Runtime persona/skill management via RPC |
 
 ## §10 External Plugins
 
@@ -583,22 +633,30 @@ the same handler chain as model commands.
 | `run/rename` | `{ run, name }` | Change run alias |
 | `run/inject` | `{ run, message }` | Inject message into active turn |
 
-### §11.4 Project Management
+### §11.4 Project / Protocol Management
 
 | Method | Params | Notes |
 |--------|--------|-------|
-| `init` | `{ name, projectRoot }` | Initialize project |
+| `ping` | — | Liveness check |
+| `discover` | — | Return the live RPC catalog |
+| `init` | `{ name, projectRoot, configPath? }` | Initialize project |
 | `addModel` | `{ alias, actual, contextLength? }` | Register model |
 | `removeModel` | `{ alias }` | Remove model |
 | `getRuns` | `{ limit?, offset? }` | List runs |
 | `getRun` | `{ run }` | Get single run details |
-| `getModels` | `{}` | List models |
+| `getModels` | `{ limit?, offset? }` | List models |
+| `skill/add` / `skill/remove` / `getSkills` / `listSkills` | | Skill plugin |
+| `persona/set` / `listPersonas` | | Persona plugin |
+| `stream` / `stream/completed` / `stream/aborted` / `stream/cancel` | | Streaming plugin (§8.1) |
 
 ### §11.5 Notifications (server → client)
 
-| Method | Payload |
+| Method | Purpose |
 |--------|---------|
-| `run/state` | `{ run, status, turn, entries, ... }` |
-| `run/progress` | `{ run, status }` |
-| `ui/render` | `{ text }` |
-| `ui/notify` | `{ message }` |
+| `rummy/hello` | Server greeting on connect; carries `rummyVersion` |
+| `run/state` | Incremental state push per tool dispatch |
+| `run/progress` | Turn status transition (`thinking` / `processing`) |
+| `run/proposal` | A 202 entry awaits resolution |
+| `stream/cancelled` | Server-initiated streaming cancellation |
+| `ui/render` | Streaming UI output |
+| `ui/notify` | Toast notification |
