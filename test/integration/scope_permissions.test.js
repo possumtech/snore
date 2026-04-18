@@ -10,7 +10,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Scope + permissions (Phase D)", () => {
@@ -18,7 +18,7 @@ describe("Scope + permissions (Phase D)", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("scope_permissions");
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 	});
 
 	after(async () => {
@@ -28,10 +28,20 @@ describe("Scope + permissions (Phase D)", () => {
 	it("permissive scheme accepts both model and plugin writers", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_ok" });
 
-		await store.upsert(runId, 1, "known://a", "fact a", "resolved", {
+		await store.set({
+			runId,
+			turn: 1,
+			path: "known://a",
+			body: "fact a",
+			state: "resolved",
 			writer: "model",
 		});
-		await store.upsert(runId, 1, "known://b", "fact b", "resolved", {
+		await store.set({
+			runId,
+			turn: 1,
+			path: "known://b",
+			body: "fact b",
+			state: "resolved",
 			writer: "plugin",
 		});
 
@@ -45,7 +55,12 @@ describe("Scope + permissions (Phase D)", () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_plugin" });
 
 		await assert.rejects(
-			store.upsert(runId, 1, "system://probe", "attempt", "resolved", {
+			store.set({
+				runId,
+				turn: 1,
+				path: "system://probe",
+				body: "attempt",
+				state: "resolved",
 				writer: "plugin",
 			}),
 			/403.*writer "plugin" not permitted for scheme "system"/,
@@ -56,7 +71,12 @@ describe("Scope + permissions (Phase D)", () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_model" });
 
 		await assert.rejects(
-			store.upsert(runId, 1, "reasoning://probe", "attempt", "resolved", {
+			store.set({
+				runId,
+				turn: 1,
+				path: "reasoning://probe",
+				body: "attempt",
+				state: "resolved",
 				writer: "model",
 			}),
 			/403.*writer "model" not permitted for scheme "reasoning"/,
@@ -66,7 +86,12 @@ describe("Scope + permissions (Phase D)", () => {
 	it("audit scheme accepts system writer", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_ok" });
 
-		await store.upsert(runId, 1, "assistant://1", "response body", "resolved", {
+		await store.set({
+			runId,
+			turn: 1,
+			path: "assistant://1",
+			body: "response body",
+			state: "resolved",
 			writer: "system",
 		});
 		const body = await store.getBody(runId, "assistant://1");
@@ -77,7 +102,12 @@ describe("Scope + permissions (Phase D)", () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_prompt_model" });
 
 		await assert.rejects(
-			store.upsert(runId, 1, "prompt://1", "forged prompt", "resolved", {
+			store.set({
+				runId,
+				turn: 1,
+				path: "prompt://1",
+				body: "forged prompt",
+				state: "resolved",
 				writer: "model",
 			}),
 			/403.*writer "model" not permitted for scheme "prompt"/,
@@ -87,7 +117,12 @@ describe("Scope + permissions (Phase D)", () => {
 	it("prompt scheme accepts plugin writer", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_prompt_ok" });
 
-		await store.upsert(runId, 1, "prompt://1", "user prompt", "resolved", {
+		await store.set({
+			runId,
+			turn: 1,
+			path: "prompt://1",
+			body: "user prompt",
+			state: "resolved",
 			writer: "plugin",
 			attributes: { mode: "ask" },
 		});
@@ -98,7 +133,12 @@ describe("Scope + permissions (Phase D)", () => {
 	it("entries land at 'run:<runId>' scope by default", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_scope" });
 
-		await store.upsert(runId, 1, "known://scoped", "content", "resolved", {
+		await store.set({
+			runId,
+			turn: 1,
+			path: "known://scoped",
+			body: "content",
+			state: "resolved",
 			writer: "model",
 		});
 

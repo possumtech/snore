@@ -88,10 +88,16 @@ describe("PLUGINS.md Spec Compliance", () => {
 			// Schemes are used by v_model_context JOIN — if they're missing,
 			// entries with those schemes won't materialize
 			const { runId } = await tdb.seedRun({ alias: "spec_3_2" });
-			const store = new (await import("../../src/agent/KnownStore.js")).default(
+			const store = new (await import("../../src/agent/Repository.js")).default(
 				tdb.db,
 			);
-			await store.upsert(runId, 1, "known://scheme_test", "test", "resolved");
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://scheme_test",
+				body: "test",
+				state: "resolved",
+			});
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "known://scheme_test");
 			assert.ok(entry, "known entry created");
@@ -231,10 +237,16 @@ describe("PLUGINS.md Spec Compliance", () => {
 		it("§8.1 entries created with scheme, path, body, status", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_1" });
 			const store = tdb.hooks.tools.names.includes("known")
-				? new (await import("../../src/agent/KnownStore.js")).default(tdb.db)
+				? new (await import("../../src/agent/Repository.js")).default(tdb.db)
 				: null;
 			if (!store) return;
-			await store.upsert(runId, 1, "known://test", "test body", "resolved");
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://test",
+				body: "test body",
+				state: "resolved",
+			});
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "known://test");
 			assert.ok(entry, "entry created");
@@ -246,44 +258,66 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 	// §7.4 Entry Events
 	describe("§7.4 Entry Events", () => {
-		it("§7.4.1 KnownStore emits onChanged on upsert", async () => {
+		it("§7.4.1 Repository emits onChanged on upsert", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_1" });
 			const events = [];
-			const store = new (await import("../../src/agent/KnownStore.js")).default(
+			const store = new (await import("../../src/agent/Repository.js")).default(
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
-			await store.upsert(runId, 1, "known://test_changed", "body", "resolved");
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://test_changed",
+				body: "body",
+				state: "resolved",
+			});
 			assert.ok(events.length > 0, "onChanged should fire on upsert");
 			assert.strictEqual(events[0].changeType, "upsert");
 		});
 
-		it("§7.4.2 KnownStore emits onChanged on fidelity change", async () => {
+		it("§7.4.2 Repository emits onChanged on fidelity change", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_2" });
 			const events = [];
-			const store = new (await import("../../src/agent/KnownStore.js")).default(
+			const store = new (await import("../../src/agent/Repository.js")).default(
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
-			await store.upsert(runId, 1, "known://fidelity_test", "body", "resolved");
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://fidelity_test",
+				body: "body",
+				state: "resolved",
+			});
 			events.length = 0;
-			await store.setFidelity(runId, "known://fidelity_test", "demoted");
+			await store.set({
+				runId: runId,
+				path: "known://fidelity_test",
+				fidelity: "demoted",
+			});
 			assert.ok(
 				events.some((e) => e.changeType === "fidelity"),
 				"onChanged should fire with changeType=fidelity",
 			);
 		});
 
-		it("§7.4.3 KnownStore emits onChanged on remove", async () => {
+		it("§7.4.3 Repository emits onChanged on remove", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_3" });
 			const events = [];
-			const store = new (await import("../../src/agent/KnownStore.js")).default(
+			const store = new (await import("../../src/agent/Repository.js")).default(
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
-			await store.upsert(runId, 1, "known://remove_test", "body", "resolved");
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://remove_test",
+				body: "body",
+				state: "resolved",
+			});
 			events.length = 0;
-			await store.remove(runId, "known://remove_test");
+			await store.rm({ runId: runId, path: "known://remove_test" });
 			assert.ok(
 				events.some((e) => e.changeType === "remove"),
 				"onChanged should fire with changeType=remove",
@@ -301,9 +335,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_1" });
 			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
 				.default;
-			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+			const Repository = (await import("../../src/agent/Repository.js"))
 				.default;
-			const store = new KnownStore(tdb.db);
+			const store = new Repository(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
 				{
@@ -337,9 +371,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_2" });
 			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
 				.default;
-			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+			const Repository = (await import("../../src/agent/Repository.js"))
 				.default;
-			const store = new KnownStore(tdb.db);
+			const store = new Repository(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
 				{
@@ -421,16 +455,16 @@ describe("PLUGINS.md Spec Compliance", () => {
 	describe("§8 Full Entry Lifecycle", () => {
 		it("§8.2 entry visible in v_model_context after creation", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_2" });
-			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+			const Repository = (await import("../../src/agent/Repository.js"))
 				.default;
-			const store = new KnownStore(tdb.db);
-			await store.upsert(
+			const store = new Repository(tdb.db);
+			await store.set({
 				runId,
-				1,
-				"known://lifecycle_vis",
-				"visible",
-				"resolved",
-			);
+				turn: 1,
+				path: "known://lifecycle_vis",
+				body: "visible",
+				state: "resolved",
+			});
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_vis");
@@ -440,19 +474,17 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 		it("§8.3 stored fidelity hides from v_model_context", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_3" });
-			const KnownStore = (await import("../../src/agent/KnownStore.js"))
+			const Repository = (await import("../../src/agent/Repository.js"))
 				.default;
-			const store = new KnownStore(tdb.db);
-			await store.upsert(
+			const store = new Repository(tdb.db);
+			await store.set({
 				runId,
-				1,
-				"known://lifecycle_stored",
-				"hidden",
-				"resolved",
-				{
-					fidelity: "archived",
-				},
-			);
+				turn: 1,
+				path: "known://lifecycle_stored",
+				body: "hidden",
+				state: "resolved",
+				fidelity: "archived",
+			});
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_stored");

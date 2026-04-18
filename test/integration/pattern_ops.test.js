@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Pattern operations integration", () => {
@@ -8,38 +8,62 @@ describe("Pattern operations integration", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun({ alias: "pattern_1" });
 		RUN_ID = seed.runId;
 
 		// Seed files
-		await store.upsert(RUN_ID, 0, "src/app.js", "const app = 1;", "resolved");
-		await store.upsert(
-			RUN_ID,
-			0,
-			"src/config.js",
-			"const port = 3000;",
-			"resolved",
-		);
-		await store.upsert(
-			RUN_ID,
-			0,
-			"src/utils.js",
-			"// TODO: refactor",
-			"resolved",
-		);
-		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "resolved");
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "src/app.js",
+			body: "const app = 1;",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "src/config.js",
+			body: "const port = 3000;",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "src/utils.js",
+			body: "// TODO: refactor",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "readme.md",
+			body: "# Hello",
+			state: "resolved",
+		});
 
 		// Seed knowledge
-		await store.upsert(
-			RUN_ID,
-			0,
-			"known://auth_flow",
-			"OAuth2 PKCE",
-			"resolved",
-		);
-		await store.upsert(RUN_ID, 0, "known://auth_secret", "hunter2", "resolved");
-		await store.upsert(RUN_ID, 0, "known://db_type", "SQLite", "resolved");
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "known://auth_flow",
+			body: "OAuth2 PKCE",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "known://auth_secret",
+			body: "hunter2",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 0,
+			path: "known://db_type",
+			body: "SQLite",
+			state: "resolved",
+		});
 	});
 
 	after(async () => {
@@ -107,7 +131,12 @@ describe("Pattern operations integration", () => {
 
 	describe("promoteByPattern", () => {
 		it("promotes matching entries", async () => {
-			await store.promoteByPattern(RUN_ID, "src/*.js", null, 5);
+			await store.get({
+				runId: RUN_ID,
+				turn: 5,
+				path: "src/*.js",
+				pattern: true,
+			});
 			const matches = await store.getEntriesByPattern(RUN_ID, "src/*.js", null);
 			for (const m of matches) {
 				const row = await tdb.db.get_entry_state.get({
@@ -119,8 +148,18 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("promotes with value filter", async () => {
-			await store.demoteByPattern(RUN_ID, "src/*.js", null);
-			await store.promoteByPattern(RUN_ID, "src/*.js", "TODO", 7);
+			await store.set({
+				runId: RUN_ID,
+				path: "src/*.js",
+				fidelity: "demoted",
+				pattern: true,
+			});
+			await store.get({
+				runId: RUN_ID,
+				turn: 7,
+				path: "src/*.js",
+				bodyFilter: "TODO",
+			});
 			const utils = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/utils.js",
@@ -136,8 +175,18 @@ describe("Pattern operations integration", () => {
 
 	describe("demoteByPattern", () => {
 		it("demotes matching entries", async () => {
-			await store.promoteByPattern(RUN_ID, "src/*.js", null, 3);
-			await store.demoteByPattern(RUN_ID, "src/*.js", null);
+			await store.get({
+				runId: RUN_ID,
+				turn: 3,
+				path: "src/*.js",
+				pattern: true,
+			});
+			await store.set({
+				runId: RUN_ID,
+				path: "src/*.js",
+				fidelity: "demoted",
+				pattern: true,
+			});
 			const matches = await store.getEntriesByPattern(RUN_ID, "src/*.js", null);
 			for (const m of matches) {
 				const row = await tdb.db.get_entry_state.get({
@@ -151,10 +200,26 @@ describe("Pattern operations integration", () => {
 
 	describe("deleteByPattern", () => {
 		it("deletes matching entries", async () => {
-			await store.upsert(RUN_ID, 0, "known://temp_a", "x", "resolved");
-			await store.upsert(RUN_ID, 0, "known://temp_b", "y", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://temp_a",
+				body: "x",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://temp_b",
+				body: "y",
+				state: "resolved",
+			});
 
-			await store.deleteByPattern(RUN_ID, "known://temp_*", null);
+			await store.rm({
+				runId: RUN_ID,
+				path: "known://temp_*",
+				pattern: true,
+			});
 
 			const matches = await store.getEntriesByPattern(
 				RUN_ID,
@@ -165,10 +230,26 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("deletes with value filter", async () => {
-			await store.upsert(RUN_ID, 0, "known://cache_a", "stale", "resolved");
-			await store.upsert(RUN_ID, 0, "known://cache_b", "fresh", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://cache_a",
+				body: "stale",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://cache_b",
+				body: "fresh",
+				state: "resolved",
+			});
 
-			await store.deleteByPattern(RUN_ID, "known://cache_*", "stale");
+			await store.rm({
+				runId: RUN_ID,
+				path: "known://cache_*",
+				bodyFilter: "stale",
+			});
 
 			const remaining = await store.getEntriesByPattern(
 				RUN_ID,
@@ -182,10 +263,27 @@ describe("Pattern operations integration", () => {
 
 	describe("updateBodyByPattern", () => {
 		it("bulk updates matching values", async () => {
-			await store.upsert(RUN_ID, 0, "known://ver_a", "v1", "resolved");
-			await store.upsert(RUN_ID, 0, "known://ver_b", "v1", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://ver_a",
+				body: "v1",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://ver_b",
+				body: "v1",
+				state: "resolved",
+			});
 
-			await store.updateBodyByPattern(RUN_ID, "known://ver_*", null, "v2");
+			await store.set({
+				runId: RUN_ID,
+				path: "known://ver_*",
+				body: "v2",
+				pattern: true,
+			});
 
 			const a = await store.getBody(RUN_ID, "known://ver_a");
 			const b = await store.getBody(RUN_ID, "known://ver_b");
@@ -194,15 +292,27 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("updates with value filter", async () => {
-			await store.upsert(RUN_ID, 0, "known://status_a", "stale", "resolved");
-			await store.upsert(RUN_ID, 0, "known://status_b", "fresh", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://status_a",
+				body: "stale",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://status_b",
+				body: "fresh",
+				state: "resolved",
+			});
 
-			await store.updateBodyByPattern(
-				RUN_ID,
-				"known://status_*",
-				"stale",
-				"refreshed",
-			);
+			await store.set({
+				runId: RUN_ID,
+				path: "known://status_*",
+				body: "refreshed",
+				bodyFilter: "stale",
+			});
 
 			const a = await store.getBody(RUN_ID, "known://status_a");
 			const b = await store.getBody(RUN_ID, "known://status_b");
@@ -213,13 +323,13 @@ describe("Pattern operations integration", () => {
 
 	describe("search scheme", () => {
 		it("search result can be stored and retrieved", async () => {
-			await store.upsert(
-				RUN_ID,
-				1,
-				"search://1",
-				"1. SQLite WAL mode overview\n2. Write-Ahead Logging explained",
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "search://1",
+				body: "1. SQLite WAL mode overview\n2. Write-Ahead Logging explained",
+				state: "resolved",
+			});
 
 			const matches = await store.getEntriesByPattern(
 				RUN_ID,
@@ -234,13 +344,13 @@ describe("Pattern operations integration", () => {
 
 	describe("search/replace edit mode", () => {
 		it("literal search and replace on file content", async () => {
-			await store.upsert(
-				RUN_ID,
-				1,
-				"src/sr_test.js",
-				"const host = 'localhost';\nconst port = 3000;\n",
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/sr_test.js",
+				body: "const host = 'localhost';\nconst port = 3000;\n",
+				state: "resolved",
+			});
 
 			const entries = await store.getEntriesByPattern(
 				RUN_ID,

@@ -25,19 +25,17 @@ export default class Skill {
 
 				const body = await loadFile("skills", params.name);
 				const store = ctx.projectAgent.entries;
-				await store.upsert(
-					runRow.id,
-					0,
-					`skill://${params.name}`,
+				await store.set({
+					runId: runRow.id,
+					turn: 0,
+					path: `skill://${params.name}`,
 					body,
-					"resolved",
-					{
-						attributes: {
-							name: params.name,
-							source: filePath("skills", params.name),
-						},
+					state: "resolved",
+					attributes: {
+						name: params.name,
+						source: filePath("skills", params.name),
 					},
-				);
+				});
 
 				return { status: "ok", skill: params.name };
 			},
@@ -59,7 +57,7 @@ export default class Skill {
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
 				const store = ctx.projectAgent.entries;
-				await store.remove(runRow.id, `skill://${params.name}`);
+				await store.rm({ runId: runRow.id, path: `skill://${params.name}` });
 
 				return { status: "ok" };
 			},

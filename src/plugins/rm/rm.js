@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+import Repository from "../../agent/Repository.js";
 import docs from "./rmDoc.js";
 
 export default class Rm {
@@ -20,14 +20,19 @@ export default class Rm {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body: "",
+				state: "failed",
 				outcome: "validation",
 				attributes: { error: "path is required" },
 				loopId,
 			});
 			return;
 		}
-		const normalized = KnownStore.normalizePath(target);
+		const normalized = Repository.normalizePath(target);
 		const matches = await store.getEntriesByPattern(
 			runId,
 			normalized,
@@ -35,7 +40,12 @@ export default class Rm {
 		);
 
 		if (matches.length === 0) {
-			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body: "",
+				state: "failed",
 				outcome: "not_found",
 				attributes: { path: target, error: `${target} not found` },
 				loopId,
@@ -47,10 +57,16 @@ export default class Rm {
 		const schemeMatches = matches.filter((m) => m.scheme !== null);
 
 		// Scheme entries: remove all, write one aggregate result entry
-		for (const match of schemeMatches) await store.remove(runId, match.path);
+		for (const match of schemeMatches)
+			await store.rm({ runId: runId, path: match.path });
 		if (schemeMatches.length > 0) {
 			const paths = schemeMatches.map((m) => m.path).join("\n");
-			await store.upsert(runId, turn, entry.resultPath, paths, "resolved", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body: paths,
+				state: "resolved",
 				attributes: { path: target },
 				loopId,
 			});
@@ -58,13 +74,18 @@ export default class Rm {
 
 		// File entries: individual proposals (require user resolution)
 		if (fileMatches.length > 0 && schemeMatches.length > 0)
-			await store.remove(runId, entry.resultPath);
+			await store.rm({ runId: runId, path: entry.resultPath });
 		for (const match of fileMatches) {
 			const resultPath =
 				schemeMatches.length === 0 && fileMatches.length === 1
 					? entry.resultPath
 					: await store.dedup(runId, "rm", match.path, turn);
-			await store.upsert(runId, turn, resultPath, match.path, "proposed", {
+			await store.set({
+				runId,
+				turn,
+				path: resultPath,
+				body: match.path,
+				state: "proposed",
 				attributes: { path: match.path },
 				loopId,
 			});

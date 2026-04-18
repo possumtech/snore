@@ -15,5 +15,5 @@ Shows `mv {from} {to}`.
 ## Behavior
 
 Warns if the destination already exists and will be overwritten. Uses
-`KnownStore.scheme()` to determine scheme vs file paths. Source entry
+`Repository.scheme()` to determine scheme vs file paths. Source entry
 is removed on successful scheme moves.

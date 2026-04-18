@@ -1,6 +1,6 @@
 import slugify from "../sql/functions/slugify.js";
 
-export default class KnownStore {
+export default class Repository {
 	#db;
 	#onChanged;
 	#schemes = new Map();
@@ -122,31 +122,131 @@ export default class KnownStore {
 		return `run:${runId}`;
 	}
 
-	async upsert(
+	/**
+	 * set — create or update an entry. The semantically wide primitive.
+	 *
+	 * Modes (selected by which options are present):
+	 *   — write content:         body given, state ∈ {proposed,streaming,resolved,failed,cancelled}
+	 *   — change fidelity only:  fidelity given, body omitted
+	 *   — change state only:     state given, body omitted (resolve a proposal)
+	 *   — merge attributes:      attributes given, body omitted
+	 *   — append to body:        append:true (streaming)
+	 *   — pattern match:         path contains wildcards or bodyFilter set
+	 */
+	async set({
 		runId,
-		turn,
+		turn = 0,
 		path,
 		body,
-		state = "resolved",
-		{
-			outcome = null,
-			fidelity = "promoted",
-			attributes = null,
-			hash = null,
-			loopId = null,
-			writer = "plugin",
-		} = {},
-	) {
-		const normalized = KnownStore.normalizePath(path);
-		const scheme = KnownStore.scheme(normalized);
-		const { kind, writers } = await this.#schemeRules(scheme);
+		state,
+		fidelity,
+		outcome = null,
+		attributes,
+		append,
+		bodyFilter,
+		pattern,
+		hash = null,
+		loopId = null,
+		writer = "plugin",
+	}) {
+		if (!runId) throw new Error("set: runId is required");
+		if (!path) throw new Error("set: path is required");
 
+		// Pattern mode is explicit (pattern: true) or implicit when a
+		// body filter is supplied. The literal `*` character can appear
+		// inside legitimate exact paths (e.g. rm://foo%2F* as a result
+		// path for an rm against a pattern); we don't infer pattern mode
+		// from the path alone.
+		const isPattern = pattern === true || bodyFilter != null;
+
+		// Pattern mode: update matching entries (fidelity / body / both).
+		if (isPattern) {
+			if (body != null && !append) {
+				await this.#db.update_body_by_pattern.run({
+					run_id: runId,
+					path,
+					body: bodyFilter || null,
+					new_body: body,
+				});
+				await this.#db.bump_write_count_by_pattern.run({
+					run_id: runId,
+					path,
+					body: bodyFilter || null,
+				});
+				this.#emitChanged(runId, path, "body");
+			}
+			if (fidelity === "promoted") {
+				await this.#db.promote_by_pattern.run({
+					run_id: runId,
+					path,
+					body: bodyFilter || null,
+					turn,
+				});
+				this.#emitChanged(runId, path, "promote");
+			} else if (fidelity === "demoted" || fidelity === "archived") {
+				await this.#db.demote_by_pattern.run({
+					run_id: runId,
+					path,
+					body: bodyFilter || null,
+				});
+				this.#emitChanged(runId, path, "demote");
+			}
+			return;
+		}
+
+		const normalized = Repository.normalizePath(path);
+		const scheme = Repository.scheme(normalized);
+
+		// Append mode: streaming body growth on an existing entry.
+		if (append) {
+			if (body == null) throw new Error("set: append requires body");
+			await this.#db.append_entry_body.run({
+				run_id: runId,
+				path: normalized,
+				chunk: body,
+			});
+			this.#emitChanged(runId, normalized, "append");
+			return;
+		}
+
+		// Body-less state or fidelity change on an existing entry.
+		if (body == null) {
+			if (state != null) {
+				await this.#db.resolve_known_entry_view.run({
+					run_id: runId,
+					path: normalized,
+					state,
+					outcome,
+				});
+				this.#emitChanged(runId, normalized, "resolve");
+				this.#drainPendingResolution(runId, normalized);
+			}
+			if (fidelity != null) {
+				await this.#db.set_fidelity.run({
+					run_id: runId,
+					path: normalized,
+					fidelity,
+				});
+				this.#emitChanged(runId, normalized, "fidelity");
+			}
+			if (attributes != null) {
+				await this.#db.update_entry_attributes.run({
+					run_id: runId,
+					path: normalized,
+					attributes: JSON.stringify(attributes),
+				});
+				this.#emitChanged(runId, normalized, "attributes");
+			}
+			return;
+		}
+
+		// Full write/upsert: body + state + fidelity + attributes.
+		const { kind, writers } = await this.#schemeRules(scheme);
 		if (!writers.includes(writer)) {
 			throw new Error(
 				`403: writer "${writer}" not permitted for scheme "${scheme ?? "file"}" (allowed: ${writers.join(", ")})`,
 			);
 		}
-
 		const scope = this.#resolveScope(kind, runId);
 		const entry = await this.#db.upsert_entry.get({
 			scope,
@@ -160,155 +260,168 @@ export default class KnownStore {
 			entry_id: entry.id,
 			loop_id: loopId,
 			turn,
-			state,
+			state: state ?? "resolved",
 			outcome,
-			fidelity,
+			fidelity: fidelity ?? "promoted",
 		});
 		this.#emitChanged(runId, normalized, "upsert");
 	}
 
-	async appendBody(runId, path, chunk) {
-		const normalized = KnownStore.normalizePath(path);
-		await this.#db.append_entry_body.run({
-			run_id: runId,
-			path: normalized,
-			chunk,
-		});
-		this.#emitChanged(runId, normalized, "append");
-	}
-
-	async promote(runId, path, turn) {
-		const normalized = KnownStore.normalizePath(path);
-		await this.#db.promote_path.run({
-			run_id: runId,
-			path: normalized,
-			turn,
-		});
-		this.#emitChanged(runId, normalized, "promote");
-	}
-
-	async setFileFidelity(runId, pattern, fidelity) {
-		const result = await this.#db.set_file_fidelity.run({
-			run_id: runId,
-			pattern,
-			fidelity,
-		});
-		if (result.changes === 0) {
-			await this.upsert(runId, 0, pattern, "", "resolved", { fidelity });
+	/**
+	 * get — promote entry(ies) to visible fidelity. Default fidelity is
+	 * "promoted"; pass fidelity explicitly for a read-with-side-effect at
+	 * a different visibility (rare).
+	 */
+	async get({ runId, turn = 0, path, bodyFilter, fidelity = "promoted" }) {
+		if (!runId) throw new Error("get: runId is required");
+		if (!path) throw new Error("get: path is required");
+		if (fidelity === "promoted") {
+			await this.#db.promote_by_pattern.run({
+				run_id: runId,
+				path,
+				body: bodyFilter || null,
+				turn,
+			});
+		} else {
+			await this.#db.demote_by_pattern.run({
+				run_id: runId,
+				path,
+				body: bodyFilter || null,
+			});
 		}
-		this.#emitChanged(runId, pattern, "fidelity");
-	}
-
-	async setFidelity(runId, path, fidelity) {
-		const normalized = KnownStore.normalizePath(path);
-		await this.#db.set_fidelity.run({
-			run_id: runId,
-			path: normalized,
-			fidelity,
-		});
-		this.#emitChanged(runId, normalized, "fidelity");
-	}
-
-	async demote(runId, path) {
-		const normalized = KnownStore.normalizePath(path);
-		await this.#db.demote_path.run({
-			run_id: runId,
-			path: normalized,
-		});
-		this.#emitChanged(runId, normalized, "demote");
-	}
-
-	async remove(runId, path) {
-		const normalized = KnownStore.normalizePath(path);
-		await this.#db.delete_known_entry.run({
-			run_id: runId,
-			path: normalized,
-		});
-		this.#emitChanged(runId, normalized, "remove");
-	}
-
-	async removeFilesByPattern(runId, pattern) {
-		await this.#db.delete_file_entries_by_pattern.run({
-			run_id: runId,
-			pattern,
-		});
-		this.#emitChanged(runId, pattern, "remove");
-	}
-
-	static #bodyPattern(body) {
-		return body || null;
-	}
-
-	async promoteByPattern(runId, path, body, turn) {
-		await this.#db.promote_by_pattern.run({
-			run_id: runId,
-			path,
-			body: KnownStore.#bodyPattern(body),
-			turn,
-		});
 		this.#emitChanged(runId, path, "promote");
 	}
 
-	async demoteByPattern(runId, path, body) {
-		await this.#db.demote_by_pattern.run({
-			run_id: runId,
-			path,
-			body: KnownStore.#bodyPattern(body),
+	/**
+	 * rm — remove entry view(s). Matches single path or pattern; optional
+	 * bodyFilter narrows pattern matches. `filesOnly` restricts to bare
+	 * file-scheme entries (scheme IS NULL).
+	 */
+	async rm({ runId, path, bodyFilter, filesOnly = false }) {
+		if (!runId) throw new Error("rm: runId is required");
+		if (!path) throw new Error("rm: path is required");
+		if (filesOnly) {
+			await this.#db.delete_file_entries_by_pattern.run({
+				run_id: runId,
+				pattern: path,
+			});
+		} else if (bodyFilter != null || /[*?[\]]/.test(path)) {
+			await this.#db.delete_entries_by_pattern.run({
+				run_id: runId,
+				path,
+				body: bodyFilter || null,
+			});
+		} else {
+			const normalized = Repository.normalizePath(path);
+			await this.#db.delete_known_entry.run({
+				run_id: runId,
+				path: normalized,
+			});
+		}
+		this.#emitChanged(runId, path, "remove");
+	}
+
+	/**
+	 * cp — copy an entry to a new path. Source body becomes new body;
+	 * source view unchanged.
+	 */
+	async cp({
+		runId,
+		turn = 0,
+		from,
+		to,
+		fidelity,
+		attributes,
+		loopId,
+		writer,
+	}) {
+		if (!runId) throw new Error("cp: runId is required");
+		if (!from || !to) throw new Error("cp: from and to are required");
+		const sourceBody = await this.getBody(runId, from);
+		if (sourceBody === null) return;
+		await this.set({
+			runId,
+			turn,
+			path: to,
+			body: sourceBody,
+			fidelity,
+			attributes,
+			loopId,
+			writer,
 		});
-		this.#emitChanged(runId, path, "demote");
+	}
+
+	/**
+	 * mv — rename an entry. Equivalent to cp + rm on source.
+	 */
+	async mv({
+		runId,
+		turn = 0,
+		from,
+		to,
+		fidelity,
+		attributes,
+		loopId,
+		writer,
+	}) {
+		if (!runId) throw new Error("mv: runId is required");
+		if (!from || !to) throw new Error("mv: from and to are required");
+		await this.cp({
+			runId,
+			turn,
+			from,
+			to,
+			fidelity,
+			attributes,
+			loopId,
+			writer,
+		});
+		await this.rm({ runId, path: from });
+	}
+
+	/**
+	 * update — once-per-turn lifecycle signal from the model (or plugin
+	 * speaking on its behalf). Writes to update://<slug> with body as the
+	 * content and attributes.status carrying the model's continuation code
+	 * (102 continue, 200/204 terminal, 422 can't-answer). Returns the
+	 * slug path.
+	 */
+	async update({
+		runId,
+		turn = 0,
+		body,
+		status = 102,
+		attributes = {},
+		loopId = null,
+		writer = "plugin",
+	}) {
+		if (!runId) throw new Error("update: runId is required");
+		if (body == null) throw new Error("update: body is required");
+		const path = await this.slugPath(runId, "update", body);
+		await this.set({
+			runId,
+			turn,
+			path,
+			body,
+			state: "resolved",
+			loopId,
+			writer,
+			attributes: { status, ...attributes },
+		});
+		return path;
 	}
 
 	async getEntriesByPattern(runId, path, body, { limit, offset } = {}) {
 		return this.#db.get_entries_by_pattern.all({
 			run_id: runId,
 			path,
-			body: KnownStore.#bodyPattern(body),
+			body: body || null,
 			limit: limit ?? null,
 			offset: offset ?? null,
 		});
 	}
 
-	async deleteByPattern(runId, path, body) {
-		await this.#db.delete_entries_by_pattern.run({
-			run_id: runId,
-			path,
-			body: KnownStore.#bodyPattern(body),
-		});
-		this.#emitChanged(runId, path, "remove");
-	}
-
-	async updateBodyByPattern(runId, path, body, newBody) {
-		const args = {
-			run_id: runId,
-			path,
-			body: KnownStore.#bodyPattern(body),
-			new_body: newBody,
-		};
-		await this.#db.update_body_by_pattern.run(args);
-		await this.#db.bump_write_count_by_pattern.run({
-			run_id: runId,
-			path,
-			body: KnownStore.#bodyPattern(body),
-		});
-		this.#emitChanged(runId, path, "body");
-	}
-
-	async resolve(runId, path, state, { body = null, outcome = null } = {}) {
-		const normalized = KnownStore.normalizePath(path);
-		await this.#db.resolve_known_entry_view.run({
-			run_id: runId,
-			path: normalized,
-			state,
-			outcome,
-		});
-		if (body != null) {
-			await this.#db.resolve_known_entry_body.run({
-				run_id: runId,
-				path: normalized,
-				body,
-			});
-		}
-		this.#emitChanged(runId, normalized, "resolve");
+	#drainPendingResolution(runId, normalized) {
 		const key = `${runId}:${normalized}`;
 		const resolver = this.#pendingResolutions.get(key);
 		if (resolver) {
@@ -318,7 +431,7 @@ export default class KnownStore {
 	}
 
 	waitForResolution(runId, path) {
-		const normalized = KnownStore.normalizePath(path);
+		const normalized = Repository.normalizePath(path);
 		const key = `${runId}:${normalized}`;
 		return new Promise((resolve) => {
 			this.#pendingResolutions.set(key, resolve);
@@ -421,13 +534,13 @@ export default class KnownStore {
 	async getBody(runId, path) {
 		const row = await this.#db.get_entry_body.get({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: Repository.normalizePath(path),
 		});
 		return row?.body ?? null;
 	}
 
 	async setAttributes(runId, path, attrs) {
-		const normalized = KnownStore.normalizePath(path);
+		const normalized = Repository.normalizePath(path);
 		await this.#db.update_entry_attributes.run({
 			run_id: runId,
 			path: normalized,
@@ -439,14 +552,14 @@ export default class KnownStore {
 	async getState(runId, path) {
 		return this.#db.get_entry_state.get({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: Repository.normalizePath(path),
 		});
 	}
 
 	async getAttributes(runId, path) {
 		const row = await this.#db.get_entry_attributes.get({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: Repository.normalizePath(path),
 		});
 		return row?.attributes ? JSON.parse(row.attributes) : null;
 	}
@@ -456,7 +569,7 @@ export default class KnownStore {
 	}
 
 	static toolFromPath(path) {
-		return KnownStore.scheme(path);
+		return Repository.scheme(path);
 	}
 
 	static isSystemPath(path) {

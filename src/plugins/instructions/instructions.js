@@ -48,7 +48,12 @@ export default class Instructions {
 			? [...rummy.toolSet]
 			: this.#core.hooks.tools.names;
 		// instructions:// is an audit scheme (writable_by: ["system"]).
-		await store.upsert(runId, turn, "instructions://system", "", "resolved", {
+		await store.set({
+			runId,
+			turn,
+			path: "instructions://system",
+			body: "",
+			state: "resolved",
 			writer: "system",
 			attributes: {
 				persona: runRow?.persona || null,

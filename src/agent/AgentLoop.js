@@ -69,7 +69,10 @@ export default class AgentLoop {
 			// Clean up stale proposals from interrupted runs
 			const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
 			for (const u of unresolved) {
-				await this.#knownStore.resolve(existingRun.id, u.path, "cancelled", {
+				await this.#knownStore.set({
+					runId: existingRun.id,
+					path: u.path,
+					state: "cancelled",
 					body: "Stale proposal from interrupted run",
 					outcome: "interrupted",
 				});
@@ -516,7 +519,10 @@ export default class AgentLoop {
 			);
 			const state = action === "error" ? "failed" : "resolved";
 			const outcome = action === "error" ? "error" : null;
-			await this.#knownStore.resolve(runId, path, state, {
+			await this.#knownStore.set({
+				runId,
+				path,
+				state,
 				body: resolvedBody,
 				outcome,
 			});
@@ -525,7 +531,12 @@ export default class AgentLoop {
 			if (path.startsWith("ask_user://") && output) {
 				const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 					.next_turn;
-				await this.#knownStore.upsert(runId, turn, path, resolvedBody, state, {
+				await this.#knownStore.set({
+					runId,
+					turn,
+					path,
+					body: resolvedBody,
+					state,
 					outcome,
 					attributes: { ...attrs, answer: output },
 				});
@@ -557,7 +568,12 @@ export default class AgentLoop {
 					}
 					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 						.next_turn;
-					await this.#knownStore.upsert(runId, turn, attrs.path, patched);
+					await this.#knownStore.set({
+						runId,
+						turn,
+						path: attrs.path,
+						body: patched,
+					});
 					if (projectRoot) {
 						const { writeFile } = await import("node:fs/promises");
 						const { join } = await import("node:path");
@@ -573,7 +589,7 @@ export default class AgentLoop {
 
 				if (path.startsWith("rm://")) {
 					if (attrs?.path) {
-						await this.#knownStore.remove(runId, attrs.path);
+						await this.#knownStore.rm({ runId: runId, path: attrs.path });
 						if (projectRoot) {
 							const { unlink } = await import("node:fs/promises");
 							const { join } = await import("node:path");
@@ -584,7 +600,7 @@ export default class AgentLoop {
 
 				if (path.startsWith("mv://")) {
 					if (attrs?.isMove && attrs?.from) {
-						await this.#knownStore.remove(runId, attrs.from);
+						await this.#knownStore.rm({ runId: runId, path: attrs.from });
 					}
 				}
 
@@ -600,29 +616,33 @@ export default class AgentLoop {
 						.next_turn;
 					const channels = [1, 2];
 					for (const ch of channels) {
-						await this.#knownStore.upsert(
+						await this.#knownStore.set({
 							runId,
 							turn,
-							`${path}_${ch}`,
-							"",
-							"streaming",
-							{
-								fidelity: "demoted",
-								attributes: { command, summary: command, channel: ch },
-							},
-						);
+							path: `${path}_${ch}`,
+							body: "",
+							state: "streaming",
+							fidelity: "demoted",
+							attributes: { command, summary: command, channel: ch },
+						});
 					}
 					// Overwrite the log entry body with a descriptive line that
 					// references the data entries. resolve() above set the state
 					// to resolved; this is body replacement to make the log
 					// entry self-documenting in <performed>.
-					await this.#knownStore.resolve(runId, path, "resolved", {
+					await this.#knownStore.set({
+						runId,
+						path,
+						state: "resolved",
 						body: `ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
 					});
 				}
 			}
 		} else if (action === "reject") {
-			await this.#knownStore.resolve(runId, path, "failed", {
+			await this.#knownStore.set({
+				runId,
+				path,
+				state: "failed",
 				body: output || "rejected",
 				outcome: "permission",
 			});
@@ -654,14 +674,15 @@ export default class AgentLoop {
 
 		const nextTurn = runRow.next_turn;
 
-		await this.#knownStore.upsert(
-			runRow.id,
-			nextTurn,
-			`prompt://${nextTurn}`,
-			message,
-			"resolved",
-			{ attributes: { mode: "ask" }, writer: "plugin" },
-		);
+		await this.#knownStore.set({
+			runId: runRow.id,
+			turn: nextTurn,
+			path: `prompt://${nextTurn}`,
+			body: message,
+			state: "resolved",
+			attributes: { mode: "ask" },
+			writer: "plugin",
+		});
 
 		if (this.#activeRuns.has(runRow.id)) {
 			return { run: runAlias, status: runRow.status, injected: "next_turn" };

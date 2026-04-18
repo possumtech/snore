@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+import Repository from "../../agent/Repository.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
@@ -39,37 +39,44 @@ export default class Set {
 				attrs.body,
 			);
 			if (matches.length === 0) {
-				await store.upsert(
+				await store.set({
 					runId,
 					turn,
-					entry.resultPath,
-					`${target} not found`,
-					"failed",
-					{
-						outcome: "not_found",
-						fidelity: "archived",
-						loopId,
-					},
-				);
+					path: entry.resultPath,
+					body: `${target} not found`,
+					state: "failed",
+					outcome: "not_found",
+					fidelity: "archived",
+					loopId,
+				});
 				return;
 			}
 			for (const match of matches) {
-				await store.setFidelity(runId, match.path, fidelityAttr);
+				await store.set({
+					runId: runId,
+					path: match.path,
+					fidelity: fidelityAttr,
+				});
 				if (summaryText) {
-					await store.setAttributes(runId, match.path, {
-						summary: summaryText,
+					await store.set({
+						runId: runId,
+						path: match.path,
+						attributes: {
+							summary: summaryText,
+						},
 					});
 				}
 			}
 			const label = `set to ${fidelityAttr}`;
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				entry.resultPath,
-				`${matches.map((m) => m.path).join(", ")} ${label}`,
-				"resolved",
-				{ fidelity: "archived", loopId },
-			);
+				path: entry.resultPath,
+				body: `${matches.map((m) => m.path).join(", ")} ${label}`,
+				state: "resolved",
+				fidelity: "archived",
+				loopId,
+			});
 			return;
 		}
 
@@ -99,7 +106,7 @@ export default class Set {
 			const target = attrs.path;
 			if (!target) return;
 
-			const scheme = KnownStore.scheme(target);
+			const scheme = Repository.scheme(target);
 			if (scheme === null) {
 				// File write — diff against existing content
 				const existing = await store.getBody(runId, target);
@@ -109,17 +116,15 @@ export default class Set {
 				const merge = oldContent
 					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
 					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
-				await store.upsert(
+				await store.set({
 					runId,
 					turn,
-					entry.resultPath,
-					oldContent,
-					"proposed",
-					{
-						attributes: { path: target, patch: udiff, merge },
-						loopId,
-					},
-				);
+					path: entry.resultPath,
+					body: oldContent,
+					state: "proposed",
+					attributes: { path: target, patch: udiff, merge },
+					loopId,
+				});
 			} else if (attrs.filter || target.includes("*")) {
 				// Pattern update
 				const matches = await store.getEntriesByPattern(
@@ -127,12 +132,12 @@ export default class Set {
 					target,
 					attrs.filter,
 				);
-				await store.updateBodyByPattern(
-					runId,
-					target,
-					attrs.filter || null,
-					entry.body,
-				);
+				await store.set({
+					runId: runId,
+					path: target,
+					body: entry.body,
+					bodyFilter: attrs.filter || null,
+				});
 				await storePatternResult(
 					store,
 					runId,
@@ -156,40 +161,47 @@ export default class Set {
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
-				await store.upsert(runId, turn, target, newContent, "resolved", {
+				await store.set({
+					runId,
+					turn,
+					path: target,
+					body: newContent,
+					state: "resolved",
 					fidelity: fidelityAttr || "promoted",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
 				});
-				await store.upsert(
+				await store.set({
 					runId,
 					turn,
-					entry.resultPath,
-					oldContent,
-					"resolved",
-					{
-						loopId,
-						attributes: {
-							path: target,
-							patch: udiff,
-							merge,
-							beforeTokens,
-							afterTokens,
-						},
+					path: entry.resultPath,
+					body: oldContent,
+					state: "resolved",
+					loopId,
+					attributes: {
+						path: target,
+						patch: udiff,
+						merge,
+						beforeTokens,
+						afterTokens,
 					},
-				);
+				});
 			}
 		}
 
 		// Apply fidelity after all write operations
 		if (fidelityAttr && attrs.path) {
 			const target = attrs.path;
-			const scheme = KnownStore.scheme(target);
+			const scheme = Repository.scheme(target);
 			if (scheme !== null) {
-				await store.setFidelity(runId, target, fidelityAttr);
+				await store.set({ runId: runId, path: target, fidelity: fidelityAttr });
 			}
 			if (summaryText) {
-				await store.setAttributes(runId, target, { summary: summaryText });
+				await store.set({
+					runId: runId,
+					path: target,
+					attributes: { summary: summaryText },
+				});
 			}
 		}
 	}
@@ -216,7 +228,12 @@ export default class Set {
 		const matches = await store.getEntriesByPattern(runId, target, attrs.body);
 
 		if (matches.length === 0) {
-			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body: "",
+				state: "failed",
 				outcome: "not_found",
 				attributes: { path: target, error: `${target} not found in context` },
 				loopId,
@@ -231,12 +248,17 @@ export default class Set {
 				const existingAttrs = await rummy.getAttributes(canonicalPath);
 				const revisions = existingAttrs?.revisions || [];
 				revisions.push(revision);
-				await store.upsert(runId, turn, canonicalPath, "", "resolved", {
+				await store.set({
+					runId,
+					turn,
+					path: canonicalPath,
+					body: "",
+					state: "resolved",
 					attributes: { path: match.path, revisions },
 					loopId,
 				});
-				if (KnownStore.normalizePath(entry.resultPath) !== canonicalPath) {
-					await store.remove(runId, entry.resultPath);
+				if (Repository.normalizePath(entry.resultPath) !== canonicalPath) {
+					await store.rm({ runId: runId, path: entry.resultPath });
 				}
 				return;
 			}
@@ -255,7 +277,12 @@ export default class Set {
 			const beforeTokens = match.tokens || 0;
 			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
-			await store.upsert(runId, turn, resultPath, match.body, state, {
+			await store.set({
+				runId,
+				turn,
+				path: resultPath,
+				body: match.body,
+				state,
 				outcome,
 				attributes: {
 					path: match.path,
@@ -270,7 +297,12 @@ export default class Set {
 			});
 
 			if (state === "resolved" && patch) {
-				await store.upsert(runId, turn, match.path, patch, match.state, {
+				await store.set({
+					runId,
+					turn,
+					path: match.path,
+					body: patch,
+					state: match.state,
 					loopId,
 				});
 			}
@@ -324,7 +356,12 @@ export default class Set {
 			const beforeTokens = targetEntry[0].tokens || 0;
 			const afterTokens = current ? countTokens(current) : beforeTokens;
 
-			await store.upsert(runId, turn, entry.path, original, state, {
+			await store.set({
+				runId,
+				turn,
+				path: entry.path,
+				body: original,
+				state,
 				outcome,
 				attributes: {
 					path: entryPath,

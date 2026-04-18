@@ -1,16 +1,16 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("KnownStore integration", () => {
+describe("Repository integration", () => {
 	let tdb;
 	let store;
 	let RUN_ID;
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun({ alias: "test_1" });
 		RUN_ID = seed.runId;
 	});
@@ -21,53 +21,59 @@ describe("KnownStore integration", () => {
 
 	describe("scheme extraction", () => {
 		it("bare paths have null scheme", () => {
-			assert.strictEqual(KnownStore.scheme("src/app.js"), null);
-			assert.strictEqual(KnownStore.scheme("package.json"), null);
+			assert.strictEqual(Repository.scheme("src/app.js"), null);
+			assert.strictEqual(Repository.scheme("package.json"), null);
 		});
 
 		it("known:// scheme", () => {
-			assert.strictEqual(KnownStore.scheme("known://auth_flow"), "known");
+			assert.strictEqual(Repository.scheme("known://auth_flow"), "known");
 		});
 
 		it("tool schemes", () => {
-			assert.strictEqual(KnownStore.scheme("search://4"), "search");
-			assert.strictEqual(KnownStore.scheme("set://7"), "set");
-			assert.strictEqual(KnownStore.scheme("summarize://1"), "summarize");
+			assert.strictEqual(Repository.scheme("search://4"), "search");
+			assert.strictEqual(Repository.scheme("set://7"), "set");
+			assert.strictEqual(Repository.scheme("summarize://1"), "summarize");
 		});
 
 		it("unknown:// scheme", () => {
-			assert.strictEqual(KnownStore.scheme("unknown://1"), "unknown");
-			assert.strictEqual(KnownStore.scheme("unknown://42"), "unknown");
+			assert.strictEqual(Repository.scheme("unknown://1"), "unknown");
+			assert.strictEqual(Repository.scheme("unknown://42"), "unknown");
 		});
 	});
 
 	describe("toolFromPath", () => {
 		it("extracts tool name from result keys", () => {
-			assert.strictEqual(KnownStore.toolFromPath("search://4"), "search");
-			assert.strictEqual(KnownStore.toolFromPath("set://7"), "set");
-			assert.strictEqual(KnownStore.toolFromPath("summarize://1"), "summarize");
+			assert.strictEqual(Repository.toolFromPath("search://4"), "search");
+			assert.strictEqual(Repository.toolFromPath("set://7"), "set");
+			assert.strictEqual(Repository.toolFromPath("summarize://1"), "summarize");
 		});
 
 		it("returns null for bare file paths", () => {
-			assert.strictEqual(KnownStore.toolFromPath("src/app.js"), null);
+			assert.strictEqual(Repository.toolFromPath("src/app.js"), null);
 		});
 
 		it("returns 'known' for known:// keys", () => {
-			assert.strictEqual(KnownStore.toolFromPath("known://auth"), "known");
+			assert.strictEqual(Repository.toolFromPath("known://auth"), "known");
 		});
 	});
 
 	describe("isSystemPath", () => {
 		it("detects /: prefix", () => {
-			assert.ok(KnownStore.isSystemPath("known://x"));
-			assert.ok(KnownStore.isSystemPath("search://1"));
-			assert.ok(!KnownStore.isSystemPath("src/app.js"));
+			assert.ok(Repository.isSystemPath("known://x"));
+			assert.ok(Repository.isSystemPath("search://1"));
+			assert.ok(!Repository.isSystemPath("src/app.js"));
 		});
 	});
 
 	describe("upsert and getAll", () => {
 		it("inserts a file entry", async () => {
-			await store.upsert(RUN_ID, 0, "src/app.js", "const x = 1;", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "src/app.js",
+				body: "const x = 1;",
+				state: "resolved",
+			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.path === "src/app.js");
 			assert.ok(entry);
@@ -77,7 +83,13 @@ describe("KnownStore integration", () => {
 		});
 
 		it("inserts a knowledge entry", async () => {
-			await store.upsert(RUN_ID, 0, "known://db_type", "SQLite", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://db_type",
+				body: "SQLite",
+				state: "resolved",
+			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.path === "known://db_type");
 			assert.ok(entry);
@@ -86,7 +98,12 @@ describe("KnownStore integration", () => {
 		});
 
 		it("inserts a result entry", async () => {
-			await store.upsert(RUN_ID, 1, "search://1", "file contents", "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "search://1",
+				body: "file contents",
+				state: "resolved",
 				attributes: { command: "read src/app.js" },
 			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
@@ -100,20 +117,26 @@ describe("KnownStore integration", () => {
 		});
 
 		it("upsert overwrites value on conflict", async () => {
-			await store.upsert(
-				RUN_ID,
-				0,
-				"known://db_type",
-				"PostgreSQL",
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://db_type",
+				body: "PostgreSQL",
+				state: "resolved",
+			});
 			const rows = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = rows.find((e) => e.path === "known://db_type");
 			assert.strictEqual(entry.body, "PostgreSQL");
 		});
 
 		it("upsert preserves meta when new meta is null", async () => {
-			await store.upsert(RUN_ID, 0, "search://1", "updated", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "search://1",
+				body: "updated",
+				state: "resolved",
+			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.path === "search://1");
 			assert.ok(
@@ -125,11 +148,17 @@ describe("KnownStore integration", () => {
 
 	describe("remove", () => {
 		it("deletes an entry", async () => {
-			await store.upsert(RUN_ID, 0, "known://temp", "temporary", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "known://temp",
+				body: "temporary",
+				state: "resolved",
+			});
 			let all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			assert.ok(all.find((e) => e.path === "known://temp"));
 
-			await store.remove(RUN_ID, "known://temp");
+			await store.rm({ runId: RUN_ID, path: "known://temp" });
 			all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			assert.ok(!all.find((e) => e.path === "known://temp"));
 		});
@@ -137,14 +166,22 @@ describe("KnownStore integration", () => {
 
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
-			await store.upsert(RUN_ID, 1, "set://1", "", "proposed", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "set://1",
+				body: "",
+				state: "proposed",
 				attributes: { path: "src/app.js", search: "old", replace: "new" },
 			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
 			assert.strictEqual(unresolved[0].path, "set://1");
 
-			await store.resolve(RUN_ID, "set://1", "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				path: "set://1",
+				state: "resolved",
 				body: "edit applied",
 			});
 			const after = await store.getUnresolved(RUN_ID);
@@ -157,10 +194,18 @@ describe("KnownStore integration", () => {
 		});
 
 		it("changes proposed to rejected on rejection", async () => {
-			await store.upsert(RUN_ID, 1, "sh://1", "", "proposed", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "sh://1",
+				body: "",
+				state: "proposed",
 				attributes: { command: "npm test" },
 			});
-			await store.resolve(RUN_ID, "sh://1", "failed", {
+			await store.set({
+				runId: RUN_ID,
+				path: "sh://1",
+				state: "failed",
 				body: "rejected by user",
 			});
 
@@ -172,7 +217,12 @@ describe("KnownStore integration", () => {
 
 	describe("promote and demote", () => {
 		it("promote sets fidelity to full and updates turn", async () => {
-			await store.upsert(RUN_ID, 0, "src/promoted.js", "content", "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "src/promoted.js",
+				body: "content",
+				state: "resolved",
 				fidelity: "demoted",
 			});
 			let row = await tdb.db.get_entry_state.get({
@@ -181,7 +231,7 @@ describe("KnownStore integration", () => {
 			});
 			assert.strictEqual(row.fidelity, "demoted");
 
-			await store.promote(RUN_ID, "src/promoted.js", 10);
+			await store.get({ runId: RUN_ID, turn: 10, path: "src/promoted.js" });
 			row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
@@ -191,8 +241,18 @@ describe("KnownStore integration", () => {
 		});
 
 		it("demote sets fidelity to stored", async () => {
-			await store.upsert(RUN_ID, 10, "src/demoted.js", "content", "resolved");
-			await store.demote(RUN_ID, "src/demoted.js");
+			await store.set({
+				runId: RUN_ID,
+				turn: 10,
+				path: "src/demoted.js",
+				body: "content",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				path: "src/demoted.js",
+				fidelity: "archived",
+			});
 
 			const row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
@@ -219,7 +279,13 @@ describe("KnownStore integration", () => {
 		});
 
 		it("handles collisions with sequence suffix", async () => {
-			await store.upsert(RUN_ID, 1, "search://Tom_Petty_death", "", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "search://Tom_Petty_death",
+				body: "",
+				state: "resolved",
+			});
 			const key2 = await store.slugPath(RUN_ID, "search", "Tom Petty death");
 			assert.match(key2, /^search:\/\/Tom_Petty_death_\d+$/);
 		});
@@ -267,22 +333,38 @@ describe("KnownStore integration", () => {
 	describe("rm resolution", () => {
 		it("accept erases the target file key from store", async () => {
 			// Setup: file exists in store
-			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/doomed.js",
+				body: "content",
+				state: "resolved",
+			});
 			const before = await store.getBody(RUN_ID, "src/doomed.js");
 			assert.strictEqual(before, "content");
 
 			// Setup: proposed rm entry targeting that file
-			await store.upsert(RUN_ID, 1, "rm://50", "", "proposed", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "rm://50",
+				body: "",
+				state: "proposed",
 				attributes: { path: "src/doomed.js" },
 			});
 
 			// Resolve: accept the rm
-			await store.resolve(RUN_ID, "rm://50", "resolved", { body: "" });
+			await store.set({
+				runId: RUN_ID,
+				path: "rm://50",
+				state: "resolved",
+				body: "",
+			});
 
 			// Verify: target file key is gone — use resolve to check meta, then remove
 			const attributes = await store.getAttributes(RUN_ID, "rm://50");
 			assert.strictEqual(attributes.path, "src/doomed.js");
-			await store.remove(RUN_ID, attributes.path);
+			await store.rm({ runId: RUN_ID, path: attributes.path });
 
 			const after = await store.getBody(RUN_ID, "src/doomed.js");
 			assert.strictEqual(
@@ -294,15 +376,31 @@ describe("KnownStore integration", () => {
 
 		it("reject preserves the target file key", async () => {
 			// Setup: file exists
-			await store.upsert(RUN_ID, 1, "src/survivor.js", "alive", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/survivor.js",
+				body: "alive",
+				state: "resolved",
+			});
 
 			// Setup: proposed rm
-			await store.upsert(RUN_ID, 1, "rm://51", "", "proposed", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "rm://51",
+				body: "",
+				state: "proposed",
 				attributes: { path: "src/survivor.js" },
 			});
 
 			// Resolve: reject
-			await store.resolve(RUN_ID, "rm://51", "failed", { body: "rejected" });
+			await store.set({
+				runId: RUN_ID,
+				path: "rm://51",
+				state: "failed",
+				body: "rejected",
+			});
 
 			// Verify: file still exists
 			const value = await store.getBody(RUN_ID, "src/survivor.js");
@@ -317,21 +415,42 @@ describe("KnownStore integration", () => {
 	describe("status CHECK constraint", () => {
 		it("rejects status below 100", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "bad.js", "", 99),
+				() =>
+					store.set({
+						runId: RUN_ID,
+						turn: 0,
+						path: "bad.js",
+						body: "",
+						state: 99,
+					}),
 				/CHECK/,
 			);
 		});
 
 		it("rejects status above 599", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "known://bad", "", 600),
+				() =>
+					store.set({
+						runId: RUN_ID,
+						turn: 0,
+						path: "known://bad",
+						body: "",
+						state: 600,
+					}),
 				/CHECK/,
 			);
 		});
 
 		it("rejects non-integer status", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "set://999", "", "index"),
+				() =>
+					store.set({
+						runId: RUN_ID,
+						turn: 0,
+						path: "set://999",
+						body: "",
+						state: "index",
+					}),
 				/CHECK|datatype/i,
 			);
 		});

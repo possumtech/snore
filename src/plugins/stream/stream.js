@@ -34,11 +34,12 @@ export default class Stream {
 				if (!runRow) throw new Error(`run not found: ${params.run}`);
 
 				const entryPath = `${params.path}_${params.channel}`;
-				await ctx.projectAgent.entries.appendBody(
-					runRow.id,
-					entryPath,
-					params.chunk,
-				);
+				await ctx.projectAgent.entries.set({
+					runId: runRow.id,
+					path: entryPath,
+					body: params.chunk,
+					append: true,
+				});
 				return { status: "ok" };
 			},
 			description:
@@ -78,7 +79,10 @@ export default class Stream {
 					null,
 				);
 				for (const ch of channels) {
-					await store.resolve(runId, ch.path, terminalState, {
+					await store.set({
+						runId,
+						path: ch.path,
+						state: terminalState,
 						body: ch.body,
 						outcome: terminalOutcome,
 					});
@@ -97,7 +101,7 @@ export default class Stream {
 				const dur = duration ? ` (${duration})` : "";
 				const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
 				const body = `ran '${command}', ${exitLabel}${dur}. Output: ${channelSummary}`;
-				await store.resolve(runId, params.path, "resolved", { body });
+				await store.set({ runId, path: params.path, state: "resolved", body });
 
 				return { ok: true, channels: channels.length };
 			},
@@ -139,7 +143,10 @@ export default class Stream {
 					null,
 				);
 				for (const ch of channels) {
-					await store.resolve(runId, ch.path, "cancelled", {
+					await store.set({
+						runId,
+						path: ch.path,
+						state: "cancelled",
 						body: ch.body,
 						outcome: reason || "aborted",
 					});
@@ -160,7 +167,7 @@ export default class Stream {
 					? ` (${qualifiers.join(", ")})`
 					: "";
 				const body = `aborted '${command}'${qualifier}. Output: ${channelSummary}`;
-				await store.resolve(runId, params.path, "resolved", { body });
+				await store.set({ runId, path: params.path, state: "resolved", body });
 
 				return { status: "ok", channels: channels.length };
 			},
@@ -202,7 +209,10 @@ export default class Stream {
 					null,
 				);
 				for (const ch of channels) {
-					await store.resolve(runId, ch.path, "cancelled", {
+					await store.set({
+						runId,
+						path: ch.path,
+						state: "cancelled",
 						body: ch.body,
 						outcome: reason || "cancelled",
 					});
@@ -218,7 +228,7 @@ export default class Stream {
 					.join(", ");
 				const qualifier = reason ? ` (${reason})` : "";
 				const body = `cancelled '${command}'${qualifier}. Output: ${channelSummary}`;
-				await store.resolve(runId, params.path, "resolved", { body });
+				await store.set({ runId, path: params.path, state: "resolved", body });
 
 				// Notify connected clients so they can kill local processes.
 				hooks.stream.cancelled.emit({

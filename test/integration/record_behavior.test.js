@@ -10,7 +10,7 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
@@ -156,10 +156,10 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	// --- Reasoning bleed rejection ---
 
 	it("rejects paths longer than 512 characters", async () => {
-		// This is a unit-level test using KnownStore directly
-		const _store = new KnownStore(tdb.db);
+		// This is a unit-level test using Repository directly
+		const _store = new Repository(tdb.db);
 		const _longPath = "x".repeat(600);
-		// The path length check is in #record, not in KnownStore.
+		// The path length check is in #record, not in Repository.
 		// We verify the constraint exists by checking the schema.
 		const _result = await tdb.db.get_known_entries.all({
 			run_id: 999999,

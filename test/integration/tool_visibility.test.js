@@ -11,7 +11,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -24,7 +24,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 	});
@@ -51,27 +51,25 @@ describe("Tool visibility: v_model_context content projection", () => {
 
 		// For each result scheme, insert an entry with known content
 		for (const { name: scheme, status } of contentSchemes) {
-			await store.upsert(
-				RUN_ID,
-				TURN,
-				`${scheme}://${scheme}_test`,
-				`${MARKER}_${scheme}`,
-				status,
-				{ attributes: { tool: scheme, target: "test" } },
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: TURN,
+				path: `${scheme}://${scheme}_test`,
+				body: `${MARKER}_${scheme}`,
+				state: status,
+				attributes: { tool: scheme, target: "test" },
+			});
 		}
 
 		// Also insert user prompt so engine has something to work with
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			`prompt://${TURN}`,
-			"test question",
-			"resolved",
-			{
-				attributes: { mode: "ask" },
-			},
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: `prompt://${TURN}`,
+			body: "test question",
+			state: "resolved",
+			attributes: { mode: "ask" },
+		});
 
 		// Materialize turn_context
 		await materialize(tdb.db, {

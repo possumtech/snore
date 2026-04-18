@@ -12,7 +12,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Schema V2 invariants", () => {
@@ -21,7 +21,7 @@ describe("Schema V2 invariants", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("schema_v2");
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 	});
 
 	after(async () => {
@@ -32,16 +32,14 @@ describe("Schema V2 invariants", () => {
 		it("accepts the three canonical values", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_accept" });
 			for (const fidelity of ["promoted", "demoted", "archived"]) {
-				await store.upsert(
+				await store.set({
 					runId,
-					1,
-					`known://fid-${fidelity}`,
-					"body",
-					"resolved",
-					{
-						fidelity,
-					},
-				);
+					turn: 1,
+					path: `known://fid-${fidelity}`,
+					body: "body",
+					state: "resolved",
+					fidelity,
+				});
 			}
 			// No throw = accepted.
 		});
@@ -50,7 +48,12 @@ describe("Schema V2 invariants", () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_reject" });
 			for (const stale of ["full", "summary", "index", "archive"]) {
 				await assert.rejects(
-					store.upsert(runId, 1, `known://fid-${stale}`, "body", "resolved", {
+					store.set({
+						runId,
+						turn: 1,
+						path: `known://fid-${stale}`,
+						body: "body",
+						state: "resolved",
 						fidelity: stale,
 					}),
 					/constraint|CHECK|fidelity/i,
@@ -63,7 +66,12 @@ describe("Schema V2 invariants", () => {
 	describe("entries + run_views separation", () => {
 		it("entries.scope defaults to 'run:<runId>' for default-scope schemes", async () => {
 			const { runId } = await tdb.seedRun({ alias: "scope_default" });
-			await store.upsert(runId, 1, "known://scoped", "content", "resolved", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://scoped",
+				body: "content",
+				state: "resolved",
 				writer: "model",
 			});
 			const all = await tdb.db.get_known_entries.all({ run_id: runId });
@@ -75,8 +83,20 @@ describe("Schema V2 invariants", () => {
 		it("writing an entry creates one content row and one view row", async () => {
 			const { runId: a } = await tdb.seedRun({ alias: "dup_a" });
 			const { runId: b } = await tdb.seedRun({ alias: "dup_b" });
-			await store.upsert(a, 1, "known://sharedpath", "A body", "resolved");
-			await store.upsert(b, 1, "known://sharedpath", "B body", "resolved");
+			await store.set({
+				runId: a,
+				turn: 1,
+				path: "known://sharedpath",
+				body: "A body",
+				state: "resolved",
+			});
+			await store.set({
+				runId: b,
+				turn: 1,
+				path: "known://sharedpath",
+				body: "B body",
+				state: "resolved",
+			});
 
 			// Two runs, two content rows (different scopes), two view rows.
 			const aRows = await tdb.db.get_known_entries.all({ run_id: a });

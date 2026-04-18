@@ -10,7 +10,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import { registerPlugins } from "../../src/plugins/index.js";
@@ -58,7 +58,7 @@ describe("Handler dispatch", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dispatch_1" });
 		RUN_ID = seed.runId;
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
@@ -80,16 +80,14 @@ describe("Handler dispatch", () => {
 
 	describe("get handler", () => {
 		it("promotes target and writes confirmation", async () => {
-			await store.upsert(
-				RUN_ID,
-				0,
-				"src/target.js",
-				"const x = 1;",
-				"resolved",
-				{
-					fidelity: "demoted",
-				},
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 0,
+				path: "src/target.js",
+				body: "const x = 1;",
+				state: "resolved",
+				fidelity: "demoted",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -116,13 +114,13 @@ describe("Handler dispatch", () => {
 
 	describe("set handler — edit mode", () => {
 		it("applies patch and sets proposed for files", async () => {
-			await store.upsert(
-				RUN_ID,
-				1,
-				"src/edit_me.js",
-				"const port = 3000;",
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/edit_me.js",
+				body: "const port = 3000;",
+				state: "resolved",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -177,13 +175,13 @@ describe("Handler dispatch", () => {
 		});
 
 		it("merges multiple edits to the same file into one proposal", async () => {
-			await store.upsert(
-				RUN_ID,
-				1,
-				"src/math.txt",
-				"a + 4 = 6\n7 - a = \nb / 4 = 3\na + b = \n",
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/math.txt",
+				body: "a + 4 = 6\n7 - a = \nb / 4 = 3\na + b = \n",
+				state: "resolved",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 
@@ -231,7 +229,13 @@ describe("Handler dispatch", () => {
 		});
 
 		it("applies patch immediately for known:// entries", async () => {
-			await store.upsert(RUN_ID, 1, "known://config", "port=3000", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://config",
+				body: "port=3000",
+				state: "resolved",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -262,7 +266,12 @@ describe("Handler dispatch", () => {
 		it("sets entry to proposed", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const resultPath = await store.slugPath(RUN_ID, "sh", "npm test");
-			await store.upsert(RUN_ID, 1, resultPath, "npm test", "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: resultPath,
+				body: "npm test",
+				state: "resolved",
 				attributes: { command: "npm test" },
 			});
 
@@ -289,7 +298,12 @@ describe("Handler dispatch", () => {
 		it("sets entry to proposed", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const resultPath = await store.slugPath(RUN_ID, "env", "node --version");
-			await store.upsert(RUN_ID, 1, resultPath, "node --version", "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: resultPath,
+				body: "node --version",
+				state: "resolved",
 				attributes: { command: "node --version" },
 			});
 
@@ -314,13 +328,13 @@ describe("Handler dispatch", () => {
 
 	describe("set fidelity control", () => {
 		it("archives entry via stored attribute", async () => {
-			await store.upsert(
-				RUN_ID,
-				1,
-				"known://demote_me",
-				"some data",
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://demote_me",
+				body: "some data",
+				state: "resolved",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -344,7 +358,13 @@ describe("Handler dispatch", () => {
 
 	describe("rm handler", () => {
 		it("proposes deletion for files", async () => {
-			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/doomed.js",
+				body: "content",
+				state: "resolved",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -364,7 +384,13 @@ describe("Handler dispatch", () => {
 		});
 
 		it("immediately removes known:// entries", async () => {
-			await store.upsert(RUN_ID, 1, "known://ephemeral", "temp", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://ephemeral",
+				body: "temp",
+				state: "resolved",
+			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
@@ -383,9 +409,27 @@ describe("Handler dispatch", () => {
 		});
 
 		it("multi-match produces one aggregate result entry", async () => {
-			await store.upsert(RUN_ID, 2, "known://bulk_a", "data-a", "resolved");
-			await store.upsert(RUN_ID, 2, "known://bulk_b", "data-b", "resolved");
-			await store.upsert(RUN_ID, 2, "known://bulk_c", "data-c", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 2,
+				path: "known://bulk_a",
+				body: "data-a",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 2,
+				path: "known://bulk_b",
+				body: "data-b",
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 2,
+				path: "known://bulk_c",
+				body: "data-c",
+				state: "resolved",
+			});
 
 			const allBefore = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const rmCountBefore = allBefore.filter((e) => e.scheme === "rm").length;
@@ -447,7 +491,12 @@ describe("Handler dispatch", () => {
 
 			// Core get handler is already at priority 10
 			// We just need to verify our priority-5 handler ran first
-			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/priority_test.js",
+				body: "x",
+				state: "resolved",
 				fidelity: "demoted",
 			});
 

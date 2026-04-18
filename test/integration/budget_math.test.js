@@ -11,7 +11,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import { countTokens } from "../../src/agent/tokens.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
@@ -25,7 +25,7 @@ describe("Budget math", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("budget_math");
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		await store.loadSchemes(tdb.db);
 		cascade = tdb.hooks.budget;
 		const seed = await tdb.seedRun({ alias: "math_1" });
@@ -39,7 +39,12 @@ describe("Budget math", () => {
 	describe("turn_context token accuracy", () => {
 		it("full entry tokens match body cost", async () => {
 			const body = pad(50);
-			await store.upsert(RUN_ID, 1, "known://full_entry", body, "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://full_entry",
+				body,
+				state: "resolved",
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, {
@@ -62,7 +67,12 @@ describe("Budget math", () => {
 
 		it("archived entry does not appear in turn_context", async () => {
 			const body = pad(200);
-			await store.upsert(RUN_ID, 1, "test_file.js", body, "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "test_file.js",
+				body,
+				state: "resolved",
 				fidelity: "archived",
 			});
 			await materialize(tdb.db, {
@@ -88,7 +98,12 @@ describe("Budget math", () => {
 			// helper) transforms it to summary text. This test verifies the
 			// view's behavior; E2E tests verify the full pipeline.
 			const body = pad(200);
-			await store.upsert(RUN_ID, 1, "known://summary_entry", body, "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://summary_entry",
+				body,
+				state: "resolved",
 				fidelity: "demoted",
 				attributes: { summary: "test,keywords,here" },
 			});
@@ -114,18 +129,21 @@ describe("Budget math", () => {
 			const { runId } = await tdb.seedRun({ alias: "math_enforce" });
 
 			// Create a large entry at archive — should NOT count toward budget
-			await store.upsert(
+			await store.set({
 				runId,
-				1,
-				"big_archive_file.js",
-				pad(500),
-				"resolved",
-				{
-					fidelity: "archived",
-				},
-			);
+				turn: 1,
+				path: "big_archive_file.js",
+				body: pad(500),
+				state: "resolved",
+				fidelity: "archived",
+			});
 			// Create a small entry at full — should count
-			await store.upsert(runId, 1, "known://small", "tiny fact", "resolved", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://small",
+				body: "tiny fact",
+				state: "resolved",
 				fidelity: "promoted",
 			});
 
@@ -174,7 +192,12 @@ describe("Budget math", () => {
 			const { runId } = await tdb.seedRun({ alias: "math_postdispatch" });
 
 			// Simulate: entries exist from dispatch (promoted files)
-			await store.upsert(runId, 1, "known://big", pad(100), "resolved", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://big",
+				body: pad(100),
+				state: "resolved",
 				fidelity: "promoted",
 			});
 
@@ -219,7 +242,12 @@ describe("Budget math", () => {
 			const body = pad(100);
 			const expectedTokens = countTokens(body);
 
-			await store.upsert(runId, 1, "known://fact", body, "resolved", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://fact",
+				body,
+				state: "resolved",
 				fidelity: "promoted",
 			});
 			let entries = await tdb.db.get_known_entries.all({ run_id: runId });
@@ -227,7 +255,11 @@ describe("Budget math", () => {
 			assert.strictEqual(entry.tokens, expectedTokens, "tokens at full");
 
 			// Demote to summary — tokens should NOT change
-			await store.setFidelity(runId, "known://fact", "demoted");
+			await store.set({
+				runId: runId,
+				path: "known://fact",
+				fidelity: "demoted",
+			});
 			entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			entry = entries.find((e) => e.path === "known://fact");
 			assert.strictEqual(
@@ -237,7 +269,7 @@ describe("Budget math", () => {
 			);
 
 			// Promote back — tokens should NOT change
-			await store.promote(runId, "known://fact", 2);
+			await store.get({ runId: runId, turn: 2, path: "known://fact" });
 			entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			entry = entries.find((e) => e.path === "known://fact");
 			assert.strictEqual(
@@ -252,7 +284,12 @@ describe("Budget math", () => {
 			const body = pad(100);
 
 			// Entry at full
-			await store.upsert(runId, 1, "known://tc_test", body, "resolved", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: "known://tc_test",
+				body,
+				state: "resolved",
 				fidelity: "promoted",
 			});
 			await materialize(tdb.db, {
@@ -269,7 +306,11 @@ describe("Budget math", () => {
 			assert.ok(fullTcTokens > 0, "full entry has tokens");
 
 			// Archive — should disappear from turn_context
-			await store.setFidelity(runId, "known://tc_test", "archived");
+			await store.set({
+				runId: runId,
+				path: "known://tc_test",
+				fidelity: "archived",
+			});
 			await materialize(tdb.db, {
 				runId,
 				turn: 2,

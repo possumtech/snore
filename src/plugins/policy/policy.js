@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+import Repository from "../../agent/Repository.js";
 
 export default class Policy {
 	#core;
@@ -27,7 +27,7 @@ export default class Policy {
 		}
 
 		if (entry.scheme === "set" && entry.attributes?.path) {
-			const scheme = KnownStore.scheme(entry.attributes.path);
+			const scheme = Repository.scheme(entry.attributes.path);
 			if (scheme === null && entry.body) {
 				await this.#reject(
 					ctx,
@@ -39,7 +39,7 @@ export default class Policy {
 
 		if (entry.scheme === "rm") {
 			const pathAttr = entry.attributes?.path || entry.path;
-			const scheme = KnownStore.scheme(pathAttr);
+			const scheme = Repository.scheme(pathAttr);
 			if (scheme === null) {
 				await this.#reject(ctx, `Rejected file rm of ${pathAttr} in ask mode`);
 				return { ...entry, state: "failed", outcome: "permission" };
@@ -47,7 +47,7 @@ export default class Policy {
 		}
 
 		if (entry.scheme === "mv" || entry.scheme === "cp") {
-			const destScheme = KnownStore.scheme(entry.attributes?.to);
+			const destScheme = Repository.scheme(entry.attributes?.to);
 			if (destScheme === null) {
 				await this.#reject(
 					ctx,

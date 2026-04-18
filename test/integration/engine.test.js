@@ -2,7 +2,7 @@ import assert from "node:assert";
 import { dirname, join } from "node:path";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import materialize from "../helpers/materialize.js";
 
 const _pluginsDir = join(
@@ -25,14 +25,14 @@ describe("Engine integration", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun({ alias: "engine_1" });
 		RUN_ID = seed.runId;
 		_PROJECT = { id: seed.projectId, project_root: "/tmp/test", name: "Test" };
 	});
 
 	beforeEach(async () => {
-		await store.deleteByPattern(RUN_ID, "*", null);
+		await store.rm({ runId: RUN_ID, path: "*", pattern: true });
 	});
 
 	after(async () => {
@@ -41,8 +41,20 @@ describe("Engine integration", () => {
 
 	describe("context materialization", () => {
 		it("materializes entries into turn_context", async () => {
-			await store.upsert(RUN_ID, 1, "src/small.js", pad(100), "resolved");
-			await store.upsert(RUN_ID, 1, "known://note", "short", "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/small.js",
+				body: pad(100),
+				state: "resolved",
+			});
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://note",
+				body: "short",
+				state: "resolved",
+			});
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -86,7 +98,13 @@ describe("Engine integration", () => {
 
 	describe("tokens accounting", () => {
 		it("tokens unchanged through demote and promote cycle", async () => {
-			await store.upsert(RUN_ID, 1, "known://test_entry", pad(200), "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "known://test_entry",
+				body: pad(200),
+				state: "resolved",
+			});
 
 			const original = await store.getEntriesByPattern(
 				RUN_ID,
@@ -96,7 +114,11 @@ describe("Engine integration", () => {
 			const originalTokens = original[0].tokens;
 			assert.ok(originalTokens > 0, "tokens set on creation");
 
-			await store.demote(RUN_ID, "known://test_entry");
+			await store.set({
+				runId: RUN_ID,
+				path: "known://test_entry",
+				fidelity: "archived",
+			});
 			const demoted = await store.getEntriesByPattern(
 				RUN_ID,
 				"known://test_entry",
@@ -108,7 +130,7 @@ describe("Engine integration", () => {
 				"tokens unchanged after demote",
 			);
 
-			await store.promote(RUN_ID, "known://test_entry", 3);
+			await store.get({ runId: RUN_ID, turn: 3, path: "known://test_entry" });
 			const promoted = await store.getEntriesByPattern(
 				RUN_ID,
 				"known://test_entry",
@@ -124,7 +146,12 @@ describe("Engine integration", () => {
 
 	describe("symbol file fidelity via VIEW", () => {
 		it("files at summary fidelity appear in turn_context", async () => {
-			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), "resolved", {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/demoted.js",
+				body: pad(100),
+				state: "resolved",
 				fidelity: "demoted",
 				attributes: { symbols: "function foo()" },
 			});
@@ -149,16 +176,14 @@ describe("Engine integration", () => {
 		});
 
 		it("demoted files have demoted fidelity with body passed through (engine symbol view)", async () => {
-			await store.upsert(
-				RUN_ID,
-				3,
-				"src/active.js",
-				"function bar() {}",
-				"resolved",
-				{
-					fidelity: "demoted",
-				},
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 3,
+				path: "src/active.js",
+				body: "function bar() {}",
+				state: "resolved",
+				fidelity: "demoted",
+			});
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -184,17 +209,15 @@ describe("Engine integration", () => {
 		});
 
 		it("promoted view returns body", async () => {
-			await store.upsert(
-				RUN_ID,
-				5,
-				"src/described.js",
-				"const x = 1;",
-				"resolved",
-				{
-					fidelity: "promoted",
-					attributes: { summary: "Utility module for X" },
-				},
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 5,
+				path: "src/described.js",
+				body: "const x = 1;",
+				state: "resolved",
+				fidelity: "promoted",
+				attributes: { summary: "Utility module for X" },
+			});
 
 			const viewResult = await tdb.hooks.tools.view("file", {
 				path: "src/described.js",
@@ -211,17 +234,15 @@ describe("Engine integration", () => {
 		});
 
 		it("demoted view returns empty body (tag attribute carries summary)", async () => {
-			await store.upsert(
-				RUN_ID,
-				6,
-				"src/noview.js",
-				"const y = 2;",
-				"resolved",
-				{
-					fidelity: "demoted",
-					attributes: { summary: "Helper for Y calculations" },
-				},
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: 6,
+				path: "src/noview.js",
+				body: "const y = 2;",
+				state: "resolved",
+				fidelity: "demoted",
+				attributes: { summary: "Helper for Y calculations" },
+			});
 
 			const viewResult = await tdb.hooks.tools.view("file", {
 				path: "src/noview.js",

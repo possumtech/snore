@@ -91,63 +91,63 @@ export default class Telemetry {
 		const systemOpts = { loopId, fidelity: "archived", writer: "system" };
 
 		// assistant://N — the model's raw response
-		await store.upsert(
+		await store.set({
 			runId,
 			turn,
-			`assistant://${turn}`,
-			content,
-			"resolved",
-			systemOpts,
-		);
+			path: `assistant://${turn}`,
+			body: content,
+			state: "resolved",
+			...systemOpts,
+		});
 
 		// system://N, user://N — assembled messages as audit
 		if (systemMsg) {
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				`system://${turn}`,
-				systemMsg,
-				"resolved",
-				systemOpts,
-			);
+				path: `system://${turn}`,
+				body: systemMsg,
+				state: "resolved",
+				...systemOpts,
+			});
 		}
 		if (userMsg) {
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				`user://${turn}`,
-				userMsg,
-				"resolved",
-				systemOpts,
-			);
+				path: `user://${turn}`,
+				body: userMsg,
+				state: "resolved",
+				...systemOpts,
+			});
 		}
 
 		// model://N — raw API response diagnostics
-		await store.upsert(
+		await store.set({
 			runId,
 			turn,
-			`model://${turn}`,
-			JSON.stringify({
+			path: `model://${turn}`,
+			body: JSON.stringify({
 				keys: responseMessage ? Object.keys(responseMessage) : [],
 				reasoning_content: responseMessage?.reasoning_content || null,
 				content: content.slice(0, 4096),
 				usage: result.usage || null,
 				model: result.model || null,
 			}),
-			"resolved",
-			systemOpts,
-		);
+			state: "resolved",
+			...systemOpts,
+		});
 
 		// reasoning://N
 		if (responseMessage?.reasoning_content) {
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				`reasoning://${turn}`,
-				responseMessage.reasoning_content,
-				"resolved",
-				systemOpts,
-			);
+				path: `reasoning://${turn}`,
+				body: responseMessage.reasoning_content,
+				state: "resolved",
+				...systemOpts,
+			});
 		}
 
 		// content://N — unparsed text. 400 Bad Request because anything in
@@ -155,7 +155,12 @@ export default class Telemetry {
 		// tool call attempts, reasoning bleed). Visible to the model so it
 		// sees the rejection on its next turn and can correct.
 		if (unparsed) {
-			await store.upsert(runId, turn, `content://${turn}`, unparsed, "failed", {
+			await store.set({
+				runId,
+				turn,
+				path: `content://${turn}`,
+				body: unparsed,
+				state: "failed",
 				outcome: "unparsed",
 				loopId,
 				fidelity: "promoted",

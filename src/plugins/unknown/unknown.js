@@ -41,7 +41,12 @@ export default class Unknown {
 			entry.body,
 			entry.attributes?.summary,
 		);
-		await store.upsert(runId, turn, unknownPath, entry.body, "resolved", {
+		await store.set({
+			runId,
+			turn,
+			path: unknownPath,
+			body: entry.body,
+			state: "resolved",
 			loopId,
 		});
 	}

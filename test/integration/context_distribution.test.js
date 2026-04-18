@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -13,28 +13,61 @@ describe("turn_context distribution bucket correctness", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dist_1" });
 		RUN_ID = seed.runId;
 
 		// Populate known_entries
-		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "resolved");
-		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", "resolved", {
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "src/app.js",
+			body: "const x = 1;",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "readme.md",
+			body: "# Hello",
+			state: "resolved",
 			fidelity: "demoted",
 		});
-		await store.upsert(
-			RUN_ID,
-			1,
-			"known://auth_flow",
-			"JWT tokens",
-			"resolved",
-		);
-		await store.upsert(RUN_ID, 1, "search://1", "search results", "resolved");
-		await store.upsert(RUN_ID, 1, "update://1", "did a thing", "resolved", {
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "known://auth_flow",
+			body: "JWT tokens",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "search://1",
+			body: "search results",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "update://1",
+			body: "did a thing",
+			state: "resolved",
 			fidelity: "demoted",
 		});
-		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "resolved");
-		await store.upsert(RUN_ID, 1, "prompt://1", "test question", "resolved", {
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "unknown://1",
+			body: "what is X?",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "prompt://1",
+			body: "test question",
+			state: "resolved",
 			attributes: { mode: "ask" },
 		});
 

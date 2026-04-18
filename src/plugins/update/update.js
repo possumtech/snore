@@ -23,13 +23,8 @@ export default class Update {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const updateStatus = entry.attributes?.status ?? 102;
-		const statusPath = await store.slugPath(runId, "update", entry.body);
-		await store.upsert(runId, turn, statusPath, entry.body, "resolved", {
-			loopId,
-			attributes: { status: updateStatus },
-		});
+		const status = entry.attributes?.status ?? 102;
+		await rummy.update(entry.body, { status });
 	}
 
 	/**
@@ -79,7 +74,10 @@ export default class Update {
 		// Override to a continuation and mark the update entry failed/conflict.
 		if (summaryText && hasErrors) {
 			if (entry?.path) {
-				await rummy.entries.resolve(runId, entry.path, "failed", {
+				await rummy.entries.set({
+					runId,
+					path: entry.path,
+					state: "failed",
 					body: "Overridden — actions in this turn failed. Continue with <update/>.",
 					outcome: "conflict",
 				});

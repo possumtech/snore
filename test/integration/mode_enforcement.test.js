@@ -6,7 +6,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import XmlParser from "../../src/agent/XmlParser.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -17,13 +17,25 @@ describe("Mode enforcement in ask mode", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 
 		// Seed some entries for the model to target
-		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "resolved");
-		await store.upsert(RUN_ID, 1, "known://note", "test note", "resolved");
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "src/app.js",
+			body: "const x = 1;",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "known://note",
+			body: "test note",
+			state: "resolved",
+		});
 	});
 
 	after(async () => {
@@ -43,7 +55,7 @@ describe("Mode enforcement in ask mode", () => {
 		);
 		for (const cmd of commands) {
 			if (cmd.name === "set" && cmd.path) {
-				const scheme = KnownStore.scheme(cmd.path);
+				const scheme = Repository.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
@@ -56,7 +68,7 @@ describe("Mode enforcement in ask mode", () => {
 		);
 		for (const cmd of commands) {
 			if (cmd.name === "set" && cmd.path) {
-				const scheme = KnownStore.scheme(cmd.path);
+				const scheme = Repository.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
@@ -67,7 +79,7 @@ describe("Mode enforcement in ask mode", () => {
 		const { commands } = XmlParser.parse('<rm path="src/app.js"/>');
 		for (const cmd of commands) {
 			if (cmd.name === "rm" && cmd.path) {
-				const scheme = KnownStore.scheme(cmd.path);
+				const scheme = Repository.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
@@ -78,7 +90,7 @@ describe("Mode enforcement in ask mode", () => {
 		const { commands } = XmlParser.parse('<rm path="known://note"/>');
 		for (const cmd of commands) {
 			if (cmd.name === "rm" && cmd.path) {
-				const scheme = KnownStore.scheme(cmd.path);
+				const scheme = Repository.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
@@ -91,7 +103,7 @@ describe("Mode enforcement in ask mode", () => {
 		);
 		for (const cmd of commands) {
 			if (cmd.name === "mv" && cmd.to) {
-				const destScheme = KnownStore.scheme(cmd.to);
+				const destScheme = Repository.scheme(cmd.to);
 				if (destScheme === null) cmd._rejected = true;
 			}
 		}
@@ -104,7 +116,7 @@ describe("Mode enforcement in ask mode", () => {
 		);
 		for (const cmd of commands) {
 			if (cmd.name === "mv" && cmd.to) {
-				const destScheme = KnownStore.scheme(cmd.to);
+				const destScheme = Repository.scheme(cmd.to);
 				if (destScheme === null) cmd._rejected = true;
 			}
 		}

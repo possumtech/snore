@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("State lock: proposed entries block execution", () => {
@@ -8,7 +8,7 @@ describe("State lock: proposed entries block execution", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun({ alias: "lock_1" });
 		RUN_ID = seed.runId;
 	});
@@ -23,7 +23,12 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("getUnresolved returns proposed entries", async () => {
-		await store.upsert(RUN_ID, 1, "set://1", "diff content", "proposed", {
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "set://1",
+			body: "diff content",
+			state: "proposed",
 			attributes: { path: "app.js" },
 		});
 
@@ -33,14 +38,25 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("multiple proposed entries all returned", async () => {
-		await store.upsert(RUN_ID, 1, "sh://1", "echo hi", "proposed");
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "sh://1",
+			body: "echo hi",
+			state: "proposed",
+		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 2);
 	});
 
 	it("resolving an entry removes it from unresolved", async () => {
-		await store.resolve(RUN_ID, "set://1", "resolved", { body: "applied" });
+		await store.set({
+			runId: RUN_ID,
+			path: "set://1",
+			state: "resolved",
+			body: "applied",
+		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 1);
@@ -48,15 +64,31 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("resolving all entries clears the lock", async () => {
-		await store.resolve(RUN_ID, "sh://1", "failed", { body: "rejected" });
+		await store.set({
+			runId: RUN_ID,
+			path: "sh://1",
+			state: "failed",
+			body: "rejected",
+		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 0);
 	});
 
 	it("non-proposed result entries do not block", async () => {
-		await store.upsert(RUN_ID, 1, "env://2", "contents", "resolved");
-		await store.upsert(RUN_ID, 1, "update://2", "summary text", "resolved", {
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "env://2",
+			body: "contents",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "update://2",
+			body: "summary text",
+			state: "resolved",
 			fidelity: "demoted",
 		});
 

@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+import Repository from "../../agent/Repository.js";
 import docs from "./mvDoc.js";
 
 export default class Mv {
@@ -28,23 +28,24 @@ export default class Mv {
 		if (fidelity && !to) {
 			const matches = await store.getEntriesByPattern(runId, path);
 			for (const match of matches)
-				await store.setFidelity(runId, match.path, fidelity);
+				await store.set({ runId: runId, path: match.path, fidelity: fidelity });
 			const label = `set to ${fidelity}`;
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				entry.resultPath,
-				`${matches.map((m) => m.path).join(", ")} ${label}`,
-				"resolved",
-				{ fidelity: "archived", loopId },
-			);
+				path: entry.resultPath,
+				body: `${matches.map((m) => m.path).join(", ")} ${label}`,
+				state: "resolved",
+				fidelity: "archived",
+				loopId,
+			});
 			return;
 		}
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
 
-		const destScheme = KnownStore.scheme(to);
+		const destScheme = Repository.scheme(to);
 		const existing = await store.getBody(runId, to);
 		const warning =
 			existing !== null && destScheme !== null
@@ -53,17 +54,32 @@ export default class Mv {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
-			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body,
+				state: "proposed",
 				attributes: { from: path, to, isMove: true, warning },
 				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, "resolved", {
+			await store.set({
+				runId,
+				turn,
+				path: to,
+				body: source,
+				state: "resolved",
 				fidelity,
 				loopId,
 			});
-			await store.remove(runId, path);
-			await store.upsert(runId, turn, entry.resultPath, body, "resolved", {
+			await store.rm({ runId: runId, path: path });
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body,
+				state: "resolved",
 				attributes: { from: path, to, isMove: true, warning },
 				loopId,
 			});

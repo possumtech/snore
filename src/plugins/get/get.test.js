@@ -7,10 +7,9 @@ function makeStore(entries = []) {
 	return {
 		upserted,
 		getEntriesByPattern: async () => entries,
-		promoteByPattern: async () => {},
-		setFidelity: async () => {},
-		upsert: async (_runId, _turn, path, body, state, opts) => {
-			upserted.push({ path, body, state, outcome: opts?.outcome ?? null });
+		get: async () => {},
+		set: async ({ path, body, state, outcome }) => {
+			upserted.push({ path, body, state, outcome: outcome ?? null });
 		},
 	};
 }
@@ -182,7 +181,7 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(store.upserted[0].body.includes("not found"));
 	});
 
-	it("does not call promoteByPattern on partial read", async () => {
+	it("does not call get (promote) on partial read", async () => {
 		const body = "a\nb\nc";
 		let promoted = false;
 		const store = {
@@ -190,11 +189,10 @@ describe("Get partial read (line/limit)", () => {
 			getEntriesByPattern: async () => [
 				{ path: "src/agent/AgentLoop.js", body, tokens: 10 },
 			],
-			promoteByPattern: async () => {
+			get: async () => {
 				promoted = true;
 			},
-			setFidelity: async () => {},
-			upsert: async (_runId, _turn, path, b, state) => {
+			set: async ({ path, body: b, state }) => {
 				store.upserted.push({ path, body: b, state });
 			},
 		};
@@ -206,7 +204,7 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(
 			promoted,
 			false,
-			"promoteByPattern must not be called on partial read",
+			"store.get must not be called on partial read",
 		);
 	});
 });

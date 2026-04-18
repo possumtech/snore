@@ -75,7 +75,11 @@ export default class Budget {
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
 		if (promptRow) {
-			await rummy.entries.setFidelity(ctx.runId, promptRow.path, "demoted");
+			await rummy.entries.set({
+				runId: ctx.runId,
+				path: promptRow.path,
+				fidelity: "demoted",
+			});
 		}
 		const reMat = await materializeContext({
 			db: rummy.db,
@@ -130,7 +134,11 @@ export default class Budget {
 		const demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
 		const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
 		if (promptRow) {
-			await store.setFidelity(ctx.runId, promptRow.path, "demoted");
+			await store.set({
+				runId: ctx.runId,
+				path: promptRow.path,
+				fidelity: "demoted",
+			});
 		}
 
 		// NOTE: we do NOT rewrite get-result bodies or flip their state.
@@ -154,13 +162,14 @@ export default class Budget {
 			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
 		].join("\n");
 
-		await store.upsert(
-			ctx.runId,
-			ctx.turn,
-			`budget://${ctx.loopId}/${ctx.turn}`,
+		await store.set({
+			runId: ctx.runId,
+			turn: ctx.turn,
+			path: `budget://${ctx.loopId}/${ctx.turn}`,
 			body,
-			"failed",
-			{ outcome: `overflow:${post.overflow}`, loopId: ctx.loopId },
-		);
+			state: "failed",
+			outcome: `overflow:${post.overflow}`,
+			loopId: ctx.loopId,
+		});
 	}
 }

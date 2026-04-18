@@ -42,8 +42,9 @@ async function renderToolTag(entry, _core) {
 
 	const target = attrs?.path || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const statusCode = stateToStatus(entry.state, entry.outcome);
-	const status = ` status="${statusCode}"`;
+	const status = entry.state
+		? ` status="${stateToStatus(entry.state, entry.outcome)}"`
+		: "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const summary =

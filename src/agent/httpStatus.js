@@ -34,6 +34,6 @@ export function stateToStatus(state, outcome = null) {
 		case "failed":
 			return 500;
 		default:
-			return 200;
+			throw new Error(`stateToStatus: unknown state "${state}"`);
 	}
 }

@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+import Repository from "../../agent/Repository.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
 
@@ -21,14 +21,19 @@ export default class Get {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.upsert(runId, turn, entry.resultPath, "", "failed", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body: "",
+				state: "failed",
 				outcome: "validation",
 				attributes: { error: "path is required" },
 				loopId,
 			});
 			return;
 		}
-		const normalized = KnownStore.normalizePath(target);
+		const normalized = Repository.normalizePath(target);
 		const bodyFilter = entry.attributes.body || null;
 		const preview = entry.attributes.preview !== undefined;
 		const isPattern = bodyFilter || normalized.includes("*");
@@ -72,29 +77,28 @@ export default class Get {
 		// Partial read — no fidelity promotion, returns a line slice as the log item.
 		if (line !== null || limit !== null) {
 			if (isPattern) {
-				await store.upsert(
+				await store.set({
 					runId,
 					turn,
-					entry.resultPath,
-					"line/limit requires a single path, not a glob or body filter",
-					"failed",
-					{
-						outcome: "validation",
-						loopId,
-						attributes: { path: target },
-					},
-				);
+					path: entry.resultPath,
+					body: "line/limit requires a single path, not a glob or body filter",
+					state: "failed",
+					outcome: "validation",
+					loopId,
+					attributes: { path: target },
+				});
 				return;
 			}
 			if (matches.length === 0) {
-				await store.upsert(
+				await store.set({
 					runId,
 					turn,
-					entry.resultPath,
-					`${target} not found`,
-					"resolved",
-					{ loopId, attributes: { path: target } },
-				);
+					path: entry.resultPath,
+					body: `${target} not found`,
+					state: "resolved",
+					loopId,
+					attributes: { path: target },
+				});
 				return;
 			}
 			const allLines = matches[0].body.split("\n");
@@ -112,14 +116,15 @@ export default class Get {
 			const slice = allLines.slice(startIdx, endIdx).join("\n");
 			const endLine = endIdx;
 			const header = `[lines ${startLine}–${endLine} / ${total} total]`;
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				entry.resultPath,
-				`${header}\n${slice}`,
-				"resolved",
-				{ loopId, attributes: { path: target } },
-			);
+				path: entry.resultPath,
+				body: `${header}\n${slice}`,
+				state: "resolved",
+				loopId,
+				attributes: { path: target },
+			});
 			return;
 		}
 
@@ -132,10 +137,19 @@ export default class Get {
 			? entry.attributes.fidelity
 			: null;
 
-		await store.promoteByPattern(runId, normalized, bodyFilter, turn);
+		await store.get({
+			runId: runId,
+			turn: turn,
+			path: normalized,
+			bodyFilter: bodyFilter,
+		});
 		if (fidelityAttr) {
 			for (const match of matches)
-				await store.setFidelity(runId, match.path, fidelityAttr);
+				await store.set({
+					runId: runId,
+					path: match.path,
+					fidelity: fidelityAttr,
+				});
 		}
 
 		if (isPattern) {
@@ -156,7 +170,12 @@ export default class Get {
 				matches.length > 0
 					? `${paths} promoted (${total} tokens)`
 					: `${target} not found`;
-			await store.upsert(runId, turn, entry.resultPath, body, "resolved", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body,
+				state: "resolved",
 				loopId,
 				attributes: { path: target },
 			});

@@ -27,7 +27,12 @@ export default class Prompt {
 
 		if (!isContinuation && prompt) {
 			// prompt:// writable_by: ["plugin"] — explicit for clarity.
-			await store.upsert(runId, turn, `prompt://${turn}`, prompt, "resolved", {
+			await store.set({
+				runId,
+				turn,
+				path: `prompt://${turn}`,
+				body: prompt,
+				state: "resolved",
 				attributes: { mode },
 				loopId,
 				writer: "plugin",

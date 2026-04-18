@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+import Repository from "../../agent/Repository.js";
 import docs from "./cpDoc.js";
 
 export default class Cp {
@@ -27,7 +27,7 @@ export default class Cp {
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
 
-		const destScheme = KnownStore.scheme(to);
+		const destScheme = Repository.scheme(to);
 		const existing = await store.getBody(runId, to);
 		const warning =
 			existing !== null && destScheme !== null
@@ -36,16 +36,31 @@ export default class Cp {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
-			await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body,
+				state: "proposed",
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, "resolved", {
+			await store.set({
+				runId,
+				turn,
+				path: to,
+				body: source,
+				state: "resolved",
 				fidelity,
 				loopId,
 			});
-			await store.upsert(runId, turn, entry.resultPath, body, "resolved", {
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body,
+				state: "resolved",
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,
 			});

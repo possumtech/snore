@@ -69,28 +69,36 @@ Made the schema tell the truth about the contract.
 
 Gate: lint + 259 unit + 189 integration green.
 
-### Phase 2 — Primitives
+### Phase 2 — Primitives ✓ landed
 
-Realize the six primitives as the single store-write grammar. Every
-other write path collapses into these.
+Six-verb write grammar established across the stack.
 
-- `KnownStore` (renamed `Repository` if naming audit agrees) exposes
-  one method per primitive: `set`, `get`, `rm`, `cp`, `mv`, `update`.
-  All existing methods that multi-step compose one of these become
-  internal, or get folded into the primitive.
-- `RummyContext` exposes the same six verbs, nothing else. All per-
-  turn plugin code uses them.
-- XML tag → primitive mapping locked: `<set>` → set, `<get>` → get,
-  `<rm>` → rm, `<cp>` → cp, `<mv>` → mv, `<update>` → update. Every
-  other tool tag (`<sh>`, `<ask_user>`, `<search>`, `<env>`, `<think>`,
-  `<known>`, `<unknown>`) is a plugin that composes primitives
-  internally.
-- Fidelity changes go through `set` with a `fidelity` attribute;
-  `<store>`-as-alias-for-demote retires (becomes `<set fidelity="demoted"/>`).
+- `KnownStore` renamed to `Repository`. Public write surface is exactly
+  `set`, `get`, `rm`, `cp`, `mv`, `update`. Reads stay as query helpers
+  (`getBody`, `getEntriesByPattern`, `getLog`, etc.).
+- `set` is semantically wide: creates/updates entries with body, state,
+  fidelity, attributes; supports `append: true` for streaming, `pattern: true`
+  (plus optional `bodyFilter`) for bulk updates. Body-less calls change
+  fidelity/state/attributes on an existing entry.
+- `get` default is promote. `fidelity` attribute permits read-at-other-
+  fidelity edge cases.
+- `update` is not general — it's the once-per-turn lifecycle verb, writes
+  to `update://<slug>` with `attributes.status` carrying the model's
+  continuation code.
+- Every plugin write call site refactored from positional-arg helpers
+  (`upsert`, `resolve`, `setFidelity`, `appendBody`, `promote`, etc.) to
+  object-args on the 6 verbs. ~89 src + 198 test call sites transformed
+  mechanically; hand-audited for template-literal and string corruption.
+- `<store>` retired as model grammar. `rummy.store()` removed from
+  RummyContext. Demote is `<set fidelity="demoted"/>`.
+- Fixed latent SQL bug in `upsert_entry`: the COALESCE chain was
+  overwriting existing attributes with `'{}'` on UPDATE. Now honors
+  null-attributes-means-preserve. Exposed by the refactor because the
+  old `resolve` path used a different prep that avoided the UPDATE.
 
-**Gate:** every write to the store goes through one of the six verbs.
-A grep for `db.upsert_entry` / `db.upsert_run_view` / ad-hoc prep
-invocation outside `Repository` returns nothing. `npm test` green.
+Gate: grep for `db.upsert_entry` / `db.upsert_run_view` / ad-hoc prep
+calls outside Repository returns empty. `npm run lint` + `npm run test:unit`
+(259 tests) + non-LLM integration (183 tests) all green.
 
 ### Phase 3 — Client surface
 

@@ -258,18 +258,16 @@ export default class TurnExecutor {
 
 			if (abortAfter) {
 				const errorMsg = `Aborted — preceding <${abortAfter}> failed.`;
-				await this.#knownStore.upsert(
-					currentRunId,
+				await this.#knownStore.set({
+					runId: currentRunId,
 					turn,
-					entry.resultPath || entry.path,
-					errorMsg,
-					"failed",
-					{
-						outcome: "aborted",
-						attributes: { error: errorMsg },
-						loopId: currentLoopId,
-					},
-				);
+					path: entry.resultPath || entry.path,
+					body: errorMsg,
+					state: "failed",
+					outcome: "aborted",
+					attributes: { error: errorMsg },
+					loopId: currentLoopId,
+				});
 				hasErrors = true;
 				continue;
 			}
@@ -394,14 +392,15 @@ export default class TurnExecutor {
 				`${scheme}://invalid`,
 				turn,
 			);
-			await this.#knownStore.upsert(
+			await this.#knownStore.set({
 				runId,
 				turn,
-				rejectPath,
-				`Invalid path: too long or contains non-printing characters`,
-				"failed",
-				{ outcome: "validation", loopId },
-			);
+				path: rejectPath,
+				body: `Invalid path: too long or contains non-printing characters`,
+				state: "failed",
+				outcome: "validation",
+				loopId,
+			});
 			return {
 				scheme,
 				path: rejectPath,

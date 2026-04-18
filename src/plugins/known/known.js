@@ -27,14 +27,15 @@ export default class Known {
 		const entryTokens = countTokens(entry.body);
 		if (entryTokens > MAX_ENTRY_TOKENS) {
 			const rejectPath = await store.slugPath(runId, "known", entry.body);
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				rejectPath,
-				`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
-				"failed",
-				{ outcome: `overflow:${entryTokens}`, loopId },
-			);
+				path: rejectPath,
+				body: `Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
+				state: "failed",
+				outcome: `overflow:${entryTokens}`,
+				loopId,
+			});
 			return;
 		}
 
@@ -55,18 +56,24 @@ export default class Known {
 		// Dedup: if path exists, update rather than duplicate
 		const existing = await store.getEntriesByPattern(runId, knownPath, null);
 		if (existing.length > 0) {
-			await store.upsert(
+			await store.set({
 				runId,
 				turn,
-				existing[0].path,
-				entry.body || existing[0].body,
-				"resolved",
-				{ attributes: entry.attributes, loopId },
-			);
+				path: existing[0].path,
+				body: entry.body || existing[0].body,
+				state: "resolved",
+				attributes: entry.attributes,
+				loopId,
+			});
 			return;
 		}
 
-		await store.upsert(runId, turn, knownPath, entry.body, "resolved", {
+		await store.set({
+			runId,
+			turn,
+			path: knownPath,
+			body: entry.body,
+			state: "resolved",
 			attributes: entry.attributes,
 			loopId,
 		});
@@ -95,8 +102,9 @@ function renderKnownTag(entry, demotedSet) {
 	const tag = entry.scheme || "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
-	const statusCode = stateToStatus(entry.state, entry.outcome);
-	const status = ` status="${statusCode}"`;
+	const status = entry.state
+		? ` status="${stateToStatus(entry.state, entry.outcome)}"`
+		: "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
 

@@ -104,20 +104,19 @@ describe("RummyContext", () => {
 				};
 			return {
 				calls,
-				upsert: record("upsert"),
-				promoteByPattern: record("promoteByPattern"),
-				demoteByPattern: record("demoteByPattern"),
-				remove: record("remove"),
+				set: record("set"),
+				get: record("get"),
+				rm: record("rm"),
+				update: record("update"),
 				getBody: record("getBody"),
 				getAttributes: record("getAttributes"),
 				getState: record("getState"),
 				getEntriesByPattern: () => [{ path: "x", body: "y" }],
-				setAttributes: record("setAttributes"),
 				slugPath: async () => "known://slugged",
 			};
 		}
 
-		it("set() writes through entries.upsert with runId and sequence", async () => {
+		it("set() writes through entries.set with runId and sequence", async () => {
 			const store = fakeStore();
 			const rummy = new RummyContext(makeRoot(), {
 				store,
@@ -131,22 +130,25 @@ describe("RummyContext", () => {
 				state: "resolved",
 			});
 			const [method, args] = store.calls[0];
-			assert.strictEqual(method, "upsert");
-			assert.strictEqual(args[0], 5);
-			assert.strictEqual(args[1], 2);
-			assert.strictEqual(args[2], "known://fact");
-			assert.strictEqual(args[3], "the body");
-			assert.strictEqual(args[4], "resolved");
+			assert.strictEqual(method, "set");
+			assert.strictEqual(args[0].runId, 5);
+			assert.strictEqual(args[0].turn, 2);
+			assert.strictEqual(args[0].path, "known://fact");
+			assert.strictEqual(args[0].body, "the body");
+			assert.strictEqual(args[0].state, "resolved");
 		});
 
-		it("rm() delegates to entries.remove", async () => {
+		it("rm() delegates to entries.rm", async () => {
 			const store = fakeStore();
 			const rummy = new RummyContext(makeRoot(), { store, runId: 5 });
 			await rummy.rm("known://drop");
-			assert.deepStrictEqual(store.calls[0], ["remove", [5, "known://drop"]]);
+			assert.deepStrictEqual(store.calls[0], [
+				"rm",
+				[{ runId: 5, path: "known://drop" }],
+			]);
 		});
 
-		it("mv() copies body then removes source", async () => {
+		it("mv() copies body, writes to new path, removes source", async () => {
 			const store = fakeStore();
 			const rummy = new RummyContext(makeRoot(), {
 				store,
@@ -155,8 +157,8 @@ describe("RummyContext", () => {
 			});
 			await rummy.mv("a", "b");
 			assert.strictEqual(store.calls[0][0], "getBody");
-			assert.strictEqual(store.calls[1][0], "upsert");
-			assert.strictEqual(store.calls[2][0], "remove");
+			assert.strictEqual(store.calls[1][0], "set");
+			assert.strictEqual(store.calls[2][0], "rm");
 		});
 
 		it("cp() copies body without removing source", async () => {
@@ -168,10 +170,10 @@ describe("RummyContext", () => {
 			});
 			await rummy.cp("a", "b");
 			const methods = store.calls.map((c) => c[0]);
-			assert.deepStrictEqual(methods, ["getBody", "upsert"]);
+			assert.deepStrictEqual(methods, ["getBody", "set"]);
 		});
 
-		it("get() promotes via pattern", async () => {
+		it("get() promotes via entries.get", async () => {
 			const store = fakeStore();
 			const rummy = new RummyContext(makeRoot(), {
 				store,
@@ -180,18 +182,8 @@ describe("RummyContext", () => {
 			});
 			await rummy.get("known://x");
 			assert.deepStrictEqual(store.calls[0], [
-				"promoteByPattern",
-				[5, "known://x", null, 2],
-			]);
-		});
-
-		it("store() demotes via pattern", async () => {
-			const store = fakeStore();
-			const rummy = new RummyContext(makeRoot(), { store, runId: 5 });
-			await rummy.store("known://x");
-			assert.deepStrictEqual(store.calls[0], [
-				"demoteByPattern",
-				[5, "known://x", null],
+				"get",
+				[{ runId: 5, turn: 2, path: "known://x", bodyFilter: null }],
 			]);
 		});
 	});

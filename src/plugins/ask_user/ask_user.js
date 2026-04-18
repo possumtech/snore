@@ -28,7 +28,12 @@ export default class AskUser {
 					.filter(Boolean)
 			: [];
 
-		await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
+		await store.set({
+			runId,
+			turn,
+			path: entry.resultPath,
+			body: entry.body,
+			state: "proposed",
 			attributes: { question, options },
 			loopId,
 		});

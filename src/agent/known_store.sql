@@ -1,5 +1,8 @@
 -- PREP: upsert_entry
 -- Content-layer upsert. Returns entry id for the subsequent run_view write.
+-- Null :attributes on UPDATE path means "don't touch existing attributes"
+-- — so UPDATE reads :attributes directly, not excluded.attributes (which
+-- would have been coerced to '{}' by the VALUES clause).
 INSERT INTO entries (
 	scope, path, body, attributes, hash, tokens, updated_at
 )
@@ -9,8 +12,8 @@ VALUES (
 )
 ON CONFLICT (scope, path) DO UPDATE SET
 	body = excluded.body
-	, attributes = COALESCE(excluded.attributes, entries.attributes)
-	, hash = COALESCE(excluded.hash, entries.hash)
+	, attributes = COALESCE(:attributes, entries.attributes)
+	, hash = COALESCE(:hash, entries.hash)
 	, tokens = countTokens(excluded.body)
 	, updated_at = CURRENT_TIMESTAMP
 RETURNING id;

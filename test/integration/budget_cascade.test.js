@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, beforeEach, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -13,14 +13,14 @@ describe("Budget — ceiling check", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("budget_cascade");
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		cascade = tdb.hooks.budget;
 		const seed = await tdb.seedRun({ alias: "budget_1" });
 		RUN_ID = seed.runId;
 	});
 
 	beforeEach(async () => {
-		await store.deleteByPattern(RUN_ID, "**", null);
+		await store.rm({ runId: RUN_ID, path: "**", pattern: true });
 	});
 
 	after(async () => {
@@ -52,20 +52,26 @@ describe("Budget — ceiling check", () => {
 	}
 
 	it("ok when under budget", async () => {
-		await store.upsert(RUN_ID, 1, "known://small", "a small fact", "resolved");
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "known://small",
+			body: "a small fact",
+			state: "resolved",
+		});
 		const result = await assembleAndEnforce(100000);
 		assert.strictEqual(result.ok, true);
 	});
 
 	it("overflow when over budget", async () => {
 		for (let i = 0; i < 10; i++) {
-			await store.upsert(
-				RUN_ID,
-				i + 1,
-				`known://fact_${i}`,
-				pad(50),
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: i + 1,
+				path: `known://fact_${i}`,
+				body: pad(50),
+				state: "resolved",
+			});
 		}
 		const result = await assembleAndEnforce(100);
 		assert.strictEqual(result.ok, false);
@@ -74,13 +80,13 @@ describe("Budget — ceiling check", () => {
 
 	it("overflow reports exact token count over ceiling", async () => {
 		for (let i = 0; i < 5; i++) {
-			await store.upsert(
-				RUN_ID,
-				i + 1,
-				`known://fact_${i}`,
-				pad(20),
-				"resolved",
-			);
+			await store.set({
+				runId: RUN_ID,
+				turn: i + 1,
+				path: `known://fact_${i}`,
+				body: pad(20),
+				state: "resolved",
+			});
 		}
 		const result = await assembleAndEnforce(100);
 		assert.strictEqual(result.ok, false);
@@ -92,7 +98,13 @@ describe("Budget — ceiling check", () => {
 	});
 
 	it("assembledTokens returned whether ok or overflow", async () => {
-		await store.upsert(RUN_ID, 1, "known://a", "fact", "resolved");
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path: "known://a",
+			body: "fact",
+			state: "resolved",
+		});
 
 		const ok = await assembleAndEnforce(100000);
 		assert.ok(
@@ -101,7 +113,13 @@ describe("Budget — ceiling check", () => {
 		);
 
 		for (let i = 0; i < 10; i++) {
-			await store.upsert(RUN_ID, i + 2, `known://b_${i}`, pad(50), "resolved");
+			await store.set({
+				runId: RUN_ID,
+				turn: i + 2,
+				path: `known://b_${i}`,
+				body: pad(50),
+				state: "resolved",
+			});
 		}
 		const over = await assembleAndEnforce(100);
 		assert.ok(

@@ -128,42 +128,64 @@ export default class RummyContext {
 				attributes?.summary,
 			);
 		}
-		await this.entries.upsert(
-			this.runId,
-			this.sequence,
+		await this.entries.set({
+			runId: this.runId,
+			turn: this.sequence,
 			path,
-			body || "",
+			body: body || "",
 			state,
-			{ outcome, fidelity, attributes, loopId: this.loopId },
-		);
+			outcome,
+			fidelity,
+			attributes,
+			loopId: this.loopId,
+		});
 		return path;
 	}
 
 	async get(path) {
-		await this.entries.promoteByPattern(this.runId, path, null, this.sequence);
-	}
-
-	async store(path) {
-		await this.entries.demoteByPattern(this.runId, path, null);
+		await this.entries.get({
+			runId: this.runId,
+			turn: this.sequence,
+			path: path,
+			bodyFilter: null,
+		});
 	}
 
 	async rm(path) {
-		await this.entries.remove(this.runId, path);
+		await this.entries.rm({ runId: this.runId, path: path });
+	}
+
+	async update(body, { status = 102, attributes = {} } = {}) {
+		return this.entries.update(this.runId, this.sequence, body, {
+			status,
+			attributes,
+			loopId: this.loopId,
+		});
 	}
 
 	async mv(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, "resolved", {
+		await this.entries.set({
+			runId: this.runId,
+			turn: this.sequence,
+			path: to,
+			body,
+			state: "resolved",
 			loopId: this.loopId,
 		});
-		await this.entries.remove(this.runId, from);
+		await this.entries.rm({ runId: this.runId, path: from });
 	}
 
 	async cp(from, to) {
 		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.entries.upsert(this.runId, this.sequence, to, body, "resolved", {
+		await this.entries.set({
+			runId: this.runId,
+			turn: this.sequence,
+			path: to,
+			body,
+			state: "resolved",
 			loopId: this.loopId,
 		});
 	}
@@ -198,7 +220,11 @@ export default class RummyContext {
 	}
 
 	async setAttributes(path, attrs) {
-		return this.entries.setAttributes(this.runId, path, attrs);
+		return this.entries.set({
+			runId: this.runId,
+			path: path,
+			attributes: attrs,
+		});
 	}
 
 	async getEntries(pattern, bodyFilter) {
@@ -207,13 +233,13 @@ export default class RummyContext {
 
 	async log(message) {
 		const path = `content://${Date.now()}`;
-		await this.entries.upsert(
-			this.runId,
-			this.sequence,
+		await this.entries.set({
+			runId: this.runId,
+			turn: this.sequence,
 			path,
-			message,
-			"resolved",
-		);
+			body: message,
+			state: "resolved",
+		});
 	}
 
 	// --- Node tree methods ---

@@ -1,6 +1,6 @@
 import LlmProvider from "../llm/LlmProvider.js";
 import AgentLoop from "./AgentLoop.js";
-import KnownStore from "./KnownStore.js";
+import Repository from "./Repository.js";
 import TurnExecutor from "./TurnExecutor.js";
 
 export default class ProjectAgent {
@@ -14,7 +14,7 @@ export default class ProjectAgent {
 		this.#db = db;
 		this.#hooks = hooks;
 		this.#llm = new LlmProvider(db, hooks);
-		this.#knownStore = new KnownStore(db, {
+		this.#knownStore = new Repository(db, {
 			onChanged: (event) => hooks.entry.changed.emit(event).catch(() => {}),
 		});
 		this.#knownStore.loadSchemes(db);

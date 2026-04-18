@@ -144,7 +144,12 @@ export default class Rpc {
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 				const store = ctx.projectAgent.entries;
-				await store.demoteByPattern(runRow.id, params.path, null);
+				await store.set({
+					runId: runRow.id,
+					path: params.path,
+					fidelity: "demoted",
+					pattern: true,
+				});
 				return { status: "ok" };
 			},
 			description: "Demote entry to stored state.",
@@ -530,17 +535,15 @@ async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 		rummy.sequence,
 	);
 
-	await store.upsert(
-		rummy.runId,
-		rummy.sequence,
-		resultPath,
+	await store.set({
+		runId: rummy.runId,
+		turn: rummy.sequence,
+		path: resultPath,
 		body,
-		"resolved",
-		{
-			attributes: attributes,
-			loopId: rummy.loopId,
-		},
-	);
+		state: "resolved",
+		attributes: attributes,
+		loopId: rummy.loopId,
+	});
 
 	const entry = {
 		scheme,

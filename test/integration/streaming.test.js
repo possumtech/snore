@@ -12,7 +12,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Streaming primitives", () => {
@@ -20,7 +20,7 @@ describe("Streaming primitives", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("streaming");
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		await store.loadSchemes(tdb.db);
 	});
 
@@ -34,13 +34,33 @@ describe("Streaming primitives", () => {
 			const path = "sh://turn_1/npm_test_1";
 
 			// Streaming entry starts at 102, empty body (created on accept).
-			await store.upsert(runId, 1, path, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 			});
 
-			await store.appendBody(runId, path, "hello ");
-			await store.appendBody(runId, path, "world\n");
-			await store.appendBody(runId, path, "line 2\n");
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "hello ",
+				append: true,
+			});
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "world\n",
+				append: true,
+			});
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "line 2\n",
+				append: true,
+			});
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === path);
@@ -57,16 +77,31 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_tokens" });
 			const path = "sh://turn_1/grow_1";
 
-			await store.upsert(runId, 1, path, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 			});
 
-			await store.appendBody(runId, path, "a".repeat(100));
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "a".repeat(100),
+				append: true,
+			});
 			const first = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
 			).find((e) => e.path === path);
 
-			await store.appendBody(runId, path, "a".repeat(500));
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "a".repeat(500),
+				append: true,
+			});
 			const second = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
 			).find((e) => e.path === path);
@@ -83,13 +118,23 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_success" });
 			const path = "sh://turn_1/ok_1";
 
-			await store.upsert(runId, 1, path, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 			});
-			await store.appendBody(runId, path, "ran ok\n");
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "ran ok\n",
+				append: true,
+			});
 
 			// Simulate stream/completed — transition to terminal status.
-			await store.resolve(runId, path, "resolved", { body: "ran ok\n" });
+			await store.set({ runId, path, state: "resolved", body: "ran ok\n" });
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -102,12 +147,22 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_fail" });
 			const path = "sh://turn_1/bad_1";
 
-			await store.upsert(runId, 1, path, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 			});
-			await store.appendBody(runId, path, "error output\n");
+			await store.set({
+				runId: runId,
+				path: path,
+				body: "error output\n",
+				append: true,
+			});
 
-			await store.resolve(runId, path, "failed", { body: "error output\n" });
+			await store.set({ runId, path, state: "failed", body: "error output\n" });
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -122,22 +177,47 @@ describe("Streaming primitives", () => {
 			const base = "sh://turn_1/cmd";
 
 			// Log entry (200, logging-shaped)
-			await store.upsert(runId, 1, base, "ran 'cmd'", "resolved", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: base,
+				body: "ran 'cmd'",
+				state: "resolved",
 				fidelity: "demoted",
 				attributes: { command: "cmd" },
 			});
 			// Data channels at 102
-			await store.upsert(runId, 1, `${base}_1`, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: `${base}_1`,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 				attributes: { command: "cmd", channel: 1 },
 			});
-			await store.upsert(runId, 1, `${base}_2`, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path: `${base}_2`,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 				attributes: { command: "cmd", channel: 2 },
 			});
 
-			await store.appendBody(runId, `${base}_1`, "stdout content\n");
-			await store.appendBody(runId, `${base}_2`, "stderr content\n");
+			await store.set({
+				runId: runId,
+				path: `${base}_1`,
+				body: "stdout content\n",
+				append: true,
+			});
+			await store.set({
+				runId: runId,
+				path: `${base}_2`,
+				body: "stderr content\n",
+				append: true,
+			});
 
 			// Pattern-match all channels for terminal transition (what
 			// stream/completed does).
@@ -149,7 +229,12 @@ describe("Streaming primitives", () => {
 			assert.strictEqual(channels.length, 2, "both channels found");
 
 			for (const ch of channels) {
-				await store.resolve(runId, ch.path, "resolved", { body: ch.body });
+				await store.set({
+					runId,
+					path: ch.path,
+					state: "resolved",
+					body: ch.body,
+				});
 			}
 
 			const all = await tdb.db.get_known_entries.all({ run_id: runId });
@@ -165,12 +250,22 @@ describe("Streaming primitives", () => {
 			const { runId } = await tdb.seedRun({ alias: "stream_tail" });
 			const path = "sh://turn_1/long_1";
 
-			await store.upsert(runId, 1, path, "", "streaming", {
+			await store.set({
+				runId,
+				turn: 1,
+				path,
+				body: "",
+				state: "streaming",
 				fidelity: "demoted",
 			});
 			// Simulate 100 lines of streamed output
 			for (let i = 1; i <= 100; i++) {
-				await store.appendBody(runId, path, `line ${i}\n`);
+				await store.set({
+					runId: runId,
+					path: path,
+					body: `line ${i}\n`,
+					append: true,
+				});
 			}
 
 			const entry = (

@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import ContextAssembler from "../../src/agent/ContextAssembler.js";
-import KnownStore from "../../src/agent/KnownStore.js";
+import Repository from "../../src/agent/Repository.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import { registerPlugins } from "../../src/plugins/index.js";
 import RpcRegistry from "../../src/server/RpcRegistry.js";
@@ -53,7 +53,7 @@ describe("Message assembly", () => {
 		);
 		await registerPlugins([pluginsDir], hooks);
 		tdb = await TestDb.create();
-		store = new KnownStore(tdb.db);
+		store = new Repository(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 	});
@@ -63,16 +63,14 @@ describe("Message assembly", () => {
 	});
 
 	it("ask prompt renders as <prompt mode=ask> with tools", async () => {
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"prompt://1",
-			"What is the port?",
-			"resolved",
-			{
-				attributes: { mode: "ask" },
-			},
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "prompt://1",
+			body: "What is the port?",
+			state: "resolved",
+			attributes: { mode: "ask" },
+		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(
@@ -87,16 +85,14 @@ describe("Message assembly", () => {
 	});
 
 	it("act prompt renders as <prompt mode=act> with sh tool", async () => {
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"prompt://1",
-			"Refactor the code",
-			"resolved",
-			{
-				attributes: { mode: "act" },
-			},
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "prompt://1",
+			body: "Refactor the code",
+			state: "resolved",
+			attributes: { mode: "act" },
+		});
 		await materialize(tdb.db, {
 			runId: RUN_ID,
 			turn: TURN,
@@ -125,21 +121,27 @@ describe("Message assembly", () => {
 	});
 
 	it("pattern result appears in messages with matched paths", async () => {
-		await store.upsert(RUN_ID, TURN, "src/app.js", "const x = 1;", "resolved");
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"src/utils.js",
-			"const y = 2;",
-			"resolved",
-		);
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"get://src_js",
-			'get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
-			"resolved",
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "src/app.js",
+			body: "const x = 1;",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "src/utils.js",
+			body: "const y = 2;",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "get://src_js",
+			body: 'get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
+			state: "resolved",
+		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("2 matched"), "should show match count");
@@ -147,54 +149,54 @@ describe("Message assembly", () => {
 	});
 
 	it("preview result shows PREVIEW prefix", async () => {
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"get://preview_test",
-			'PREVIEW get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
-			"resolved",
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "get://preview_test",
+			body: 'PREVIEW get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
+			state: "resolved",
+		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("PREVIEW"), "should show PREVIEW prefix");
 	});
 
 	it("tool result content is visible (not blank)", async () => {
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"search://test_query",
-			"10 results for test",
-			"resolved",
-		);
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"env://node_ver",
-			"<env>node --version</env>",
-			"resolved",
-		);
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"rm://rm_test",
-			"rm src/old.js",
-			"resolved",
-		);
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"mv://mv_test",
-			"mv known://a known://b",
-			"resolved",
-		);
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"cp://cp_test",
-			"cp known://x known://y",
-			"resolved",
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "search://test_query",
+			body: "10 results for test",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "env://node_ver",
+			body: "<env>node --version</env>",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "rm://rm_test",
+			body: "rm src/old.js",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "mv://mv_test",
+			body: "mv known://a known://b",
+			state: "resolved",
+		});
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "cp://cp_test",
+			body: "cp known://x known://y",
+			state: "resolved",
+		});
 
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
@@ -211,14 +213,14 @@ describe("Message assembly", () => {
 	});
 
 	it("structural entries (summary/update) appear in messages", async () => {
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"update://test_sum",
-			"The answer is 42",
-			"resolved",
-			{ fidelity: "demoted" },
-		);
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "update://test_sum",
+			body: "The answer is 42",
+			state: "resolved",
+			fidelity: "demoted",
+		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(
