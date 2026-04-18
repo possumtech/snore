@@ -1,4 +1,5 @@
 import RummyContext from "../hooks/RummyContext.js";
+import { ContextExceededError } from "../llm/errors.js";
 import materializeContext from "./materializeContext.js";
 import XmlParser from "./XmlParser.js";
 
@@ -146,49 +147,27 @@ export default class TurnExecutor {
 			turn,
 		});
 
-		// Call LLM
+		// Call LLM. Transient-error retry + context-exceeded detection live
+		// in LlmProvider; context-exceeded surfaces as ContextExceededError.
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
 		let rawResult;
-		const isTransient = (e) =>
-			/\b(503|429|timeout|ECONNREFUSED|ECONNRESET|unavailable)\b/i.test(
-				e.message,
+		try {
+			rawResult = await this.#llmProvider.completion(
+				filteredMessages,
+				requestedModel,
+				{ temperature: options?.temperature, signal },
 			);
-		const isContextExceeded = (e) =>
-			/\b(context.*(size|length|limit)|token.*(limit|exceed)|too.*(long|large))\b/i.test(
-				e.message,
-			);
-
-		for (let llmAttempt = 0; ; llmAttempt++) {
-			try {
-				rawResult = await this.#llmProvider.completion(
-					filteredMessages,
-					requestedModel,
-					{ temperature: options?.temperature, signal },
-				);
-				break;
-			} catch (err) {
-				if (isTransient(err) && llmAttempt < 3) {
-					const delay = 1000 * 2 ** llmAttempt;
-					console.warn(
-						`[RUMMY] Transient LLM error (attempt ${llmAttempt + 1}/3): ${err.message.slice(0, 120)}. Retrying in ${delay}ms.`,
-					);
-					await new Promise((r) => setTimeout(r, delay));
-					continue;
-				}
-				if (isContextExceeded(err)) {
-					console.warn(
-						`[RUMMY] LLM context exceeded: ${err.message.slice(0, 120)}. Returning 413.`,
-					);
-					return {
-						turn,
-						turnId: turnRow.id,
-						status: 413,
-						assembledTokens,
-						contextSize,
-					};
-				}
-				throw err;
+		} catch (err) {
+			if (err instanceof ContextExceededError) {
+				return {
+					turn,
+					turnId: turnRow.id,
+					status: 413,
+					assembledTokens,
+					contextSize,
+				};
 			}
+			throw err;
 		}
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,

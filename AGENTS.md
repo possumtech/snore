@@ -337,20 +337,20 @@ gutted its API):
   plumbing for ~10 lines of output-field cleanup that aren't really
   scheme-behavior. Revisit if another reason arises.
 
-**Tier 3 — arguable, defer until Tier 1+2 land:**
+**Tier 3 remaining:**
 
-- [ ] LLM retry loop (338-378): 503/429/timeout backoff and
-  context-exceeded detection → `llm.request` hook chain or provider
-  wrapper. Carries two of the remaining `console.warn` calls flagged
-  in Phase 2.
-- [ ] Incremental `run.state` push after each dispatch (494-507):
-  plausibly a `state` plugin concern, but currently tightly coupled
-  to the dispatch loop's waterfall semantics. Leave for now.
+- [ ] Incremental `run.state` push after each dispatch: plausibly a
+  `state` plugin concern, but currently tightly coupled to the dispatch
+  loop's waterfall semantics. Leave for now.
+
+LLM retry and context-exceeded detection now live in LlmProvider;
+context-exceeded surfaces as `ContextExceededError` (src/llm/errors.js)
+so TurnExecutor catches by type rather than regex-matching messages.
 
 **Exit criterion:** TurnExecutor imports neither budget, instructions,
 think, update, nor scheme classification tables. What remains is hook
-emission and sequential queue mechanics. Current: 462 lines
-(from 730 at Phase 2 start).
+emission and sequential queue mechanics. Current: 441 lines (from 730
+at Phase 2 start — 40% reduction).
 
 ### Phase 2: COALESCE(scheme, 'file') unification
 
