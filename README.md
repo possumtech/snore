@@ -4,15 +4,15 @@ Rummy is the only LLM agent service inspired by and dedicated to the memory of f
 
 ## Key Features
 
-- **The Rumsfeld Loop:** Forcing models to catalog what they don't know is a powerful weapon against hallucination and laziness. Every turn, the model calls `<known>`, `<unknown>`, and `<update>` — externalizing its reasoning into a persistent K/V store that survives across turns without message history.
+- **The Rumsfeld Loop:** Forcing models to catalog what they don't know is a powerful weapon against hallucination and laziness. Every turn, the model registers gaps via `<set path="unknown://...">`, records findings via `<set path="known://...">`, and signals continuation or completion via `<update status="...">` — externalizing its reasoning into a persistent K/V store that survives across turns without message history.
 
-- **One K/V Store:** Files, knowledge, tool results, unknowns, user prompts — everything is a keyed entry in one SQLite table. No message history. No separate file listings. The model's entire context is assembled from the store each turn.
+- **One K/V Store:** Files, knowledge, tool results, unknowns, user prompts — everything is a keyed entry. Content lives in `entries` (scope-owned), per-run fidelity / status / turn in `run_views`. No message history. No separate file listings. The model's entire context is assembled from the store each turn.
 
 - **Hedberg:** The interpretation boundary between stochastic model output and deterministic system operations. Models speak in whatever syntax they were trained on — sed regex, SEARCH/REPLACE blocks, escaped characters. Hedberg normalizes all of it. Available to all plugins via `core.hooks.hedberg`.
 
-- **Folksonomic Memory:** The model organizes its own knowledge into navigable path hierarchies with searchable summary tags. Not RAG — the model builds and curates its own taxonomy using `<known>` entries with paths like `known://project/architecture`.
+- **Folksonomic Memory:** The model organizes its own knowledge into navigable path hierarchies with searchable summary tags. Not RAG — the model builds and curates its own taxonomy using `<set path="known://project/architecture" summary="keywords,go,here">...</set>`.
 
-- **Fidelity System:** Every entry has a visibility level: full, summary, index, archive. The model manages its own context by promoting what it needs and demoting what it doesn't. Budget enforcement catches overflow post-dispatch — tools run uninterrupted, demotion happens after.
+- **Fidelity System:** Every per-run view of an entry has a fidelity level: `promoted` (body visible), `demoted` (path + summary only), `archived` (invisible, retrievable via pattern search). The model manages its own context by promoting what it needs and demoting what it doesn't. Budget enforcement catches overflow post-dispatch — tools run uninterrupted, demotion happens after.
 
 - **Plugin Architecture:** Every `<tag>` the model sees is a plugin. Every scheme is registered by its owner. The prompt itself is assembled from plugins. Drop a directory into `~/.rummy/plugins/` or install via npm. See [PLUGINS.md](PLUGINS.md) for the complete plugin API.
 

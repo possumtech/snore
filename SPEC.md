@@ -118,6 +118,21 @@ run_views (
 legacy SELECT queries keep working. Not writable; new write code must
 target `entries` + `run_views` directly (see §1.4).
 
+**No shadowing.** A run cannot override a global (or project-scoped)
+entry with a run-scoped copy of the same path. Scope is resolved from
+the scheme's declared `default_scope` at write time; if the writer's
+permission doesn't allow the target scope, the write is rejected
+(403 + `error://`). Paths are unique within a scope, but different
+scopes use independent namespaces — `known://plan` is always run-
+scoped; `wiki://...` (hypothetical) would always be global. The
+scheme plugin owns the decision; the model doesn't juggle scopes.
+
+**Forks copy views, not content.** `store.forkEntries(parent, child)`
+inserts new `run_views` rows referencing the parent's `entries`
+rows — no body copies, O(row-count) rather than O(body-bytes).
+A forked child's subsequent writes diverge by creating new entries
+at the child's scope; the parent's entries stay untouched.
+
 ### 1.2 Schemes, Status & Fidelity
 
 Every entry has two independent dimensions: **status** (HTTP integer —
@@ -800,6 +815,40 @@ Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
 | `stream/cancelled` | projectId | Server-initiated streaming cancellation. |
 | `ui/render` | projectId | Streaming UI output (e.g. tool progress). |
 | `ui/notify` | projectId | Toast notification. |
+
+**`run/state` payload shape** — the unified contract for both the
+notification and `getRun` RPC:
+
+```jsonc
+{
+  "run": "gemma_1234567890",
+  "turn": 4,
+  "status": 102,              // numeric HTTP status
+  "summary": "…",             // latest <update status="200"> body, or ""
+  "history": [                // chronological per-entry log
+    {
+      "tool": "set",
+      "path": "known://president/current",
+      "status": 200,
+      "body": "Donald Trump is the 47th president…",
+      "turn": 4,
+      "attributes": "{\"summary\":\"president,current,trump\",\"fidelity\":\"promoted\"}"
+    }
+  ],
+  "unknowns": [{ "path": "unknown://…", "body": "…" }],
+  "telemetry": null | { /* final end-of-turn usage; null on mid-turn emissions */ }
+}
+```
+
+`history` includes every entry the model has touched this run in
+timeline order — prompt entries, unknowns, tool results. `attributes`
+is raw JSON; parse client-side. Mid-turn emissions have `telemetry:
+null`; the final emission of each turn includes the full telemetry
+block (token usage, context distribution, cost).
+
+`stream/cancelled` payload: `{ run, path, reason }`. Server has
+already transitioned the entries to 499 (`Client Closed Request`);
+client should stop sending `stream` chunks for that path.
 
 ### 5.3 Resolution
 

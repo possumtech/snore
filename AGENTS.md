@@ -354,7 +354,8 @@ at Phase 2 start — 40% reduction).
 
 ### Phase 2: Schema V2 — content/view split
 
-Plan in `SCHEMA_V2.md`. Phases B and C landed:
+Plan (since retired — content folded into SPEC.md §1.1/§1.2/§1.3).
+Phases B and C landed:
 
 - **Phase B (Repository surface)**: plugins no longer touch `core.db.*`
   for entry/run/turn-stats ops; five new semantic methods on KnownStore
@@ -449,7 +450,39 @@ Six phases, roughly sequential:
 6. **LME Performance Drills** — LME benchmark runs; memory/recall
    performance validation.
 
-Currently in Phase 1.
+Currently between Phase 2 and Phase 3. Phases 1 and 2 done; Phase 3
+(Linting) next.
+
+### Phase 2 closed out
+
+All six scratch pads dissolved:
+
+- **EXCEPTIONS.md** — deleted. Entries were redundant with SPEC §2.3
+  or stale (no current exception in `#record`).
+- **CLIENT_CHANGES.md** — deleted. `run/state` payload shape preserved
+  in SPEC §5.2. Rest was changelog (git log is authoritative).
+- **RUMMY_ADVANCED.md** — deleted. A SKILL file belonging in
+  `$RUMMY_HOME/skills/`, not repo root.
+- **FIDELITY_CONTRACT.md** — deleted. All three "Breaks" identified in
+  the April 14 investigation are resolved in code; the per-plugin
+  fidelity projection table was preserved (with current vocab) in
+  PLUGINS.md §8.
+- **STREAMING.md** — deleted. Server content already in SPEC §3.5 +
+  `src/plugins/stream/README.md`. Client (Lua) implementation belongs
+  in rummy.nvim's own docs.
+- **SCHEMA_V2.md** — deleted. Content fully absorbed into SPEC
+  §1.1–§1.3; no-shadowing + cheap-fork principles added to SPEC §1.1
+  as a forward reference.
+
+README.md lightly updated: stale fidelity vocabulary
+(`full/summary/index/archive` → `promoted/demoted/archived`) and
+retired-emission-tag framing (`<known>` / `<unknown>` as emission →
+`<set path="known://…">` / `<set path="unknown://…">`). Installation
+section left alone — user-facing, wasn't confident about the
+globally-installed flow; flag for user review.
+
+Canonical docs at repo root: README, SPEC, PLUGINS, AGENTS. Plus
+per-plugin READMEs under `src/plugins/{name}/`.
 
 ### Phase 1 Audit Progress
 
@@ -598,7 +631,7 @@ Emerging from the audit; will address as the relevant section surfaces:
 ## Road to Production
 
 ### Client handoff
-- [ ] CLIENT_CHANGES.md delivered to rummy.nvim team
+- [ ] rummy.nvim team notified of wire-protocol version bump (SPEC §5.2 payloads)
 - [ ] rummy.web published with all session changes
 - [ ] rummy.nvim updated for new contract
 

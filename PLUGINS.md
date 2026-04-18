@@ -2,7 +2,8 @@
 
 Every `<tag>` the model sees is a plugin. Every scheme is registered by
 its owner. Every operation — model, client, plugin — flows through the
-same tool handler. No exceptions without documentation in EXCEPTIONS.md.
+same tool handler. Exceptions to that discipline must justify themselves
+in the architecture spec (SPEC.md).
 
 ## §0 Quickstart
 
@@ -498,6 +499,27 @@ model, discoverable via pattern search). Entries at `fidelity =
 'demoted'` render with `attributes.summary` (model-authored keyword
 description) prepended above the plugin's `demoted` view output —
 the body is hidden; promoting with `<get>` brings it back.
+
+**Per-plugin fidelity projection reference.** Each plugin chooses
+what its `promoted` / `demoted` view hooks return. Renderers trust
+the projected body — they do NOT re-check `entry.fidelity`.
+
+| Plugin | Category | `promoted` body | `demoted` body | Notes |
+|--------|----------|-----------------|----------------|-------|
+| `known` | data | `entry.body` | `""` | Tag's `summary` attr carries the keywords at demoted fidelity |
+| `unknown` | unknown | `entry.body` | `""` | Same pattern as known |
+| `prompt` | prompt | `entry.body` | 500-char truncation with `[truncated — promote to see the complete prompt]` marker | |
+| `budget` | logging | `entry.body` | `entry.body` | Feedback signal — kept visible |
+| `update` | logging | `# update\n${entry.body}` | same as promoted | Already 80-char capped by tool doc rule |
+| `get` / `set` / `rm` / `cp` / `mv` / `sh` / `env` / `search` | logging | result body | `""` | Just the self-closing tag at demoted |
+| `skill` | data | `entry.body` | `""` | Same as known |
+| `file` (bare paths) | data | `entry.body` | `""` | Same as known |
+
+Plugins providing only a `promoted` hook fall back to
+`attributes.summary` (model-authored keyword description) at demoted;
+the renderer inserts it automatically. Plugins providing neither
+default to empty body — the tag still renders with its attributes so
+the model can pattern-match the path.
 
 ### §8.1 Streaming Entries
 
