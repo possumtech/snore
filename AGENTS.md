@@ -215,11 +215,14 @@ Rewrite the three repos we own against the landed contract.
 - **`PLUGINS.md` first.** External plugin authors read it. Bring it
   current with the Phase 1-5 surface (object-args primitives,
   four-tier writer, run-as-entry lifecycle, RPC 2.0.0).
-- **`rummy.repo`** — server-side plugin. Uses `rummy.getBody` /
-  `rummy.setAttributes`; no structural mismatch expected, but audit
-  against the new `RummyContext` shape.
-- **`rummy.web`** — server-side plugin. Currently uses `rummy.set({
-  ..., status: 200 })` (silently ignored); rewrite to `state`/`outcome`.
+- **`rummy.repo`** — server-side plugin. Landed: `FileScanner`
+  ported to object-args `set`/`rm` with `writer: "plugin"`; symbol
+  extraction folded inline so the plugin is a pure `turn.started`
+  reactor. No more `entry.changed` subscription (Repository's per-
+  write emission shape differs from the old batched one).
+- **`rummy.web`** — server-side plugin. Landed: four `rummy.set({
+  ..., status: 200 })` calls across search/get handlers replaced with
+  explicit `state: "resolved"`. No other surface drift.
 - **`rummy.nvim`** — client. Deliberately broken against 1.x; rewrite
   to the 2.0.0 wire: `rummy/hello` handshake, `set`/`get`/`rm`/`cp`/
   `mv`/`update` primitives, run-as-entry lifecycle (start via `set

@@ -561,6 +561,30 @@ export default class AgentLoop {
 
 		if (action === "accept" || action === "error") {
 			const attrs = await this.#knownStore.getAttributes(runId, path);
+
+			// readonly constraint enforcement: refuse to accept a set:// that
+			// would rewrite a path the project has marked readonly. Bleeds
+			// the refusal back to the model as state=failed outcome=readonly,
+			// which it handles the same as any other rejected proposal.
+			if (action === "accept" && path.startsWith("set://") && attrs?.path) {
+				const File = (await import("../plugins/file/file.js")).default;
+				const blocked = await File.isReadonly(
+					this.#db,
+					runRow.project_id,
+					attrs.path,
+				);
+				if (blocked) {
+					await this.#knownStore.set({
+						runId,
+						path,
+						state: "failed",
+						outcome: "readonly",
+						body: `refused: ${attrs.path} is readonly`,
+					});
+					return { ok: true, state: "failed", outcome: "readonly" };
+				}
+			}
+
 			const resolvedBody = await this.#composeResolvedContent(
 				runId,
 				path,

@@ -1,5 +1,8 @@
 import msg from "../../agent/messages.js";
+import File from "../file/file.js";
 import RummyContext from "../../hooks/RummyContext.js";
+
+const CONSTRAINT_VISIBILITIES = new Set(["active", "readonly", "ignore"]);
 
 export default class Rpc {
 	#core;
@@ -240,8 +243,111 @@ export default class Rpc {
 			params: { alias: "string — model alias to remove" },
 		});
 
-		// store is not a tool — it manages file constraints
+		// --- File constraints (project-scoped overlay) ---
+
+		r.register("file/constraint", {
+			handler: async (params, ctx) => {
+				if (!params.pattern) {
+					throw new Error("file/constraint: pattern is required");
+				}
+				if (!CONSTRAINT_VISIBILITIES.has(params.visibility)) {
+					throw new Error(
+						`file/constraint: visibility must be one of ${[...CONSTRAINT_VISIBILITIES].join(", ")}`,
+					);
+				}
+				const normalized = await File.setConstraint(
+					ctx.db,
+					ctx.projectId,
+					params.pattern,
+					params.visibility,
+				);
+				return { ok: true, pattern: normalized };
+			},
+			description:
+				"Set a project-level file constraint. Visibility ∈ " +
+				"{active, readonly, ignore}. Patterns can be globs. " +
+				"Persists across runs; overlays git defaults.",
+			params: {
+				pattern: "string — file path or glob",
+				visibility: "string — active | readonly | ignore",
+			},
+			requiresInit: true,
+		});
+
+		r.register("file/drop", {
+			handler: async (params, ctx) => {
+				if (!params.pattern) {
+					throw new Error("file/drop: pattern is required");
+				}
+				const normalized = await File.dropConstraint(
+					ctx.db,
+					ctx.projectId,
+					params.pattern,
+				);
+				return { ok: true, pattern: normalized };
+			},
+			description: "Remove a project-level file constraint.",
+			params: { pattern: "string — file path or glob to drop" },
+			requiresInit: true,
+		});
+
+		r.register("getConstraints", {
+			handler: async (_params, ctx) => {
+				const rows = await ctx.db.get_file_constraints.all({
+					project_id: ctx.projectId,
+				});
+				return rows.map((r) => ({
+					pattern: r.pattern,
+					visibility: r.visibility,
+				}));
+			},
+			description:
+				"List project-level file constraints as [{pattern, visibility}].",
+			requiresInit: true,
+		});
+
 		// --- Queries ---
+
+		r.register("getEntries", {
+			handler: async (params, ctx) => {
+				const runRow = await this.#resolveRun(params.run, ctx);
+				const pattern = params.pattern ?? "*";
+				const rows = await ctx.projectAgent.entries.getEntriesByPattern(
+					runRow.id,
+					pattern,
+					params.bodyFilter ?? null,
+				);
+				return rows
+					.filter((e) => !params.scheme || e.scheme === params.scheme)
+					.filter((e) => !params.state || e.state === params.state)
+					.filter((e) => !params.fidelity || e.fidelity === params.fidelity)
+					.map((e) => ({
+						path: e.path,
+						scheme: e.scheme,
+						state: e.state,
+						outcome: e.outcome,
+						fidelity: e.fidelity,
+						turn: e.turn,
+						tokens: e.tokens,
+						attributes:
+							typeof e.attributes === "string"
+								? JSON.parse(e.attributes)
+								: e.attributes,
+					}));
+			},
+			description:
+				"List entries matching a pattern. Read-only — no promotion. " +
+				"Optional filters: scheme, state, fidelity, bodyFilter.",
+			params: {
+				run: "string — run alias",
+				pattern: "string? — glob pattern (default '*')",
+				scheme: "string? — filter by scheme (e.g. 'file')",
+				state: "string? — filter by state",
+				fidelity: "string? — filter by fidelity",
+				bodyFilter: "string? — narrow pattern matches by body content",
+			},
+			requiresInit: true,
+		});
 
 		r.register("getRuns", {
 			handler: async (params, ctx) => {
@@ -409,11 +515,27 @@ export default class Rpc {
 	}
 
 	async #dispatchRunSet(params, ctx) {
-		const alias = params.path.slice("run://".length);
-		if (!alias) throw new Error("set run://: alias missing from path");
+		let alias = params.path.slice("run://".length);
+
+		// Empty alias on a new-run set → synthesize ${model}_${epoch}.
+		// Matches AgentLoop.#generateAlias so server- and client-initiated
+		// runs share one naming scheme. Clients that want a specific name
+		// pass it in the path; anonymous starts get the synthesized one.
+		if (!alias) {
+			const attrs = params.attributes || {};
+			if (!attrs.model) {
+				throw new Error(
+					"set run://: attributes.model is required when alias is omitted",
+				);
+			}
+			alias = `${attrs.model}_${Date.now()}`;
+		}
+
 		const existing = await ctx.db.get_run_by_alias
 			.get({ alias })
 			.catch(() => null);
+
+		const runPath = `run://${alias}`;
 
 		// State transition on an existing run.
 		if (existing && params.state) {
@@ -422,7 +544,7 @@ export default class Rpc {
 			}
 			await ctx.projectAgent.entries.set({
 				runId: existing.id,
-				path: params.path,
+				path: runPath,
 				state: params.state,
 				outcome: params.outcome,
 				writer: "client",

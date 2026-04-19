@@ -682,8 +682,10 @@ client manipulates run lifecycle via ordinary `set` calls:
 
 | Action | Call |
 |--------|------|
-| Start a run | `set { path: "run://<alias>", body: <prompt>, attributes: { model, mode?, persona?, temperature?, contextLimit?, noRepo?, noInteraction?, noWeb?, noProposals? } }` |
+| Start a run (named) | `set { path: "run://<alias>", body: <prompt>, attributes: { model, mode?, persona?, temperature?, contextLimit?, noRepo?, noInteraction?, noWeb?, noProposals? } }` |
+| Start a run (anonymous) | `set { path: "run://", body: <prompt>, attributes: { model, ... } }` — server synthesizes alias as `${model}_${unixEpochMs}` and returns it in the response |
 | Cancel a run | `set { path: "run://<alias>", state: "cancelled" }` |
+| Inject continuation | `set { path: "run://<alias>", body: <message> }` on an existing run |
 | Accept a proposal | `set { run, path: "<entry>", state: "resolved", body?: <output> }` |
 | Reject a proposal | `set { run, path: "<entry>", state: "cancelled", body?: <reason> }` |
 
@@ -702,9 +704,20 @@ dedicated verbs with 1:1 plugin-API equivalents.
 | `discover` | — | Return the live RPC catalog |
 | `getModels` / `addModel` / `removeModel` | (see rpc.js) | Model aliases |
 | `getRuns` / `getRun` | `{ limit?, offset? }` / `{ run }` | Run listing and detail |
+| `getEntries` | `{ run, pattern?, scheme?, state?, fidelity?, bodyFilter? }` | Read-only entry query. Returns `[{path, scheme, state, fidelity, attributes, turn, tokens}]`. No promotion side-effect. Pair with `get` primitive (which is a write verb). |
+| `file/constraint` | `{ pattern, visibility }` | Project-scoped: set overlay. `visibility ∈ {active, readonly, ignore}`. Patterns can be globs. `readonly` is enforced on `set://` accept in `AgentLoop.resolve()`. |
+| `file/drop` | `{ pattern }` | Project-scoped: remove overlay row. |
+| `getConstraints` | — | Project-scoped: returns `[{pattern, visibility}]`. |
 | `skill/add` / `skill/remove` / `getSkills` / `listSkills` | | Skill management |
 | `persona/set` / `listPersonas` | | Persona management |
 | `stream` / `stream/completed` / `stream/aborted` / `stream/cancel` | | Streaming RPC (§8.1) |
+
+**Why file constraints are typed RPCs and not `set` entries:** they
+are project-scoped (no `run`), persist across runs, and `readonly`
+requires enforcement server-side on `set://` accept. Every `set`
+primitive call requires a run alias; constraints don't have one. The
+typed verbs match the capability's actual shape rather than contorting
+the grammar.
 
 ### §11.6 Notifications (server → client)
 
@@ -732,5 +745,5 @@ grammar. Clients migrating from 1.x need to replace the following:
 | `run/inject` | `set { path: "run://<alias>", body: <message> }` on an existing run |
 | `run/config` | `set { path: "run://<alias>", attributes: { ... } }` |
 | `store` (demote) | `set { run, path, fidelity: "demoted", pattern: true }` |
-| `getEntries` | `get` pattern reads returning entries, or query via the server's typed helpers |
-| Legacy `get` (file constraint `persist`) | File constraints retired from the RPC surface in 2.0 — handled server-side by the file plugin on `set`-accept of file-write proposals |
+| `getEntries` | Kept as §11.5 typed helper — now filter-capable (scheme/state/fidelity). Pairs with the `get` write primitive. |
+| `get { persist }` / `store { persist, clear, ignore }` (file constraints) | `file/constraint { pattern, visibility }` and `file/drop { pattern }`. Project-scoped helpers in §11.5 with real server enforcement for `readonly`. |

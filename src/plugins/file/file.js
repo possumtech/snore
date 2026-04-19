@@ -59,6 +59,19 @@ export default class File {
 
 		return path;
 	}
+
+	/**
+	 * True if `path` is covered by any readonly constraint for the project.
+	 * Constraints can be globs; hedberg.match provides the pattern engine.
+	 * Called from AgentLoop set-accept to refuse writes to protected paths.
+	 */
+	static async isReadonly(db, projectId, path) {
+		const rows = await db.get_file_constraints.all({ project_id: projectId });
+		const { hedmatch } = await import("./../hedberg/patterns.js");
+		return rows.some(
+			(r) => r.visibility === "readonly" && hedmatch(r.pattern, path),
+		);
+	}
 }
 
 async function normalizePath(db, projectId, path) {
