@@ -4,14 +4,12 @@ import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import createHooks from "../hooks/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
-import RpcRegistry from "../server/RpcRegistry.js";
 import ContextAssembler from "./ContextAssembler.js";
 
 let hooks;
 
 before(async () => {
 	hooks = createHooks();
-	hooks.rpc.registry = new RpcRegistry();
 	const pluginsDir = join(
 		dirname(fileURLToPath(import.meta.url)),
 		"../plugins",

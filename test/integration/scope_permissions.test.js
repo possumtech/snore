@@ -10,6 +10,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
+import { PermissionError } from "../../src/agent/errors.js";
 import Repository from "../../src/agent/Repository.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -51,7 +52,7 @@ describe("Scope + permissions (Phase D)", () => {
 		assert.strictEqual(b, "fact b");
 	});
 
-	it("audit scheme rejects plugin writer with 403", async () => {
+	it("audit scheme rejects plugin writer with PermissionError", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_plugin" });
 
 		await assert.rejects(
@@ -63,11 +64,14 @@ describe("Scope + permissions (Phase D)", () => {
 				state: "resolved",
 				writer: "plugin",
 			}),
-			/403.*writer "plugin" not permitted for scheme "system"/,
+			(err) =>
+				err instanceof PermissionError &&
+				err.scheme === "system" &&
+				err.writer === "plugin",
 		);
 	});
 
-	it("audit scheme rejects model writer with 403", async () => {
+	it("audit scheme rejects model writer with PermissionError", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_audit_model" });
 
 		await assert.rejects(
@@ -79,7 +83,10 @@ describe("Scope + permissions (Phase D)", () => {
 				state: "resolved",
 				writer: "model",
 			}),
-			/403.*writer "model" not permitted for scheme "reasoning"/,
+			(err) =>
+				err instanceof PermissionError &&
+				err.scheme === "reasoning" &&
+				err.writer === "model",
 		);
 	});
 
@@ -98,7 +105,7 @@ describe("Scope + permissions (Phase D)", () => {
 		assert.strictEqual(body, "response body");
 	});
 
-	it("prompt scheme rejects model writer with 403", async () => {
+	it("prompt scheme rejects model writer with PermissionError", async () => {
 		const { runId } = await tdb.seedRun({ alias: "perm_prompt_model" });
 
 		await assert.rejects(
@@ -110,7 +117,10 @@ describe("Scope + permissions (Phase D)", () => {
 				state: "resolved",
 				writer: "model",
 			}),
-			/403.*writer "model" not permitted for scheme "prompt"/,
+			(err) =>
+				err instanceof PermissionError &&
+				err.scheme === "prompt" &&
+				err.writer === "model",
 		);
 	});
 

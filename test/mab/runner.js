@@ -404,7 +404,7 @@ async function main() {
 	// DB lives in the results directory from the start — survives kills.
 	const dbPath = join(runDir, "mab.db");
 	const tdb = await TestDb.createAt(dbPath, "mab");
-	const tserver = await TestServer.start(tdb.db);
+	const tserver = await TestServer.start(tdb);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
 	await client.call("rummy/hello", {

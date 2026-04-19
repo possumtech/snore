@@ -523,7 +523,14 @@ export default class AgentLoop {
 					loopId: currentLoopId,
 					message: `${err.message}\n${err.stack}`,
 				});
-			} catch {}
+			} catch (logErr) {
+				// Error-during-error-teardown. Original `err` already marked
+				// the run 500; surface the secondary failure without masking
+				// the root cause.
+				console.warn(
+					`[RUMMY] error.log failed during run failure: ${logErr.message}`,
+				);
+			}
 			const out = {
 				run: currentAlias,
 				status: 500,

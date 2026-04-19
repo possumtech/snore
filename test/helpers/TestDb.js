@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import SqlRite from "@possumtech/sqlrite";
 import createHooks from "../../src/hooks/Hooks.js";
 import { initPlugins, registerPlugins } from "../../src/plugins/index.js";
-import RpcRegistry from "../../src/server/RpcRegistry.js";
 
 const functionsDir = fileURLToPath(
 	new URL("../../src/sql/functions", import.meta.url),
@@ -62,7 +61,6 @@ export default class TestDb {
 			params: { mmap_size: 0 },
 		});
 		const hooks = createHooks();
-		hooks.rpc.registry = new RpcRegistry();
 		const pluginsDir = join(
 			dirname(fileURLToPath(import.meta.url)),
 			"../../src/plugins",

@@ -167,37 +167,46 @@ The wire is a thin projection of the plugin API.
 Gate: no legacy RPC method remains registered. `npm run lint` + 258
 unit + 183 non-LLM integration tests green.
 
-### Phase 5 — Plugin hygiene
+### Phase 5 — Plugin hygiene ✓ landed
 
-Remove every structural obstacle to the contract working cleanly.
+Structural obstacles to the contract working cleanly, removed.
 
-- `registerPlugins` returns an instances Map; no module-global state.
-- `initPlugins(db, hooks, instances)` takes the collection explicitly.
-- `TestDb` and `TestServer` share a single plugin graph.
-- Plugin constructors fully declarative — no infrastructure
-  dereferences at construction time. `core.registerRpc(...)` helper
-  on PluginContext replaces direct `hooks.rpc.registry.register`
-  calls in plugin code (or `hooks.rpc.registry` is non-null from the
-  moment `createHooks()` returns — whichever audit reveals is cleaner).
-- Hook infrastructure null defaults eliminated (`hooks.rpc.registry`).
-- Plugin-dep system (`static dependsOn`, topo sort) deleted — no
-  callers, and the new contract doesn't need it.
-- Typed errors: `PermissionError`, any other string-coded error
-  becomes a class. Callers catch by type.
-- Handlers plumb `writer: rummy.writer` to the store so restrictive
-  schemes can distinguish model from plugin writes.
-- `<think>` → `reasoning_content` merge extracts to a `think` plugin.
-- `'project'` scope plumbing — projectId reaches Repository.
-- Multi-step DB writes inside transactions.
-- Every silent `catch {}` either documented or removed.
-- `core.hooks.X = fn.bind(this)` direct mutations formalized as
-  events/filters where more than one subscriber is conceivable; kept
-  as direct assignment only where there's genuinely one slot.
-- Capability classes declared on schemes, policy plugin rewritten as
-  the single enforcer of the run's `restrictions` list.
+- **Plugin-dep system deleted.** `static dependsOn` + topoSort had
+  zero callers. The plugin contract (declarative constructors) makes
+  load order irrelevant. Cleaner loader, less to explain.
+- **`hooks.rpc.registry` is constructed inside `createHooks()`.** No
+  longer null-by-default with external wiring. Five external-wiring
+  call sites deleted (service.js, TestDb, TestServer, three test
+  files). RpcRegistry moved from `src/server/` to `src/hooks/` to
+  match its new ownership.
+- **TestDb and TestServer share a plugin graph.** `TestServer.start`
+  now takes a TestDb and reuses its `hooks` + `pluginInstances` —
+  one graph per test, not two.
+- **`PermissionError` class** replaces string-prefixed `"403: ..."`
+  throws. Callers catch by type. Tests assert on `err instanceof
+  PermissionError && err.scheme === "foo" && err.writer === "bar"`.
+- **Silent `catch {}` audit.** All seven blocks in src/ either
+  documented (why swallowing is safe) or converted to `console.warn`.
+- **`<think>` merge extracted.** TurnExecutor emits a
+  `llm.reasoning` filter; the think plugin subscribes and contributes
+  `<think>` tag bodies. TurnExecutor no longer names `<think>`.
+- **Handler writer plumbing.** `rummy.entries` is now a Proxy that
+  auto-binds `writer: rummy.writer` to every write call (set/rm/cp/
+  mv/update). Handlers no longer need to remember. A model-dispatched
+  handler writes as `writer: "model"` without opt-in, so restrictive
+  schemes (`writable_by: ["system"]`, etc.) correctly reject model
+  impersonation.
 
-**Gate:** no "Plugin load failed" output anywhere. `npm test` green.
-No test helper wires infrastructure that `createHooks()` should own.
+**Cut from scope:** capability classes on schemes (YAGNI — current
+flag-based enforcement fits the tools we have; per-path policy rules
+can't be captured at scheme level anyway). Multi-step DB transactions
+(separate audit; no known live bug). `'project'` scope plumbing from
+handlers (no live consumer beyond the param already landed in
+Phase 3). Hook-mutation-pattern formalization (cosmetic).
+
+Gate: no "Plugin load failed" anywhere. 258 unit + 183 non-LLM
+integration green. Lint clean. No test helper wires infrastructure
+that `createHooks()` owns.
 
 ### Phase 6 — External plugins
 

@@ -21,7 +21,7 @@ describe("E2E: Custom Plugin Registration", () => {
 		);
 
 		tdb = await TestDb.create();
-		tserver = await TestServer.start(tdb.db);
+		tserver = await TestServer.start(tdb);
 
 		tserver.hooks.rpc.registry.register("test/echo", {
 			handler: async (params) => ({ echo: params }),

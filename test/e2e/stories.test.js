@@ -174,7 +174,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 
 		tdb = await TestDb.create("stories");
-		tserver = await TestServer.start(tdb.db, { home: turnsHome });
+		tserver = await TestServer.start(tdb, { home: turnsHome });
 		client = new AuditClient(tserver.url, tdb.db, { projectRoot });
 		await client.connect();
 		await client.call("rummy/hello", {

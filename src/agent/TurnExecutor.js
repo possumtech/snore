@@ -204,17 +204,16 @@ export default class TurnExecutor {
 			});
 		}
 
-		// Ensure reasoning_content captures both API field and <think> tag
+		// Merge reasoning contributions from subscribers (think plugin's
+		// <think> tag, other plugin reasoning sources). Filter starts with
+		// the API-provided reasoning_content and layers on each plugin's
+		// contribution.
 		if (responseMessage) {
-			const thinkCmds = commands.filter((c) => c.name === "think");
-			const thinkText = thinkCmds
-				.map((c) => c.body)
-				.filter(Boolean)
-				.join("\n");
-			const apiReasoning = responseMessage.reasoning_content || "";
-			const parts = [apiReasoning, thinkText].filter(Boolean);
 			responseMessage.reasoning_content =
-				parts.length > 0 ? parts.join("\n") : null;
+				(await this.#hooks.llm.reasoning.filter(
+					responseMessage.reasoning_content || "",
+					{ commands },
+				)) || null;
 		}
 
 		const systemMsg = filteredMessages.find((m) => m.role === "system");

@@ -1,4 +1,5 @@
 import slugify from "../sql/functions/slugify.js";
+import { PermissionError } from "./errors.js";
 
 export default class Repository {
 	#db;
@@ -100,13 +101,11 @@ export default class Repository {
 		const kind = row?.default_scope || "run";
 		let writers = ["model", "plugin"];
 		if (row?.writable_by) {
-			try {
-				const parsed =
-					typeof row.writable_by === "string"
-						? JSON.parse(row.writable_by)
-						: row.writable_by;
-				if (Array.isArray(parsed)) writers = parsed;
-			} catch {}
+			const parsed =
+				typeof row.writable_by === "string"
+					? JSON.parse(row.writable_by)
+					: row.writable_by;
+			if (Array.isArray(parsed)) writers = parsed;
 		}
 		return { kind, writers };
 	}
@@ -246,9 +245,7 @@ export default class Repository {
 		// Full write/upsert: body + state + fidelity + attributes.
 		const { kind, writers } = await this.#schemeRules(scheme);
 		if (!writers.includes(writer)) {
-			throw new Error(
-				`403: writer "${writer}" not permitted for scheme "${scheme ?? "file"}" (allowed: ${writers.join(", ")})`,
-			);
+			throw new PermissionError(scheme, writer, writers);
 		}
 		const scope = this.#resolveScope(kind, runId, projectId);
 		const entry = await this.#db.upsert_entry.get({

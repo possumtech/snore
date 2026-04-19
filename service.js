@@ -58,7 +58,7 @@ if (gitCheck.error || gitCheck.status !== 0) {
 	console.warn("[RUMMY] WARNING: 'git' not found. File tracking will use manual activation only.");
 }
 
-let SqlRite, SocketServer, registerPlugins, initPlugins, createHooks, RpcRegistry;
+let SqlRite, SocketServer, registerPlugins, initPlugins, createHooks;
 try {
 	SqlRite = (await import("@possumtech/sqlrite")).default;
 	SocketServer = (await import("./src/server/SocketServer.js")).default;
@@ -66,7 +66,6 @@ try {
 	registerPlugins = pluginIndex.registerPlugins;
 	initPlugins = pluginIndex.initPlugins;
 	createHooks = (await import("./src/hooks/Hooks.js")).default;
-	RpcRegistry = (await import("./src/server/RpcRegistry.js")).default;
 } catch (err) {
 	if (err.code === "ERR_MODULE_NOT_FOUND") {
 		console.error("RUMMY Dependency Error: node_modules not found or incomplete.");
@@ -80,7 +79,6 @@ async function main() {
 	// 1. Initialize Hooks (Agnostic Engine)
 	const debug = process.env.RUMMY_DEBUG === "true";
 	const hooks = createHooks(debug);
-	hooks.rpc.registry = new RpcRegistry();
 
 	// 2. Resolve Directories
 	const userPluginsDir = join(rummyHome, "plugins");

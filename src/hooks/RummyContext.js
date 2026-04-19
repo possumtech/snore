@@ -2,9 +2,16 @@
  * RummyContext provides a unified, semantic API for plugins to interact with
  * the Turn node tree and core resources like the Database and Project metadata.
  */
+// Repository write verbs that should automatically carry the caller's
+// writer identity. Handler-issued writes on behalf of the model default
+// to writer=model; plugin background writes (set via rummy from a hook
+// with writer: "plugin" or "system" in ctx) get the context's writer.
+const WRITE_VERBS = new Set(["set", "rm", "cp", "mv", "update"]);
+
 export default class RummyContext {
 	#root;
 	#context;
+	#wrappedStore;
 
 	constructor(root, context) {
 		this.#root = root;
@@ -20,7 +27,19 @@ export default class RummyContext {
 	}
 
 	get entries() {
-		return this.#context.store || null;
+		if (this.#wrappedStore) return this.#wrappedStore;
+		const store = this.#context.store;
+		if (!store) return null;
+		const writer = this.writer;
+		this.#wrappedStore = new Proxy(store, {
+			get(target, prop) {
+				const val = target[prop];
+				if (typeof val !== "function") return val;
+				if (!WRITE_VERBS.has(prop)) return val.bind(target);
+				return (args = {}) => val.call(target, { writer, ...args });
+			},
+		});
+		return this.#wrappedStore;
 	}
 
 	get project() {

@@ -32,7 +32,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 		);
 
 		tdb = await TestDb.create("persona_fork");
-		tserver = await TestServer.start(tdb.db, { home: turnsHome });
+		tserver = await TestServer.start(tdb, { home: turnsHome });
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("rummy/hello", {

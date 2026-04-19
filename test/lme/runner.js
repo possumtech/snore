@@ -438,7 +438,7 @@ async function main() {
 
 	const dbPath = join(runDir, "lme.db");
 	const tdb = await TestDb.createAt(dbPath, "lme");
-	const tserver = await TestServer.start(tdb.db);
+	const tserver = await TestServer.start(tdb);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
 	await client.call("rummy/hello", {

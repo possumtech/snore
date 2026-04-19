@@ -1,4 +1,5 @@
 import HookRegistry from "./HookRegistry.js";
+import RpcRegistry from "./RpcRegistry.js";
 import ToolRegistry from "./ToolRegistry.js";
 
 /**
@@ -82,6 +83,11 @@ export default function createHooks(debug = false) {
 			},
 			messages: createFilter("llm.messages"),
 			response: createFilter("llm.response"),
+			// Reasoning merge filter. Subscribers contribute per-tag
+			// reasoning text (e.g. the think plugin's <think>…</think>)
+			// to the model's reasoning_content field. Fires between parse
+			// and turn.response.
+			reasoning: createFilter("llm.reasoning"),
 			// LLM provider registry. Plugins contribute entries shaped:
 			//   {
 			//     name: string,
@@ -137,7 +143,7 @@ export default function createHooks(debug = false) {
 			response: {
 				result: createFilter("rpc.response.result"),
 			},
-			registry: null, // attached by service.js after RpcRegistry creation
+			registry: new RpcRegistry(),
 		},
 		agent: {},
 		tools,

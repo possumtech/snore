@@ -113,7 +113,10 @@ export default class OpenRouter {
 					return entry.context_length;
 				}
 			}
-		} catch {}
+		} catch (_err) {
+			// /api/v1/models is best-effort. Network blip or OpenRouter
+			// downtime falls through to the conservative default.
+		}
 
 		return DEFAULT_CONTEXT_SIZE;
 	}

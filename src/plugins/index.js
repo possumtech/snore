@@ -12,25 +12,18 @@ function getGlobalPrefix() {
 }
 
 /**
- * Two-pass plugin loader:
- *   1. Walk filesystem + env vars to collect plugin descriptors
- *      (name, import URL, Plugin class, declared dependencies).
- *   2. Topological sort by `static dependsOn = ["other-plugin"]`
- *      declarations; fail loudly on cycle or missing dependency.
- *   3. Instantiate in topological order.
+ * Plugin loader:
+ *   1. Walk filesystem + env vars to collect plugin descriptors.
+ *   2. Import each and instantiate with a fresh PluginContext.
  *
  * Returns a Map of name → PluginContext for the caller to pass to
  * initPlugins. No module-global state — each caller owns its set.
  *
- * A plugin declares a dependency like:
- *   export default class MyPlugin {
- *       static dependsOn = ["instructions", "budget"];
- *       constructor(core) { ... }
- *   }
- *
- * Dependencies are soft today (no plugin currently needs another
- * plugin's `core.hooks.X` at construction time). This system exists
- * so future plugins can safely assume load order.
+ * Plugin constructors must be declarative (SPEC §0.3 / Phase 5): they
+ * register schemes, hooks, filters, RPC methods — but don't dereference
+ * infrastructure that might not be ready yet. Because the plugin
+ * contract makes constructors side-effect-free on each other, load
+ * order doesn't matter and there is no dependency system.
  */
 export async function registerPlugins(dirs = [], hooks) {
 	const uniqueDirs = [...new Set(dirs.map((d) => join(d)))];
@@ -49,19 +42,14 @@ export async function registerPlugins(dirs = [], hooks) {
 				PLUGIN_LOAD_TIMEOUT,
 				`Plugin import timed out: ${d.source}`,
 			);
-			const Plugin = module.default;
-			const dependsOn = Array.isArray(Plugin?.dependsOn)
-				? Plugin.dependsOn
-				: [];
-			resolved.push({ ...d, Plugin, dependsOn });
+			resolved.push({ ...d, Plugin: module.default });
 		} catch (err) {
 			console.warn(`[RUMMY] Plugin import failed: ${d.name} — ${err.message}`);
 		}
 	}
 
 	const instances = new Map();
-	const sorted = topoSortPlugins(resolved);
-	for (const r of sorted) {
+	for (const r of resolved) {
 		try {
 			await instantiatePlugin(r, hooks, instances);
 		} catch (err) {
@@ -69,38 +57,6 @@ export async function registerPlugins(dirs = [], hooks) {
 		}
 	}
 	return instances;
-}
-
-function topoSortPlugins(plugins) {
-	const byName = new Map(plugins.map((p) => [p.name, p]));
-	for (const p of plugins) {
-		for (const dep of p.dependsOn) {
-			if (!byName.has(dep)) {
-				throw new Error(
-					`Plugin "${p.name}" depends on "${dep}" which is not present. ` +
-						`Available: ${[...byName.keys()].join(", ") || "none"}`,
-				);
-			}
-		}
-	}
-	const sorted = [];
-	const state = new Map(plugins.map((p) => [p.name, "pending"]));
-	function visit(name, trail) {
-		const s = state.get(name);
-		if (s === "done") return;
-		if (s === "visiting") {
-			throw new Error(
-				`Plugin dependency cycle: ${[...trail, name].join(" → ")}`,
-			);
-		}
-		state.set(name, "visiting");
-		const p = byName.get(name);
-		for (const dep of p.dependsOn) visit(dep, [...trail, name]);
-		state.set(name, "done");
-		sorted.push(p);
-	}
-	for (const p of plugins) visit(p.name, []);
-	return sorted;
 }
 
 async function instantiatePlugin({ name, Plugin, source }, hooks, instances) {

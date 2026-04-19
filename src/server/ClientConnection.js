@@ -151,7 +151,12 @@ export default class ClientConnection {
 					params: params ? JSON.stringify(params) : null,
 				});
 				if (logRow) this.#rpcLogPending.set(id, logRow.id);
-			} catch {}
+			} catch (err) {
+				// RPC audit log is best-effort; never fail a request because
+				// the log write failed (e.g. DB lock contention). Warn so
+				// the issue is visible without blocking.
+				console.warn(`[RUMMY] rpc_log call failed: ${err.message}`);
+			}
 
 			const resolvedMethod = method === "rpc/discover" ? "discover" : method;
 			const registration = this.#rpcRegistry.get(resolvedMethod);
@@ -217,7 +222,9 @@ export default class ClientConnection {
 							? JSON.stringify(finalResult).slice(0, 4096)
 							: null,
 					});
-				} catch {}
+				} catch (err) {
+					console.warn(`[RUMMY] rpc_log result failed: ${err.message}`);
+				}
 			}
 		} catch (error) {
 			console.error(`[RUMMY] RPC Error: ${error.message}`);
@@ -237,7 +244,9 @@ export default class ClientConnection {
 						id: errLogId,
 						error: error.message,
 					});
-				} catch {}
+				} catch (logErr) {
+					console.warn(`[RUMMY] rpc_log error write failed: ${logErr.message}`);
+				}
 			}
 		}
 	}

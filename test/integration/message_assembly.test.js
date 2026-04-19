@@ -13,7 +13,6 @@ import ContextAssembler from "../../src/agent/ContextAssembler.js";
 import Repository from "../../src/agent/Repository.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import { registerPlugins } from "../../src/plugins/index.js";
-import RpcRegistry from "../../src/server/RpcRegistry.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -46,7 +45,6 @@ describe("Message assembly", () => {
 
 	before(async () => {
 		hooks = createHooks();
-		hooks.rpc.registry = new RpcRegistry();
 		const pluginsDir = join(
 			dirname(fileURLToPath(import.meta.url)),
 			"../../src/plugins",

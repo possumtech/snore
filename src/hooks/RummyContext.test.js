@@ -45,7 +45,9 @@ describe("RummyContext", () => {
 
 			assert.strictEqual(rummy.hooks, ctx.hooks);
 			assert.strictEqual(rummy.db, ctx.db);
-			assert.strictEqual(rummy.entries, ctx.store);
+			// rummy.entries is a writer-binding proxy around ctx.store;
+			// property passthrough proves the underlying store is wired.
+			assert.strictEqual(rummy.entries.mark, ctx.store.mark);
 			assert.deepStrictEqual(rummy.project, ctx.project);
 			assert.deepStrictEqual(rummy.activeFiles, ctx.activeFiles);
 			assert.strictEqual(rummy.type, "ask");
@@ -142,10 +144,11 @@ describe("RummyContext", () => {
 			const store = fakeStore();
 			const rummy = new RummyContext(makeRoot(), { store, runId: 5 });
 			await rummy.rm("known://drop");
-			assert.deepStrictEqual(store.calls[0], [
-				"rm",
-				[{ runId: 5, path: "known://drop" }],
-			]);
+			// The entries proxy auto-binds writer to rummy.writer ("model" by default).
+			assert.strictEqual(store.calls[0][0], "rm");
+			assert.strictEqual(store.calls[0][1][0].runId, 5);
+			assert.strictEqual(store.calls[0][1][0].path, "known://drop");
+			assert.strictEqual(store.calls[0][1][0].writer, "model");
 		});
 
 		it("mv() copies body, writes to new path, removes source", async () => {
@@ -181,10 +184,11 @@ describe("RummyContext", () => {
 				sequence: 2,
 			});
 			await rummy.get("known://x");
-			assert.deepStrictEqual(store.calls[0], [
-				"get",
-				[{ runId: 5, turn: 2, path: "known://x", bodyFilter: null }],
-			]);
+			assert.strictEqual(store.calls[0][0], "get");
+			assert.strictEqual(store.calls[0][1][0].runId, 5);
+			assert.strictEqual(store.calls[0][1][0].turn, 2);
+			assert.strictEqual(store.calls[0][1][0].path, "known://x");
+			assert.strictEqual(store.calls[0][1][0].bodyFilter, null);
 		});
 	});
 

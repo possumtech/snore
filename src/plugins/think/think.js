@@ -14,5 +14,18 @@ export default class Think {
 				return docsMap;
 			});
 		}
+
+		// Merge <think> tag bodies into the turn's reasoning_content so
+		// models without a dedicated reasoning channel still expose their
+		// reasoning through the same field.
+		core.filter("llm.reasoning", (reasoning, { commands }) => {
+			const thinkText = commands
+				.filter((c) => c.name === "think")
+				.map((c) => c.body)
+				.filter(Boolean)
+				.join("\n");
+			const parts = [reasoning || "", thinkText].filter(Boolean);
+			return parts.join("\n");
+		});
 	}
 }

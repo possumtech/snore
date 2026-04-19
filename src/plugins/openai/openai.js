@@ -95,7 +95,10 @@ export default class OpenAi {
 				const runtimeCtx = props?.default_generation_settings?.n_ctx;
 				if (runtimeCtx) return runtimeCtx;
 			}
-		} catch {}
+		} catch (_err) {
+			// /props is a llama.cpp extension; absent on vanilla OpenAI.
+			// Fall through to /v1/models for the training-context-size hint.
+		}
 
 		// Fall back to /v1/models for training context.
 		const response = await fetch(`${this.#baseUrl}/v1/models`, {
