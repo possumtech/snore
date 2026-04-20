@@ -190,9 +190,17 @@ export default class Telemetry {
 			usage.output_tokens_details?.reasoning_tokens,
 		];
 		let cachedTokens = 0;
-		for (const v of cachedSources) if (v) { cachedTokens = v; break; }
+		for (const v of cachedSources)
+			if (v) {
+				cachedTokens = v;
+				break;
+			}
 		let reasoningTokens = 0;
-		for (const v of reasoningSources) if (v) { reasoningTokens = v; break; }
+		for (const v of reasoningSources)
+			if (v) {
+				reasoningTokens = v;
+				break;
+			}
 		// Use LLM's actual prompt_tokens as the ground-truth context size
 		// when available; falls back to our pre-call estimate.
 		let actualContextTokens = 0;

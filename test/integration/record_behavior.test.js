@@ -154,11 +154,16 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	it("terminal update (status=200) creates entry with slug path", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r = await startAskRun(client, tdb, "What is 2+2? Answer immediately.", {
-			noInteraction: true,
-			noRepo: true,
-			noProposals: true,
-		});
+		const r = await startAskRun(
+			client,
+			tdb,
+			"What is 2+2? Answer immediately.",
+			{
+				noInteraction: true,
+				noRepo: true,
+				noProposals: true,
+			},
+		);
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 		const updates = entries.filter((e) => e.scheme === "update");

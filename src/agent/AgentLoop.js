@@ -28,8 +28,23 @@ export default class AgentLoop {
 	}
 
 	abort(runId) {
-		const controller = this.#activeRuns.get(runId);
-		if (controller) controller.abort();
+		const active = this.#activeRuns.get(runId);
+		if (active) active.controller.abort();
+	}
+
+	/**
+	 * Abort every in-flight run and wait for each drain to settle.
+	 * Called from server close / client teardown so the process can
+	 * exit cleanly instead of leaving detached kickoff Promises
+	 * pinning the event loop.
+	 */
+	async abortAll() {
+		const promises = [];
+		for (const { controller, promise } of this.#activeRuns.values()) {
+			controller.abort();
+			promises.push(promise.catch(() => {}));
+		}
+		await Promise.all(promises);
 	}
 
 	async #generateAlias(modelAlias) {
@@ -52,7 +67,14 @@ export default class AgentLoop {
 		});
 	}
 
-	async #emitRunState({ projectId, runId, alias, turn, status, result = null }) {
+	async #emitRunState({
+		projectId,
+		runId,
+		alias,
+		turn,
+		status,
+		result = null,
+	}) {
 		const runUsage = await this.#db.get_run_usage.get({ run_id: runId });
 		const history = await this.#knownStore.getLog(runId);
 		const unknowns = await this.#knownStore.getUnknowns(runId);
@@ -189,7 +211,7 @@ export default class AgentLoop {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
 			if (existingRun) {
 				const existing = this.#activeRuns.get(existingRun.id);
-				if (existing) existing.abort();
+				if (existing) existing.controller.abort();
 
 				// Clean up stale proposals from interrupted runs
 				const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
@@ -286,18 +308,29 @@ export default class AgentLoop {
 			return { run: currentAlias, status: 100 };
 		}
 
-		return this.#drainQueue(
+		// Allocate the controller + Promise pair here so `abortAll` can
+		// reach both — abort the controller, await the Promise's drain.
+		const controller = new AbortController();
+		const promise = this.#drainQueue(
 			currentRunId,
 			currentAlias,
 			projectId,
 			project,
 			options,
+			controller,
 		);
+		this.#activeRuns.set(currentRunId, { controller, promise });
+		return promise;
 	}
 
-	async #drainQueue(currentRunId, currentAlias, projectId, project, options) {
-		const controller = new AbortController();
-		this.#activeRuns.set(currentRunId, controller);
+	async #drainQueue(
+		currentRunId,
+		currentAlias,
+		projectId,
+		project,
+		options,
+		controller,
+	) {
 		console.error(`[DRAIN] ${currentAlias} enter (runId=${currentRunId})`);
 
 		try {
@@ -309,7 +342,9 @@ export default class AgentLoop {
 					console.error(`[DRAIN] ${currentAlias} queue empty — exiting`);
 					break;
 				}
-				console.error(`[DRAIN] ${currentAlias} claimed loop id=${loop.id} mode=${loop.mode} seq=${loop.sequence}`);
+				console.error(
+					`[DRAIN] ${currentAlias} claimed loop id=${loop.id} mode=${loop.mode} seq=${loop.sequence}`,
+				);
 
 				const loopConfig = loop.config ? JSON.parse(loop.config) : {};
 				const hook = loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act;
@@ -340,7 +375,9 @@ export default class AgentLoop {
 						signal: controller.signal,
 					});
 				} catch (err) {
-					console.error(`[DRAIN] ${currentAlias} loop id=${loop.id} threw: ${err.message}`);
+					console.error(
+						`[DRAIN] ${currentAlias} loop id=${loop.id} threw: ${err.message}`,
+					);
 					await this.#db.complete_loop.run({
 						id: loop.id,
 						status: 500,
@@ -350,7 +387,9 @@ export default class AgentLoop {
 				}
 
 				if (result.status === 413) {
-					console.error(`[DRAIN] ${currentAlias} loop id=${loop.id} overflow=413`);
+					console.error(
+						`[DRAIN] ${currentAlias} loop id=${loop.id} overflow=413`,
+					);
 					await this.#db.complete_loop.run({
 						id: loop.id,
 						status: 413,
@@ -363,7 +402,9 @@ export default class AgentLoop {
 					};
 				}
 
-				console.error(`[DRAIN] ${currentAlias} loop id=${loop.id} completed status=${result.status}`);
+				console.error(
+					`[DRAIN] ${currentAlias} loop id=${loop.id} completed status=${result.status}`,
+				);
 				await this.#db.complete_loop.run({
 					id: loop.id,
 					status: result.status,
@@ -374,7 +415,9 @@ export default class AgentLoop {
 			const runRow = await this.#db.get_run_by_alias.get({
 				alias: currentAlias,
 			});
-			console.error(`[DRAIN] ${currentAlias} exit (final status=${runRow?.status ?? 200})`);
+			console.error(
+				`[DRAIN] ${currentAlias} exit (final status=${runRow?.status ?? 200})`,
+			);
 			return { run: currentAlias, status: runRow?.status ?? 200 };
 		} finally {
 			this.#activeRuns.delete(currentRunId);
@@ -433,7 +476,9 @@ export default class AgentLoop {
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				if (signal.aborted) {
-					console.error(`[LOOP] ${currentAlias} iter=${loopIteration} ABORT via signal`);
+					console.error(
+						`[LOOP] ${currentAlias} iter=${loopIteration} ABORT via signal`,
+					);
 					await this.#setRunStatus(currentRunId, currentAlias, 499);
 					await this.#emitRunState({
 						projectId,
@@ -451,7 +496,9 @@ export default class AgentLoop {
 					return out;
 				}
 				loopIteration++;
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} ENTER (max=${MAX_LOOP_ITERATIONS})`);
+				console.error(
+					`[LOOP] ${currentAlias} iter=${loopIteration} ENTER (max=${MAX_LOOP_ITERATIONS})`,
+				);
 
 				let turnPrompt;
 				if (loopIteration === 1) {
@@ -463,7 +510,9 @@ export default class AgentLoop {
 					);
 				}
 
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} executing turn`);
+				console.error(
+					`[LOOP] ${currentAlias} iter=${loopIteration} executing turn`,
+				);
 				const result = await this.#turnExecutor.execute({
 					mode,
 					project,
@@ -480,7 +529,9 @@ export default class AgentLoop {
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal,
 				});
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} turn done: status=${result.status} turn=${result.turn}`);
+				console.error(
+					`[LOOP] ${currentAlias} iter=${loopIteration} turn done: status=${result.status} turn=${result.turn}`,
+				);
 
 				if (result.status === 413) {
 					await this.#db.complete_loop.run({
@@ -512,7 +563,9 @@ export default class AgentLoop {
 				const verdict = healer.assessTurn(result);
 				const vStatus = verdict.status === undefined ? "-" : verdict.status;
 				const vReason = verdict.reason ? verdict.reason : "-";
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} verdict: continue=${verdict.continue} status=${vStatus} reason=${vReason}`);
+				console.error(
+					`[LOOP] ${currentAlias} iter=${loopIteration} verdict: continue=${verdict.continue} status=${vStatus} reason=${vReason}`,
+				);
 
 				await this.#emitRunState({
 					projectId,
@@ -529,7 +582,9 @@ export default class AgentLoop {
 				});
 				if (verdict.continue) continue;
 
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${vReason}`);
+				console.error(
+					`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${vReason}`,
+				);
 				await this.#setRunStatus(currentRunId, currentAlias, verdict.status);
 				if (verdict.reason) {
 					await this.#hooks.error.log.emit({
@@ -550,7 +605,9 @@ export default class AgentLoop {
 				return out;
 			}
 
-			console.error(`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS}`);
+			console.error(
+				`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS}`,
+			);
 			await this.#setRunStatus(currentRunId, currentAlias, 200);
 			await this.#emitRunState({
 				projectId,
@@ -567,7 +624,9 @@ export default class AgentLoop {
 			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
-			console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CAUGHT error: ${err.message}`);
+			console.error(
+				`[LOOP] ${currentAlias} iter=${loopIteration} CAUGHT error: ${err.message}`,
+			);
 			console.error(err.stack);
 			if (signal.aborted) {
 				await this.#setRunStatus(currentRunId, currentAlias, 499);

@@ -74,7 +74,10 @@ describe("ResponseHealer", () => {
 			const h = new ResponseHealer();
 			h.assessTurn({ strike: true, recorded: [get("a")] });
 			h.assessTurn({ strike: true, recorded: [get("b")] });
-			h.assessTurn({ updateText: "working", recorded: [update("working"), get("c")] });
+			h.assessTurn({
+				updateText: "working",
+				recorded: [update("working"), get("c")],
+			});
 			const r = h.assessTurn({ strike: true, recorded: [get("d")] });
 			assert.strictEqual(r.continue, true);
 		});

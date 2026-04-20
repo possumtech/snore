@@ -45,14 +45,7 @@ export default class Update {
 	 *   terminal update + failed actions    → strike, override to continuation
 	 *   no update emitted                   → strike, log contract reminder
 	 */
-	async resolve({
-		recorded,
-		hasErrors,
-		runId,
-		turn,
-		loopId,
-		rummy,
-	}) {
+	async resolve({ recorded, hasErrors, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		// No status emitted → default to 102 (continuation) per the
 		// update tool contract documented in updateDoc.js.

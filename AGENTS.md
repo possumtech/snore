@@ -372,6 +372,9 @@ XmlParser are gone. Every remaining fallback in the codebase is either:
 
 The biome grit plugin at `biome/no-fallbacks.grit` enforces this going
 forward — any new fallback at an interior site fails `npm run lint`.
+Filter exclusions (boundaries and fixtures where fallbacks are legit):
+`src/plugins/hedberg/`, `src/agent/XmlParser.js`, `/test/` (test tree),
+and `.test.js` (colocated tests under `src/`).
 
 **Rubric that drove decisions (keep for future audits):**
 - DB nullable boundary (e.g. `configPath ?? null` pre-SQL) → destructuring

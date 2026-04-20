@@ -103,8 +103,8 @@ export default class Known {
 }
 
 function renderKnownTag(entry, demotedSet) {
-	// schemeOf() returns "" for bare file paths; translate for the tag.
-	const tag = entry.scheme === "" ? "file" : entry.scheme;
+	// schemeOf() returns NULL / "" for bare file paths; translate for the tag.
+	const tag = entry.scheme ? entry.scheme : "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const attrs =
@@ -119,9 +119,7 @@ function renderKnownTag(entry, demotedSet) {
 				: null;
 	const status = statusValue != null ? ` status="${statusValue}"` : "";
 	const stateAttr =
-		entry.state && entry.state !== "resolved"
-			? ` state="${entry.state}"`
-			: "";
+		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";

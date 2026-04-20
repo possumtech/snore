@@ -52,9 +52,7 @@ async function renderToolTag(entry, _core) {
 				: null;
 	const status = statusValue != null ? ` status="${statusValue}"` : "";
 	const stateAttr =
-		entry.state && entry.state !== "resolved"
-			? ` state="${entry.state}"`
-			: "";
+		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";

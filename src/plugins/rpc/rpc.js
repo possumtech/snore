@@ -1,6 +1,6 @@
 import msg from "../../agent/messages.js";
-import File from "../file/file.js";
 import RummyContext from "../../hooks/RummyContext.js";
+import File from "../file/file.js";
 
 const CONSTRAINT_VISIBILITIES = new Set(["active", "readonly", "ignore"]);
 

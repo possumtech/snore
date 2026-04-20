@@ -10,7 +10,11 @@ export default class Unknown {
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
-		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
+		// Unknowns live in the user packet, adjacent to the prompt:
+		// system = environment + rules (stable state); user = active
+		// work (what we're doing about it). Priority 200 sits between
+		// performed (100) and prompt (300).
+		core.filter("assembly.user", this.assembleUnknowns.bind(this), 200);
 		// <unknown> is internal — written via <set path="unknown://...">. Hidden
 		// from all model-facing tool lists. Handler still dispatches if the
 		// model emits <unknown> directly out of habit.

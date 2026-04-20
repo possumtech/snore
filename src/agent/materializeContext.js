@@ -21,8 +21,9 @@ export default async function materializeContext({
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
 	for (const row of viewRows) {
-		// schemeOf() yields "" for bare file paths; translate to "file".
-		const scheme = row.scheme === "" ? "file" : row.scheme;
+		// schemeOf() yields NULL (or "") for bare file paths — translate
+		// to "file" so the view lookup finds the file scheme handler.
+		const scheme = row.scheme ? row.scheme : "file";
 		const projectedBody = await hooks.tools.view(scheme, {
 			path: row.path,
 			scheme,

@@ -252,7 +252,7 @@ export default class TurnExecutor {
 		// Sequential queue. Each tool completes before the next starts.
 		// On failure: abort remaining. On proposal: notify client, await
 		// resolution, continue.
-		let hasErrors = unparsed?.trim() ? true : false;
+		let hasErrors = !!unparsed?.trim();
 		let abortAfter = null;
 
 		for (const entry of recorded) {

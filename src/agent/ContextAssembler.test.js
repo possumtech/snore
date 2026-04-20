@@ -305,7 +305,7 @@ describe("ContextAssembler", () => {
 			assert.ok(content.includes("const x = 1;"), "new file rendered");
 		});
 
-		it("renders unknowns in system message", async () => {
+		it("renders unknowns in user message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -335,10 +335,12 @@ describe("ContextAssembler", () => {
 				{ systemPrompt: "sys" },
 				hooks,
 			);
+			const user = messages[1].content;
 			const system = messages[0].content;
 
-			assert.ok(system.includes("<unknowns>"));
-			assert.ok(system.includes("which database adapter"));
+			assert.ok(user.includes("<unknowns>"));
+			assert.ok(user.includes("which database adapter"));
+			assert.ok(!system.includes("<unknowns>"), "unknowns moved out of system");
 		});
 
 		it("prompt element carries tokenUsage and tokensFree attrs", async () => {

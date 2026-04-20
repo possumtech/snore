@@ -8,6 +8,7 @@ export default class ClientConnection {
 	#hooks;
 	#rpcRegistry;
 	#rpcLogPending = new Map();
+	#shutdownPromise = null;
 	#context = {
 		projectId: null,
 		projectRoot: null,
@@ -21,7 +22,11 @@ export default class ClientConnection {
 		this.#projectAgent = new ProjectAgent(db, hooks);
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
-		this.#ws.on("close", () => this.#teardown());
+		this.#ws.on("close", () => {
+			// Fire-and-forget: the Promise is cached by `shutdown()` so
+			// server-initiated close can await the same work.
+			this.shutdown().catch(() => {});
+		});
 
 		this.#setupNotifications();
 	}
@@ -103,6 +108,23 @@ export default class ClientConnection {
 		this.#hooks.ui.notify.off(this.#onNotify);
 		this.#hooks.run.state.off(this.#onState);
 		this.#hooks.stream.cancelled.off(this.#onStreamCancelled);
+	}
+
+	/**
+	 * Abort in-flight runs on this connection and wait for them to
+	 * settle. Idempotent: `ws.on("close")` and server-initiated close
+	 * both call this; the cached Promise guarantees the work happens
+	 * exactly once and both callers observe the same completion.
+	 */
+	shutdown() {
+		if (!this.#shutdownPromise) {
+			this.#shutdownPromise = (async () => {
+				await this.#projectAgent.shutdown();
+				this.#teardown();
+				if (this.#ws.readyState === 1) this.#ws.terminate();
+			})();
+		}
+		return this.#shutdownPromise;
 	}
 
 	#buildHandlerContext() {

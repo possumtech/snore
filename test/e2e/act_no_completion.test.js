@@ -30,7 +30,9 @@ async function dumpRun(db, alias) {
 		return;
 	}
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
-	console.log(`\n[DUMP] run=${alias} id=${runRow.id} status=${runRow.status} next_turn=${runRow.next_turn}`);
+	console.log(
+		`\n[DUMP] run=${alias} id=${runRow.id} status=${runRow.status} next_turn=${runRow.next_turn}`,
+	);
 	const byTurn = new Map();
 	for (const e of entries) {
 		if (!byTurn.has(e.turn)) byTurn.set(e.turn, []);
@@ -44,7 +46,9 @@ async function dumpRun(db, alias) {
 	}
 }
 
-describe("E2E: run completion after set-only final turn", { concurrency: 1 }, () => {
+describe("E2E: run completion after set-only final turn", {
+	concurrency: 1,
+}, () => {
 	if (!model) {
 		it.skip("RUMMY_TEST_MODEL not set — skipping", () => {});
 		return;
@@ -126,7 +130,9 @@ describe("E2E: run completion after set-only final turn", { concurrency: 1 }, ()
 						state: "resolved",
 					});
 				} catch (err) {
-					console.error(`[TEST] auto-accept error on ${p.path}: ${err.message}`);
+					console.error(
+						`[TEST] auto-accept error on ${p.path}: ${err.message}`,
+					);
 				}
 			}
 		});
@@ -141,55 +147,55 @@ describe("E2E: run completion after set-only final turn", { concurrency: 1 }, ()
 		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
-	it(
-		"act run producing a file edit reaches completion",
-		{ timeout: TIMEOUT },
-		async () => {
-			// Trigger the pattern the user reports: act mode, prompt that will
-			// cause the model to search/research then produce a single file edit.
-			const startRes = await client.call("set", {
-				path: "run://",
-				body: "Create a file called FACTS.md with one interesting fact about the number 42. One short sentence.",
-				attributes: { model, mode: "act" },
-			});
+	it("act run producing a file edit reaches completion", {
+		timeout: TIMEOUT,
+	}, async () => {
+		// Trigger the pattern the user reports: act mode, prompt that will
+		// cause the model to search/research then produce a single file edit.
+		const startRes = await client.call("set", {
+			path: "run://",
+			body: "Create a file called FACTS.md with one interesting fact about the number 42. One short sentence.",
+			attributes: { model, mode: "act" },
+		});
 
-			assert.ok(startRes?.alias, "expected { alias } from anonymous set run://");
-			const alias = startRes.alias;
-			console.log(`[TEST] started run: ${alias}`);
+		assert.ok(startRes?.alias, "expected { alias } from anonymous set run://");
+		const alias = startRes.alias;
+		console.log(`[TEST] started run: ${alias}`);
 
-			// Terminal statuses: 200 success, 499 cancelled, 500 failed, 413 overflow.
-			const finalStatus = await waitForRunStatus(
-				tdb.db,
-				alias,
-				[200, 413, 499, 500],
-				300_000,
+		// Terminal statuses: 200 success, 499 cancelled, 500 failed, 413 overflow.
+		const finalStatus = await waitForRunStatus(
+			tdb.db,
+			alias,
+			[200, 413, 499, 500],
+			300_000,
+		);
+
+		if (finalStatus === null) {
+			console.error(
+				`[TEST] run ${alias} did NOT reach terminal status in 150s`,
 			);
-
-			if (finalStatus === null) {
-				console.error(`[TEST] run ${alias} did NOT reach terminal status in 150s`);
-				await dumpRun(tdb.db, alias);
-				assert.fail(`run hung — last status was not terminal`);
-			}
-
-			// The engine's job is to reach a terminal state within budget.
-			// 200: model signalled <update status="200|204|422">.
-			// 499: three strikes (contract violation or repetition).
-			// Either is a legitimate engine outcome. What we proved by
-			// reaching here: the run isn't stuck on waitForResolution.
-			console.log(`[TEST] run ${alias} terminal status: ${finalStatus}`);
 			await dumpRun(tdb.db, alias);
-			assert.ok(
-				[200, 499].includes(finalStatus),
-				`expected 200 or 499, got ${finalStatus}`,
-			);
+			assert.fail(`run hung — last status was not terminal`);
+		}
 
-			const entries = await tdb.db.get_known_entries.all({
-				run_id: (await tdb.db.get_run_by_alias.get({ alias })).id,
-			});
-			const setEntry = entries.find(
-				(e) => e.scheme === "set" && e.state === "resolved",
-			);
-			assert.ok(setEntry, "expected at least one resolved set entry");
-		},
-	);
+		// The engine's job is to reach a terminal state within budget.
+		// 200: model signalled <update status="200|204|422">.
+		// 499: three strikes (contract violation or repetition).
+		// Either is a legitimate engine outcome. What we proved by
+		// reaching here: the run isn't stuck on waitForResolution.
+		console.log(`[TEST] run ${alias} terminal status: ${finalStatus}`);
+		await dumpRun(tdb.db, alias);
+		assert.ok(
+			[200, 499].includes(finalStatus),
+			`expected 200 or 499, got ${finalStatus}`,
+		);
+
+		const entries = await tdb.db.get_known_entries.all({
+			run_id: (await tdb.db.get_run_by_alias.get({ alias })).id,
+		});
+		const setEntry = entries.find(
+			(e) => e.scheme === "set" && e.state === "resolved",
+		);
+		assert.ok(setEntry, "expected at least one resolved set entry");
+	});
 });

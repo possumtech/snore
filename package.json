@@ -38,7 +38,7 @@
 		"test": "npm run lint && npm run test:unit && npm run test:intg",
 		"test:all": "npm run lint && npm run test:unit && npm run test:intg && npm run test:e2e",
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env.test --experimental-test-coverage --test-coverage-lines=50 --test-coverage-branches=50 --test-coverage-functions=50 --test-concurrency=1 --test-force-exit --test $(find src -name '*.test.js')",
-		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test $(find test/integration -name '*.test.js')",
+		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test $(find test/integration -name '*.test.js')",
 		"test:e2e": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/e2e -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/e2e_$(date +%Y%m%dT%H%M%S).log",
 		"test:live": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/live_$(date +%Y%m%dT%H%M%S).log",
 		"test:clean": "rm -rf test/lme/results test/mab/results test/tmp /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal && echo 'Test artifacts cleaned.'",

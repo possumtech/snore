@@ -575,23 +575,26 @@ Two messages per turn. System = stable truth. User = active task.
     <previous>
         (pre-loop entries, each with turn, status, fidelity, tokens)
     </previous>
-    <unknowns>
-        (open questions, each with path, turn, fidelity, tokens)
-    </unknowns>
 [user message]
     <performed>
         (current loop entries, each with turn, status, fidelity, tokens)
     </performed>
-    <prompt mode="ask|act" tokenBudget="N" tokenUsage="M">user prompt</prompt>
+    <unknowns>
+        (open questions, each with path, turn, fidelity, tokens)
+    </unknowns>
+    <prompt mode="ask|act" tokenUsage="N" tokensFree="M">user prompt</prompt>
 ```
 
-**System** contains everything the model needs to know.
-**User** contains everything the model needs to do.
+**System** = environment and rules (stable world state the model operates
+within). **User** = active work (what the model is doing about it).
+Unknowns are active work — the open questions the model intends to
+resolve this turn — so they live adjacent to `<prompt>` in the user
+packet, not with the stable `<knowns>` in the system packet.
 
 The `<prompt>` tag is present on every turn — first turn and
 continuations alike. The model always sees its task. The active prompt
 is extracted from its chronological position and placed last for maximum
-recency. The `<prompt>` element carries `tokenBudget` / `tokenUsage`
+recency. The `<prompt>` element carries `tokenUsage` / `tokensFree`
 attributes so the model can do budget arithmetic in-line with the cause.
 
 ### 4.2 Loops, Previous, and Performed
@@ -641,11 +644,11 @@ Each turn:
 7. Invoke `assembly.system` filter chain (instructions text as base):
    - Known plugin (priority 100) → `<knowns>` section
    - Previous plugin (priority 200) → `<previous>` section
-   - Unknown plugin (priority 300) → `<unknowns>` section
 8. Invoke `assembly.user` filter chain (empty string as base):
    - Performed plugin (priority 100) → `<performed>` section
+   - Unknown plugin (priority 200) → `<unknowns>` section
    - Prompt plugin (priority 300) → `<prompt>` element (carries
-     `tokenBudget` / `tokenUsage` attrs when `contextSize` is set)
+     `tokenUsage` / `tokensFree` attrs when `contextSize` is set)
 9. Store as `system://N` and `user://N` audit entries (telemetry plugin)
 
 The VIEW determines visibility from `fidelity` and `status`:

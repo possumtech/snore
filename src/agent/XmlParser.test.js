@@ -263,7 +263,6 @@ export default {};
 			assert.strictEqual(commands[0].question, "Which database?");
 			assert.strictEqual(commands[0].options, "PG, SQLite, MySQL");
 		});
-
 	});
 
 	describe("malformed", () => {

@@ -99,4 +99,13 @@ export default class ProjectAgent {
 	abortRun(runId) {
 		this.#agentLoop.abort(runId);
 	}
+
+	/**
+	 * Abort every in-flight run and wait for them to settle. Called
+	 * from the server's close path so the Node event loop isn't held
+	 * open by detached kickoff Promises after shutdown.
+	 */
+	async shutdown() {
+		await this.#agentLoop.abortAll();
+	}
 }

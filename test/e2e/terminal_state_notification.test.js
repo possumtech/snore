@@ -78,74 +78,72 @@ describe("E2E: terminal run/state notification", { concurrency: 1 }, () => {
 		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
-	it(
-		"last run/state notification carries terminal status (>= 200)",
-		{ timeout: TIMEOUT },
-		async () => {
-			const states = [];
-			client.on("run/state", (p) => states.push(p));
+	it("last run/state notification carries terminal status (>= 200)", {
+		timeout: TIMEOUT,
+	}, async () => {
+		const states = [];
+		client.on("run/state", (p) => states.push(p));
 
-			const startRes = await client.call("set", {
-				path: "run://",
-				body: "What is 2 + 2? Answer with <update status=\"200\">4</update>.",
-				attributes: { model, mode: "ask" },
-			});
+		const startRes = await client.call("set", {
+			path: "run://",
+			body: 'What is 2 + 2? Answer with <update status="200">4</update>.',
+			attributes: { model, mode: "ask" },
+		});
 
-			const alias = startRes.alias;
-			console.log(`[TEST] started run: ${alias}`);
+		const alias = startRes.alias;
+		console.log(`[TEST] started run: ${alias}`);
 
-			const finalStatus = await waitForRunStatus(
-				tdb.db,
-				alias,
-				[200, 413, 499, 500],
-				300_000,
-			);
-			assert.ok(finalStatus, "run reached terminal status in DB");
-			console.log(`[TEST] DB terminal status: ${finalStatus}`);
+		const finalStatus = await waitForRunStatus(
+			tdb.db,
+			alias,
+			[200, 413, 499, 500],
+			300_000,
+		);
+		assert.ok(finalStatus, "run reached terminal status in DB");
+		console.log(`[TEST] DB terminal status: ${finalStatus}`);
 
-			// Give notifications a moment to catch up past the DB write.
-			await new Promise((r) => setTimeout(r, 500));
+		// Give notifications a moment to catch up past the DB write.
+		await new Promise((r) => setTimeout(r, 500));
 
-			console.log(`[TEST] captured ${states.length} run/state notifications`);
-			for (const s of states) {
-				console.log(`  turn=${s.turn} status=${s.status}`);
-			}
+		console.log(`[TEST] captured ${states.length} run/state notifications`);
+		for (const s of states) {
+			console.log(`  turn=${s.turn} status=${s.status}`);
+		}
 
-			assert.ok(states.length > 0, "received run/state notifications");
-			const terminalState = states.findLast((s) => s.status >= 200);
-			assert.ok(
-				terminalState,
-				`at least one run/state notification carries terminal status >= 200, got: ${states.map((s) => s.status).join(",")}`,
-			);
-			assert.strictEqual(
-				terminalState.status,
-				finalStatus,
-				"terminal notification status matches DB terminal status",
-			);
+		assert.ok(states.length > 0, "received run/state notifications");
+		const terminalState = states.findLast((s) => s.status >= 200);
+		assert.ok(
+			terminalState,
+			`at least one run/state notification carries terminal status >= 200, got: ${states.map((s) => s.status).join(",")}`,
+		);
+		assert.strictEqual(
+			terminalState.status,
+			finalStatus,
+			"terminal notification status matches DB terminal status",
+		);
 
-			// Terminal emit must carry current turn's telemetry so the client's
-			// statusline doesn't display the previous turn's context_tokens.
-			const tel = terminalState.telemetry;
-			assert.ok(tel, "terminal notification carries telemetry");
-			assert.ok(
-				typeof tel.context_tokens === "number" && tel.context_tokens > 0,
-				`telemetry.context_tokens populated, got ${JSON.stringify(tel)}`,
-			);
+		// Terminal emit must carry current turn's telemetry so the client's
+		// statusline doesn't display the previous turn's context_tokens.
+		const tel = terminalState.telemetry;
+		assert.ok(tel, "terminal notification carries telemetry");
+		assert.ok(
+			typeof tel.context_tokens === "number" && tel.context_tokens > 0,
+			`telemetry.context_tokens populated, got ${JSON.stringify(tel)}`,
+		);
 
-			// Budget fields drive the statusline — same numbers the model
-			// sees on the <prompt> tag.
-			assert.ok(
-				typeof tel.ceiling === "number" && tel.ceiling > 0,
-				`telemetry.ceiling populated, got ${tel.ceiling}`,
-			);
-			assert.ok(
-				typeof tel.token_usage === "number",
-				`telemetry.token_usage populated, got ${tel.token_usage}`,
-			);
-			assert.ok(
-				typeof tel.tokens_free === "number" && tel.tokens_free >= 0,
-				`telemetry.tokens_free populated, got ${tel.tokens_free}`,
-			);
-		},
-	);
+		// Budget fields drive the statusline — same numbers the model
+		// sees on the <prompt> tag.
+		assert.ok(
+			typeof tel.ceiling === "number" && tel.ceiling > 0,
+			`telemetry.ceiling populated, got ${tel.ceiling}`,
+		);
+		assert.ok(
+			typeof tel.token_usage === "number",
+			`telemetry.token_usage populated, got ${tel.token_usage}`,
+		);
+		assert.ok(
+			typeof tel.tokens_free === "number" && tel.tokens_free >= 0,
+			`telemetry.tokens_free populated, got ${tel.tokens_free}`,
+		);
+	});
 });
