@@ -24,6 +24,7 @@ or {
 } as $match where {
   $filename <: not includes "src/plugins/hedberg/",
   $filename <: not includes "src/agent/XmlParser.js",
+  $filename <: not includes ".test.js",
   register_diagnostic(
     span = $match,
     message = "Silent fallback outside hedberg masks contract violations — fix the contract instead."

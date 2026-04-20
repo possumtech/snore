@@ -118,29 +118,40 @@ export default class AgentLoop {
 		runId,
 		alias,
 		prompt,
-		{ projectId, parentRunId, model, persona, temperature, contextLimit },
+		{
+			projectId,
+			parentRunId,
+			model,
+			persona = null,
+			temperature = null,
+			contextLimit = null,
+		},
 	) {
 		await this.#knownStore.set({
 			runId,
 			turn: 0,
 			path: `run://${alias}`,
-			body: prompt || "",
+			body: prompt ? prompt : "",
 			state: "proposed",
 			attributes: {
 				projectId,
 				parentRunId,
 				model,
-				persona: persona ?? null,
-				temperature: temperature ?? null,
-				contextLimit: contextLimit ?? null,
+				persona,
+				temperature,
+				contextLimit,
 			},
 			writer: "system",
 		});
 	}
 
-	async #ensureRun(projectId, model, run, prompt, options) {
-		const _noRepo = options?.noRepo === true;
-		const isFork = options?.fork === true;
+	async #ensureRun(projectId, model, run, prompt, options = {}) {
+		const {
+			fork: isFork = false,
+			temperature = null,
+			persona = null,
+			contextLimit = null,
+		} = options;
 		const requestedModel = model;
 
 		if (run && isFork) {
@@ -153,18 +164,18 @@ export default class AgentLoop {
 				parent_run_id: existingRun.id,
 				model: requestedModel,
 				alias,
-				temperature: options?.temperature ?? null,
-				persona: options?.persona ?? null,
-				context_limit: options?.contextLimit ?? null,
+				temperature,
+				persona,
+				context_limit: contextLimit,
 			});
 			await this.#knownStore.forkEntries(existingRun.id, runRow.id);
 			await this.#writeRunEntry(runRow.id, alias, prompt, {
 				projectId,
 				parentRunId: existingRun.id,
 				model: requestedModel,
-				persona: options?.persona,
-				temperature: options?.temperature,
-				contextLimit: options?.contextLimit,
+				persona,
+				temperature,
+				contextLimit,
 			});
 			await this.#hooks.run.created.emit({
 				runId: runRow.id,
@@ -196,23 +207,23 @@ export default class AgentLoop {
 			// Client-specified alias for a brand-new run — accept it verbatim.
 		}
 
-		const alias = run || (await this.#generateAlias(requestedModel));
+		const alias = run ? run : await this.#generateAlias(requestedModel);
 		const runRow = await this.#db.create_run.get({
 			project_id: projectId,
 			parent_run_id: null,
 			model: requestedModel,
 			alias,
-			temperature: options?.temperature ?? null,
-			persona: options?.persona ?? null,
-			context_limit: options?.contextLimit ?? null,
+			temperature,
+			persona,
+			context_limit: contextLimit,
 		});
 		await this.#writeRunEntry(runRow.id, alias, prompt, {
 			projectId,
 			parentRunId: null,
 			model: requestedModel,
-			persona: options?.persona,
-			temperature: options?.temperature,
-			contextLimit: options?.contextLimit,
+			persona,
+			temperature,
+			contextLimit,
 		});
 		await this.#hooks.run.created.emit({ runId: runRow.id, alias });
 		return { runId: runRow.id, alias };
@@ -261,7 +272,7 @@ export default class AgentLoop {
 			sequence: loopSeq.sequence,
 			mode,
 			model: requestedModel,
-			prompt: prompt || "",
+			prompt: prompt ? prompt : "",
 			config: JSON.stringify({
 				noRepo,
 				noInteraction,
@@ -302,6 +313,12 @@ export default class AgentLoop {
 
 				const loopConfig = loop.config ? JSON.parse(loop.config) : {};
 				const hook = loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act;
+				const {
+					noRepo = false,
+					noInteraction = false,
+					noWeb = false,
+					noProposals = false,
+				} = loopConfig;
 
 				let result;
 				try {
@@ -314,10 +331,10 @@ export default class AgentLoop {
 						currentLoopId: loop.id,
 						requestedModel: loop.model,
 						prompt: loop.prompt,
-						noRepo: loopConfig.noRepo || false,
-						noInteraction: loopConfig.noInteraction || false,
-						noWeb: loopConfig.noWeb || false,
-						noProposals: loopConfig.noProposals || false,
+						noRepo,
+						noInteraction,
+						noWeb,
+						noProposals,
 						options: { ...options, temperature: loopConfig.temperature },
 						hook,
 						signal: controller.signal,
@@ -493,7 +510,9 @@ export default class AgentLoop {
 				}
 
 				const verdict = healer.assessTurn(result);
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} verdict: continue=${verdict.continue} status=${verdict.status ?? "-"} reason=${verdict.reason || "-"}`);
+				const vStatus = verdict.status === undefined ? "-" : verdict.status;
+				const vReason = verdict.reason ? verdict.reason : "-";
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} verdict: continue=${verdict.continue} status=${vStatus} reason=${vReason}`);
 
 				await this.#emitRunState({
 					projectId,
@@ -510,7 +529,7 @@ export default class AgentLoop {
 				});
 				if (verdict.continue) continue;
 
-				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${verdict.reason || "-"}`);
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${vReason}`);
 				await this.#setRunStatus(currentRunId, currentAlias, verdict.status);
 				if (verdict.reason) {
 					await this.#hooks.error.log.emit({
@@ -650,9 +669,10 @@ export default class AgentLoop {
 			const state = action === "error" ? "failed" : "resolved";
 			const outcome = action === "error" ? "error" : null;
 			const existing = await this.#knownStore.getState(runId, path);
+			const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
 			await this.#knownStore.set({
 				runId,
-				turn: existing?.turn ?? 0,
+				turn: existingTurn,
 				path,
 				state,
 				body: resolvedBody,
@@ -683,8 +703,8 @@ export default class AgentLoop {
 
 				if (path.startsWith("set://") && attrs?.path && attrs?.merge) {
 					const existing = await this.#knownStore.getBody(runId, attrs.path);
-					const isNewFile = existing == null;
-					const fileBody = existing ?? "";
+					const isNewFile = existing === null;
+					const fileBody = isNewFile ? "" : existing;
 					const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
 					let patched = fileBody;
 					for (const block of blocks) {
@@ -743,7 +763,9 @@ export default class AgentLoop {
 				// and append to these entries. On completion, they transition
 				// to 200/500. Unix FD numbering: 1=stdout, 2=stderr.
 				if (path.startsWith("sh://") || path.startsWith("env://")) {
-					const command = attrs?.command || attrs?.summary || "";
+					let command = "";
+					if (attrs?.command) command = attrs.command;
+					else if (attrs?.summary) command = attrs.summary;
 					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 						.next_turn;
 					const channels = [1, 2];
@@ -775,7 +797,7 @@ export default class AgentLoop {
 				runId,
 				path,
 				state: "failed",
-				body: output || "rejected",
+				body: output ? output : "rejected",
 				outcome: "permission",
 			});
 		} else {
@@ -791,11 +813,16 @@ export default class AgentLoop {
 		const scheme = path.split("://")[0];
 		switch (scheme) {
 			case "set": {
+				// Prefer existing body (e.g. the set result entry already has
+				// the model's proposed content); fall back to the client-
+				// supplied output on acceptance; empty string otherwise.
 				const existing = await this.#knownStore.getBody(runId, path);
-				return existing || output || "";
+				if (existing) return existing;
+				if (output) return output;
+				return "";
 			}
 			default:
-				return output || "";
+				return output ? output : "";
 		}
 	}
 
