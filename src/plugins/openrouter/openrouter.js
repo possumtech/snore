@@ -3,7 +3,6 @@ import msg from "../../agent/messages.js";
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
 
-const DEFAULT_CONTEXT_SIZE = 131072;
 const PROVIDER = "openrouter";
 
 /**
@@ -98,29 +97,25 @@ export default class OpenRouter {
 	}
 
 	async #getContextSize(model) {
-		if (process.env.RUMMY_CONTEXT_SIZE)
-			return Number(process.env.RUMMY_CONTEXT_SIZE);
-
 		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
 
-		try {
-			const res = await fetch(`${this.#baseUrl}/models`, {
-				headers: { Authorization: `Bearer ${this.#apiKey}` },
-				signal: AbortSignal.timeout(5000),
-			});
-			if (res.ok) {
-				const data = await res.json();
-				const entry = data.data?.find((m) => m.id === model);
-				if (entry?.context_length) {
-					this.#contextCache.set(model, entry.context_length);
-					return entry.context_length;
-				}
-			}
-		} catch (_err) {
-			// /api/v1/models is best-effort. Network blip or OpenRouter
-			// downtime falls through to the conservative default.
+		const res = await fetch(`${this.#baseUrl}/models`, {
+			headers: { Authorization: `Bearer ${this.#apiKey}` },
+			signal: AbortSignal.timeout(5000),
+		});
+		if (!res.ok) {
+			throw new Error(
+				`OpenRouter /models returned ${res.status}; cannot resolve context size for "${model}".`,
+			);
 		}
-
-		return DEFAULT_CONTEXT_SIZE;
+		const data = await res.json();
+		const entry = data.data?.find((m) => m.id === model);
+		if (!entry?.context_length) {
+			throw new Error(
+				`OpenRouter /models has no context_length for "${model}".`,
+			);
+		}
+		this.#contextCache.set(model, entry.context_length);
+		return entry.context_length;
 	}
 }

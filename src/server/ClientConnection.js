@@ -25,7 +25,9 @@ export default class ClientConnection {
 		this.#ws.on("close", () => {
 			// Fire-and-forget: the Promise is cached by `shutdown()` so
 			// server-initiated close can await the same work.
-			this.shutdown().catch(() => {});
+			this.shutdown().catch((err) => {
+				console.warn(`[RUMMY] shutdown on ws close failed: ${err.message}`);
+			});
 		});
 
 		this.#setupNotifications();

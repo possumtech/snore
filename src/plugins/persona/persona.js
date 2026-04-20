@@ -47,14 +47,10 @@ export default class Persona {
 			handler: async () => {
 				const dir = configDir();
 				if (!dir) return [];
-				try {
-					const files = await fs.readdir(dir);
-					return files
-						.filter((f) => f.endsWith(".md"))
-						.map((f) => ({ name: f.replace(".md", ""), path: join(dir, f) }));
-				} catch {
-					return [];
-				}
+				const files = await fs.readdir(dir);
+				return files
+					.filter((f) => f.endsWith(".md"))
+					.map((f) => ({ name: f.replace(".md", ""), path: join(dir, f) }));
 			},
 			description: "List available persona files. Returns [{ name, path }].",
 			requiresInit: true,

@@ -128,12 +128,8 @@ async function loadFile(subfolder, name) {
 async function listAvailable(subfolder) {
 	const dir = configDir(subfolder);
 	if (!dir) return [];
-	try {
-		const files = await fs.readdir(dir);
-		return files
-			.filter((f) => f.endsWith(".md"))
-			.map((f) => ({ name: f.replace(".md", ""), path: join(dir, f) }));
-	} catch {
-		return [];
-	}
+	const files = await fs.readdir(dir);
+	return files
+		.filter((f) => f.endsWith(".md"))
+		.map((f) => ({ name: f.replace(".md", ""), path: join(dir, f) }));
 }

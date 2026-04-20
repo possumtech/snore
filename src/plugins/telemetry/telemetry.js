@@ -259,7 +259,7 @@ export default class Telemetry {
 	#flush() {
 		if (!this.#lastRunPath || this.#turnLog.length === 0) return;
 		writeFile(this.#lastRunPath, `${this.#turnLog.join("\n")}\n`).catch(
-			() => {},
+			(err) => console.warn(`[RUMMY] telemetry flush failed: ${err.message}`),
 		);
 	}
 
@@ -271,8 +271,8 @@ export default class Telemetry {
 			await mkdir(runDir, { recursive: true });
 			const fileName = `turn_${String(this.#currentTurn).padStart(3, "0")}.txt`;
 			await writeFile(join(runDir, fileName), `${this.#turnLog.join("\n")}\n`);
-		} catch {
-			// best effort — diagnostic feature, don't fail the turn
+		} catch (err) {
+			console.warn(`[RUMMY] telemetry turn file write failed: ${err.message}`);
 		}
 	}
 }
