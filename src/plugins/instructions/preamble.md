@@ -28,7 +28,6 @@ Having resolved your unknowns, gathered your relevant knowns, and optimized your
 Example: <update status="200">Paris</update>
 Tip: Only use status 200 for successful completion of the prompt.
 
-
 # Tool Usage
 
 Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require Tool Command operations.
