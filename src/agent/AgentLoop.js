@@ -1,3 +1,4 @@
+import { computeBudget } from "./budget.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
 
@@ -48,6 +49,74 @@ export default class AgentLoop {
 			path: `run://${alias}`,
 			state,
 			writer: "system",
+		});
+	}
+
+	async #emitRunState({ projectId, runId, alias, turn, status, result = null }) {
+		const runUsage = await this.#db.get_run_usage.get({ run_id: runId });
+		const history = await this.#knownStore.getLog(runId);
+		const unknowns = await this.#knownStore.getUnknowns(runId);
+		const latestSummary = history
+			.filter((e) => {
+				if (e.tool !== "update") return false;
+				const attrs =
+					typeof e.attributes === "string"
+						? JSON.parse(e.attributes)
+						: e.attributes;
+				return attrs?.status === 200;
+			})
+			.at(-1);
+
+		const contextTokens = result
+			? (
+					await this.#db.get_turn_context_tokens.get({
+						run_id: runId,
+						sequence: turn,
+					})
+				)?.context_tokens ?? 0
+			: 0;
+
+		let budget = null;
+		if (result?.contextSize) {
+			const rows = await this.#db.get_turn_context.all({
+				run_id: runId,
+				turn,
+			});
+			budget = computeBudget({
+				rows,
+				contextSize: result.contextSize,
+				assembledTokens: result.assembledTokens ?? contextTokens,
+			});
+		}
+
+		await this.#hooks.run.state.emit({
+			projectId,
+			run: alias,
+			turn,
+			status,
+			summary: latestSummary?.body || "",
+			history,
+			unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
+			telemetry: {
+				modelAlias: result?.modelAlias,
+				model: result?.model,
+				temperature: result?.temperature,
+				context_size: result?.contextSize,
+				context_tokens: contextTokens,
+				ceiling: budget?.ceiling ?? null,
+				token_usage: budget?.tokenUsage ?? null,
+				tokens_free: budget?.tokensFree ?? null,
+				prompt_tokens: runUsage.prompt_tokens,
+				cached_tokens: runUsage.cached_tokens,
+				completion_tokens: runUsage.completion_tokens,
+				reasoning_tokens: runUsage.reasoning_tokens,
+				total_tokens: runUsage.total_tokens,
+				cost: runUsage.cost,
+				context_distribution: await this.#db.get_turn_distribution.all({
+					run_id: runId,
+					turn,
+				}),
+			},
 		});
 	}
 
@@ -339,8 +408,6 @@ export default class AgentLoop {
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
 		const healer = new ResponseHealer();
 
-		let _lastAssembledTokens = 0;
-
 		// Previous loop entries stay at full fidelity — the model is
 		// instructed to demote them. Budget enforcement catches overflow
 		// if the model fails to manage context.
@@ -357,12 +424,18 @@ export default class AgentLoop {
 				if (signal.aborted) {
 					console.error(`[LOOP] ${currentAlias} iter=${loopIteration} ABORT via signal`);
 					await this.#setRunStatus(currentRunId, currentAlias, 499);
+					await this.#emitRunState({
+						projectId,
+						runId: currentRunId,
+						alias: currentAlias,
+						turn: loopIteration,
+						status: 499,
+					});
 					const out = {
 						run: currentAlias,
 						status: 499,
 						turn: loopIteration,
 					};
-					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 				loopIteration++;
@@ -404,6 +477,14 @@ export default class AgentLoop {
 						result: null,
 					});
 					await this.#setRunStatus(currentRunId, currentAlias, 200);
+					await this.#emitRunState({
+						projectId,
+						runId: currentRunId,
+						alias: currentAlias,
+						turn: result.turn,
+						status: 413,
+						result,
+					});
 					const out = {
 						run: currentAlias,
 						status: 413,
@@ -412,68 +493,20 @@ export default class AgentLoop {
 						contextSize: result.contextSize,
 						turn: result.turn,
 					};
-					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 
-				_lastAssembledTokens = result.assembledTokens;
-
-				const runUsage = await this.#db.get_run_usage.get({
-					run_id: currentRunId,
-				});
-				const history = await this.#knownStore.getLog(currentRunId);
-				const unknowns = await this.#knownStore.getUnknowns(currentRunId);
-				const latestSummary = history
-					.filter((e) => {
-						if (e.tool !== "update") return false;
-						const attrs =
-							typeof e.attributes === "string"
-								? JSON.parse(e.attributes)
-								: e.attributes;
-						return attrs?.status === 200;
-					})
-					.at(-1);
-
-				await this.#hooks.run.state.emit({
-					projectId,
-					run: currentAlias,
-					turn: result.turn,
-					status: 102,
-					summary: latestSummary?.body || "",
-					history,
-					unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
-					telemetry: {
-						modelAlias: result.modelAlias,
-						model: result.model,
-						temperature: result.temperature,
-						context_size: result.contextSize,
-						context_tokens:
-							(
-								await this.#db.get_turn_context_tokens.get({
-									run_id: currentRunId,
-									sequence: result.turn,
-								})
-							)?.context_tokens ?? 0,
-						prompt_tokens: runUsage.prompt_tokens,
-						cached_tokens: runUsage.cached_tokens,
-						completion_tokens: runUsage.completion_tokens,
-						reasoning_tokens: runUsage.reasoning_tokens,
-						total_tokens: runUsage.total_tokens,
-						cost: runUsage.cost,
-						context_distribution: await this.#db.get_turn_distribution.all({
-							run_id: currentRunId,
-							turn: result.turn,
-						}),
-					},
-				});
-				await this.#hooks.run.step.completed.emit({
-					projectId,
-					run: currentAlias,
-					turn: result.turn,
-				});
-
 				const verdict = healer.assessTurn(result);
 				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} verdict: continue=${verdict.continue} status=${verdict.status ?? "-"} reason=${verdict.reason || "-"}`);
+
+				await this.#emitRunState({
+					projectId,
+					runId: currentRunId,
+					alias: currentAlias,
+					turn: result.turn,
+					status: verdict.continue ? 102 : verdict.status,
+					result,
+				});
 				if (verdict.continue) continue;
 
 				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${verdict.reason || "-"}`);
@@ -493,27 +526,46 @@ export default class AgentLoop {
 					turn: result.turn,
 					reason: verdict.reason,
 				};
-				await hook.completed.emit({ projectId, ...out });
 				return out;
 			}
 
 			console.error(`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS}`);
 			await this.#setRunStatus(currentRunId, currentAlias, 200);
+			await this.#emitRunState({
+				projectId,
+				runId: currentRunId,
+				alias: currentAlias,
+				turn: loopIteration,
+				status: 200,
+			});
 			const out = {
 				run: currentAlias,
 				status: 200,
 				turn: loopIteration,
 			};
-			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
 			console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CAUGHT error: ${err.message}`);
 			console.error(err.stack);
 			if (signal.aborted) {
 				await this.#setRunStatus(currentRunId, currentAlias, 499);
+				await this.#emitRunState({
+					projectId,
+					runId: currentRunId,
+					alias: currentAlias,
+					turn: loopIteration,
+					status: 499,
+				}).catch(() => {});
 				return { run: currentAlias, status: 499, turn: loopIteration };
 			}
 			await this.#setRunStatus(currentRunId, currentAlias, 500);
+			await this.#emitRunState({
+				projectId,
+				runId: currentRunId,
+				alias: currentAlias,
+				turn: loopIteration,
+				status: 500,
+			}).catch(() => {});
 			try {
 				await this.#hooks.error.log.emit({
 					store: this.#knownStore,
@@ -536,17 +588,7 @@ export default class AgentLoop {
 				turn: loopIteration,
 				error: err.message,
 			};
-			await hook.completed.emit({ projectId, ...out });
 			return out;
-		} finally {
-			await this.#hooks.loop.completed
-				.emit({
-					runId: currentRunId,
-					loopId: currentLoopId,
-					mode,
-					turns: loopIteration,
-				})
-				.catch(() => {});
 		}
 	}
 

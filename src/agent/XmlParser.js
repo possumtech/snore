@@ -411,7 +411,7 @@ export default class XmlParser {
 			(match, qualifiedName, params) => {
 				const name = qualifiedName.match(/\w+$/)?.[0] ?? qualifiedName;
 				if (!ALL_TOOLS.has(name)) {
-					return `<error>Unknown tool '${qualifiedName}' in <|tool_call> format. Use XML tool commands listed above.</error>`;
+					return `<error>Unknown command '${qualifiedName}' in <|tool_call> format. Use XML commands listed above.</error>`;
 				}
 				const valueMatch = params.match(
 					/[=:]\s*(?:<\|"\|>([^<]*?)<\|"\|>|"([^"]*)"|'([^']*)'|([^,}]+))/,
@@ -474,7 +474,7 @@ export default class XmlParser {
 		result = result.replace(
 			/<\|tool_call>[\s\S]*?(?:<\|?tool_call\|?>|<\/\w+>|$)/g,
 			() =>
-				"<error>Native tool call format not supported. Use the XML tool commands listed above (e.g. a get tag with a path attribute, or a set tag with path and body).</error>",
+				"<error>Native tool call format not supported. Use the XML commands listed above (e.g. a get tag with a path attribute, or a set tag with path and body).</error>",
 		);
 
 		// Strip any orphan chat-format quote tokens left after replacement.

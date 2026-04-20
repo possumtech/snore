@@ -11,15 +11,15 @@ const LINES = [
     "102 = processing, continue. Default if status omitted.",
   ],
   [
-    'Example: <update status="200">The port is 8080</update>',
+    'Example: <update status="200">The capital of France is Paris</update>',
     "200 = complete. This terminates the run with the answer.",
   ],
   [
-    'Example: <update status="204">No matching entries found</update>',
+    'Example: <update status="204">Nothing to report</update>',
     "204 = complete, nothing to report.",
   ],
   [
-    'Example: <update status="422">Cannot determine without API access</update>',
+    'Example: <update status="422">Cannot fulfill request</update>',
     "422 = complete, unable to fulfill.",
   ],
   [

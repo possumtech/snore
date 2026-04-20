@@ -55,34 +55,6 @@ export default async function materializeContext({
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
 	const lastContextTokens = lastCtx?.context_tokens ?? 0;
 
-	// Baseline: assemble with the model's promoted spending removed. The
-	// resulting size is the fixed overhead the model can't reduce without
-	// further demotion.
-	const baselineRows = rows.filter(
-		(r) =>
-			!(
-				(r.category === "data" || r.category === "logging") &&
-				r.fidelity === "promoted"
-			),
-	);
-	const baselineMessages = await ContextAssembler.assembleFromTurnContext(
-		baselineRows,
-		{
-			type: mode,
-			systemPrompt,
-			contextSize,
-			demoted,
-			toolSet,
-			lastContextTokens,
-			turn,
-		},
-		hooks,
-	);
-	const baselineTokens = baselineMessages.reduce(
-		(sum, m) => sum + countTokens(m.content),
-		0,
-	);
-
 	const messages = await ContextAssembler.assembleFromTurnContext(
 		rows,
 		{
@@ -93,7 +65,6 @@ export default async function materializeContext({
 			toolSet,
 			lastContextTokens,
 			turn,
-			baselineTokens,
 		},
 		hooks,
 	);

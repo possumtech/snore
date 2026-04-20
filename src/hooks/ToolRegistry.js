@@ -1,5 +1,6 @@
 // Tool display order: gather → reason → act → communicate.
 // Position in the list implies priority to the model.
+// `update` is pinned last — it's the turn-closer, not an action.
 const TOOL_ORDER = [
 	"think",
 	"unknown",
@@ -12,17 +13,18 @@ const TOOL_ORDER = [
 	"cp",
 	"mv",
 	"ask_user",
-	"update",
 	"search",
 ];
 
 function sortByPriority(names) {
 	return names.toSorted((a, b) => {
+		if (a === "update") return 1;
+		if (b === "update") return -1;
 		const ia = TOOL_ORDER.indexOf(a);
 		const ib = TOOL_ORDER.indexOf(b);
 		if (ia === -1 && ib === -1) return a.localeCompare(b);
 		if (ia === -1) return 1;
-		if (ib === -1) return 1;
+		if (ib === -1) return -1;
 		return ia - ib;
 	});
 }

@@ -29,4 +29,4 @@ all registered tools.
 - `getRuns`, `getRun`
 
 ### Notifications
-- `run/state`, `run/progress`, `ui/render`, `ui/notify`
+- `run/state`, `run/proposal`, `ui/render`, `ui/notify`, `stream/cancelled`

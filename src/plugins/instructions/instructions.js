@@ -75,7 +75,7 @@ export default class Instructions {
 		const sorted = this.#core.hooks.tools.advertisedNames.filter((n) =>
 			activeTools.has(n),
 		);
-		const tools = sorted.join(", ");
+		const tools = sorted.map((n) => `<${n}/>`).join(", ");
 		const docsText = sorted
 			.filter((key) => toolDocs[key])
 			.map((key) => toolDocs[key])

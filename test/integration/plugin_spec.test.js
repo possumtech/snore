@@ -189,13 +189,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 		it("§7.2 run and loop lifecycle hooks exist", () => {
 			assert.ok(tdb.hooks.run.created, "run.created exists");
 			assert.ok(tdb.hooks.ask.started, "ask.started exists");
-			assert.ok(tdb.hooks.ask.completed, "ask.completed exists");
 			assert.ok(tdb.hooks.act.started, "act.started exists");
-			assert.ok(tdb.hooks.act.completed, "act.completed exists");
-			assert.ok(tdb.hooks.run.progress, "run.progress exists");
 			assert.ok(tdb.hooks.run.state, "run.state exists");
 			assert.ok(tdb.hooks.loop.started, "loop.started exists");
-			assert.ok(tdb.hooks.loop.completed, "loop.completed exists");
 		});
 
 		it("§7.3 turn pipeline hooks exist", () => {

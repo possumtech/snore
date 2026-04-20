@@ -403,12 +403,7 @@ All hooks are async.
 | `act.started` | event | Run requested in act mode |
 | `loop.started` | event | Loop execution beginning |
 | `run.config` | filter | Before run config applied |
-| `run.progress` | event | Status change (thinking, processing) |
-| `run.state` | event | After each turn — full state snapshot |
-| `run.step.completed` | event | Turn resolved, no proposals pending |
-| `loop.completed` | event | Loop execution finished (any exit path) |
-| `ask.completed` | event | Ask run finished |
-| `act.completed` | event | Act run finished |
+| `run.state` | event | Turn conclusion or terminal run close — full state snapshot (status, history, unknowns, telemetry) |
 
 ### §7.3 Turn Pipeline
 
@@ -723,7 +718,6 @@ the grammar.
 | Method | Purpose |
 |--------|---------|
 | `run/state` | Incremental state push per tool dispatch |
-| `run/progress` | Turn status transition (`thinking` / `processing`) |
 | `run/proposal` | A proposed entry awaits client resolution |
 | `stream/cancelled` | Server-initiated streaming cancellation |
 | `ui/render` | Streaming UI output |

@@ -434,7 +434,6 @@ export default class Rpc {
 		// --- Notifications ---
 
 		r.registerNotification("run/state", "Turn state update.");
-		r.registerNotification("run/progress", "Turn status.");
 		r.registerNotification("run/proposal", "Proposal awaiting resolution.");
 		r.registerNotification(
 			"stream/cancelled",

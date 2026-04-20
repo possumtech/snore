@@ -341,7 +341,7 @@ describe("ContextAssembler", () => {
 			assert.ok(system.includes("which database adapter"));
 		});
 
-		it("prompt element carries tokenBudget and tokenUsage attrs", async () => {
+		it("prompt element carries tokenUsage and tokensFree attrs", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -363,12 +363,12 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 
 			assert.ok(
-				/tokenBudget="\d+"/.test(user),
-				"prompt element carries tokenBudget",
-			);
-			assert.ok(
 				/tokenUsage="\d+"/.test(user),
 				"prompt element carries tokenUsage",
+			);
+			assert.ok(
+				/tokensFree="\d+"/.test(user),
+				"prompt element carries tokensFree",
 			);
 		});
 	});

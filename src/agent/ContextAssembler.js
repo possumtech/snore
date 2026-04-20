@@ -14,7 +14,6 @@ export default class ContextAssembler {
 			toolSet = null,
 			lastContextTokens = 0,
 			turn = 1,
-			baselineTokens = 0,
 		} = {},
 		hooks,
 	) {
@@ -33,7 +32,6 @@ export default class ContextAssembler {
 			demoted,
 			toolSet,
 			turn,
-			baselineTokens,
 		};
 
 		const system = await hooks.assembly.system.filter(systemPrompt, ctx);

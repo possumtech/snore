@@ -122,7 +122,7 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: oldContent,
+					body: newContent,
 					state: "proposed",
 					attributes: {
 						path: target,
@@ -183,7 +183,7 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: oldContent,
+					body: newContent,
 					state: "resolved",
 					loopId,
 					attributes: {
@@ -289,7 +289,7 @@ export default class Set {
 				runId,
 				turn,
 				path: resultPath,
-				body: match.body,
+				body: patch ?? match.body,
 				state,
 				outcome,
 				attributes: {
@@ -368,7 +368,7 @@ export default class Set {
 				runId,
 				turn,
 				path: entry.path,
-				body: original,
+				body: current,
 				state,
 				outcome,
 				attributes: {

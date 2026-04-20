@@ -110,13 +110,6 @@ export default class TurnExecutor {
 			rowCount: initial.rows.length,
 		});
 
-		await this.#hooks.run.progress.emit({
-			projectId,
-			run: currentAlias,
-			turn,
-			status: "thinking",
-		});
-
 		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
 			messages: initial.messages,
@@ -185,13 +178,6 @@ export default class TurnExecutor {
 		const responseMessage = result.choices?.[0]?.message;
 		const content = responseMessage?.content || "";
 
-		await this.#hooks.run.progress.emit({
-			projectId,
-			run: currentAlias,
-			turn,
-			status: "processing",
-		});
-
 		// Parse and emit — plugins handle audit storage
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
 		for (const w of warnings) {
@@ -249,7 +235,7 @@ export default class TurnExecutor {
 		// Sequential queue. Each tool completes before the next starts.
 		// On failure: abort remaining. On proposal: notify client, await
 		// resolution, continue.
-		let hasErrors = false;
+		let hasErrors = unparsed?.trim() ? true : false;
 		let abortAfter = null;
 
 		for (const entry of recorded) {
@@ -288,20 +274,6 @@ export default class TurnExecutor {
 			}
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
-
-			// Push incremental state so the client waterfall builds live.
-			const history = await this.#knownStore.getLog(currentRunId);
-			const unknowns = await this.#knownStore.getUnknowns(currentRunId);
-			await this.#hooks.run.state.emit({
-				projectId,
-				run: currentAlias,
-				turn,
-				status: 102,
-				summary: "",
-				history,
-				unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
-				telemetry: null,
-			});
 
 			// Materialize proposals for this entry (set revisions → 202)
 			await this.#hooks.turn.proposing.emit({ rummy, recorded: [entry] });

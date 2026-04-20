@@ -34,7 +34,7 @@ async function assembleMessages(tdb, _store) {
 		rows,
 		{
 			type: "ask",
-			tools: "unknown get env ask_user set mv cp store rm update summary",
+			toolSet: hooks.tools.resolveForLoop("ask"),
 		},
 		hooks,
 	);

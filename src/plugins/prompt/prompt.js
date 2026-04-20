@@ -1,5 +1,4 @@
-const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
-if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
+import { computeBudget } from "../../agent/budget.js";
 
 export default class Prompt {
 	#core;
@@ -41,7 +40,7 @@ export default class Prompt {
 	}
 
 	async assemblePrompt(content, ctx) {
-		const { rows, contextSize, baselineTokens } = ctx;
+		const { rows, contextSize, toolSet } = ctx;
 		const promptEntry = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
@@ -52,34 +51,24 @@ export default class Prompt {
 				: promptEntry?.attributes;
 		const mode = attrs?.mode || ctx.type;
 		const body = promptEntry?.body || "";
-		// No tools="..." attribute. The OpenAI-shaped
-		// `<prompt mode tools="x,y,z">` rendering was priming gemma's
-		// native-tool-call training prior — A/B test confirmed removing
-		// the attribute dropped native-format emissions from ~50% to 0%.
-		// Tools list lives in the system prompt as "XML Command Tools:".
+		const activeTools = toolSet
+			? new Set(toolSet)
+			: new Set(this.#core.hooks.tools.names);
+		const commands = this.#core.hooks.tools.advertisedNames
+			.filter((n) => activeTools.has(n))
+			.join(",");
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
 		let budget = "";
 		if (contextSize) {
-			const ceiling = Math.floor(contextSize * CEILING_RATIO);
-			const tokenBudget = Math.max(0, ceiling - (baselineTokens || 0));
-			// Usage = sum of promoted controllable entries' tokens. Same
-			// units as per-entry tokens="N" so the model can predict the
-			// effect of a promote/demote: change is exactly the entry's
-			// tokens attribute.
-			const tokenUsage = rows.reduce((sum, r) => {
-				if (
-					(r.category === "data" || r.category === "logging") &&
-					r.fidelity === "promoted"
-				) {
-					return sum + (r.tokens || 0);
-				}
-				return sum;
-			}, 0);
-			budget = ` tokenBudget="${tokenBudget}" tokenUsage="${tokenUsage}"`;
+			// Approximation based on row token sums — messages aren't
+			// assembled yet. The 10% CEILING_RATIO headroom absorbs the
+			// per-entry tag/separator overhead that row tokens miss.
+			const { tokenUsage, tokensFree } = computeBudget({ rows, contextSize });
+			budget = ` tokenUsage="${tokenUsage}" tokensFree="${tokensFree}"`;
 		}
 
-		return `${content}<prompt mode="${mode}"${warn}${budget}>${body}</prompt>`;
+		return `${content}<prompt mode="${mode}" commands="${commands}"${warn}${budget}>${body}</prompt>`;
 	}
 }

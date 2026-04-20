@@ -1,12 +1,5 @@
+import { computeBudget } from "../../agent/budget.js";
 import materializeContext from "../../agent/materializeContext.js";
-import { countTokens } from "../../agent/tokens.js";
-
-const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
-if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
-
-function measureMessages(messages) {
-	return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
-}
 
 export default class Budget {
 	#core;
@@ -26,19 +19,19 @@ export default class Budget {
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
-		const assembledTokens =
-			lastPromptTokens > 0 ? lastPromptTokens : measureMessages(messages);
-		const ceiling = Math.floor(contextSize * CEILING_RATIO);
-		if (assembledTokens > ceiling) {
-			return {
-				messages,
-				rows,
-				assembledTokens,
-				overflow: assembledTokens - ceiling,
-				ok: false,
-			};
-		}
-		return { messages, rows, assembledTokens, ok: true };
+		const b = computeBudget({
+			rows,
+			contextSize,
+			messages: lastPromptTokens > 0 ? null : messages,
+			assembledTokens: lastPromptTokens > 0 ? lastPromptTokens : null,
+		});
+		return {
+			messages,
+			rows,
+			assembledTokens: b.totalTokens,
+			overflow: b.overflow,
+			ok: b.ok,
+		};
 	}
 
 	/**
@@ -154,10 +147,9 @@ export default class Budget {
 		// promotion costs (which is the behavior we want), and the threshold
 		// gives a concrete ceiling for the next try. Twofer — abiding by the
 		// rule requires budget awareness as a side effect.
-		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
 		const body = [
-			`Token Budget overflow: exceeded by ${post.overflow} tokens. Token Budget: ${ceiling}.`,
+			`Token Budget overflow: exceeded by ${post.overflow} tokens. Ceiling: ${computeBudget({ rows: postMat.rows, contextSize }).ceiling}.`,
 			`Your ${demotedEntries.length} promotions from last turn (${totalDemoted} tokens total) were demoted to fit.`,
 			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
 		].join("\n");

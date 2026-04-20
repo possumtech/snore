@@ -413,7 +413,7 @@ semantics calls `hooks.tools.dispatch` directly.
 the model emitted them. Each tool either succeeds (200), fails (400+),
 or proposes (202). On failure, all remaining tools are aborted. On
 proposal, dispatch pauses, a notification is pushed to the client
-(same WebSocket push pattern as `run/progress`), the client resolves
+(same WebSocket push pattern as `run/state`), the client resolves
 (accept/reject), and dispatch resumes — the proposal becomes 200 or
 400+ like any other tool. The `ask`/`act` RPC response is only sent
 when all tools have completed. Proposals are NOT batched — each is
@@ -875,8 +875,7 @@ Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
 | Notification | Scoped by | Purpose |
 |-------------|-----------|---------|
 | `rummy/hello` | connection | Server greeting on client connect. Carries `rummyVersion` (semver). Clients check MAJOR and refuse on mismatch. |
-| `run/state` | projectId | Incremental turn state (history + unknowns + telemetry) pushed after every tool dispatch. |
-| `run/progress` | projectId | Turn status transitions (`thinking`/`processing`). |
+| `run/state` | projectId | Turn conclusion or terminal run close — full state snapshot (status, history, unknowns, telemetry). |
 | `run/proposal` | projectId | A 202 entry is awaiting resolution. |
 | `stream/cancelled` | projectId | Server-initiated streaming cancellation. |
 | `ui/render` | projectId | Streaming UI output (e.g. tool progress). |

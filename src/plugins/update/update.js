@@ -2,6 +2,7 @@ import ResponseHealer from "../../agent/ResponseHealer.js";
 import docs from "./updateDoc.js";
 
 const TERMINAL_STATUSES = new Set([200, 204, 422]);
+const VALID_STATUSES = new Set([102, ...TERMINAL_STATUSES]);
 
 export default class Update {
 	#core;
@@ -59,15 +60,14 @@ export default class Update {
 		let updateText = !isTerminal ? entry?.body || null : null;
 		let strike = false;
 
-		if (entry && !entry.attributes?.status) {
+		if (entry && !VALID_STATUSES.has(status)) {
 			strike = true;
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
-				message:
-				"Missing status on update (status = 102 to continue, status = 200 to conclude)",
+				message: `Invalid status ${entry.attributes?.status} on update (status = 102 to continue, status = 200 to conclude)`,
 			});
 		}
 

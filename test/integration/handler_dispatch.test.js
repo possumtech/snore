@@ -138,11 +138,11 @@ describe("Handler dispatch", () => {
 			await hooks.tools.dispatch("set", entry, rummy);
 			await hooks.turn.proposing.emit({ rummy, recorded: [entry] });
 
-			// body = original content
+			// body = new (patched) content — what turn N wrote
 			const resultBody = await store.getBody(RUN_ID, "set://src/edit_me.js");
 			assert.ok(
-				resultBody.includes("const port = 3000"),
-				"body is original content",
+				resultBody.includes("const port = 8080"),
+				"body is new content",
 			);
 
 			// attributes.patch = udiff for client

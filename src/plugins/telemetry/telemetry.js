@@ -22,7 +22,7 @@ export default class Telemetry {
 		core.on("rpc.started", this.#onRpcStarted.bind(this));
 		core.on("rpc.completed", this.#onRpcCompleted.bind(this));
 		core.on("rpc.error", this.#onRpcError.bind(this));
-		core.on("run.step.completed", this.#onStepCompleted.bind(this));
+		core.on("turn.completed", this.#onTurnCompleted.bind(this));
 		core.on("turn.response", this.#onTurnResponse.bind(this));
 		core.filter("llm.messages", this.#logMessages.bind(this), 999);
 		core.filter("llm.response", this.#logResponse.bind(this), 999);
@@ -68,11 +68,9 @@ export default class Telemetry {
 		console.error(`[RPC] ✗ (${id}) ${elapsed} ${error?.message || error}`);
 	}
 
-	async #onStepCompleted(payload) {
+	async #onTurnCompleted(payload) {
 		if (process.env.RUMMY_DEBUG !== "true") return;
-		console.log(
-			`[DEBUG] Turn ${payload.turn} completed for run ${payload.run}`,
-		);
+		console.log(`[DEBUG] Turn ${payload.turn} completed`);
 	}
 
 	async #onTurnResponse({

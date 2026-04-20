@@ -26,16 +26,6 @@ export default class ClientConnection {
 		this.#setupNotifications();
 	}
 
-	#onProgress = (payload) => {
-		if (payload.projectId === this.#context.projectId) {
-			this.#sendNotification("run/progress", {
-				run: payload.run,
-				turn: payload.turn,
-				status: payload.status,
-			});
-		}
-	};
-
 	#onProposal = (payload) => {
 		if (payload.projectId === this.#context.projectId) {
 			this.#sendNotification("run/proposal", {
@@ -88,7 +78,6 @@ export default class ClientConnection {
 	};
 
 	#setupNotifications() {
-		this.#hooks.run.progress.on(this.#onProgress);
 		this.#hooks.turn.proposal.on(this.#onProposal);
 		this.#hooks.ui.render.on(this.#onRender);
 		this.#hooks.ui.notify.on(this.#onNotify);
@@ -97,7 +86,6 @@ export default class ClientConnection {
 	}
 
 	#teardown() {
-		this.#hooks.run.progress.off(this.#onProgress);
 		this.#hooks.turn.proposal.off(this.#onProposal);
 		this.#hooks.ui.render.off(this.#onRender);
 		this.#hooks.ui.notify.off(this.#onNotify);
