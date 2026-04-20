@@ -256,23 +256,17 @@ export default class Telemetry {
 		return response;
 	}
 
-	#flush() {
+	async #flush() {
 		if (!this.#lastRunPath || this.#turnLog.length === 0) return;
-		writeFile(this.#lastRunPath, `${this.#turnLog.join("\n")}\n`).catch(
-			(err) => console.warn(`[RUMMY] telemetry flush failed: ${err.message}`),
-		);
+		await writeFile(this.#lastRunPath, `${this.#turnLog.join("\n")}\n`);
 	}
 
 	async #writeTurnFile() {
 		if (!this.#turnsDir || !this.#currentRunAlias || this.#currentTurn == null)
 			return;
 		const runDir = join(this.#turnsDir, this.#currentRunAlias);
-		try {
-			await mkdir(runDir, { recursive: true });
-			const fileName = `turn_${String(this.#currentTurn).padStart(3, "0")}.txt`;
-			await writeFile(join(runDir, fileName), `${this.#turnLog.join("\n")}\n`);
-		} catch (err) {
-			console.warn(`[RUMMY] telemetry turn file write failed: ${err.message}`);
-		}
+		await mkdir(runDir, { recursive: true });
+		const fileName = `turn_${String(this.#currentTurn).padStart(3, "0")}.txt`;
+		await writeFile(join(runDir, fileName), `${this.#turnLog.join("\n")}\n`);
 	}
 }

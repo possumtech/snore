@@ -15,12 +15,7 @@ export default class ProjectAgent {
 		this.#hooks = hooks;
 		this.#llm = new LlmProvider(db, hooks);
 		this.#knownStore = new Repository(db, {
-			// Repository calls onChanged synchronously; subscriber errors
-			// can't propagate but shouldn't vanish either.
-			onChanged: (event) =>
-				hooks.entry.changed.emit(event).catch((err) => {
-					console.warn(`[RUMMY] entry.changed subscriber failed: ${err.message}`);
-				}),
+			onChanged: (event) => hooks.entry.changed.emit(event),
 		});
 		this.#knownStore.loadSchemes(db);
 

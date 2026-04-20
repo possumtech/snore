@@ -80,11 +80,8 @@ export default class LlmProvider {
 	}
 
 	async getContextSize(model) {
-		// DB is the authority — check models table first.
-		if (this.#db) {
-			const row = await this.#db.get_model_by_alias.get({ alias: model });
-			if (row?.context_length) return row.context_length;
-		}
+		const row = await this.#db.get_model_by_alias.get({ alias: model });
+		if (row?.context_length) return row.context_length;
 
 		const resolvedModel = await this.resolve(model);
 		const provider = this.#selectProvider(resolvedModel);
@@ -94,20 +91,10 @@ export default class LlmProvider {
 			);
 		}
 		const size = await provider.getContextSize(resolvedModel);
-
-		// Cache back to DB for next time. Write failure shouldn't block
-		// the caller — they already have `size`; the cache is advisory.
-		if (this.#db && size) {
-			try {
-				await this.#db.update_model_context_length.run({
-					alias: model,
-					context_length: size,
-				});
-			} catch (err) {
-				console.warn(`[RUMMY] model context cache write failed: ${err.message}`);
-			}
-		}
-
+		await this.#db.update_model_context_length.run({
+			alias: model,
+			context_length: size,
+		});
 		return size;
 	}
 }

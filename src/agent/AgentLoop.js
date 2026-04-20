@@ -348,7 +348,7 @@ export default class AgentLoop {
 					`[DRAIN] ${currentAlias} claimed loop id=${loop.id} mode=${loop.mode} seq=${loop.sequence}`,
 				);
 
-				const loopConfig = loop.config ? JSON.parse(loop.config) : {};
+				const loopConfig = JSON.parse(loop.config);
 				const hook = loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act;
 				const {
 					noRepo = false,
@@ -417,10 +417,7 @@ export default class AgentLoop {
 			const runRow = await this.#db.get_run_by_alias.get({
 				alias: currentAlias,
 			});
-			console.error(
-				`[DRAIN] ${currentAlias} exit (final status=${runRow?.status ?? 200})`,
-			);
-			return { run: currentAlias, status: runRow?.status ?? 200 };
+			return { run: currentAlias, status: runRow.status };
 		} finally {
 			this.#activeRuns.delete(currentRunId);
 		}
@@ -463,16 +460,6 @@ export default class AgentLoop {
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS);
 		const healer = new ResponseHealer();
-
-		// Error-teardown helper: each secondary async step is wrapped so
-		// a failure during cleanup is logged but doesn't mask the root
-		// cause. Shared by catch and finally.
-		const warn = (label) => (e) =>
-			console.warn(`[RUMMY] teardown ${label}: ${e.message}`);
-
-		// Previous loop entries stay at full fidelity — the model is
-		// instructed to demote them. Budget enforcement catches overflow
-		// if the model fails to manage context.
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -632,32 +619,16 @@ export default class AgentLoop {
 			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
-			console.error(
-				`[LOOP] ${currentAlias} iter=${loopIteration} CAUGHT error: ${err.message}`,
-			);
-			console.error(err.stack);
-			if (signal.aborted) {
-				await this.#setRunStatus(currentRunId, currentAlias, 499);
-				await this.#emitRunState({
-					projectId,
-					runId: currentRunId,
-					alias: currentAlias,
-					turn: loopIteration,
-					status: 499,
-				}).catch(warn("emitRunState(499)"));
-				const out = { run: currentAlias, status: 499, turn: loopIteration };
-				await hook.completed.emit({ projectId, ...out }).catch(warn(`${mode}.completed`));
-				return out;
-			}
-			await this.#setRunStatus(currentRunId, currentAlias, 500);
+			const status = signal.aborted ? 499 : 500;
+			await this.#setRunStatus(currentRunId, currentAlias, status);
 			await this.#emitRunState({
 				projectId,
 				runId: currentRunId,
 				alias: currentAlias,
 				turn: loopIteration,
-				status: 500,
-			}).catch(warn("emitRunState(500)"));
-			try {
+				status,
+			});
+			if (status === 500) {
 				await this.#hooks.error.log.emit({
 					store: this.#knownStore,
 					runId: currentRunId,
@@ -665,33 +636,18 @@ export default class AgentLoop {
 					loopId: currentLoopId,
 					message: `${err.message}\n${err.stack}`,
 				});
-			} catch (logErr) {
-				// Error-during-error-teardown. Original `err` already marked
-				// the run 500; surface the secondary failure without masking
-				// the root cause.
-				console.warn(
-					`[RUMMY] error.log failed during run failure: ${logErr.message}`,
-				);
 			}
-			const out = {
-				run: currentAlias,
-				status: 500,
-				turn: loopIteration,
-				error: err.message,
-			};
-			await hook.completed
-				.emit({ projectId, ...out })
-				.catch(warn(`${mode}.completed(500)`));
+			const out = { run: currentAlias, status, turn: loopIteration };
+			if (status === 500) out.error = err.message;
+			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} finally {
-			await this.#hooks.loop.completed
-				.emit({
-					runId: currentRunId,
-					loopId: currentLoopId,
-					mode,
-					turns: loopIteration,
-				})
-				.catch(warn("loop.completed"));
+			await this.#hooks.loop.completed.emit({
+				runId: currentRunId,
+				loopId: currentLoopId,
+				mode,
+				turns: loopIteration,
+			});
 		}
 	}
 

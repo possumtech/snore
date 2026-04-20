@@ -117,12 +117,7 @@ function filePath(subfolder, name) {
 async function loadFile(subfolder, name) {
 	const path = filePath(subfolder, name);
 	if (!path) throw new Error("RUMMY_HOME not configured");
-	try {
-		return await fs.readFile(path, "utf8");
-	} catch (err) {
-		if (err.code === "ENOENT") throw new Error(`Not found: ${path}`);
-		throw err;
-	}
+	return fs.readFile(path, "utf8");
 }
 
 async function listAvailable(subfolder) {

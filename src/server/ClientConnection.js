@@ -167,20 +167,13 @@ export default class ClientConnection {
 				projectId: this.#context.projectId,
 			});
 
-			try {
-				const logRow = await this.#db.log_rpc_call.get({
-					project_id: this.#context.projectId,
-					method,
-					rpc_id: id,
-					params: params ? JSON.stringify(params) : null,
-				});
-				if (logRow) this.#rpcLogPending.set(id, logRow.id);
-			} catch (err) {
-				// RPC audit log is best-effort; never fail a request because
-				// the log write failed (e.g. DB lock contention). Warn so
-				// the issue is visible without blocking.
-				console.warn(`[RUMMY] rpc_log call failed: ${err.message}`);
-			}
+			const logRow = await this.#db.log_rpc_call.get({
+				project_id: this.#context.projectId,
+				method,
+				rpc_id: id,
+				params: params ? JSON.stringify(params) : null,
+			});
+			if (logRow) this.#rpcLogPending.set(id, logRow.id);
 
 			const resolvedMethod = method === "rpc/discover" ? "discover" : method;
 			const registration = this.#rpcRegistry.get(resolvedMethod);
@@ -241,16 +234,12 @@ export default class ClientConnection {
 			const logId = this.#rpcLogPending.get(id);
 			if (logId) {
 				this.#rpcLogPending.delete(id);
-				try {
-					await this.#db.log_rpc_result.run({
-						id: logId,
-						result: finalResult
-							? JSON.stringify(finalResult).slice(0, 4096)
-							: null,
-					});
-				} catch (err) {
-					console.warn(`[RUMMY] rpc_log result failed: ${err.message}`);
-				}
+				await this.#db.log_rpc_result.run({
+					id: logId,
+					result: finalResult
+						? JSON.stringify(finalResult).slice(0, 4096)
+						: null,
+				});
 			}
 		} catch (error) {
 			console.error(`[RUMMY] RPC Error: ${error.message}`);
@@ -267,14 +256,10 @@ export default class ClientConnection {
 			const errLogId = this.#rpcLogPending.get(id);
 			if (errLogId) {
 				this.#rpcLogPending.delete(id);
-				try {
-					await this.#db.log_rpc_error.run({
-						id: errLogId,
-						error: error.message,
-					});
-				} catch (logErr) {
-					console.warn(`[RUMMY] rpc_log error write failed: ${logErr.message}`);
-				}
+				await this.#db.log_rpc_error.run({
+					id: errLogId,
+					error: error.message,
+				});
 			}
 		}
 	}

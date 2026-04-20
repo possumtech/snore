@@ -219,43 +219,13 @@ async function resolveAbsoluteUrl(dir) {
 
 async function collectFromDir(dir, isRoot, descriptors) {
 	if (!existsSync(dir)) return;
+	if (!(await stat(dir)).isDirectory()) return;
 
-	let dirStats;
-	try {
-		dirStats = await stat(dir);
-	} catch (_err) {
-		return;
-	}
-
-	if (!dirStats.isDirectory()) {
-		if (process.env.RUMMY_DEBUG === "true") {
-			console.error(
-				`[RUMMY] Cannot scan plugin directory (not a directory): ${dir}`,
-			);
-		}
-		return;
-	}
-
-	let entries;
-	try {
-		entries = await readdir(dir);
-	} catch (err) {
-		if (process.env.RUMMY_DEBUG === "true") {
-			console.error(`[RUMMY] Failed to read directory ${dir}:`, err.message);
-		}
-		return;
-	}
-
-	for (const name of entries) {
+	for (const name of await readdir(dir)) {
 		if (name.endsWith(".test.js")) continue;
 
 		const fullPath = join(dir, name);
-		let stats;
-		try {
-			stats = await stat(fullPath);
-		} catch (_err) {
-			continue;
-		}
+		const stats = await stat(fullPath);
 
 		if (stats.isFile() && name.endsWith(".js")) {
 			const isEntryFile = name === "index.js" || name === `${basename(dir)}.js`;
