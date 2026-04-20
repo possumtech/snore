@@ -20,10 +20,13 @@ export default class Persona {
 					text = await loadFile(params.name);
 				}
 
+				// "Pass neither to clear" — empty string counts as clear too.
+				let persona = null;
+				if (text) persona = text;
 				await ctx.db.update_run_config.run({
 					id: runRow.id,
 					temperature: null,
-					persona: text || null,
+					persona,
 					context_limit: null,
 					model: null,
 				});

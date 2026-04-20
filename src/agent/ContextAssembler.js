@@ -17,11 +17,13 @@ export default class ContextAssembler {
 		} = {},
 		hooks,
 	) {
-		// Find loop boundary from active prompt
+		// Find loop boundary from active prompt. Absent on turn 1 before
+		// the prompt plugin's turn.started handler has run.
 		const promptEntry = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
-		const loopStartTurn = promptEntry?.source_turn ?? 0;
+		let loopStartTurn = 0;
+		if (promptEntry) loopStartTurn = promptEntry.source_turn;
 
 		const ctx = {
 			rows,

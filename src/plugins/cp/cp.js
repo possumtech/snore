@@ -68,7 +68,7 @@ export default class Cp {
 	}
 
 	full(entry) {
-		return `# cp ${entry.attributes.from || ""} ${entry.attributes.to || ""}`;
+		return `# cp ${entry.attributes.from} ${entry.attributes.to}`;
 	}
 
 	summary() {

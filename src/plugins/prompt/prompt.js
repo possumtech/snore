@@ -1,4 +1,4 @@
-import { computeBudget } from "../../agent/budget.js";
+import { computeBudget, measureRows } from "../../agent/budget.js";
 
 export default class Prompt {
 	#core;
@@ -10,10 +10,9 @@ export default class Prompt {
 			"prompt",
 			(entry) => {
 				const limit = 500;
-				const text = entry.body?.slice(0, limit) || "";
-				return text.length < (entry.body?.length || 0)
-					? `${text}\n[truncated — promote to see the complete prompt]`
-					: text;
+				const full = entry.body;
+				if (full.length <= limit) return full;
+				return `${full.slice(0, limit)}\n[truncated — promote to see the complete prompt]`;
 			},
 			"demoted",
 		);
@@ -49,8 +48,8 @@ export default class Prompt {
 			typeof promptEntry?.attributes === "string"
 				? JSON.parse(promptEntry.attributes)
 				: promptEntry?.attributes;
-		const mode = attrs?.mode || ctx.type;
-		const body = promptEntry?.body || "";
+		const mode = attrs?.mode ? attrs.mode : ctx.type;
+		const body = promptEntry ? promptEntry.body : "";
 		const activeTools = toolSet
 			? new Set(toolSet)
 			: new Set(this.#core.hooks.tools.names);
@@ -62,10 +61,17 @@ export default class Prompt {
 
 		let budget = "";
 		if (contextSize) {
-			// Approximation based on row token sums — messages aren't
-			// assembled yet. The 10% CEILING_RATIO headroom absorbs the
-			// per-entry tag/separator overhead that row tokens miss.
-			const { tokenUsage, tokensFree } = computeBudget({ rows, contextSize });
+			// Messages aren't assembled yet, so measure the projected
+			// row bodies — what each entry actually contributes to the
+			// packet at its current fidelity. The 10% CEILING_RATIO
+			// headroom absorbs the per-entry tag/separator overhead
+			// that projected bodies don't include.
+			const totalTokens = measureRows(rows);
+			const { tokenUsage, tokensFree } = computeBudget({
+				rows,
+				contextSize,
+				totalTokens,
+			});
 			budget = ` tokenUsage="${tokenUsage}" tokensFree="${tokensFree}"`;
 		}
 

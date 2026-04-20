@@ -1,5 +1,6 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+	"plugins": ["./biome/no-fallbacks.grit"],
 	"linter": {
 		"enabled": true,
 		"rules": {
@@ -8,5 +9,11 @@
 				"noStaticOnlyClass": "off"
 			}
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["src/plugins/hedberg/**"],
+			"plugins": []
+		}
+	]
 }

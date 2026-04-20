@@ -9,9 +9,9 @@ export default class Repository {
 	#seq = 0;
 	#pendingResolutions = new Map();
 
-	constructor(db, { onChanged } = {}) {
+	constructor(db, { onChanged = null } = {}) {
 		this.#db = db;
-		this.#onChanged = onChanged || null;
+		this.#onChanged = onChanged;
 	}
 
 	/**
@@ -74,7 +74,12 @@ export default class Repository {
 	}
 
 	async slugPath(runId, scheme, content, summary) {
-		const source = summary || content || "";
+		// Prefer summary, fall back to body content, then empty — slugify
+		// handles empty explicitly by returning "" and the caller generates
+		// a sequence-only path.
+		let source = "";
+		if (summary) source = summary;
+		else if (content) source = content;
 		const base = slugify(source);
 		const prefix = `${scheme}://`;
 
@@ -98,7 +103,9 @@ export default class Repository {
 	async #schemeRules(scheme) {
 		await this.#ensureSchemes();
 		const row = scheme ? this.#schemes.get(scheme) : null;
-		const kind = row?.default_scope || "run";
+		// Unregistered / scope-less scheme defaults to run-level. Model-
+		// and plugin-writable unless the row says otherwise.
+		const kind = row?.default_scope ? row.default_scope : "run";
 		let writers = ["model", "plugin"];
 		if (row?.writable_by) {
 			const parsed =
@@ -145,7 +152,7 @@ export default class Repository {
 		outcome = null,
 		attributes,
 		append,
-		bodyFilter,
+		bodyFilter = null,
 		pattern,
 		hash = null,
 		loopId = null,
@@ -159,7 +166,7 @@ export default class Repository {
 		// inside legitimate exact paths (e.g. rm://foo%2F* as a result
 		// path for an rm against a pattern); we don't infer pattern mode
 		// from the path alone.
-		const isPattern = pattern === true || bodyFilter != null;
+		const isPattern = pattern === true || bodyFilter !== null;
 
 		// Pattern mode: update matching entries (fidelity / body / both).
 		if (isPattern) {
@@ -167,13 +174,13 @@ export default class Repository {
 				await this.#db.update_body_by_pattern.run({
 					run_id: runId,
 					path,
-					body: bodyFilter || null,
+					body: bodyFilter,
 					new_body: body,
 				});
 				await this.#db.bump_write_count_by_pattern.run({
 					run_id: runId,
 					path,
-					body: bodyFilter || null,
+					body: bodyFilter,
 				});
 				this.#emitChanged(runId, path, "body");
 			}
@@ -181,7 +188,7 @@ export default class Repository {
 				await this.#db.promote_by_pattern.run({
 					run_id: runId,
 					path,
-					body: bodyFilter || null,
+					body: bodyFilter,
 					turn,
 				});
 				this.#emitChanged(runId, path, "promote");
@@ -189,7 +196,7 @@ export default class Repository {
 				await this.#db.demote_by_pattern.run({
 					run_id: runId,
 					path,
-					body: bodyFilter || null,
+					body: bodyFilter,
 				});
 				this.#emitChanged(runId, path, "demote");
 			}
@@ -255,7 +262,11 @@ export default class Repository {
 			attributes: attributes ? JSON.stringify(attributes) : null,
 			hash,
 		});
-		const effectiveState = state ?? "resolved";
+		// State defaults to resolved for content writes; fidelity defaults
+		// to promoted since the writer just put content in and expects it
+		// visible unless they explicitly demote/archive.
+		const effectiveState = state === undefined ? "resolved" : state;
+		const effectiveFidelity = fidelity === undefined ? "promoted" : fidelity;
 		await this.#db.upsert_run_view.run({
 			run_id: runId,
 			entry_id: entry.id,
@@ -263,7 +274,7 @@ export default class Repository {
 			turn,
 			state: effectiveState,
 			outcome,
-			fidelity: fidelity ?? "promoted",
+			fidelity: effectiveFidelity,
 		});
 		this.#emitChanged(runId, normalized, "upsert");
 		if (effectiveState !== "proposed") {
@@ -276,21 +287,27 @@ export default class Repository {
 	 * "promoted"; pass fidelity explicitly for a read-with-side-effect at
 	 * a different visibility (rare).
 	 */
-	async get({ runId, turn = 0, path, bodyFilter, fidelity = "promoted" }) {
+	async get({
+		runId,
+		turn = 0,
+		path,
+		bodyFilter = null,
+		fidelity = "promoted",
+	}) {
 		if (!runId) throw new Error("get: runId is required");
 		if (!path) throw new Error("get: path is required");
 		if (fidelity === "promoted") {
 			await this.#db.promote_by_pattern.run({
 				run_id: runId,
 				path,
-				body: bodyFilter || null,
+				body: bodyFilter,
 				turn,
 			});
 		} else {
 			await this.#db.demote_by_pattern.run({
 				run_id: runId,
 				path,
-				body: bodyFilter || null,
+				body: bodyFilter,
 			});
 		}
 		this.#emitChanged(runId, path, "promote");
@@ -301,7 +318,7 @@ export default class Repository {
 	 * bodyFilter narrows pattern matches. `filesOnly` restricts to bare
 	 * file-scheme entries (scheme IS NULL).
 	 */
-	async rm({ runId, path, bodyFilter, filesOnly = false }) {
+	async rm({ runId, path, bodyFilter = null, filesOnly = false }) {
 		if (!runId) throw new Error("rm: runId is required");
 		if (!path) throw new Error("rm: path is required");
 		if (filesOnly) {
@@ -309,11 +326,11 @@ export default class Repository {
 				run_id: runId,
 				pattern: path,
 			});
-		} else if (bodyFilter != null || /[*?[\]]/.test(path)) {
+		} else if (bodyFilter !== null || /[*?[\]]/.test(path)) {
 			await this.#db.delete_entries_by_pattern.run({
 				run_id: runId,
 				path,
-				body: bodyFilter || null,
+				body: bodyFilter,
 			});
 		} else {
 			const normalized = Repository.normalizePath(path);
@@ -415,13 +432,18 @@ export default class Repository {
 		return path;
 	}
 
-	async getEntriesByPattern(runId, path, body, { limit, offset } = {}) {
+	async getEntriesByPattern(
+		runId,
+		path,
+		body = null,
+		{ limit = null, offset = null } = {},
+	) {
 		return this.#db.get_entries_by_pattern.all({
 			run_id: runId,
 			path,
-			body: body || null,
-			limit: limit ?? null,
-			offset: offset ?? null,
+			body: body ? body : null,
+			limit,
+			offset,
 		});
 	}
 
@@ -540,7 +562,8 @@ export default class Repository {
 			run_id: runId,
 			path: Repository.normalizePath(path),
 		});
-		return row?.body ?? null;
+		if (!row) return null;
+		return row.body;
 	}
 
 	async setAttributes(runId, path, attrs) {

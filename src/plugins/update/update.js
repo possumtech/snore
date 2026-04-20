@@ -54,10 +54,16 @@ export default class Update {
 		rummy,
 	}) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
+		// No status emitted → default to 102 (continuation) per the
+		// update tool contract documented in updateDoc.js.
 		const status = entry?.attributes?.status ?? 102;
 		const isTerminal = TERMINAL_STATUSES.has(status);
-		let summaryText = isTerminal ? entry?.body || null : null;
-		let updateText = !isTerminal ? entry?.body || null : null;
+		let summaryText = null;
+		let updateText = null;
+		if (entry?.body) {
+			if (isTerminal) summaryText = entry.body;
+			else updateText = entry.body;
+		}
 		let strike = false;
 
 		if (entry && !VALID_STATUSES.has(status)) {

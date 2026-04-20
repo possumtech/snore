@@ -12,11 +12,10 @@ const CONTRACT_REMINDER =
  * the tool does.
  */
 function fingerprint(entry) {
-	const attrs = entry.attributes ?? {};
-	const parts = Object.keys(attrs)
+	const parts = Object.keys(entry.attributes)
 		.toSorted()
-		.filter((k) => attrs[k] != null)
-		.map((k) => `${k}=${attrs[k]}`);
+		.filter((k) => entry.attributes[k] != null)
+		.map((k) => `${k}=${entry.attributes[k]}`);
 	return `${entry.scheme}:${parts.join(",")}`;
 }
 

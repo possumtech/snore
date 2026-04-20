@@ -110,6 +110,13 @@ export default class TurnExecutor {
 			rowCount: initial.rows.length,
 		});
 
+		await this.#hooks.run.progress.emit({
+			projectId,
+			run: currentAlias,
+			turn,
+			status: "thinking",
+		});
+
 		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
 			messages: initial.messages,
@@ -176,7 +183,17 @@ export default class TurnExecutor {
 			usage: result.usage,
 		});
 		const responseMessage = result.choices?.[0]?.message;
-		const content = responseMessage?.content || "";
+		// A valid completion response always carries content (possibly
+		// empty) on the message; protect against that specific case so
+		// downstream parsers see a string.
+		const content = responseMessage?.content ? responseMessage.content : "";
+
+		await this.#hooks.run.progress.emit({
+			projectId,
+			run: currentAlias,
+			turn,
+			status: "processing",
+		});
 
 		// Parse and emit — plugins handle audit storage
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
@@ -195,11 +212,11 @@ export default class TurnExecutor {
 		// the API-provided reasoning_content and layers on each plugin's
 		// contribution.
 		if (responseMessage) {
-			responseMessage.reasoning_content =
-				(await this.#hooks.llm.reasoning.filter(
-					responseMessage.reasoning_content || "",
-					{ commands },
-				)) || null;
+			const seed = responseMessage.reasoning_content
+				? responseMessage.reasoning_content
+				: "";
+			const merged = await this.#hooks.llm.reasoning.filter(seed, { commands });
+			responseMessage.reasoning_content = merged ? merged : null;
 		}
 
 		const systemMsg = filteredMessages.find((m) => m.role === "system");
@@ -275,13 +292,31 @@ export default class TurnExecutor {
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 
-			// Materialize proposals for this entry (set revisions → 202)
-			await this.#hooks.turn.proposing.emit({ rummy, recorded: [entry] });
+			// Incremental state so the client waterfall builds live. The
+			// turn is genuinely in 102 (in-progress) during dispatch.
+			// The client's guard (handle_run_state) prevents a late 102
+			// from regressing a terminal status.
+			const history = await this.#knownStore.getLog(currentRunId);
+			const unknowns = await this.#knownStore.getUnknowns(currentRunId);
+			await this.#hooks.run.state.emit({
+				projectId,
+				run: currentAlias,
+				turn,
+				status: 102,
+				summary: "",
+				history,
+				unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
+				telemetry: null,
+			});
+
+			// Plugins (e.g. set) materialize pending proposals from the
+			// recorded entry — e.g. search/replace revisions → set:// 202.
+			await this.#hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
 			// Check for any proposals created by this entry's dispatch
 			const proposed = await this.#knownStore.getUnresolved(currentRunId);
 			for (const p of proposed) {
-				await this.#hooks.turn.proposal.emit({
+				await this.#hooks.proposal.pending.emit({
 					projectId,
 					run: currentAlias,
 					proposed: [p],
@@ -335,8 +370,8 @@ export default class TurnExecutor {
 			updateText,
 			strike,
 			hasErrors,
-			askUserCmd: askUserEntry || null,
-			model: result.model || requestedModel,
+			askUserCmd: askUserEntry,
+			model: result.model ? result.model : requestedModel,
 			modelAlias: requestedModel,
 			temperature: options?.temperature,
 			contextSize,
@@ -355,7 +390,14 @@ export default class TurnExecutor {
 	 */
 	async #record(runId, loopId, turn, mode, cmd) {
 		const scheme = cmd.name;
-		const rawTarget = cmd.path || cmd.command || cmd.question || "";
+		// Each tool's XmlParser shape surfaces exactly one of these
+		// three fields as its addressable target. Treat absent as empty
+		// so the length/control-char validation below catches bad shapes
+		// rather than letting an undefined slip through.
+		let rawTarget = "";
+		if (cmd.path) rawTarget = cmd.path;
+		else if (cmd.command) rawTarget = cmd.command;
+		else if (cmd.question) rawTarget = cmd.question;
 		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
 		if (rawTarget.length > 512 || /\p{Cc}/u.test(rawTarget)) {
 			const rejectPath = await this.#knownStore.dedup(
@@ -395,7 +437,12 @@ export default class TurnExecutor {
 		const { name: _, ...attributes } = cmd;
 		if (cmd.path) attributes.path = target;
 
-		const body = cmd.body || cmd.command || cmd.question || "";
+		// Same per-shape resolution as rawTarget; the three sources are
+		// mutually exclusive per tool. Empty string when none set.
+		let body = "";
+		if (cmd.body) body = cmd.body;
+		else if (cmd.command) body = cmd.command;
+		else if (cmd.question) body = cmd.question;
 
 		// Filter: plugins can validate/transform before recording
 		const filtered = await this.#hooks.entry.recording.filter(

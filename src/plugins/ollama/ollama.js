@@ -57,7 +57,7 @@ export default class Ollama {
 
 		const data = await response.json();
 
-		for (const choice of data.choices || []) {
+		for (const choice of data.choices) {
 			const m = choice.message;
 			if (!m) continue;
 			const parts = [m.reasoning_content, m.reasoning, m.thinking].filter(
@@ -88,9 +88,10 @@ export default class Ollama {
 					);
 				}
 				const data = await response.json();
-				const info = data.model_info || {};
-				for (const [key, value] of Object.entries(info)) {
-					if (key.endsWith(".context_length")) return value;
+				if (data.model_info) {
+					for (const [key, value] of Object.entries(data.model_info)) {
+						if (key.endsWith(".context_length")) return value;
+					}
 				}
 				throw new Error(msg("error.ollama_no_context_length", { model }));
 			} catch (err) {

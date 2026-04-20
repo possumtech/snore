@@ -34,7 +34,7 @@ export default class ProjectAgent {
 		);
 	}
 
-	async init(projectName, projectRoot, configPath) {
+	async init(projectName, projectRoot, configPath = null) {
 		await this.#hooks.project.init.started.emit({
 			projectName,
 			projectRoot,
@@ -43,7 +43,7 @@ export default class ProjectAgent {
 		const projectRow = await this.#db.upsert_project.get({
 			name: projectName,
 			project_root: projectRoot,
-			config_path: configPath ?? null,
+			config_path: configPath,
 		});
 		const projectId = projectRow.id;
 

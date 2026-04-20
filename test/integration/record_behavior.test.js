@@ -1,9 +1,9 @@
 /**
  * Characterization tests for TurnExecutor #record() behavior.
  *
- * These capture current behavior BEFORE extracting concerns to plugins.
- * Each test exercises one code path in #record(). After extraction,
- * every test must still pass — proving the refactor preserved behavior.
+ * Each test exercises one code path in #record(). Runs kicked off via
+ * `set path=run://` with `attributes.mode="ask"` — `ask` is a mode, not
+ * a first-class RPC method.
  */
 import assert from "node:assert";
 import fs from "node:fs/promises";
@@ -17,12 +17,36 @@ import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 120_000;
+const POLL_INTERVAL_MS = 250;
+const TERMINAL_STATUSES = [200, 204, 413, 422, 499, 500];
+
+async function startAskRun(client, tdb, prompt, attrs = {}) {
+	const r = await client.call("set", {
+		path: "run://",
+		body: prompt,
+		attributes: { model, mode: "ask", ...attrs },
+	});
+	const alias = r.alias;
+	const deadline = Date.now() + TIMEOUT;
+	while (Date.now() < deadline) {
+		const row = await tdb.db.get_run_by_alias.get({ alias });
+		if (row && TERMINAL_STATUSES.includes(row.status)) return { run: alias };
+		await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+	}
+	throw new Error(`run ${alias} did not reach terminal status in ${TIMEOUT}ms`);
+}
 
 describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-record-${Date.now()}`);
+	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
 
 	before(async () => {
+		// Cap turns so ask-mode runs that can't complete (e.g. prompts
+		// that would need <sh>) still reach a terminal status within
+		// the test timeout.
+		process.env.RUMMY_MAX_TURNS = "3";
+
 		await fs.mkdir(projectRoot, { recursive: true });
 		tdb = await TestDb.create("record_behavior");
 		tserver = await TestServer.start(tdb);
@@ -39,14 +63,14 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
+		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
+		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
 	// --- Ask-mode restrictions ---
 
 	it("rejects <sh> in ask mode", { timeout: TIMEOUT }, async () => {
-		const r = await client.call("ask", {
-			model,
-			prompt: "Run npm test",
+		const r = await startAskRun(client, tdb, "Run npm test", {
 			noInteraction: true,
 			noRepo: true,
 			noProposals: true,
@@ -66,13 +90,12 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	it("deduplicates unknown entries with same body", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r = await client.call("ask", {
-			model,
-			prompt: "What is the database schema? What is the database schema?",
-			noInteraction: true,
-			noRepo: true,
-			noProposals: true,
-		});
+		const r = await startAskRun(
+			client,
+			tdb,
+			"What is the database schema? What is the database schema?",
+			{ noInteraction: true, noRepo: true, noProposals: true },
+		);
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
@@ -90,14 +113,12 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	it("known entries under 512 tokens are accepted", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r = await client.call("ask", {
-			model,
-			prompt:
-				"Save a known entry: Mitch Hedberg was a comedian who died in 2005.",
-			noInteraction: true,
-			noRepo: true,
-			noProposals: true,
-		});
+		const r = await startAskRun(
+			client,
+			tdb,
+			"Save a known entry: Mitch Hedberg was a comedian who died in 2005.",
+			{ noInteraction: true, noRepo: true, noProposals: true },
+		);
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 		const known = entries.filter(
@@ -111,13 +132,12 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	it("known entries get known:// prefix even without explicit scheme", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r = await client.call("ask", {
-			model,
-			prompt: 'Save this fact: The sky is blue. Use path "facts/sky".',
-			noInteraction: true,
-			noRepo: true,
-			noProposals: true,
-		});
+		const r = await startAskRun(
+			client,
+			tdb,
+			'Save this fact: The sky is blue. Use path "facts/sky".',
+			{ noInteraction: true, noRepo: true, noProposals: true },
+		);
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 		const known = entries.filter((e) => e.scheme === "known");
@@ -134,9 +154,7 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 	it("terminal update (status=200) creates entry with slug path", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r = await client.call("ask", {
-			model,
-			prompt: "What is 2+2? Answer immediately.",
+		const r = await startAskRun(client, tdb, "What is 2+2? Answer immediately.", {
 			noInteraction: true,
 			noRepo: true,
 			noProposals: true,

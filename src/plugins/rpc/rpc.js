@@ -128,11 +128,12 @@ export default class Rpc {
 		r.register("update", {
 			handler: async (params, ctx) => {
 				const runRow = await this.#resolveRun(params.run, ctx);
+				const { status = 102, attributes = {} } = params;
 				const path = await ctx.projectAgent.entries.update({
 					runId: runRow.id,
 					body: params.body,
-					status: params.status ?? 102,
-					attributes: params.attributes ?? {},
+					status,
+					attributes,
 					writer: "client",
 				});
 				return { ok: true, path };
@@ -200,10 +201,8 @@ export default class Rpc {
 
 		r.register("getModels", {
 			handler: async (params, ctx) => {
-				const rows = await ctx.db.get_models.all({
-					limit: params.limit ?? null,
-					offset: params.offset ?? null,
-				});
+				const { limit = null, offset = null } = params;
+				const rows = await ctx.db.get_models.all({ limit, offset });
 				return rows.map((m) => ({
 					alias: m.alias,
 					actual: m.actual,
@@ -219,10 +218,11 @@ export default class Rpc {
 
 		r.register("addModel", {
 			handler: async (params, ctx) => {
+				const { contextLength = null } = params;
 				const row = await ctx.db.upsert_model.get({
 					alias: params.alias,
 					actual: params.actual,
-					context_length: params.contextLength ?? null,
+					context_length: contextLength,
 				});
 				return { id: row.id, alias: params.alias };
 			},
@@ -311,11 +311,11 @@ export default class Rpc {
 		r.register("getEntries", {
 			handler: async (params, ctx) => {
 				const runRow = await this.#resolveRun(params.run, ctx);
-				const pattern = params.pattern ?? "*";
+				const { pattern = "*", bodyFilter = null } = params;
 				const rows = await ctx.projectAgent.entries.getEntriesByPattern(
 					runRow.id,
 					pattern,
-					params.bodyFilter ?? null,
+					bodyFilter,
 				);
 				return rows
 					.filter((e) => !params.scheme || e.scheme === params.scheme)
@@ -351,10 +351,11 @@ export default class Rpc {
 
 		r.register("getRuns", {
 			handler: async (params, ctx) => {
+				const { limit = null, offset = null } = params;
 				const rows = await ctx.db.get_runs_by_project.all({
 					project_id: ctx.projectId,
-					limit: params.limit ?? null,
-					offset: params.offset ?? null,
+					limit,
+					offset,
 				});
 				return rows.map((row) => ({
 					run: row.alias,
@@ -434,6 +435,7 @@ export default class Rpc {
 		// --- Notifications ---
 
 		r.registerNotification("run/state", "Turn state update.");
+		r.registerNotification("run/progress", "Turn status.");
 		r.registerNotification("run/proposal", "Proposal awaiting resolution.");
 		r.registerNotification(
 			"stream/cancelled",
@@ -487,10 +489,11 @@ export default class Rpc {
 								? "reject"
 								: null;
 				if (action) {
+					const { body = null } = params;
 					return await ctx.projectAgent.resolve(params.run, {
 						path: params.path,
 						action,
-						output: params.body ?? null,
+						output: body,
 					});
 				}
 			}
@@ -521,7 +524,7 @@ export default class Rpc {
 		// runs share one naming scheme. Clients that want a specific name
 		// pass it in the path; anonymous starts get the synthesized one.
 		if (!alias) {
-			const attrs = params.attributes || {};
+			const { attributes: attrs = {} } = params;
 			if (!attrs.model) {
 				throw new Error(
 					"set run://: attributes.model is required when alias is omitted",
@@ -553,13 +556,13 @@ export default class Rpc {
 
 		// New run — kick off the loop. AgentLoop handles row + entry creation.
 		if (!existing) {
-			const attrs = params.attributes || {};
+			const { attributes: attrs = {} } = params;
 			if (!attrs.model) {
 				throw new Error(
 					"set run://: attributes.model is required for a new run",
 				);
 			}
-			const mode = attrs.mode ?? "ask";
+			const { mode = "ask" } = attrs;
 			const options = {
 				temperature: attrs.temperature,
 				persona: attrs.persona,
@@ -570,16 +573,26 @@ export default class Rpc {
 				noProposals: attrs.noProposals,
 				fork: attrs.fork,
 			};
+			const { body = "" } = params;
 			// Fire-and-forget: client watches state via entry notifications.
 			// ProjectAgent exposes .ask/.act wrappers over AgentLoop#run; route
 			// by mode rather than calling the private loop directly.
-			const kickoff = mode === "act"
-				? ctx.projectAgent.act(
-					ctx.projectId, attrs.model, params.body || "", alias, options,
-				)
-				: ctx.projectAgent.ask(
-					ctx.projectId, attrs.model, params.body || "", alias, options,
-				);
+			const kickoff =
+				mode === "act"
+					? ctx.projectAgent.act(
+							ctx.projectId,
+							attrs.model,
+							body,
+							alias,
+							options,
+						)
+					: ctx.projectAgent.ask(
+							ctx.projectId,
+							attrs.model,
+							body,
+							alias,
+							options,
+						);
 			kickoff.catch((err) => {
 				console.error(`[RUMMY] run ${alias} crashed: ${err.message}`);
 			});

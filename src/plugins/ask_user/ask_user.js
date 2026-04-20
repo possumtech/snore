@@ -17,16 +17,17 @@ export default class AskUser {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
+		// XmlParser resolved question/options from attr-or-body already.
 		const { question, options: rawOptions } = entry.attributes;
 
-		const optionText = rawOptions || entry.body || "";
-		const delimiter = optionText.includes(";") ? ";" : ",";
-		const options = optionText
-			? optionText
-					.split(delimiter)
-					.map((o) => o.trim())
-					.filter(Boolean)
-			: [];
+		let options = [];
+		if (rawOptions) {
+			const delimiter = rawOptions.includes(";") ? ";" : ",";
+			options = rawOptions
+				.split(delimiter)
+				.map((o) => o.trim())
+				.filter(Boolean);
+		}
 
 		await store.set({
 			runId,
@@ -49,6 +50,7 @@ export default class AskUser {
 
 	summary(entry) {
 		const { question, answer } = entry.attributes;
-		return answer ? `${question} → ${answer}` : question || "";
+		if (answer) return `${question} → ${answer}`;
+		return question;
 	}
 }

@@ -136,7 +136,7 @@ describe("Handler dispatch", () => {
 			};
 
 			await hooks.tools.dispatch("set", entry, rummy);
-			await hooks.turn.proposing.emit({ rummy, recorded: [entry] });
+			await hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
 			// body = new (patched) content — what turn N wrote
 			const resultBody = await store.getBody(RUN_ID, "set://src/edit_me.js");
@@ -211,7 +211,7 @@ describe("Handler dispatch", () => {
 			};
 			await hooks.tools.dispatch("set", entry2, rummy);
 
-			await hooks.turn.proposing.emit({ rummy, recorded: [entry1, entry2] });
+			await hooks.proposal.prepare.emit({ rummy, recorded: [entry1, entry2] });
 
 			const body = await store.getBody(RUN_ID, "set://src/math.txt");
 			assert.ok(body.includes("a + 4 = 6"), "body is original content");

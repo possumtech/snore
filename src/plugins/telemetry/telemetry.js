@@ -22,7 +22,7 @@ export default class Telemetry {
 		core.on("rpc.started", this.#onRpcStarted.bind(this));
 		core.on("rpc.completed", this.#onRpcCompleted.bind(this));
 		core.on("rpc.error", this.#onRpcError.bind(this));
-		core.on("turn.completed", this.#onTurnCompleted.bind(this));
+		core.on("run.step.completed", this.#onStepCompleted.bind(this));
 		core.on("turn.response", this.#onTurnResponse.bind(this));
 		core.filter("llm.messages", this.#logMessages.bind(this), 999);
 		core.filter("llm.response", this.#logResponse.bind(this), 999);
@@ -30,14 +30,15 @@ export default class Telemetry {
 
 	async #onRpcStarted({ method, id, params }) {
 		this.#starts.set(id, Date.now());
-		const summary =
-			method === "ask" || method === "act"
-				? `prompt="${(params?.prompt || "").slice(0, 60)}"`
-				: method === "run/abort"
-					? `run=${params?.run}`
-					: method === "run/resolve"
-						? `run=${params?.run} action=${params?.resolution?.action}`
-						: "";
+		let summary = "";
+		if (method === "ask" || method === "act") {
+			const prompt = params?.prompt ? params.prompt : "";
+			summary = `prompt="${prompt.slice(0, 60)}"`;
+		} else if (method === "run/abort") {
+			summary = `run=${params?.run}`;
+		} else if (method === "run/resolve") {
+			summary = `run=${params?.run} action=${params?.resolution?.action}`;
+		}
 		console.log(`[RPC] → ${method}(${id})${summary ? ` ${summary}` : ""}`);
 
 		if (method === "ask" || method === "act") {
@@ -50,11 +51,13 @@ export default class Telemetry {
 			? `${((Date.now() - this.#starts.get(id)) / 1000).toFixed(1)}s`
 			: "";
 		this.#starts.delete(id);
-		const summary = result?.run
-			? `run=${result.run} status=${result.status || "ok"}`
-			: result?.status
-				? `status=${result.status}`
-				: "";
+		let summary = "";
+		if (result?.run) {
+			const status = result.status ? result.status : "ok";
+			summary = `run=${result.run} status=${status}`;
+		} else if (result?.status) {
+			summary = `status=${result.status}`;
+		}
 		console.log(
 			`[RPC] ← ${method}(${id}) ${elapsed}${summary ? ` ${summary}` : ""}`,
 		);
@@ -65,12 +68,15 @@ export default class Telemetry {
 			? `${((Date.now() - this.#starts.get(id)) / 1000).toFixed(1)}s`
 			: "";
 		this.#starts.delete(id);
-		console.error(`[RPC] ✗ (${id}) ${elapsed} ${error?.message || error}`);
+		const detail = error?.message ? error.message : error;
+		console.error(`[RPC] ✗ (${id}) ${elapsed} ${detail}`);
 	}
 
-	async #onTurnCompleted(payload) {
+	async #onStepCompleted(payload) {
 		if (process.env.RUMMY_DEBUG !== "true") return;
-		console.log(`[DEBUG] Turn ${payload.turn} completed`);
+		console.log(
+			`[DEBUG] Turn ${payload.turn} completed for run ${payload.run}`,
+		);
 	}
 
 	async #onTurnResponse({
@@ -127,10 +133,12 @@ export default class Telemetry {
 			path: `model://${turn}`,
 			body: JSON.stringify({
 				keys: responseMessage ? Object.keys(responseMessage) : [],
-				reasoning_content: responseMessage?.reasoning_content || null,
+				reasoning_content: responseMessage?.reasoning_content
+					? responseMessage.reasoning_content
+					: null,
 				content: content.slice(0, 4096),
-				usage: result.usage || null,
-				model: result.model || null,
+				usage: result.usage ? result.usage : null,
+				model: result.model ? result.model : null,
 			}),
 			state: "resolved",
 			...systemOpts,
@@ -166,40 +174,54 @@ export default class Telemetry {
 			});
 		}
 
-		// Commit usage stats
-		const usage = result.usage || {};
-		const cachedTokens =
-			usage.cached_tokens ||
-			usage.prompt_tokens_details?.cached_tokens ||
-			usage.input_tokens_details?.cached_tokens ||
-			usage.cache_read_input_tokens ||
-			0;
-		const reasoningTokens =
-			usage.reasoning_tokens ||
-			usage.completion_tokens_details?.reasoning_tokens ||
-			usage.output_tokens_details?.reasoning_tokens ||
-			0;
-		// Use LLM's actual prompt_tokens as the ground-truth context size when available.
-		// This back-fills context_tokens so get_last_context_tokens reflects reality for the next turn.
-		const actualContextTokens = usage.prompt_tokens || assembledTokens || 0;
+		// Commit usage stats. Providers surface token counts under
+		// incompatible keys; walk them in priority order and fall back
+		// to 0 only as the definitional "not reported" value.
+		const usage = result.usage ? result.usage : {};
+		const cachedSources = [
+			usage.cached_tokens,
+			usage.prompt_tokens_details?.cached_tokens,
+			usage.input_tokens_details?.cached_tokens,
+			usage.cache_read_input_tokens,
+		];
+		const reasoningSources = [
+			usage.reasoning_tokens,
+			usage.completion_tokens_details?.reasoning_tokens,
+			usage.output_tokens_details?.reasoning_tokens,
+		];
+		let cachedTokens = 0;
+		for (const v of cachedSources) if (v) { cachedTokens = v; break; }
+		let reasoningTokens = 0;
+		for (const v of reasoningSources) if (v) { reasoningTokens = v; break; }
+		// Use LLM's actual prompt_tokens as the ground-truth context size
+		// when available; falls back to our pre-call estimate.
+		let actualContextTokens = 0;
+		if (usage.prompt_tokens) actualContextTokens = usage.prompt_tokens;
+		else if (assembledTokens) actualContextTokens = assembledTokens;
+		const numberOrZero = (v) => (typeof v === "number" ? v : 0);
 		await rummy.entries.updateTurnStats({
 			id: rummy.turnId,
 			context_tokens: actualContextTokens,
-			reasoning_content: responseMessage?.reasoning_content || null,
-			prompt_tokens: usage.prompt_tokens ?? 0,
-			cached_tokens: cachedTokens ?? 0,
-			completion_tokens: usage.completion_tokens ?? 0,
-			reasoning_tokens: reasoningTokens ?? 0,
-			total_tokens: usage.total_tokens ?? 0,
-			cost: usage.cost ?? 0,
+			reasoning_content: responseMessage?.reasoning_content
+				? responseMessage.reasoning_content
+				: null,
+			prompt_tokens: numberOrZero(usage.prompt_tokens),
+			cached_tokens: cachedTokens,
+			completion_tokens: numberOrZero(usage.completion_tokens),
+			reasoning_tokens: reasoningTokens,
+			total_tokens: numberOrZero(usage.total_tokens),
+			cost: numberOrZero(usage.cost),
 		});
 	}
 
 	async #logMessages(messages, context) {
-		this.#currentRunAlias = context.runAlias || `run_${context.runId}`;
-		this.#currentTurn = context.turn ?? null;
+		this.#currentRunAlias = context.runAlias
+			? context.runAlias
+			: `run_${context.runId}`;
+		this.#currentTurn = context.turn === undefined ? null : context.turn;
+		const turnLabel = this.#currentTurn === null ? "?" : this.#currentTurn;
 		this.#turnLog.push(
-			`\n${"=".repeat(60)}\nTURN ${this.#currentTurn ?? "?"} — model=${context.model} run=${this.#currentRunAlias}\n${"=".repeat(60)}`,
+			`\n${"=".repeat(60)}\nTURN ${turnLabel} — model=${context.model} run=${this.#currentRunAlias}\n${"=".repeat(60)}`,
 		);
 		for (const msg of messages) {
 			const label = msg.role.toUpperCase();
@@ -214,11 +236,12 @@ export default class Telemetry {
 
 	async #logResponse(response) {
 		const msg = response.choices?.[0]?.message;
-		this.#turnLog.push(`\n--- ASSISTANT ---\n${msg?.content || "(empty)"}`);
+		const content = msg?.content ? msg.content : "(empty)";
+		this.#turnLog.push(`\n--- ASSISTANT ---\n${content}`);
 		if (msg?.reasoning_content) {
 			this.#turnLog.push(`\n--- REASONING ---\n${msg.reasoning_content}`);
 		}
-		const usage = response.usage || {};
+		const usage = response.usage ? response.usage : {};
 		this.#turnLog.push(`\n--- USAGE ---\n${JSON.stringify(usage)}`);
 		this.#flush();
 		this.#writeTurnFile();

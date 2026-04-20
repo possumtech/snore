@@ -1,5 +1,30 @@
 # AGENTS: Planning & Progress
 
+> **SESSION BOOTSTRAP — READ ME FIRST.** This file is the only
+> cross-session ground truth. Sessions compact and restart; this doc
+> does not. Before touching code, read top-to-bottom: the principle
+> quotes, current phase, recent "Ongoing Development Conversation"
+> entries. Cross-reference SPEC.md §0 for the contract and PLUGINS.md
+> §7 for the events/filters surface. **Append to "Ongoing Development
+> Conversation" as you work** — decisions you make, rules the user
+> restates, architectural choices you deferred. The next session's
+> coherence depends on it. Architectural decisions without a paper
+> trail are the main source of regressions across compaction.
+
+> **Standing rules that override anything else:**
+> - **No fallbacks outside `src/plugins/hedberg/*`.** Not `|| 0`, not
+>   `?? null`, not `|| ""`. Boundaries validate; interiors crash on
+>   contract violation. A biome rule is in place — if it complains,
+>   the answer is to fix the contract, not silence the rule.
+> - **Every `createEvent` / `createFilter` in `Hooks.js` is a plugin
+>   extension point and stays.** Zero current subscribers does not
+>   mean "delete" — it means "a third-party plugin can still hook it."
+>   Removing events breaks the plugin contract this project brags
+>   about in README / SPEC / PLUGINS. Adding events where core fires
+>   an unannounced phase is encouraged.
+> - **AGENTS.md isn't a trophy room.** Prune completed work; don't
+>   let it sprawl. But never remove a rule the user restated.
+
 > "Is there a rummy way to do this?" Every `<tag>` the model sees is a
 > plugin. Every scheme is registered by its owner. Every piece of data
 > exists as an entry or a column. No exceptions without documentation.
@@ -281,4 +306,130 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
 > I wish to perform a short run of gemma/mab to see if we have any benchmark regressions after our long session that's been focused on improving the agent in project/development workflows.
+
+### 2026-04-20 session notes (Opus 4.7)
+
+Work landed:
+- Lifecycle handshake: server now emits `run.state` with the real
+  verdict status on turn conclusion AND terminal run close — not
+  the hardcoded `102` that was masking terminal status. Per-command
+  incremental `run.state` emits preserved. Multiple exit paths in
+  `AgentLoop.run()` (abort, 413, normal close, MAX_ITER, caught
+  exception) all emit terminal state via `#emitRunState` helper.
+- nvim client: `redrawstatus! | redrawtabline` everywhere (was
+  `redrawstatus` non-bang — refreshed current window only, which
+  is why the checkmark "magically appeared" on text selection).
+- Budget math consolidated. One helper (`src/agent/budget.js`
+  `computeBudget({rows, contextSize, totalTokens})`) feeds:
+  `<prompt>` tag attrs (model-facing), 413 enforcement (gate),
+  `run.state` telemetry (`ceiling`, `token_usage`, `tokens_free`),
+  nvim statusline (`⊞[N% of ceiling]`). `baselineTokens`
+  concept + its double-materialization pass deleted.
+- `<prompt>` tag attrs: `tokenUsage` + `tokensFree` (dropped
+  `tokenBudget` — derivable). `token="N"` typo in preamble fixed
+  to `tokens="N"`.
+- `update` tool: distinguishes "missing status" (auto-default to
+  102) from "invalid status N" (strike with "Invalid status N
+  on update (status = 102 to continue, status = 200 to conclude)").
+- Set result entries: `body = newContent` (what the model wrote)
+  instead of `body = oldContent`. The SEARCH half of
+  `attributes.merge` already records the pre-edit content.
+- Events renamed: `turn.proposing` → `proposal.prepare`,
+  `turn.proposal` → `proposal.pending`. Two distinct events, same
+  namespace, names now reflect phase.
+- Preamble: four phases (Define → Search/Scan → Optimize → Act),
+  self-closing XML tags in `[%TOOLS%]` list (`<get/>, <set/>, ...`),
+  `commands` attribute on `<prompt>` instead of `tools="..."` (the
+  OpenAI-schema lookalike was priming gemma's native-tool-call
+  emission prior).
+
+Failed judgment calls I want future-me to not repeat:
+- Deleted zero-subscriber events earlier this session. **Wrong.**
+  Plugin-friendliness is a keystone architectural commitment. Every
+  event is an extension point. Restored all.
+- Compartmentalized "my code" vs "prior model's code" when hunting
+  fallbacks. **Wrong.** The codebase is the codebase. If you touch
+  it, it's yours. Audit for fallbacks across the whole tree, not
+  just diffs.
+- Defaulted to "standing by" when something looked working in my
+  test lane. The user's demo is the contract. When they report
+  symptoms, read the DB, instrument, reproduce — don't defer to
+  their next demo to verify.
+
+### 2026-04-20 continued — fallback audit in progress
+
+Tracking the 167-violation sweep. After each file: unit tests still 244/244.
+
+Files **paid down** (fallbacks removed or refactored without `|| <falsy>` / `?? <falsy>`):
+- `src/agent/ContextAssembler.js`
+- `src/agent/ResponseHealer.js`
+- `src/agent/ProjectAgent.js`
+- `src/agent/materializeContext.js` (+ `hooks/ToolRegistry.js` view normalization)
+- `src/plugins/cp/cp.js`, `mv/mv.js`, `env/env.js`, `sh/sh.js`
+- `src/plugins/ask_user/ask_user.js`
+- `src/plugins/known/known.js`
+- `src/plugins/update/update.js`, `performed/performed.js`, `previous/previous.js`
+- `src/plugins/instructions/instructions.js`
+- `src/plugins/persona/persona.js`, `think/think.js`, `get/get.js`
+- `src/plugins/openai/openai.js`, `openrouter/openrouter.js`, `ollama/ollama.js`
+- `src/llm/errors.js`, `llm/LlmProvider.js`
+- `src/hooks/HookRegistry.js`, `hooks/RpcRegistry.js`
+- `src/server/ClientConnection.js`
+- `src/plugins/prompt/prompt.js`
+- `src/agent/TurnExecutor.js` (partial — #record body/target)
+
+**Current count:** 121 violations remaining (started 164).
+
+**Big files still to audit:**
+- `src/agent/AgentLoop.js` (~20)
+- `src/plugins/telemetry/telemetry.js` (~17)
+- `src/hooks/RummyContext.js` (~16)
+- `src/agent/XmlParser.js` (~13)
+- `src/agent/Repository.js` (~13)
+- `src/plugins/rpc/rpc.js` (~12)
+- `src/plugins/xai/xai.js` (~10)
+- `src/plugins/set/set.js` (~10)
+- `src/plugins/stream/stream.js` (~8)
+
+**Rubric applied:**
+- DB nullable boundary (e.g. `configPath ?? null` pre-SQL) → prefer default param or `=== undefined` check; SQL bind gets the column's real null.
+- JSON-RPC / env / API response boundary → let the missing data crash at input, or destructure with `= default` in signature.
+- Display strings (`scheme || "file"` translations) → `=== ""` ternary; it's a translation, not a mask.
+- Known-safe empties (e.g. `new Set(ctx.demoted)` where undefined yields empty) → drop fallback, rely on JS semantics.
+- Dead-defensive code (schema-guaranteed fields like `entry.attributes`) → just remove.
+
+Open items (concrete next actions):
+- [ ] **5 integration tests still fail `Method 'ask' not found`.**
+  User clarified: `ask` is a mode, not a first-class RPC method.
+  Tests need rewriting to use `set path=run://` with
+  `attributes.mode = "ask"`. Landing this in the same session.
+- [ ] **Biome lint rule to catch fallbacks outside hedberg.**
+  Pattern: `|| 0`, `|| ""`, `|| null`, `|| false`, `|| []`, and
+  `?? <literal>` (excluding optional-chaining patterns the rule
+  should allow). Directory exclusion for `src/plugins/hedberg/*`.
+  Landing this in the same session.
+- [ ] `run.state` and `run.progress` still have no notification
+  audit log. `rpc_log` captures requests/responses only. A
+  `notification_log` table with the same shape would let us replay
+  notification streams for diagnosis instead of speculating.
+- [ ] `Repository` / `knownStore` / `#knownStore` / `entries` —
+  four names for one concept. Pick one and enforce with lint.
+- [ ] Plugin filter priority numbers (100, 150, 200, 300) are
+  magic constants. Either name the stages explicitly or document
+  the ranges third-party plugins should target.
+- [ ] No end-to-end test between the server and nvim Lua. Every
+  telemetry field added to `run.state` is manually re-synced in
+  `state.lua` / `dispatch.lua` / `statusline.lua`. A headless nvim
+  test would catch every statusline regression at contract time.
+
+Rules the user restated this session (pin these):
+- AGENTS.md is shared project memory; internal memory is overrides.
+  Append to it. Don't silently decide.
+- Events stay; extension points matter even without current users.
+- No fallbacks outside hedberg, ever.
+- When the user describes a symptom, the user is right until the
+  DB proves otherwise. Read the DB first; don't tell them to
+  restart the server.
+- Don't passively defer decisions ("pick one name — or leave for
+  another pass"). Decide or ask, don't dawdle.
 

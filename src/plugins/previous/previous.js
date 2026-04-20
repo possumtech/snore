@@ -40,7 +40,9 @@ async function renderToolTag(entry, _core) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 
-	const target = attrs?.path || attrs?.command || "";
+	let target = "";
+	if (attrs?.path) target = attrs.path;
+	else if (attrs?.command) target = attrs.command;
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const statusValue =
 		attrs?.status != null

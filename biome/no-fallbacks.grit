@@ -1,0 +1,31 @@
+// No silent fallbacks outside hedberg.
+// Rule: interiors crash on contract violation, boundaries validate.
+// Patterns like `|| 0`, `?? ""` silently mask missing data.
+// hedberg is the stochastic-interpretation boundary — fallbacks
+// there are legitimate and filtered out below.
+
+language js
+
+or {
+  `$_ || 0`,
+  `$_ || ""`,
+  `$_ || ''`,
+  `$_ || null`,
+  `$_ || false`,
+  `$_ || []`,
+  `$_ || {}`,
+  `$_ ?? 0`,
+  `$_ ?? ""`,
+  `$_ ?? ''`,
+  `$_ ?? null`,
+  `$_ ?? false`,
+  `$_ ?? []`,
+  `$_ ?? {}`
+} as $match where {
+  $filename <: not includes "src/plugins/hedberg/",
+  $filename <: not includes "src/agent/XmlParser.js",
+  register_diagnostic(
+    span = $match,
+    message = "Silent fallback outside hedberg masks contract violations — fix the contract instead."
+  )
+}

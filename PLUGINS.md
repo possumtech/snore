@@ -184,8 +184,8 @@ is a superset of what's below.
 | `"demoted"` | `(entry)` | Demoted-fidelity projection — path + summary only (body hidden) |
 | `"turn.started"` | `({rummy, mode, prompt, loopIteration, isContinuation})` | Turn beginning — plugins write prompt/instructions entries |
 | `"turn.response"` | `({rummy, turn, result, responseMessage, content, commands, ...})` | LLM responded — write audit entries, commit usage |
-| `"turn.proposing"` | `({rummy, recorded})` | Tool dispatched — materialize proposals (e.g. file edit 202 revisions) |
-| `"turn.proposal"` | `({projectId, run, proposed})` | Proposal awaits client resolution |
+| `"proposal.prepare"` | `({rummy, recorded})` | Tool dispatched — materialize proposals (e.g. file edit 202 revisions) |
+| `"proposal.pending"` | `({projectId, run, proposed})` | Proposal awaits client resolution |
 | `"turn.completed"` | `(turnResult)` | Turn resolved — full turnResult |
 | `"entry.created"` | `(entry)` | Entry created during dispatch |
 | `"entry.changed"` | `({runId, path, changeType})` | Entry content, fidelity, or status modified |
@@ -403,7 +403,14 @@ All hooks are async.
 | `act.started` | event | Run requested in act mode |
 | `loop.started` | event | Loop execution beginning |
 | `run.config` | filter | Before run config applied |
-| `run.state` | event | Turn conclusion or terminal run close — full state snapshot (status, history, unknowns, telemetry) |
+| `run.progress` | event | Transient turn activity (`thinking` / `processing` / `retrying`) |
+| `run.state` | event | Turn conclusion, per-command incremental, or terminal run close — full state snapshot (status, history, unknowns, telemetry) |
+| `run.step.completed` | event | Turn verdict resolved (post-healer, pre-close) |
+| `loop.completed` | event | Loop exit — fires from `finally`, guaranteed on every exit path |
+| `ask.completed` | event | Ask-mode run finished |
+| `act.completed` | event | Act-mode run finished |
+| `proposal.prepare` | event | Per recorded entry — plugins materialize proposals (e.g. set plugin turns search/replace revisions into 202 entries) |
+| `proposal.pending` | event | A materialized proposal awaits client resolution |
 
 ### §7.3 Turn Pipeline
 
@@ -428,7 +435,8 @@ Hooks fire in this order every turn:
 |    | `tool.after` | event | Handler finished |
 |    | `entry.created` | event | Entry written to store |
 |    | `run.state` | event | Incremental state push to connected clients |
-|    | `turn.proposing` | event | This entry's dispatch may have created proposals (e.g. set → 202 revisions) |
+|    | `proposal.prepare` | event | This entry's dispatch may have created proposals (e.g. set → 202 revisions) |
+|    | `proposal.pending` | event | Per each materialized proposal — client is notified, dispatch awaits resolution |
 | 13 | `budget.postDispatch` | call | Re-materialize + check. If over ceiling → Turn Demotion (fidelity=demoted on turn's promoted rows) + write `budget://` entry. |
 | 14 | `hooks.update.resolve` | call | Update plugin classifies this turn's `<update>` (terminal/continuation, override-to-continuation if actions failed, heal from raw content if missing) |
 | 15 | `turn.completed` | event | Turn fully resolved with final status |

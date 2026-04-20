@@ -8,6 +8,22 @@
 // with writer: "plugin" or "system" in ctx) get the context's writer.
 const WRITE_VERBS = new Set(["set", "rm", "cp", "mv", "update"]);
 
+// Defaults applied at construction so every plugin-facing getter
+// returns a predictable shape without per-access fallbacks.
+const CONTEXT_DEFAULTS = Object.freeze({
+	hooks: null,
+	activeFiles: [],
+	sequence: 0,
+	runId: null,
+	turnId: null,
+	loopId: null,
+	toolSet: null,
+	contextSize: null,
+	systemPrompt: "",
+	loopPrompt: "",
+	writer: "model",
+});
+
 export default class RummyContext {
 	#root;
 	#context;
@@ -15,11 +31,11 @@ export default class RummyContext {
 
 	constructor(root, context) {
 		this.#root = root;
-		this.#context = context;
+		this.#context = { ...CONTEXT_DEFAULTS, ...context };
 	}
 
 	get hooks() {
-		return this.#context.hooks || null;
+		return this.#context.hooks;
 	}
 
 	get db() {
@@ -47,7 +63,7 @@ export default class RummyContext {
 	}
 
 	get activeFiles() {
-		return this.#context.activeFiles || [];
+		return this.#context.activeFiles;
 	}
 
 	get type() {
@@ -59,19 +75,19 @@ export default class RummyContext {
 	}
 
 	get sequence() {
-		return this.#context.sequence || 0;
+		return this.#context.sequence;
 	}
 
 	get runId() {
-		return this.#context.runId || null;
+		return this.#context.runId;
 	}
 
 	get turnId() {
-		return this.#context.turnId || null;
+		return this.#context.turnId;
 	}
 
 	get loopId() {
-		return this.#context.loopId || null;
+		return this.#context.loopId;
 	}
 
 	get noRepo() {
@@ -87,30 +103,29 @@ export default class RummyContext {
 	}
 
 	get toolSet() {
-		return this.#context.toolSet || null;
+		return this.#context.toolSet;
 	}
 
 	get contextSize() {
-		return this.#context.contextSize || null;
+		return this.#context.contextSize;
 	}
 
 	get systemPrompt() {
-		return this.#context.systemPrompt || "";
+		return this.#context.systemPrompt;
 	}
 
 	get loopPrompt() {
-		return this.#context.loopPrompt || "";
+		return this.#context.loopPrompt;
 	}
 
 	/**
 	 * Writer identity for Repository permission checks. Defaults to
-	 * 'model' in the handler dispatch path — handlers write on behalf
-	 * of the model's emitted command. Non-handler plugin code (streaming
-	 * callbacks, background emissions) passes `writer: 'plugin'` or
-	 * `'system'` explicitly when calling the store.
+	 * 'model' — handlers write on behalf of the model's emitted command.
+	 * Non-handler plugin code (streaming callbacks, background emissions)
+	 * passes `writer: 'plugin'` or `'system'` explicitly.
 	 */
 	get writer() {
-		return this.#context.writer || "model";
+		return this.#context.writer;
 	}
 
 	get system() {
@@ -133,7 +148,7 @@ export default class RummyContext {
 
 	async set({
 		path,
-		body,
+		body = "",
 		state = "resolved",
 		outcome = null,
 		fidelity,
@@ -143,7 +158,7 @@ export default class RummyContext {
 			path = await this.entries.slugPath(
 				this.runId,
 				"known",
-				body || "",
+				body,
 				attributes?.summary,
 			);
 		}
@@ -151,7 +166,7 @@ export default class RummyContext {
 			runId: this.runId,
 			turn: this.sequence,
 			path,
-			body: body || "",
+			body,
 			state,
 			outcome,
 			fidelity,
@@ -224,12 +239,14 @@ export default class RummyContext {
 
 	async getState(path) {
 		const row = await this.entries.getState(this.runId, path);
-		return row?.state ?? null;
+		if (!row) return null;
+		return row.state;
 	}
 
 	async getOutcome(path) {
 		const row = await this.entries.getState(this.runId, path);
-		return row?.outcome ?? null;
+		if (!row) return null;
+		return row.outcome;
 	}
 
 	async getEntry(path) {
@@ -238,7 +255,8 @@ export default class RummyContext {
 			path,
 			null,
 		);
-		return results[0] || null;
+		if (results.length === 0) return null;
+		return results[0];
 	}
 
 	async setAttributes(path, attrs) {
@@ -271,7 +289,8 @@ export default class RummyContext {
 		const childArray = Array.isArray(children) ? children : [children];
 		for (const child of childArray) {
 			if (typeof child === "string") {
-				node.content = (node.content || "") + child;
+				if (node.content === null) node.content = "";
+				node.content += child;
 			} else if (child && typeof child === "object") {
 				node.children.push(child);
 			}

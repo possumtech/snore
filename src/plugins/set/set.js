@@ -16,7 +16,7 @@ export default class Set {
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
-		core.on("turn.proposing", this.#materializeRevisions.bind(this));
+		core.on("proposal.prepare", this.#materializeRevisions.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.set = docs;
 			return docsMap;
@@ -110,8 +110,8 @@ export default class Set {
 			if (scheme === null) {
 				// File write — diff against existing content
 				const existing = await store.getBody(runId, target);
-				const oldContent = existing ?? "";
-				const newContent = entry.body || "";
+				const oldContent = existing === null ? "" : existing;
+				const newContent = entry.body;
 				const udiff = generatePatch(target, oldContent, newContent);
 				const merge = oldContent
 					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
@@ -144,7 +144,7 @@ export default class Set {
 					runId: runId,
 					path: target,
 					body: entry.body,
-					bodyFilter: attrs.filter || null,
+					bodyFilter: attrs.filter === undefined ? null : attrs.filter,
 				});
 				await storePatternResult(
 					store,
@@ -160,8 +160,8 @@ export default class Set {
 				// Direct scheme write (known://, unknown://, etc.)
 				// Same result shape as file writes — diff against existing.
 				const existing = await store.getBody(runId, target);
-				const oldContent = existing ?? "";
-				const newContent = entry.body || "";
+				const oldContent = existing === null ? "" : existing;
+				const newContent = entry.body;
 				const udiff = generatePatch(target, oldContent, newContent);
 				const merge = oldContent
 					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
@@ -175,7 +175,9 @@ export default class Set {
 					path: target,
 					body: newContent,
 					state: "resolved",
-					fidelity: fidelityAttr || "promoted",
+					// Scheme writes default to promoted — the model wrote it, so
+					// it's material unless they explicitly demote/archive.
+					fidelity: fidelityAttr ? fidelityAttr : "promoted",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
 				});
@@ -254,7 +256,9 @@ export default class Set {
 				const canonicalPath = `set://${match.path}`;
 				const revision = Set.#buildRevision(attrs);
 				const existingAttrs = await rummy.getAttributes(canonicalPath);
-				const revisions = existingAttrs?.revisions || [];
+				const revisions = existingAttrs?.revisions
+					? existingAttrs.revisions
+					: [];
 				revisions.push(revision);
 				await store.set({
 					runId,
@@ -282,7 +286,7 @@ export default class Set {
 				searchText != null
 					? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
 					: null;
-			const beforeTokens = match.tokens || 0;
+			const beforeTokens = match.tokens;
 			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
 			await store.set({
@@ -361,7 +365,7 @@ export default class Set {
 					? generatePatch(entryPath, original, current)
 					: null;
 			const merge = mergeBlocks.length > 0 ? mergeBlocks.join("\n") : null;
-			const beforeTokens = targetEntry[0].tokens || 0;
+			const beforeTokens = targetEntry[0].tokens;
 			const afterTokens = current ? countTokens(current) : beforeTokens;
 
 			await store.set({
@@ -385,9 +389,15 @@ export default class Set {
 		}
 	}
 
+	// `replace` attr is optional in search/replace form — absence means
+	// "delete the match"; normalize to empty string at this boundary.
+	static #resolveReplace(attrs) {
+		return attrs.replace === undefined ? "" : attrs.replace;
+	}
+
 	static #buildRevision(attrs) {
 		if (attrs.search != null) {
-			return { search: attrs.search, replace: attrs.replace ?? "" };
+			return { search: attrs.search, replace: Set.#resolveReplace(attrs) };
 		}
 		if (attrs.blocks?.length > 0) {
 			return { blocks: attrs.blocks };
@@ -397,7 +407,7 @@ export default class Set {
 
 	static #applyRevision(body, attrs) {
 		if (attrs.search != null) {
-			return Hedberg.replace(body, attrs.search, attrs.replace ?? "", {
+			return Hedberg.replace(body, attrs.search, Set.#resolveReplace(attrs), {
 				sed: attrs.sed,
 				flags: attrs.flags,
 			});

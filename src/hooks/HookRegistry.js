@@ -29,9 +29,8 @@ export default class HookRegistry {
 			await p.callback(rummy);
 			if (this.#debug) {
 				const duration = (performance.now() - start).toFixed(2);
-				console.log(
-					`[PIPELINE] Processor ${p.callback.name || "anonymous"} took ${duration}ms`,
-				);
+				const name = p.callback.name ? p.callback.name : "anonymous";
+				console.log(`[PIPELINE] Processor ${name} took ${duration}ms`);
 			}
 		}
 	}
@@ -46,7 +45,8 @@ export default class HookRegistry {
 	}
 
 	async applyFilters(tag, value, ...args) {
-		const hooks = this.#filters.get(tag) || [];
+		const hooks = this.#filters.get(tag);
+		if (!hooks) return value;
 		let result = value;
 		for (const h of hooks) {
 			result = await h.callback(result, ...args);
@@ -71,7 +71,8 @@ export default class HookRegistry {
 	}
 
 	async emitEvent(tag, ...args) {
-		const hooks = this.#events.get(tag) || [];
+		const hooks = this.#events.get(tag);
+		if (!hooks) return;
 		for (const h of hooks) {
 			await h.callback(...args);
 		}

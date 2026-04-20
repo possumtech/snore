@@ -21,7 +21,8 @@ export default async function materializeContext({
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
 	for (const row of viewRows) {
-		const scheme = row.scheme || "file";
+		// schemeOf() yields "" for bare file paths; translate to "file".
+		const scheme = row.scheme === "" ? "file" : row.scheme;
 		const projectedBody = await hooks.tools.view(scheme, {
 			path: row.path,
 			scheme,
@@ -39,13 +40,13 @@ export default async function materializeContext({
 			fidelity: row.fidelity,
 			state: row.state,
 			outcome: row.outcome,
-			body: projectedBody ?? "",
+			body: projectedBody,
 			// Full-body token count, not projected. This is the cost to
 			// promote the entry — the number the model needs to do Token
 			// Budget math. Projecting the demoted symbol-preview (145
 			// tokens for a 2108-token file) was misleading the model into
 			// promotes that blew the Token Budget by 10-30× per entry.
-			tokens: countTokens(row.body ?? ""),
+			tokens: countTokens(row.body),
 			attributes: row.attributes,
 			category: row.category,
 			source_turn: row.turn,
@@ -53,7 +54,9 @@ export default async function materializeContext({
 	}
 	const rows = await db.get_turn_context.all({ run_id: runId, turn });
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
-	const lastContextTokens = lastCtx?.context_tokens ?? 0;
+	// First turn of a new run has no prior context.
+	let lastContextTokens = 0;
+	if (lastCtx) lastContextTokens = lastCtx.context_tokens;
 
 	const messages = await ContextAssembler.assembleFromTurnContext(
 		rows,

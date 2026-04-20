@@ -12,11 +12,7 @@ const LINES = [
   ],
   [
     'Example: <update status="200">The capital of France is Paris</update>',
-    "200 = complete. This terminates the run with the answer.",
-  ],
-  [
-    'Example: <update status="204">Nothing to report</update>',
-    "204 = complete, nothing to report.",
+    "200 = complete. This successfully terminates the run with the answer.",
   ],
   [
     'Example: <update status="422">Cannot fulfill request</update>',

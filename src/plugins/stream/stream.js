@@ -66,8 +66,7 @@ export default class Stream {
 				if (!runRow) throw new Error(`run not found: ${params.run}`);
 				const runId = runRow.id;
 
-				const exitCode = params.exit_code ?? 0;
-				const duration = params.duration ?? null;
+				const { exit_code: exitCode = 0, duration = null } = params;
 				const terminalState = exitCode === 0 ? "resolved" : "failed";
 				const terminalOutcome = exitCode === 0 ? null : `exit:${exitCode}`;
 
@@ -91,7 +90,9 @@ export default class Stream {
 				// Update the log entry body with final stats. Keep it terse —
 				// one line summarizing exit code, duration, and channel sizes.
 				const logEntry = await store.getAttributes(runId, params.path);
-				const command = logEntry?.command || logEntry?.summary || "";
+				let command = "";
+				if (logEntry?.command) command = logEntry.command;
+				else if (logEntry?.summary) command = logEntry.summary;
 				const channelSummary = channels
 					.map((c) => {
 						const size = c.body ? `${c.tokens} tokens` : "empty";
@@ -133,8 +134,7 @@ export default class Stream {
 				if (!runRow) throw new Error(`run not found: ${params.run}`);
 				const runId = runRow.id;
 
-				const duration = params.duration ?? null;
-				const reason = params.reason ?? null;
+				const { duration = null, reason = null } = params;
 
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
@@ -148,12 +148,14 @@ export default class Stream {
 						path: ch.path,
 						state: "cancelled",
 						body: ch.body,
-						outcome: reason || "aborted",
+						outcome: reason ? reason : "aborted",
 					});
 				}
 
 				const logEntry = await store.getAttributes(runId, params.path);
-				const command = logEntry?.command || logEntry?.summary || "";
+				let command = "";
+				if (logEntry?.command) command = logEntry.command;
+				else if (logEntry?.summary) command = logEntry.summary;
 				const channelSummary = channels
 					.map((c) => {
 						const size = c.body ? `${c.tokens} tokens` : "empty";
@@ -200,7 +202,7 @@ export default class Stream {
 				if (!runRow) throw new Error(`run not found: ${params.run}`);
 				const runId = runRow.id;
 
-				const reason = params.reason ?? null;
+				const { reason = null } = params;
 
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
@@ -214,12 +216,14 @@ export default class Stream {
 						path: ch.path,
 						state: "cancelled",
 						body: ch.body,
-						outcome: reason || "cancelled",
+						outcome: reason ? reason : "cancelled",
 					});
 				}
 
 				const logEntry = await store.getAttributes(runId, params.path);
-				const command = logEntry?.command || logEntry?.summary || "";
+				let command = "";
+				if (logEntry?.command) command = logEntry.command;
+				else if (logEntry?.summary) command = logEntry.summary;
 				const channelSummary = channels
 					.map((c) => {
 						const size = c.body ? `${c.tokens} tokens` : "empty";

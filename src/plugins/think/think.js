@@ -24,8 +24,7 @@ export default class Think {
 				.map((c) => c.body)
 				.filter(Boolean)
 				.join("\n");
-			const parts = [reasoning || "", thinkText].filter(Boolean);
-			return parts.join("\n");
+			return [reasoning, thinkText].filter(Boolean).join("\n");
 		});
 	}
 }

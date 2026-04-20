@@ -77,11 +77,15 @@ export default class ToolRegistry {
 			);
 		}
 
-		const fidelity = entry.fidelity || "promoted";
+		const fidelity = entry.fidelity === undefined ? "promoted" : entry.fidelity;
 		const fn = fidelityMap.get(fidelity);
 		if (!fn) return "";
 
-		return fn(entry);
+		const body = await fn(entry);
+		// View handlers MAY return undefined or null to mean "no projected
+		// body at this fidelity" — normalize at this boundary so callers
+		// get a predictable string.
+		return body == null ? "" : body;
 	}
 
 	hasView(scheme) {

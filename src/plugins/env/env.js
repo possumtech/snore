@@ -19,20 +19,19 @@ export default class Env {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const command = entry.attributes.command || entry.body || "";
 		await store.set({
 			runId,
 			turn,
 			path: entry.resultPath,
 			body: "",
 			state: "proposed",
-			attributes: { ...entry.attributes, summary: command },
+			attributes: { ...entry.attributes, summary: entry.attributes.command },
 			loopId,
 		});
 	}
 
 	full(entry) {
-		return `# env ${entry.attributes.command || ""}\n${entry.body}`;
+		return `# env ${entry.attributes.command}\n${entry.body}`;
 	}
 
 	summary() {

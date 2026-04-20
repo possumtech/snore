@@ -67,17 +67,11 @@ export default class AgentLoop {
 			})
 			.at(-1);
 
-		const contextTokens = result
-			? (
-					await this.#db.get_turn_context_tokens.get({
-						run_id: runId,
-						sequence: turn,
-					})
-				)?.context_tokens ?? 0
-			: 0;
-
+		// Budget + context telemetry only populated when we have a real
+		// turn result. Abort/crash paths without a turn return nulls
+		// instead of hiding the gap with zeros.
 		let budget = null;
-		if (result?.contextSize) {
+		if (result) {
 			const rows = await this.#db.get_turn_context.all({
 				run_id: runId,
 				turn,
@@ -85,7 +79,7 @@ export default class AgentLoop {
 			budget = computeBudget({
 				rows,
 				contextSize: result.contextSize,
-				assembledTokens: result.assembledTokens ?? contextTokens,
+				totalTokens: result.assembledTokens,
 			});
 		}
 
@@ -94,7 +88,7 @@ export default class AgentLoop {
 			run: alias,
 			turn,
 			status,
-			summary: latestSummary?.body || "",
+			summary: latestSummary?.body,
 			history,
 			unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
 			telemetry: {
@@ -102,10 +96,10 @@ export default class AgentLoop {
 				model: result?.model,
 				temperature: result?.temperature,
 				context_size: result?.contextSize,
-				context_tokens: contextTokens,
-				ceiling: budget?.ceiling ?? null,
-				token_usage: budget?.tokenUsage ?? null,
-				tokens_free: budget?.tokensFree ?? null,
+				context_tokens: result?.assembledTokens,
+				ceiling: budget?.ceiling,
+				token_usage: budget?.tokenUsage,
+				tokens_free: budget?.tokensFree,
 				prompt_tokens: runUsage.prompt_tokens,
 				cached_tokens: runUsage.cached_tokens,
 				completion_tokens: runUsage.completion_tokens,
@@ -436,6 +430,7 @@ export default class AgentLoop {
 						status: 499,
 						turn: loopIteration,
 					};
+					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 				loopIteration++;
@@ -493,6 +488,7 @@ export default class AgentLoop {
 						contextSize: result.contextSize,
 						turn: result.turn,
 					};
+					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 
@@ -506,6 +502,11 @@ export default class AgentLoop {
 					turn: result.turn,
 					status: verdict.continue ? 102 : verdict.status,
 					result,
+				});
+				await this.#hooks.run.step.completed.emit({
+					projectId,
+					run: currentAlias,
+					turn: result.turn,
 				});
 				if (verdict.continue) continue;
 
@@ -526,6 +527,7 @@ export default class AgentLoop {
 					turn: result.turn,
 					reason: verdict.reason,
 				};
+				await hook.completed.emit({ projectId, ...out });
 				return out;
 			}
 
@@ -543,6 +545,7 @@ export default class AgentLoop {
 				status: 200,
 				turn: loopIteration,
 			};
+			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
 			console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CAUGHT error: ${err.message}`);
@@ -556,7 +559,9 @@ export default class AgentLoop {
 					turn: loopIteration,
 					status: 499,
 				}).catch(() => {});
-				return { run: currentAlias, status: 499, turn: loopIteration };
+				const out = { run: currentAlias, status: 499, turn: loopIteration };
+				await hook.completed.emit({ projectId, ...out }).catch(() => {});
+				return out;
 			}
 			await this.#setRunStatus(currentRunId, currentAlias, 500);
 			await this.#emitRunState({
@@ -588,7 +593,17 @@ export default class AgentLoop {
 				turn: loopIteration,
 				error: err.message,
 			};
+			await hook.completed.emit({ projectId, ...out }).catch(() => {});
 			return out;
+		} finally {
+			await this.#hooks.loop.completed
+				.emit({
+					runId: currentRunId,
+					loopId: currentLoopId,
+					mode,
+					turns: loopIteration,
+				})
+				.catch(() => {});
 		}
 	}
 

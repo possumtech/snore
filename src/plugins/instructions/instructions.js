@@ -28,13 +28,16 @@ export default class Instructions {
 			"instructions://system",
 			null,
 		);
-		const attributes = entries[0]
-			? await store.getAttributes(runId, "instructions://system")
-			: null;
+		// The entry is always written by onTurnStarted before this runs.
+		const entry = entries[0];
+		const attributes = await store.getAttributes(
+			runId,
+			"instructions://system",
+		);
 		return hooks.tools.view("instructions", {
 			path: "instructions://system",
 			scheme: "instructions",
-			body: entries[0]?.body || "",
+			body: entry.body,
 			attributes,
 			fidelity: "promoted",
 			category: "system",
@@ -56,7 +59,9 @@ export default class Instructions {
 			state: "resolved",
 			writer: "system",
 			attributes: {
-				persona: runRow?.persona || null,
+				// runRow.persona is a nullable TEXT column; absent row is
+				// a system bug — let the null propagate if runRow exists.
+				persona: runRow.persona,
 				toolSet,
 			},
 		});

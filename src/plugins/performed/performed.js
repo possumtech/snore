@@ -28,7 +28,11 @@ function renderToolTag(entry) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 
-	const target = attrs?.path || attrs?.command || "";
+	// Display target: attrs.path for store tools, attrs.command for shell
+	// tools, empty for schemes that have neither.
+	let target = "";
+	if (attrs?.path) target = attrs.path;
+	else if (attrs?.command) target = attrs.command;
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const statusValue =
 		attrs?.status != null
@@ -49,11 +53,10 @@ function renderToolTag(entry) {
 			? ` summary="${attrs.summary.slice(0, 80)}"`
 			: "";
 
-	const body = entry.body || null;
 	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${fidelity}${tokens}`;
 
-	if (body) {
-		return `<${entry.scheme} path="${target}"${attrStr}>${body}</${entry.scheme}>`;
+	if (entry.body) {
+		return `<${entry.scheme} path="${target}"${attrStr}>${entry.body}</${entry.scheme}>`;
 	}
 	return `<${entry.scheme} path="${target}"${attrStr}/>`;
 }

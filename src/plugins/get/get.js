@@ -34,7 +34,8 @@ export default class Get {
 			return;
 		}
 		const normalized = Repository.normalizePath(target);
-		const bodyFilter = entry.attributes.body || null;
+		// XmlParser passes attributes through; `body` attr is optional.
+		const bodyFilter = entry.attributes.body;
 		const preview = entry.attributes.preview !== undefined;
 		const isPattern = bodyFilter || normalized.includes("*");
 

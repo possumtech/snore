@@ -20,7 +20,7 @@ export default class Xai {
 		const baseUrl = process.env.XAI_BASE_URL;
 		if (!baseUrl) return;
 		this.#baseUrl = baseUrl;
-		this.#apiKey = process.env.XAI_API_KEY || "";
+		this.#apiKey = process.env.XAI_API_KEY;
 
 		const wireModel = (alias) => alias.split("/").slice(1).join("/");
 
@@ -71,12 +71,10 @@ export default class Xai {
 	}
 
 	#normalize(data) {
-		const output = data.output || [];
-
 		let content = "";
 		let reasoningContent = null;
 
-		for (const item of output) {
+		for (const item of data.output) {
 			if (item.type === "reasoning") {
 				const text = this.#extractText(item.content);
 				if (text)
@@ -90,9 +88,13 @@ export default class Xai {
 			}
 		}
 
-		const usage = data.usage || {};
-		const inputTokens = usage.input_tokens || 0;
-		const outputTokens = usage.output_tokens || 0;
+		const { usage } = data;
+		const inputTokens = usage.input_tokens;
+		const outputTokens = usage.output_tokens;
+		// Optional per xAI API; absent on providers that don't surface them.
+		const cached = usage.input_tokens_details?.cached_tokens;
+		const reasoningTokens = usage.output_tokens_details?.reasoning_tokens;
+		const costTicks = usage.cost_in_usd_ticks;
 		return {
 			choices: [
 				{
@@ -105,11 +107,11 @@ export default class Xai {
 			],
 			usage: {
 				prompt_tokens: inputTokens,
-				cached_tokens: usage.input_tokens_details?.cached_tokens || 0,
+				cached_tokens: cached === undefined ? 0 : cached,
 				completion_tokens: outputTokens,
-				reasoning_tokens: usage.output_tokens_details?.reasoning_tokens || 0,
+				reasoning_tokens: reasoningTokens === undefined ? 0 : reasoningTokens,
 				total_tokens: inputTokens + outputTokens,
-				cost: (usage.cost_in_usd_ticks || 0) / 10_000_000_000,
+				cost: costTicks === undefined ? 0 : costTicks / 10_000_000_000,
 			},
 		};
 	}
@@ -117,12 +119,11 @@ export default class Xai {
 	#extractText(content) {
 		if (typeof content === "string") return content;
 		if (!Array.isArray(content)) return null;
-		return (
-			content
-				.filter((c) => c.type === "text" || c.type === "output_text")
-				.map((c) => c.text)
-				.join("\n") || null
-		);
+		const joined = content
+			.filter((c) => c.type === "text" || c.type === "output_text")
+			.map((c) => c.text)
+			.join("\n");
+		return joined ? joined : null;
 	}
 
 	async #getContextSize(model) {
@@ -136,7 +137,12 @@ export default class Xai {
 		});
 		if (res.ok) {
 			const data = await res.json();
-			const models = data.data || data.models || [];
+			// xAI's /models returns either { data: [...] } or { models: [...] }
+			// depending on the API version; accept either and crash otherwise.
+			let models;
+			if (data.data) models = data.data;
+			else if (data.models) models = data.models;
+			else throw new Error("xAI /models response has neither data nor models");
 			const entry = models.find(
 				(m) => m.id === model || `${m.id}-latest` === model,
 			);

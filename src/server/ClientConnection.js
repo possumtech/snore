@@ -26,6 +26,16 @@ export default class ClientConnection {
 		this.#setupNotifications();
 	}
 
+	#onProgress = (payload) => {
+		if (payload.projectId === this.#context.projectId) {
+			this.#sendNotification("run/progress", {
+				run: payload.run,
+				turn: payload.turn,
+				status: payload.status,
+			});
+		}
+	};
+
 	#onProposal = (payload) => {
 		if (payload.projectId === this.#context.projectId) {
 			this.#sendNotification("run/proposal", {
@@ -78,7 +88,8 @@ export default class ClientConnection {
 	};
 
 	#setupNotifications() {
-		this.#hooks.turn.proposal.on(this.#onProposal);
+		this.#hooks.run.progress.on(this.#onProgress);
+		this.#hooks.proposal.pending.on(this.#onProposal);
 		this.#hooks.ui.render.on(this.#onRender);
 		this.#hooks.ui.notify.on(this.#onNotify);
 		this.#hooks.run.state.on(this.#onState);
@@ -86,7 +97,8 @@ export default class ClientConnection {
 	}
 
 	#teardown() {
-		this.#hooks.turn.proposal.off(this.#onProposal);
+		this.#hooks.run.progress.off(this.#onProgress);
+		this.#hooks.proposal.pending.off(this.#onProposal);
 		this.#hooks.ui.render.off(this.#onRender);
 		this.#hooks.ui.notify.off(this.#onNotify);
 		this.#hooks.run.state.off(this.#onState);
@@ -133,7 +145,7 @@ export default class ClientConnection {
 
 			try {
 				const logRow = await this.#db.log_rpc_call.get({
-					project_id: this.#context.projectId ?? null,
+					project_id: this.#context.projectId,
 					method,
 					rpc_id: id,
 					params: params ? JSON.stringify(params) : null,
@@ -155,17 +167,19 @@ export default class ClientConnection {
 				throw new Error(msg("error.not_initialized"));
 			}
 
+			// JSON-RPC requests may omit `params` entirely.
+			const handlerParams = params === undefined ? {} : params;
 			let result;
 			if (registration.longRunning) {
 				result = await registration.handler(
-					params || {},
+					handlerParams,
 					this.#buildHandlerContext(),
 				);
 			} else {
 				const timeout = Number(process.env.RUMMY_RPC_TIMEOUT) || 10_000;
 				let timer;
 				result = await Promise.race([
-					registration.handler(params || {}, this.#buildHandlerContext()),
+					registration.handler(handlerParams, this.#buildHandlerContext()),
 					new Promise((_, reject) => {
 						timer = setTimeout(
 							() =>
@@ -217,10 +231,12 @@ export default class ClientConnection {
 		} catch (error) {
 			console.error(`[RUMMY] RPC Error: ${error.message}`);
 			console.error(`[RUMMY] Stack: ${error.stack}`);
+			// JSON-RPC: error responses for malformed requests with no id
+			// MUST carry null per the spec.
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },
-				id: id || null,
+				id: id === undefined ? null : id,
 			});
 			await this.#hooks.rpc.error.emit({ id, error });
 

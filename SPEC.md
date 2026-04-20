@@ -875,7 +875,8 @@ Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
 | Notification | Scoped by | Purpose |
 |-------------|-----------|---------|
 | `rummy/hello` | connection | Server greeting on client connect. Carries `rummyVersion` (semver). Clients check MAJOR and refuse on mismatch. |
-| `run/state` | projectId | Turn conclusion or terminal run close — full state snapshot (status, history, unknowns, telemetry). |
+| `run/state` | projectId | Turn state snapshot (status, history, unknowns, telemetry). Fires per command dispatch (incremental 102), at turn conclusion (verdict status), and at terminal run close. |
+| `run/progress` | projectId | Transient turn activity (`thinking` / `processing` / `retrying`). |
 | `run/proposal` | projectId | A 202 entry is awaiting resolution. |
 | `stream/cancelled` | projectId | Server-initiated streaming cancellation. |
 | `ui/render` | projectId | Streaming UI output (e.g. tool progress). |

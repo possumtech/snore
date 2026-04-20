@@ -1,4 +1,4 @@
-import { computeBudget } from "../../agent/budget.js";
+import { ceiling, computeBudget, measureMessages } from "../../agent/budget.js";
 import materializeContext from "../../agent/materializeContext.js";
 
 export default class Budget {
@@ -19,12 +19,9 @@ export default class Budget {
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
-		const b = computeBudget({
-			rows,
-			contextSize,
-			messages: lastPromptTokens > 0 ? null : messages,
-			assembledTokens: lastPromptTokens > 0 ? lastPromptTokens : null,
-		});
+		const totalTokens =
+			lastPromptTokens > 0 ? lastPromptTokens : measureMessages(messages);
+		const b = computeBudget({ rows, contextSize, totalTokens });
 		return {
 			messages,
 			rows,
@@ -149,7 +146,7 @@ export default class Budget {
 		// rule requires budget awareness as a side effect.
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
 		const body = [
-			`Token Budget overflow: exceeded by ${post.overflow} tokens. Ceiling: ${computeBudget({ rows: postMat.rows, contextSize }).ceiling}.`,
+			`Token Budget overflow: exceeded by ${post.overflow} tokens. Ceiling: ${ceiling(contextSize)}.`,
 			`Your ${demotedEntries.length} promotions from last turn (${totalDemoted} tokens total) were demoted to fit.`,
 			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
 		].join("\n");

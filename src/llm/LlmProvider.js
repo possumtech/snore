@@ -34,7 +34,7 @@ export default class LlmProvider {
 	}
 
 	#selectProvider(modelAlias) {
-		return this.#hooks.llm.providers.find((p) => p.matches(modelAlias)) || null;
+		return this.#hooks.llm.providers.find((p) => p.matches(modelAlias));
 	}
 
 	async completion(messages, model, options = {}) {

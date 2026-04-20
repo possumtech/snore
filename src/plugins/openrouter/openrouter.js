@@ -78,14 +78,17 @@ export default class OpenRouter {
 		}
 		const data = await response.json();
 
-		for (const choice of data.choices || []) {
+		for (const choice of data.choices) {
 			const cm = choice.message;
 			if (!cm) continue;
+			const details = cm.reasoning_details
+				? cm.reasoning_details.map((d) => d.text)
+				: [];
 			const parts = [
 				cm.reasoning_content,
 				cm.reasoning,
 				cm.thinking,
-				...(cm.reasoning_details || []).map((d) => d.text),
+				...details,
 			].filter(Boolean);
 			cm.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;

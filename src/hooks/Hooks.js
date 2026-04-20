@@ -43,18 +43,25 @@ export default function createHooks(debug = false) {
 		run: {
 			created: createEvent("run.created"),
 			started: createEvent("run.started"),
+			progress: createEvent("run.progress"),
 			state: createEvent("run.state"),
 			config: createFilter("run.config"),
+			step: {
+				completed: createEvent("run.step.completed"),
+			},
 		},
 		loop: {
 			started: createEvent("loop.started"),
+			completed: createEvent("loop.completed"),
 		},
 		turn: {
 			started: createEvent("turn.started"),
 			response: createEvent("turn.response"),
-			proposal: createEvent("turn.proposal"),
-			proposing: createEvent("turn.proposing"),
 			completed: createEvent("turn.completed"),
+		},
+		proposal: {
+			prepare: createEvent("proposal.prepare"),
+			pending: createEvent("proposal.pending"),
 		},
 		assembly: {
 			system: createFilter("assembly.system"),
@@ -65,9 +72,11 @@ export default function createHooks(debug = false) {
 		},
 		ask: {
 			started: createEvent("ask.started"),
+			completed: createEvent("ask.completed"),
 		},
 		act: {
 			started: createEvent("act.started"),
+			completed: createEvent("act.completed"),
 		},
 		llm: {
 			request: {

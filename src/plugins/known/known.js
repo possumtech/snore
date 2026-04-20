@@ -40,7 +40,7 @@ export default class Known {
 		}
 
 		// Resolve path: explicit or auto-generated slug
-		let knownPath = entry.attributes?.path || null;
+		let knownPath = entry.attributes?.path;
 		if (knownPath && !knownPath.includes("://")) {
 			knownPath = `known://${knownPath}`;
 		}
@@ -53,14 +53,17 @@ export default class Known {
 			);
 		}
 
-		// Dedup: if path exists, update rather than duplicate
+		// Dedup: if path exists, update rather than duplicate. An empty
+		// new body means "preserve the existing entry's body" (e.g. the
+		// model is updating attributes only).
 		const existing = await store.getEntriesByPattern(runId, knownPath, null);
 		if (existing.length > 0) {
+			const nextBody = entry.body === "" ? existing[0].body : entry.body;
 			await store.set({
 				runId,
 				turn,
 				path: existing[0].path,
-				body: entry.body || existing[0].body,
+				body: nextBody,
 				state: "resolved",
 				attributes: entry.attributes,
 				loopId,
@@ -92,14 +95,16 @@ export default class Known {
 		if (entries.length === 0) return content;
 
 		// Rows arrive pre-sorted by SQL: demoted → promoted, then by recency
-		const demotedSet = new Set(ctx.demoted || []);
+		// `new Set(undefined)` yields an empty set, matching "nothing demoted".
+		const demotedSet = new Set(ctx.demoted);
 		const lines = entries.map((e) => renderKnownTag(e, demotedSet));
 		return `${content}\n\n<knowns>\n${lines.join("\n")}\n</knowns>`;
 	}
 }
 
 function renderKnownTag(entry, demotedSet) {
-	const tag = entry.scheme || "file";
+	// schemeOf() returns "" for bare file paths; translate for the tag.
+	const tag = entry.scheme === "" ? "file" : entry.scheme;
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const attrs =

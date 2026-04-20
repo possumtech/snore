@@ -23,20 +23,19 @@ export default class Sh {
 		// Proposal at 202 with the command as summary and empty body — the
 		// body fills in on accept (log message about the action). Data
 		// entries with stdout/stderr are created on accept in resolve().
-		const command = entry.attributes.command || entry.body || "";
 		await store.set({
 			runId,
 			turn,
 			path: entry.resultPath,
 			body: "",
 			state: "proposed",
-			attributes: { ...entry.attributes, summary: command },
+			attributes: { ...entry.attributes, summary: entry.attributes.command },
 			loopId,
 		});
 	}
 
 	full(entry) {
-		return `# sh ${entry.attributes.command || ""}\n${entry.body}`;
+		return `# sh ${entry.attributes.command}\n${entry.body}`;
 	}
 
 	summary() {

@@ -19,7 +19,7 @@ export default class OpenAi {
 		const baseUrl = process.env.OPENAI_BASE_URL;
 		if (!baseUrl) return;
 		this.#baseUrl = String(baseUrl).replace(/\/v1\/?$/, "");
-		this.#apiKey = process.env.OPENAI_API_KEY || "";
+		this.#apiKey = process.env.OPENAI_API_KEY;
 
 		const wireModel = (alias) => alias.split("/").slice(1).join("/");
 
@@ -61,7 +61,7 @@ export default class OpenAi {
 
 		const data = await response.json();
 
-		for (const choice of data.choices || []) {
+		for (const choice of data.choices) {
 			const m = choice.message;
 			if (!m) continue;
 			const parts = [m.reasoning_content, m.reasoning, m.thinking].filter(

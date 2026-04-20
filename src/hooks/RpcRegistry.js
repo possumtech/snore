@@ -57,7 +57,8 @@ export default class RpcRegistry {
 				if (!params.path) throw new Error("path is required");
 				if (!params.run) throw new Error("run is required");
 				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, name, params.path, params.body || "", {
+				const { body = "" } = params;
+				await dispatchTool(hooks, rummy, name, params.path, body, {
 					path: params.path,
 					to: params.to,
 					...params.attributes,
