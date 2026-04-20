@@ -1,7 +1,7 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
 
-const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS) || 512;
+const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
 
 export default class Known {
 	#core;

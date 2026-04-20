@@ -1,6 +1,6 @@
-const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES) || 3;
-const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES) || 3;
-const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD) || 4;
+const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
+const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
+const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
 
 const CONTRACT_REMINDER =
 	"Missing update (status = 102 to continue, status = 200 to conclude)";

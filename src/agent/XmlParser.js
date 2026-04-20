@@ -134,7 +134,7 @@ export default class XmlParser {
 	 * @param {string} content - Raw model response text
 	 * @returns {{ commands: Array, warnings: string[], unparsed: string }}
 	 */
-	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS) || 99;
+	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS);
 
 	static parse(content) {
 		if (!content) return { commands: [], warnings: [], unparsed: "" };

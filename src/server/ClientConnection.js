@@ -198,7 +198,7 @@ export default class ClientConnection {
 					this.#buildHandlerContext(),
 				);
 			} else {
-				const timeout = Number(process.env.RUMMY_RPC_TIMEOUT) || 10_000;
+				const timeout = Number(process.env.RUMMY_RPC_TIMEOUT);
 				let timer;
 				result = await Promise.race([
 					registration.handler(handlerParams, this.#buildHandlerContext()),

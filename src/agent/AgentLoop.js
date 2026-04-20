@@ -459,7 +459,7 @@ export default class AgentLoop {
 		});
 
 		let loopIteration = 0;
-		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
+		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS);
 		const healer = new ResponseHealer();
 
 		// Previous loop entries stay at full fidelity — the model is

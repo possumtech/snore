@@ -3,6 +3,13 @@
 // Patterns like `|| 0`, `?? ""` silently mask missing data.
 // hedberg is the stochastic-interpretation boundary — fallbacks
 // there are legitimate and filtered out below.
+//
+// Two classes caught:
+//   1. Falsy-literal defaults: `$_ || 0` / `$_ ?? ""` / etc.
+//   2. Env-var defaults: `process.env.X || <anything>`. These mask
+//      a missing documented env var; the right shape is either a
+//      naked `Number(process.env.X)` (NaN propagates on absence)
+//      or `process.env.X` directly.
 
 language js
 
@@ -20,7 +27,17 @@ or {
   `$_ ?? null`,
   `$_ ?? false`,
   `$_ ?? []`,
-  `$_ ?? {}`
+  `$_ ?? {}`,
+  `process.env.$_ || $_`,
+  `process.env.$_ ?? $_`,
+  `Number(process.env.$_) || $_`,
+  `Number(process.env.$_) ?? $_`,
+  `parseInt(process.env.$_, $_) || $_`,
+  `parseInt(process.env.$_, $_) ?? $_`,
+  `Number.parseInt(process.env.$_, $_) || $_`,
+  `Number.parseInt(process.env.$_, $_) ?? $_`,
+  `Number.parseFloat(process.env.$_) || $_`,
+  `Number.parseFloat(process.env.$_) ?? $_`
 } as $match where {
   $filename <: not includes "src/plugins/hedberg/",
   $filename <: not includes "src/agent/XmlParser.js",

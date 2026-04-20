@@ -140,7 +140,7 @@ async function main() {
 	const { statSync } = await import("node:fs");
 	try {
 		const dbSizeBefore = statSync(dbPath).size;
-		const retentionDays = Number.parseInt(process.env.RUMMY_RETENTION_DAYS || "31", 10);
+		const retentionDays = Number.parseInt(process.env.RUMMY_RETENTION_DAYS, 10);
 		await db.purge_old_runs.run({ retention_days: retentionDays });
 		const dbSizeAfter = statSync(dbPath).size;
 		const dbSizeMB = (dbSizeAfter / 1024 / 1024).toFixed(2);
