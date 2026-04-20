@@ -156,6 +156,9 @@ export default class Xai {
 			/\/responses$/,
 			`/language-models/${model}`,
 		);
+		// Optional endpoint probe. If the network call fails (404 on older
+		// API versions, timeout, etc.) we fall through to the next strategy
+		// below; a terminal throw fires if no strategy resolves.
 		const langRes = await fetch(langUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(5000),

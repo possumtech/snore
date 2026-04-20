@@ -42,9 +42,11 @@ export default class AgentLoop {
 		const promises = [];
 		for (const { controller, promise } of this.#activeRuns.values()) {
 			controller.abort();
-			promises.push(promise.catch(() => {}));
+			promises.push(promise);
 		}
-		await Promise.all(promises);
+		// allSettled: drain waits for every run to finish; rejections are
+		// already surfaced to whoever awaited the original run() call.
+		await Promise.allSettled(promises);
 	}
 
 	async #generateAlias(modelAlias) {
@@ -462,6 +464,12 @@ export default class AgentLoop {
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS);
 		const healer = new ResponseHealer();
 
+		// Error-teardown helper: each secondary async step is wrapped so
+		// a failure during cleanup is logged but doesn't mask the root
+		// cause. Shared by catch and finally.
+		const warn = (label) => (e) =>
+			console.warn(`[RUMMY] teardown ${label}: ${e.message}`);
+
 		// Previous loop entries stay at full fidelity — the model is
 		// instructed to demote them. Budget enforcement catches overflow
 		// if the model fails to manage context.
@@ -636,9 +644,9 @@ export default class AgentLoop {
 					alias: currentAlias,
 					turn: loopIteration,
 					status: 499,
-				}).catch(() => {});
+				}).catch(warn("emitRunState(499)"));
 				const out = { run: currentAlias, status: 499, turn: loopIteration };
-				await hook.completed.emit({ projectId, ...out }).catch(() => {});
+				await hook.completed.emit({ projectId, ...out }).catch(warn(`${mode}.completed`));
 				return out;
 			}
 			await this.#setRunStatus(currentRunId, currentAlias, 500);
@@ -648,7 +656,7 @@ export default class AgentLoop {
 				alias: currentAlias,
 				turn: loopIteration,
 				status: 500,
-			}).catch(() => {});
+			}).catch(warn("emitRunState(500)"));
 			try {
 				await this.#hooks.error.log.emit({
 					store: this.#knownStore,
@@ -671,7 +679,9 @@ export default class AgentLoop {
 				turn: loopIteration,
 				error: err.message,
 			};
-			await hook.completed.emit({ projectId, ...out }).catch(() => {});
+			await hook.completed
+				.emit({ projectId, ...out })
+				.catch(warn(`${mode}.completed(500)`));
 			return out;
 		} finally {
 			await this.#hooks.loop.completed
@@ -681,7 +691,7 @@ export default class AgentLoop {
 					mode,
 					turns: loopIteration,
 				})
-				.catch(() => {});
+				.catch(warn("loop.completed"));
 		}
 	}
 
@@ -804,7 +814,12 @@ export default class AgentLoop {
 						if (projectRoot) {
 							const { unlink } = await import("node:fs/promises");
 							const { join } = await import("node:path");
-							await unlink(join(projectRoot, attrs.path)).catch(() => {});
+							try {
+								await unlink(join(projectRoot, attrs.path));
+							} catch (err) {
+								// File may already be absent — entry rm'd regardless.
+								if (err.code !== "ENOENT") throw err;
+							}
 						}
 					}
 				}

@@ -533,9 +533,7 @@ export default class Rpc {
 			alias = `${attrs.model}_${Date.now()}`;
 		}
 
-		const existing = await ctx.db.get_run_by_alias
-			.get({ alias })
-			.catch(() => null);
+		const existing = await ctx.db.get_run_by_alias.get({ alias });
 
 		const runPath = `run://${alias}`;
 

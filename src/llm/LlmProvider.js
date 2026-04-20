@@ -95,11 +95,17 @@ export default class LlmProvider {
 		}
 		const size = await provider.getContextSize(resolvedModel);
 
-		// Cache back to DB for next time.
+		// Cache back to DB for next time. Write failure shouldn't block
+		// the caller — they already have `size`; the cache is advisory.
 		if (this.#db && size) {
-			await this.#db.update_model_context_length
-				.run({ alias: model, context_length: size })
-				.catch(() => {});
+			try {
+				await this.#db.update_model_context_length.run({
+					alias: model,
+					context_length: size,
+				});
+			} catch (err) {
+				console.warn(`[RUMMY] model context cache write failed: ${err.message}`);
+			}
 		}
 
 		return size;
