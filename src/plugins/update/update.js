@@ -78,7 +78,7 @@ export default class Update {
 					runId,
 					path: entry.path,
 					state: "failed",
-					body: "Overridden — actions in this turn failed. Continue with <update/>.",
+					body: "Overridden — actions in this turn failed. Continue with status 102.",
 					outcome: "conflict",
 				});
 			}
