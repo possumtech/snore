@@ -281,7 +281,7 @@ describe("ContextAssembler", () => {
 			assert.ok(content.includes("const x = 1;"), "new file rendered");
 		});
 
-		it("renders unknowns inside <context> (no separate block)", async () => {
+		it("renders unknowns in their own <unknowns> block in the user message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -314,15 +314,15 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 			const system = messages[0].content;
 
-			assert.ok(system.includes("<context>"), "context block rendered");
+			assert.ok(user.includes("<unknowns>"), "unknowns block rendered");
 			assert.ok(
-				system.includes("<unknown path=\"unknown://config\""),
-				"unknown rendered inside context",
+				user.includes('<unknown path="unknown://config"'),
+				"unknown rendered inside its own block",
 			);
-			assert.ok(system.includes("which database adapter"));
+			assert.ok(user.includes("which database adapter"));
 			assert.ok(
-				!user.includes("<unknowns>"),
-				"no separate <unknowns> block",
+				!system.includes("<unknown "),
+				"unknown not rendered inside <context>",
 			);
 			assert.ok(
 				!system.includes("<unknowns>"),

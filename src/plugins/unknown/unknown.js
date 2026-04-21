@@ -10,6 +10,7 @@ export default class Unknown {
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
+		core.filter("assembly.user", this.assembleUnknowns.bind(this), 200);
 		core.markHidden();
 	}
 
@@ -54,4 +55,30 @@ export default class Unknown {
 	summary() {
 		return "";
 	}
+
+	async assembleUnknowns(content, ctx) {
+		const entries = ctx.rows.filter((r) => r.category === "unknown");
+		if (entries.length === 0) return content;
+		const lines = entries.map((e) => renderUnknownTag(e));
+		return `${content}<unknowns>\n${lines.join("\n")}\n</unknowns>\n`;
+	}
+}
+
+function renderUnknownTag(entry) {
+	const attrs =
+		typeof entry.attributes === "string"
+			? JSON.parse(entry.attributes)
+			: entry.attributes;
+	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
+	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
+	const summary =
+		typeof attrs?.summary === "string"
+			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`
+			: "";
+	const attrStr = `${turn}${summary}${fidelity}${tokens}`;
+	if (entry.body) {
+		return `<unknown path="${entry.path}"${attrStr}>${entry.body}</unknown>`;
+	}
+	return `<unknown path="${entry.path}"${attrStr}/>`;
 }

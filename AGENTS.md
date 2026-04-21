@@ -81,6 +81,26 @@ is the remaining work.
 
 ## Open Items
 
+- [ ] **Staged packet-clarity fixes (in order, stop when the model behaves):**
+  1. **Log-tag path fallback.** `src/plugins/log/log.js` `renderLogTag`
+     should fall back to `entry.path` when `attrs.path` is absent, so
+     `<update>`, `<search>`, `<rm>`, `<ask_user>` log tags surface their
+     own DB path instead of rendering `path=""`.
+  2. **Re-split `<unknowns>` from `<context>`.** Unknowns were merged
+     into `<context>` for paradigm simplicity, but turn-11 reasoning
+     (run `gemma_1776782710086`) showed the model reading
+     `<unknown fidelity="promoted">` inside `<context>` as "this
+     unknown has been promoted to a known." Put unknowns in their own
+     `<unknowns>` block between `<log>` and `<prompt>` so the block
+     name ("unknowns") does the semantic work the tag attrs alone
+     aren't doing.
+  3. **Rename fidelity → visibility, values → `{visible, summarized,
+     archived}` — ONLY IF #2 doesn't resolve the confusion.** The root
+     cause is the word "promoted" overloading phase-verb semantics
+     with fidelity-state semantics. Renaming detaches them. Scope:
+     schema column + CHECK, every plugin's `onView` registrations,
+     render paths, tooldocs, preamble examples, tests. Do not start
+     this until the packet evidence says #2 wasn't enough.
 - [ ] **Gemma/MAB benchmark run.** Published baselines are in this
   doc below (60%/5% GPT-4o; 60%/6% best). With preamble stability
   now, we have a meaningful number to measure against. Needed

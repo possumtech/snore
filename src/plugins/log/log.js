@@ -28,10 +28,12 @@ function renderLogTag(entry) {
 			: entry.attributes;
 
 	// Display target: attrs.path for store tools, attrs.command for shell
-	// tools, empty for schemes that have neither.
+	// tools, else the entry's own DB path so update/search/rm/ask_user
+	// surface meaningful identity instead of rendering path="".
 	let target = "";
 	if (attrs?.path) target = attrs.path;
 	else if (attrs?.command) target = attrs.command;
+	else if (entry.path) target = entry.path;
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const statusValue =
 		attrs?.status != null

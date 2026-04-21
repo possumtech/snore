@@ -91,9 +91,7 @@ export default class Known {
 	}
 
 	async assembleContext(content, ctx) {
-		const entries = ctx.rows.filter(
-			(r) => r.category === "data" || r.category === "unknown",
-		);
+		const entries = ctx.rows.filter((r) => r.category === "data");
 		if (entries.length === 0) return content;
 		const demotedSet = new Set(ctx.demoted);
 		const lines = entries.map((e) => renderContextTag(e, demotedSet));
