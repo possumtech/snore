@@ -12,7 +12,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Streaming primitives", () => {
@@ -20,7 +20,7 @@ describe("Streaming primitives", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("streaming");
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		await store.loadSchemes(tdb.db);
 	});
 

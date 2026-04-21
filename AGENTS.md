@@ -64,12 +64,11 @@ is the remaining work.
 - **Phase 1 — Schema** ✓ `run_views.state`, four writer tiers, view
   layer, boot env resolution.
 - **Phase 2 — Primitives** ✓ Six-verb object-arg grammar:
-  `set` / `get` / `rm` / `cp` / `mv` / `update`. KnownStore → Repository.
+  `set` / `get` / `rm` / `cp` / `mv` / `update`.
 - **Phase 3 — Runs-as-entries** ✓ `run://<alias>` scheme, client
   writer tier, run:// → entry mirror with unified lifecycle.
 - **Phase 4 — Client surface** ✓ RPC is a thin projection of the
-  plugin API. Protocol 2.0. Legacy `ask`/`act`/`init`/`startRun`/etc.
-  retired.
+  plugin API. Protocol 2.0.
 - **Phase 5 — Plugin hygiene** ✓ Plugin-dep system deleted,
   TestDb+TestServer share one graph, PermissionError typed, handler
   writer plumbed via Proxy.
@@ -90,9 +89,6 @@ is the remaining work.
   request/response; `run/state` / `run/progress` / `run/proposal`
   fly out untracked. Mirroring the shape would let us replay
   notification streams for diagnosis.
-- [ ] **Entries-store naming unification.** `Repository`,
-  `knownStore`, `#knownStore`, `entries`, `tdb.db` — four+ names
-  for one concept across the codebase. Pick one; enforce with lint.
 - [ ] **Plugin filter priority magic numbers.** 100 / 150 / 200 /
   300 appear throughout with no documented meaning. Either name
   the stages explicitly or document the ranges so third-party

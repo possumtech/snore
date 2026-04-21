@@ -1,4 +1,4 @@
-import Repository from "../../agent/Repository.js";
+import Entries from "../../agent/Entries.js";
 import docs from "./rmDoc.js";
 
 export default class Rm {
@@ -32,7 +32,7 @@ export default class Rm {
 			});
 			return;
 		}
-		const normalized = Repository.normalizePath(target);
+		const normalized = Entries.normalizePath(target);
 		const matches = await store.getEntriesByPattern(
 			runId,
 			normalized,

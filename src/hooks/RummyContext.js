@@ -2,7 +2,7 @@
  * RummyContext provides a unified, semantic API for plugins to interact with
  * the Turn node tree and core resources like the Database and Project metadata.
  */
-// Repository write verbs that should automatically carry the caller's
+// Entries write verbs that should automatically carry the caller's
 // writer identity. Handler-issued writes on behalf of the model default
 // to writer=model; plugin background writes (set via rummy from a hook
 // with writer: "plugin" or "system" in ctx) get the context's writer.
@@ -119,7 +119,7 @@ export default class RummyContext {
 	}
 
 	/**
-	 * Writer identity for Repository permission checks. Defaults to
+	 * Writer identity for Entries permission checks. Defaults to
 	 * 'model' — handlers write on behalf of the model's emitted command.
 	 * Non-handler plugin code (streaming callbacks, background emissions)
 	 * passes `writer: 'plugin'` or `'system'` explicitly.

@@ -6,7 +6,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Scheme registration via plugins", () => {
@@ -14,7 +14,7 @@ describe("Scheme registration via plugins", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "scheme_1" });
 		runId = seed.runId;
 	});

@@ -16,15 +16,15 @@ export default class AgentLoop {
 	#llmProvider;
 	#hooks;
 	#turnExecutor;
-	#knownStore;
+	#entries;
 	#activeRuns = new Map();
 
-	constructor(db, llmProvider, hooks, turnExecutor, knownStore) {
+	constructor(db, llmProvider, hooks, turnExecutor, entries) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#turnExecutor = turnExecutor;
-		this.#knownStore = knownStore;
+		this.#entries = entries;
 	}
 
 	abort(runId) {
@@ -61,7 +61,7 @@ export default class AgentLoop {
 		await this.#db.update_run_status.run({ id: runId, status: httpStatus });
 		const state = HTTP_TO_RUN_STATE[httpStatus];
 		if (!state) return;
-		await this.#knownStore.set({
+		await this.#entries.set({
 			runId,
 			path: `run://${alias}`,
 			state,
@@ -78,8 +78,8 @@ export default class AgentLoop {
 		result = null,
 	}) {
 		const runUsage = await this.#db.get_run_usage.get({ run_id: runId });
-		const history = await this.#knownStore.getLog(runId);
-		const unknowns = await this.#knownStore.getUnknowns(runId);
+		const history = await this.#entries.getLog(runId);
+		const unknowns = await this.#entries.getUnknowns(runId);
 		const latestSummary = history
 			.filter((e) => {
 				if (e.tool !== "update") return false;
@@ -151,7 +151,7 @@ export default class AgentLoop {
 			contextLimit = null,
 		},
 	) {
-		await this.#knownStore.set({
+		await this.#entries.set({
 			runId,
 			turn: 0,
 			path: `run://${alias}`,
@@ -192,7 +192,7 @@ export default class AgentLoop {
 				persona,
 				context_limit: contextLimit,
 			});
-			await this.#knownStore.forkEntries(existingRun.id, runRow.id);
+			await this.#entries.forkEntries(existingRun.id, runRow.id);
 			await this.#writeRunEntry(runRow.id, alias, prompt, {
 				projectId,
 				parentRunId: existingRun.id,
@@ -216,9 +216,9 @@ export default class AgentLoop {
 				if (existing) existing.controller.abort();
 
 				// Clean up stale proposals from interrupted runs
-				const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
+				const unresolved = await this.#entries.getUnresolved(existingRun.id);
 				for (const u of unresolved) {
-					await this.#knownStore.set({
+					await this.#entries.set({
 						runId: existingRun.id,
 						path: u.path,
 						state: "cancelled",
@@ -583,7 +583,7 @@ export default class AgentLoop {
 				await this.#setRunStatus(currentRunId, currentAlias, verdict.status);
 				if (verdict.reason) {
 					await this.#hooks.error.log.emit({
-						store: this.#knownStore,
+						store: this.#entries,
 						runId: currentRunId,
 						turn: result.turn,
 						loopId: currentLoopId,
@@ -630,7 +630,7 @@ export default class AgentLoop {
 			});
 			if (status === 500) {
 				await this.#hooks.error.log.emit({
-					store: this.#knownStore,
+					store: this.#entries,
 					runId: currentRunId,
 					turn: loopIteration,
 					loopId: currentLoopId,
@@ -660,7 +660,7 @@ export default class AgentLoop {
 		const { path, action, output } = resolution;
 
 		if (action === "accept" || action === "error") {
-			const attrs = await this.#knownStore.getAttributes(runId, path);
+			const attrs = await this.#entries.getAttributes(runId, path);
 
 			// readonly constraint enforcement: refuse to accept a set:// that
 			// would rewrite a path the project has marked readonly. Bleeds
@@ -674,7 +674,7 @@ export default class AgentLoop {
 					attrs.path,
 				);
 				if (blocked) {
-					await this.#knownStore.set({
+					await this.#entries.set({
 						runId,
 						path,
 						state: "failed",
@@ -693,9 +693,9 @@ export default class AgentLoop {
 			);
 			const state = action === "error" ? "failed" : "resolved";
 			const outcome = action === "error" ? "error" : null;
-			const existing = await this.#knownStore.getState(runId, path);
+			const existing = await this.#entries.getState(runId, path);
 			const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
-			await this.#knownStore.set({
+			await this.#entries.set({
 				runId,
 				turn: existingTurn,
 				path,
@@ -708,7 +708,7 @@ export default class AgentLoop {
 			if (path.startsWith("ask_user://") && output) {
 				const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 					.next_turn;
-				await this.#knownStore.set({
+				await this.#entries.set({
 					runId,
 					turn,
 					path,
@@ -727,7 +727,7 @@ export default class AgentLoop {
 				const projectRoot = project?.project_root;
 
 				if (path.startsWith("set://") && attrs?.path && attrs?.merge) {
-					const existing = await this.#knownStore.getBody(runId, attrs.path);
+					const existing = await this.#entries.getBody(runId, attrs.path);
 					const isNewFile = existing === null;
 					const fileBody = isNewFile ? "" : existing;
 					const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
@@ -745,7 +745,7 @@ export default class AgentLoop {
 					}
 					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 						.next_turn;
-					await this.#knownStore.set({
+					await this.#entries.set({
 						runId,
 						turn,
 						path: attrs.path,
@@ -766,7 +766,7 @@ export default class AgentLoop {
 
 				if (path.startsWith("rm://")) {
 					if (attrs?.path) {
-						await this.#knownStore.rm({ runId: runId, path: attrs.path });
+						await this.#entries.rm({ runId: runId, path: attrs.path });
 						if (projectRoot) {
 							const { unlink } = await import("node:fs/promises");
 							const { join } = await import("node:path");
@@ -782,7 +782,7 @@ export default class AgentLoop {
 
 				if (path.startsWith("mv://")) {
 					if (attrs?.isMove && attrs?.from) {
-						await this.#knownStore.rm({ runId: runId, path: attrs.from });
+						await this.#entries.rm({ runId: runId, path: attrs.from });
 					}
 				}
 
@@ -800,7 +800,7 @@ export default class AgentLoop {
 						.next_turn;
 					const channels = [1, 2];
 					for (const ch of channels) {
-						await this.#knownStore.set({
+						await this.#entries.set({
 							runId,
 							turn,
 							path: `${path}_${ch}`,
@@ -814,7 +814,7 @@ export default class AgentLoop {
 					// references the data entries. resolve() above set the state
 					// to resolved; this is body replacement to make the log
 					// entry self-documenting in <performed>.
-					await this.#knownStore.set({
+					await this.#entries.set({
 						runId,
 						path,
 						state: "resolved",
@@ -823,7 +823,7 @@ export default class AgentLoop {
 				}
 			}
 		} else if (action === "reject") {
-			await this.#knownStore.set({
+			await this.#entries.set({
 				runId,
 				path,
 				state: "failed",
@@ -846,7 +846,7 @@ export default class AgentLoop {
 				// Prefer existing body (e.g. the set result entry already has
 				// the model's proposed content); fall back to the client-
 				// supplied output on acceptance; empty string otherwise.
-				const existing = await this.#knownStore.getBody(runId, path);
+				const existing = await this.#entries.getBody(runId, path);
 				if (existing) return existing;
 				if (output) return output;
 				return "";
@@ -863,7 +863,7 @@ export default class AgentLoop {
 
 		const nextTurn = runRow.next_turn;
 
-		await this.#knownStore.set({
+		await this.#entries.set({
 			runId: runRow.id,
 			turn: nextTurn,
 			path: `prompt://${nextTurn}`,
@@ -896,6 +896,6 @@ export default class AgentLoop {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
-		return this.#knownStore.getLog(runRow.id);
+		return this.#entries.getLog(runRow.id);
 	}
 }

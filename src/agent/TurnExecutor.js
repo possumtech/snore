@@ -7,13 +7,13 @@ export default class TurnExecutor {
 	#db;
 	#llmProvider;
 	#hooks;
-	#knownStore;
+	#entries;
 
-	constructor(db, llmProvider, hooks, knownStore) {
+	constructor(db, llmProvider, hooks, entries) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
-		this.#knownStore = knownStore;
+		this.#entries = entries;
 	}
 
 	async execute({
@@ -32,7 +32,7 @@ export default class TurnExecutor {
 		options,
 		signal,
 	}) {
-		const turn = await this.#knownStore.nextTurn(currentRunId);
+		const turn = await this.#entries.nextTurn(currentRunId);
 
 		const turnRow = await this.#db.create_turn.get({
 			run_id: currentRunId,
@@ -56,7 +56,7 @@ export default class TurnExecutor {
 			{
 				hooks: this.#hooks,
 				db: this.#db,
-				store: this.#knownStore,
+				store: this.#entries,
 				project,
 				type: mode,
 				sequence: turn,
@@ -199,7 +199,7 @@ export default class TurnExecutor {
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
 		for (const w of warnings) {
 			await this.#hooks.error.log.emit({
-				store: this.#knownStore,
+				store: this.#entries,
 				runId: currentRunId,
 				turn,
 				message: w,
@@ -260,7 +260,7 @@ export default class TurnExecutor {
 
 			if (abortAfter) {
 				const errorMsg = `Aborted — preceding <${abortAfter}> failed.`;
-				await this.#knownStore.set({
+				await this.#entries.set({
 					runId: currentRunId,
 					turn,
 					path: entry.resultPath || entry.path,
@@ -279,7 +279,7 @@ export default class TurnExecutor {
 				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			} catch (dispatchErr) {
 				await this.#hooks.error.log.emit({
-					store: this.#knownStore,
+					store: this.#entries,
 					runId: currentRunId,
 					turn,
 					loopId: currentLoopId,
@@ -296,8 +296,8 @@ export default class TurnExecutor {
 			// turn is genuinely in 102 (in-progress) during dispatch.
 			// The client's guard (handle_run_state) prevents a late 102
 			// from regressing a terminal status.
-			const history = await this.#knownStore.getLog(currentRunId);
-			const unknowns = await this.#knownStore.getUnknowns(currentRunId);
+			const history = await this.#entries.getLog(currentRunId);
+			const unknowns = await this.#entries.getUnknowns(currentRunId);
 			await this.#hooks.run.state.emit({
 				projectId,
 				run: currentAlias,
@@ -314,15 +314,15 @@ export default class TurnExecutor {
 			await this.#hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
 			// Check for any proposals created by this entry's dispatch
-			const proposed = await this.#knownStore.getUnresolved(currentRunId);
+			const proposed = await this.#entries.getUnresolved(currentRunId);
 			for (const p of proposed) {
 				await this.#hooks.proposal.pending.emit({
 					projectId,
 					run: currentAlias,
 					proposed: [p],
 				});
-				await this.#knownStore.waitForResolution(currentRunId, p.path);
-				const resolved = await this.#knownStore.getState(currentRunId, p.path);
+				await this.#entries.waitForResolution(currentRunId, p.path);
+				const resolved = await this.#entries.getState(currentRunId, p.path);
 				if (resolved?.status >= 400) {
 					hasErrors = true;
 					abortAfter = entry.scheme;
@@ -332,7 +332,7 @@ export default class TurnExecutor {
 			// Also check the entry itself for direct failures
 			if (!hasErrors) {
 				const entryPath = entry.resultPath || entry.path;
-				const row = await this.#knownStore.getState(currentRunId, entryPath);
+				const row = await this.#entries.getState(currentRunId, entryPath);
 				if (row?.status >= 400) {
 					hasErrors = true;
 					abortAfter = entry.scheme;
@@ -400,13 +400,13 @@ export default class TurnExecutor {
 		else if (cmd.question) rawTarget = cmd.question;
 		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
 		if (rawTarget.length > 512 || /\p{Cc}/u.test(rawTarget)) {
-			const rejectPath = await this.#knownStore.dedup(
+			const rejectPath = await this.#entries.dedup(
 				runId,
 				scheme,
 				`${scheme}://invalid`,
 				turn,
 			);
-			await this.#knownStore.set({
+			await this.#entries.set({
 				runId,
 				turn,
 				path: rejectPath,
@@ -426,7 +426,7 @@ export default class TurnExecutor {
 			};
 		}
 		const target = rawTarget;
-		const resultPath = await this.#knownStore.dedup(
+		const resultPath = await this.#entries.dedup(
 			runId,
 			scheme,
 			target,
@@ -454,7 +454,7 @@ export default class TurnExecutor {
 				state: "resolved",
 				outcome: null,
 			},
-			{ store: this.#knownStore, runId, turn, loopId, mode },
+			{ store: this.#entries, runId, turn, loopId, mode },
 		);
 		if (filtered.state === "failed" || filtered.state === "cancelled") {
 			return filtered;

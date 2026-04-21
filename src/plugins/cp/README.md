@@ -15,5 +15,5 @@ Shows `cp {from} {to}`.
 ## Behavior
 
 Warns if the destination already exists and will be overwritten. Uses
-`Repository.scheme()` to determine whether the destination is a scheme
+`Entries.scheme()` to determine whether the destination is a scheme
 path or a file path.

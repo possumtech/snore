@@ -12,7 +12,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Budget demotion", () => {
@@ -20,7 +20,7 @@ describe("Budget demotion", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("budget_demotion");
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		await store.loadSchemes(tdb.db);
 	});
 

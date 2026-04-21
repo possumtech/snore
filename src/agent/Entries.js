@@ -1,7 +1,7 @@
 import slugify from "../sql/functions/slugify.js";
 import { PermissionError } from "./errors.js";
 
-export default class Repository {
+export default class Entries {
 	#db;
 	#onChanged;
 	#schemes = new Map();
@@ -96,9 +96,9 @@ export default class Repository {
 	}
 
 	/**
-	 * Resolve a scheme's declared scope kind + writer list. Falls back to
-	 * generous defaults (run + model/plugin) if the scheme isn't loaded
-	 * or lacks declarations — preserves V1 behavior for legacy paths.
+	 * Resolve a scheme's declared scope kind + writer list. Unregistered
+	 * or declaration-less schemes default to run-level + model/plugin
+	 * writers so ad-hoc paths (e.g. bare filenames) still work.
 	 */
 	async #schemeRules(scheme) {
 		await this.#ensureSchemes();
@@ -203,8 +203,8 @@ export default class Repository {
 			return;
 		}
 
-		const normalized = Repository.normalizePath(path);
-		const scheme = Repository.scheme(normalized);
+		const normalized = Entries.normalizePath(path);
+		const scheme = Entries.scheme(normalized);
 
 		// Append mode: streaming body growth on an existing entry.
 		if (append) {
@@ -333,7 +333,7 @@ export default class Repository {
 				body: bodyFilter,
 			});
 		} else {
-			const normalized = Repository.normalizePath(path);
+			const normalized = Entries.normalizePath(path);
 			await this.#db.delete_known_entry.run({
 				run_id: runId,
 				path: normalized,
@@ -457,7 +457,7 @@ export default class Repository {
 	}
 
 	waitForResolution(runId, path) {
-		const normalized = Repository.normalizePath(path);
+		const normalized = Entries.normalizePath(path);
 		const key = `${runId}:${normalized}`;
 		return new Promise((resolve) => {
 			this.#pendingResolutions.set(key, resolve);
@@ -514,10 +514,6 @@ export default class Repository {
 		return this.#db.get_unknowns.all({ run_id: runId });
 	}
 
-	/**
-	 * Cheap view-only fork in V2. Today: copies all entries. Same signature
-	 * so the eventual swap is internal to this method.
-	 */
 	async forkEntries(parentRunId, childRunId) {
 		await this.#db.fork_known_entries.run({
 			new_run_id: childRunId,
@@ -560,14 +556,14 @@ export default class Repository {
 	async getBody(runId, path) {
 		const row = await this.#db.get_entry_body.get({
 			run_id: runId,
-			path: Repository.normalizePath(path),
+			path: Entries.normalizePath(path),
 		});
 		if (!row) return null;
 		return row.body;
 	}
 
 	async setAttributes(runId, path, attrs) {
-		const normalized = Repository.normalizePath(path);
+		const normalized = Entries.normalizePath(path);
 		await this.#db.update_entry_attributes.run({
 			run_id: runId,
 			path: normalized,
@@ -579,14 +575,14 @@ export default class Repository {
 	async getState(runId, path) {
 		return this.#db.get_entry_state.get({
 			run_id: runId,
-			path: Repository.normalizePath(path),
+			path: Entries.normalizePath(path),
 		});
 	}
 
 	async getAttributes(runId, path) {
 		const row = await this.#db.get_entry_attributes.get({
 			run_id: runId,
-			path: Repository.normalizePath(path),
+			path: Entries.normalizePath(path),
 		});
 		return row?.attributes ? JSON.parse(row.attributes) : null;
 	}
@@ -596,7 +592,7 @@ export default class Repository {
 	}
 
 	static toolFromPath(path) {
-		return Repository.scheme(path);
+		return Entries.scheme(path);
 	}
 
 	static isSystemPath(path) {

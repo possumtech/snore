@@ -1,4 +1,4 @@
-import Repository from "../../agent/Repository.js";
+import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
@@ -106,7 +106,7 @@ export default class Set {
 			const target = attrs.path;
 			if (!target) return;
 
-			const scheme = Repository.scheme(target);
+			const scheme = Entries.scheme(target);
 			if (scheme === null) {
 				// File write — diff against existing content
 				const existing = await store.getBody(runId, target);
@@ -202,7 +202,7 @@ export default class Set {
 		// Apply fidelity after all write operations
 		if (fidelityAttr && attrs.path) {
 			const target = attrs.path;
-			const scheme = Repository.scheme(target);
+			const scheme = Entries.scheme(target);
 			if (scheme !== null) {
 				await store.set({ runId: runId, path: target, fidelity: fidelityAttr });
 			}
@@ -269,7 +269,7 @@ export default class Set {
 					attributes: { path: match.path, revisions },
 					loopId,
 				});
-				if (Repository.normalizePath(entry.resultPath) !== canonicalPath) {
+				if (Entries.normalizePath(entry.resultPath) !== canonicalPath) {
 					await store.rm({ runId: runId, path: entry.resultPath });
 				}
 				return;

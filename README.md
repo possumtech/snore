@@ -22,24 +22,30 @@ Rummy is the only LLM agent service inspired by and dedicated to the memory of f
 
 ## Installation
 
-Set `RUMMY_HOME` (e.g. `~/.rummy`) in your shell environment. On first
-run, Rummy creates `${RUMMY_HOME}/.env.example` from the package
-defaults and loads it on every start, so the lazy path works:
+Rummy loads configuration from exactly **one** directory per
+invocation:
+
+1. The directory you run `rummy` from, if it contains `.env.example`.
+2. Otherwise, `${RUMMY_HOME}` (default `~/.rummy`).
+
+`npm i -g @possumtech/rummy` runs a postinstall that seeds
+`${RUMMY_HOME}/.env.example` from the package defaults, so the
+out-of-the-box path works:
 
 ```bash
 # In your shell rc:
 export RUMMY_HOME=~/.rummy
 
 npm i -g @possumtech/rummy
-rummy           # first run seeds ~/.rummy/.env.example
 $EDITOR ~/.rummy/.env.example   # set a model alias, tweak defaults
-rummy           # run again; picks up edits
+rummy
 ```
 
-For per-user overrides without touching the seeded defaults, create
-`${RUMMY_HOME}/.env` with only the keys you want to change. Both
-files are loaded on boot; `.env.example` is baseline, `.env` extends.
-Shell env beats both.
+Within the chosen directory, `.env.example` is the baseline and `.env`
+(if present) overrides. Shell env beats both. The package's own
+`.env.example` is **never** loaded at runtime — if neither the cwd nor
+`${RUMMY_HOME}` has an `.env.example`, rummy crashes at startup. No
+silent defaults.
 
 ## Usage
 

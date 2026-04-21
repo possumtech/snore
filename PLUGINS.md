@@ -116,16 +116,16 @@ Model:   <rm path="file.txt"/>               → { name: "rm", path: "file.txt" 
                                              → TurnExecutor.#record()
                                              → hooks.tools.dispatch("rm", entry, rummy)
 Client:  { method: "rm", params: {...} }     → rpc.js #dispatchRm(...)
-                                             → Repository.rm({...})
-Plugin:  rummy.rm(path) / rummy.set({...})   → Repository.set / Repository.rm
-                                             → (Repository also fires entry events)
+                                             → Entries.rm({...})
+Plugin:  rummy.rm(path) / rummy.set({...})   → Entries.set / Entries.rm
+                                             → (Entries also fires entry events)
 ```
 
 Three surfaces, one grammar (SPEC §0.3). The model dispatches through
 the handler chain (`TurnExecutor.#record()` → `hooks.tools.dispatch`
 → policy filter → turn-scoped recording → abort cascade → budget
 lifecycle around it). The client primitives (`set`/`get`/`rm`/`cp`/
-`mv`/`update` RPCs) talk directly to Repository — `writer: "client"`
+`mv`/`update` RPCs) talk directly to Entries — `writer: "client"`
 on every call, permissions enforced per-scheme. Plugins use
 RummyContext verbs; the `rummy.entries` accessor is a Proxy that
 auto-binds `writer: rummy.writer` on every write, so a plugin writing
@@ -169,7 +169,7 @@ sensible result-type scheme (logging category, run scope, writable by
 model + plugin).
 
 `scope` determines where entries at this scheme land (see SPEC §0.1 /
-§0.7). `writableBy` is enforced at `Repository.set` — writes from a
+§0.7). `writableBy` is enforced at `Entries.set` — writes from a
 writer not in the list throw a typed `PermissionError` (importable
 from `src/agent/errors.js`). The four writer tiers (SPEC §0.4) form
 a strict hierarchy: **system > plugin > client > model**. Each tier
@@ -236,9 +236,11 @@ ctx = {
     rows,              // turn_context rows (materialized entries)
     loopStartTurn,     // First turn of current loop
     type,              // "ask" or "act"
-    tools,             // Set of active tool names
+    toolSet,           // Set<string> of active tool names for this loop
     contextSize,       // Model context window size
-    lastContextTokens, // Assembled tokens from previous turn
+    lastContextTokens, // Actual API tokens from the prior turn (0 on turn 1)
+    demoted,           // Mutable array — plugins push paths they demoted
+    turn,              // Current turn number
 }
 ```
 
@@ -303,7 +305,7 @@ invocation. Has tool verbs, per-turn state, database access.
 ### §4.1 Tool Verbs (on RummyContext)
 
 Convenience wrappers that bind `runId`, `turn`, `loopId` from context
-and delegate to Repository. Signatures vary per verb. For full
+and delegate to Entries. Signatures vary per verb. For full
 handler-chain semantics (policy filtering, proposal flow, abort
 cascade), call `rummy.hooks.tools.dispatch(scheme, entry, rummy)`
 instead.
@@ -333,7 +335,7 @@ instead.
 
 | Property | Type | Notes |
 |----------|------|-------|
-| `rummy.entries` | Repository proxy | Write calls auto-carry `writer: rummy.writer`. Read-through for reads + internal ops. |
+| `rummy.entries` | Entries proxy | Write calls auto-carry `writer: rummy.writer`. Read-through for reads + internal ops. |
 | `rummy.db` | SqlRite db | Prefer `entries` for plugin-facing data access |
 | `rummy.hooks` | Hook registry | |
 | `rummy.runId` | number | Current run |
@@ -421,7 +423,7 @@ Hooks fire in this order every turn:
 | 1 | `turn.started` | event | Plugins write prompt/instructions entries |
 | 2 | `context.materialized` | event | turn_context populated from v_model_context |
 | 3 | `assembly.system` | filter | Build system message from entries |
-| 4 | `assembly.user` | filter | Build user message (prompt plugin adds `<prompt tokenBudget tokenUsage>`) |
+| 4 | `assembly.user` | filter | Build user message (prompt plugin adds `<prompt tokensFree tokenUsage>`) |
 | 5 | `budget.enforce` | call | Measure assembled tokens; if over and it's turn 1, demote prompt, re-materialize, re-check; still over → 413 |
 | 6 | `llm.messages` | filter | Transform messages before LLM call |
 | 7 | `llm.request.started` | event | LLM call about to fire |
@@ -607,7 +609,7 @@ pure RPC plumbing shared across all streaming producers.
 | `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
 | `previous` | Assembly | Render `<previous>` loop history |
 | `performed` | Assembly | Render `<performed>` active loop work |
-| `prompt` | Assembly | Render `<prompt mode="ask\|act" tokenBudget="N" tokenUsage="M">` tag |
+| `prompt` | Assembly | Render `<prompt mode="ask\|act" tokensFree="N" tokenUsage="M">` tag |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
 | `instructions` | Internal | Preamble + tool docs + persona assembly; exposes `hooks.instructions.resolveSystemPrompt` |
 | `file` | Internal | File entry projections and constraints (`scheme IS NULL`) |

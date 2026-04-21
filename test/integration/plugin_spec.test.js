@@ -88,7 +88,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			// Schemes are used by v_model_context JOIN — if they're missing,
 			// entries with those schemes won't materialize
 			const { runId } = await tdb.seedRun({ alias: "spec_3_2" });
-			const store = new (await import("../../src/agent/Repository.js")).default(
+			const store = new (await import("../../src/agent/Entries.js")).default(
 				tdb.db,
 			);
 			await store.set({
@@ -239,7 +239,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 		it("§8.1 entries created with scheme, path, body, status", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_1" });
 			const store = tdb.hooks.tools.names.includes("known")
-				? new (await import("../../src/agent/Repository.js")).default(tdb.db)
+				? new (await import("../../src/agent/Entries.js")).default(tdb.db)
 				: null;
 			if (!store) return;
 			await store.set({
@@ -260,10 +260,10 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 	// §7.4 Entry Events
 	describe("§7.4 Entry Events", () => {
-		it("§7.4.1 Repository emits onChanged on upsert", async () => {
+		it("§7.4.1 Entries emits onChanged on upsert", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_1" });
 			const events = [];
-			const store = new (await import("../../src/agent/Repository.js")).default(
+			const store = new (await import("../../src/agent/Entries.js")).default(
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
@@ -278,10 +278,10 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.strictEqual(events[0].changeType, "upsert");
 		});
 
-		it("§7.4.2 Repository emits onChanged on fidelity change", async () => {
+		it("§7.4.2 Entries emits onChanged on fidelity change", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_2" });
 			const events = [];
-			const store = new (await import("../../src/agent/Repository.js")).default(
+			const store = new (await import("../../src/agent/Entries.js")).default(
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
@@ -304,10 +304,10 @@ describe("PLUGINS.md Spec Compliance", () => {
 			);
 		});
 
-		it("§7.4.3 Repository emits onChanged on remove", async () => {
+		it("§7.4.3 Entries emits onChanged on remove", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_3" });
 			const events = [];
-			const store = new (await import("../../src/agent/Repository.js")).default(
+			const store = new (await import("../../src/agent/Entries.js")).default(
 				tdb.db,
 				{ onChanged: (e) => events.push(e) },
 			);
@@ -337,9 +337,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_1" });
 			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
 				.default;
-			const Repository = (await import("../../src/agent/Repository.js"))
+			const Entries = (await import("../../src/agent/Entries.js"))
 				.default;
-			const store = new Repository(tdb.db);
+			const store = new Entries(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
 				{
@@ -373,9 +373,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_2" });
 			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
 				.default;
-			const Repository = (await import("../../src/agent/Repository.js"))
+			const Entries = (await import("../../src/agent/Entries.js"))
 				.default;
-			const store = new Repository(tdb.db);
+			const store = new Entries(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
 				{
@@ -456,9 +456,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 	describe("§8 Full Entry Lifecycle", () => {
 		it("§8.2 entry visible in v_model_context after creation", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_2" });
-			const Repository = (await import("../../src/agent/Repository.js"))
+			const Entries = (await import("../../src/agent/Entries.js"))
 				.default;
-			const store = new Repository(tdb.db);
+			const store = new Entries(tdb.db);
 			await store.set({
 				runId,
 				turn: 1,
@@ -475,9 +475,9 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 		it("§8.3 stored fidelity hides from v_model_context", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_3" });
-			const Repository = (await import("../../src/agent/Repository.js"))
+			const Entries = (await import("../../src/agent/Entries.js"))
 				.default;
-			const store = new Repository(tdb.db);
+			const store = new Entries(tdb.db);
 			await store.set({
 				runId,
 				turn: 1,

@@ -10,7 +10,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import { registerPlugins } from "../../src/plugins/index.js";
@@ -57,7 +57,7 @@ describe("Handler dispatch", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dispatch_1" });
 		RUN_ID = seed.runId;
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };

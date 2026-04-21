@@ -1,4 +1,4 @@
-import Repository from "../../agent/Repository.js";
+import Entries from "../../agent/Entries.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
 
@@ -33,7 +33,7 @@ export default class Get {
 			});
 			return;
 		}
-		const normalized = Repository.normalizePath(target);
+		const normalized = Entries.normalizePath(target);
 		// XmlParser passes attributes through; `body` attr is optional.
 		const bodyFilter = entry.attributes.body;
 		const preview = entry.attributes.preview !== undefined;

@@ -40,10 +40,9 @@ export default class ToolRegistry {
 		this.#tools.set(scheme, Object.freeze({}));
 	}
 
-	// Mark a tool as hidden — handler still dispatches if the model emits the
-	// tag, but the tool is excluded from all model-facing tool lists. Used for
-	// legacy/internal schemes (e.g. <known>, <unknown>) we want to retire
-	// without deleting.
+	// Hidden tools dispatch on direct emission but don't appear in any
+	// model-facing tool list. Internal schemes (e.g. <known>, <unknown>)
+	// the model writes via <set path="scheme://..."> instead.
 	markHidden(scheme) {
 		this.#hidden.add(scheme);
 	}

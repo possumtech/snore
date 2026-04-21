@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -13,7 +13,7 @@ describe("turn_context distribution bucket correctness", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dist_1" });
 		RUN_ID = seed.runId;
 

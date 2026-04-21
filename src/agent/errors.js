@@ -1,5 +1,5 @@
 /**
- * Typed errors for the agent/Repository layer. Callers catch by type,
+ * Typed errors for the agent/Entries layer. Callers catch by type,
  * not by regex.
  */
 

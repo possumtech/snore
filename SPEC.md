@@ -258,16 +258,17 @@ scope, writableBy})` in the constructor. Defaults:
   hides audit schemes from the model).
 - `default_scope` — `run` \| `project` \| `global`. Resolved to a
   concrete scope string at write time (`run:N`, `project:N`, `global`).
-  Project resolution currently falls back to run (projectId isn't
-  plumbed to the Repository yet).
+  Project-scoped writes require `projectId` on the call; `Entries.set`
+  throws if it's missing.
 - `writable_by` — JSON array of allowed writer types
-  (`model` \| `plugin` \| `system`). Repository rejects writes where
-  the caller's writer isn't in the list, with `403`.
+  (`model` \| `plugin` \| `system` \| `client`). `Entries.set` throws
+  `PermissionError` when the caller's writer isn't in the list.
 
 ### 1.4 UPSERT Semantics
 
-Writes go through `KnownStore.upsert(runId, turn, path, body, status,
-{fidelity, attributes, hash, loopId, writer})` — two-prep flow:
+Writes go through `Entries.set({runId, path, body, state?, fidelity?,
+attributes?, outcome?, turn?, loopId?, writer?, projectId?, ...})`
+— two-prep flow:
 
 1. `upsert_entry` — INSERT OR UPDATE on `(scope, path)`. Scope comes
    from scheme's `default_scope`. Returns the `entry_id`.
@@ -382,9 +383,9 @@ Model tier restrictions enforced by unified `resolveForLoop(mode, flags)`.
 Ask mode excludes `sh`. Flags: `noInteraction` excludes `ask_user`,
 `noWeb` excludes `search`, `noProposals` excludes `ask_user`/`env`/`sh`.
 11 model tools: think, get, set, env, sh, rm, cp, mv, ask_user, update,
-search. `known` and `unknown` are retired as emission tags — the model
-writes them via `<set path="known://...">` and `<set path="unknown://...">`;
-the plugins remain for rendering and filters.
+search. The model writes `known` and `unknown` entries via
+`<set path="known://...">` and `<set path="unknown://...">`; those
+plugins don't advertise their own tag name — they render and filter.
 Client tier requires project init. Plugin tier has no restrictions.
 
 ### 3.2 Dispatch Path
@@ -713,7 +714,7 @@ path as pre-LLM 413 on a non-first turn.
 are rejected at the handler with an instructive error message. Forces
 atomic entries instead of dumping transcripts into a single `known://`.
 
-**Advisory feedback.** The model reads `tokenBudget` / `tokenUsage`
+**Advisory feedback.** The model reads `tokensFree` / `tokenUsage`
 attributes on `<prompt>` every turn and self-regulates. No threshold-
 based warnings. When the ceiling is actually breached the `budget://`
 entry is the feedback.
@@ -727,7 +728,7 @@ Under = 200. No margins.
 
 | Measure | Source | Scope | Use |
 |---|---|---|---|
-| SQL entry tokens | `known_entries.tokens` = `ceil(chars / DIVISOR)` | Per entry | Model decision-making: "this entry costs N tokens" |
+| SQL entry tokens | `entries.tokens` = `ceil(chars / DIVISOR)` | Per entry | Model decision-making: "this entry costs N tokens" |
 | Assembled estimate | `measureMessages(messages)` = sum of entry projections | Full packet | First-turn budget fallback only |
 | Actual API tokens | `turns.context_tokens` = `usage.input_tokens` back-filled from LLM | Per turn | Budget enforcement on turns 2+; ground truth |
 
@@ -746,33 +747,6 @@ These two will diverge rapidly on any multi-turn run. A run at turn 50 might sho
 `context_tokens: 8000` (context under control) and `prompt_tokens: 400000`
 (total input tokens billed across the whole run). They are measuring orthogonal things.
 
-### 4.6 Two Token Measures
-
-The model and the system count tokens in two different units — never
-conflate them.
-
-- **Per-entry SQL tokens** (`entries.tokens`) = `countTokens(body)` =
-  `ceil(chars / RUMMY_TOKEN_DIVISOR)`. Visible to the model as the
-  `tokens="N"` attribute on `<knowns>` entries. The granular unit the
-  model reasons with: "this entry is 200 tokens; demoting it saves 200."
-- **Actual API tokens** (`turns.context_tokens`, back-filled from
-  `usage.input_tokens` after each LLM call). The ground-truth count
-  of what the API actually billed for the prior turn's input.
-  `budget.enforce` uses this for non-first-turn checks.
-
-Summing SQL entry tokens does not equal the actual API count —
-projections, assembly overhead, and fidelity transforms alter the
-output, and the SQL estimate can be 3–7× off for XML/JSON-heavy
-content. **Never use SQL token sums for ceiling decisions.** See §4.5
-three-measures table for the full breakdown.
-
-Historical note: earlier designs introduced a "panic mode" loop that
-the drainer would schedule when context exceeded the ceiling, with a
-dedicated tool set and a strike counter. That machinery was retired;
-the current system is the two-moment model described in §4.5 —
-Prompt Demotion at the pre-LLM check, Turn Demotion at the
-post-dispatch check — both inside the budget plugin, no separate
-loop mode.
 
 ---
 

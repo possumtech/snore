@@ -10,9 +10,15 @@ const packageRoot = join(__dirname, "..");
 
 const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");
 
-// Load defaults, then user overrides
-process.loadEnvFile(join(packageRoot, ".env.example"));
-const userEnv = join(rummyHome, ".env");
+// Base dir for env files: cwd if it has .env.example, else $RUMMY_HOME.
+// The package's own .env.example is never consulted — silent package-
+// root defaults break the project-as-context model and hide behavior
+// from the user.
+const cwd = process.cwd();
+const baseDir = existsSync(join(cwd, ".env.example")) ? cwd : rummyHome;
+
+process.loadEnvFile(join(baseDir, ".env.example"));
+const userEnv = join(baseDir, ".env");
 if (existsSync(userEnv)) process.loadEnvFile(userEnv);
 
 // Resolve RUMMY_HOME and make DB path absolute relative to it

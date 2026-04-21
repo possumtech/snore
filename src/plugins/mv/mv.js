@@ -1,4 +1,4 @@
-import Repository from "../../agent/Repository.js";
+import Entries from "../../agent/Entries.js";
 import docs from "./mvDoc.js";
 
 export default class Mv {
@@ -45,7 +45,7 @@ export default class Mv {
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
 
-		const destScheme = Repository.scheme(to);
+		const destScheme = Entries.scheme(to);
 		const existing = await store.getBody(runId, to);
 		const warning =
 			existing !== null && destScheme !== null

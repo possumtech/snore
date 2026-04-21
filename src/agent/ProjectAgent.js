@@ -1,36 +1,36 @@
 import LlmProvider from "../llm/LlmProvider.js";
 import AgentLoop from "./AgentLoop.js";
-import Repository from "./Repository.js";
+import Entries from "./Entries.js";
 import TurnExecutor from "./TurnExecutor.js";
 
 export default class ProjectAgent {
 	#db;
 	#hooks;
 	#agentLoop;
-	#knownStore;
+	#entries;
 	#llm;
 
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
 		this.#llm = new LlmProvider(db, hooks);
-		this.#knownStore = new Repository(db, {
+		this.#entries = new Entries(db, {
 			onChanged: (event) => hooks.entry.changed.emit(event),
 		});
-		this.#knownStore.loadSchemes(db);
+		this.#entries.loadSchemes(db);
 
 		const turnExecutor = new TurnExecutor(
 			db,
 			this.#llm,
 			hooks,
-			this.#knownStore,
+			this.#entries,
 		);
 		this.#agentLoop = new AgentLoop(
 			db,
 			this.#llm,
 			hooks,
 			turnExecutor,
-			this.#knownStore,
+			this.#entries,
 		);
 	}
 
@@ -57,7 +57,7 @@ export default class ProjectAgent {
 	}
 
 	get entries() {
-		return this.#knownStore;
+		return this.#entries;
 	}
 
 	async ask(projectId, model, prompt, run = null, options = {}) {

@@ -1,16 +1,16 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("Repository integration", () => {
+describe("Entries integration", () => {
 	let tdb;
 	let store;
 	let RUN_ID;
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "test_1" });
 		RUN_ID = seed.runId;
 	});
@@ -21,47 +21,47 @@ describe("Repository integration", () => {
 
 	describe("scheme extraction", () => {
 		it("bare paths have null scheme", () => {
-			assert.strictEqual(Repository.scheme("src/app.js"), null);
-			assert.strictEqual(Repository.scheme("package.json"), null);
+			assert.strictEqual(Entries.scheme("src/app.js"), null);
+			assert.strictEqual(Entries.scheme("package.json"), null);
 		});
 
 		it("known:// scheme", () => {
-			assert.strictEqual(Repository.scheme("known://auth_flow"), "known");
+			assert.strictEqual(Entries.scheme("known://auth_flow"), "known");
 		});
 
 		it("tool schemes", () => {
-			assert.strictEqual(Repository.scheme("search://4"), "search");
-			assert.strictEqual(Repository.scheme("set://7"), "set");
-			assert.strictEqual(Repository.scheme("summarize://1"), "summarize");
+			assert.strictEqual(Entries.scheme("search://4"), "search");
+			assert.strictEqual(Entries.scheme("set://7"), "set");
+			assert.strictEqual(Entries.scheme("summarize://1"), "summarize");
 		});
 
 		it("unknown:// scheme", () => {
-			assert.strictEqual(Repository.scheme("unknown://1"), "unknown");
-			assert.strictEqual(Repository.scheme("unknown://42"), "unknown");
+			assert.strictEqual(Entries.scheme("unknown://1"), "unknown");
+			assert.strictEqual(Entries.scheme("unknown://42"), "unknown");
 		});
 	});
 
 	describe("toolFromPath", () => {
 		it("extracts tool name from result keys", () => {
-			assert.strictEqual(Repository.toolFromPath("search://4"), "search");
-			assert.strictEqual(Repository.toolFromPath("set://7"), "set");
-			assert.strictEqual(Repository.toolFromPath("summarize://1"), "summarize");
+			assert.strictEqual(Entries.toolFromPath("search://4"), "search");
+			assert.strictEqual(Entries.toolFromPath("set://7"), "set");
+			assert.strictEqual(Entries.toolFromPath("summarize://1"), "summarize");
 		});
 
 		it("returns null for bare file paths", () => {
-			assert.strictEqual(Repository.toolFromPath("src/app.js"), null);
+			assert.strictEqual(Entries.toolFromPath("src/app.js"), null);
 		});
 
 		it("returns 'known' for known:// keys", () => {
-			assert.strictEqual(Repository.toolFromPath("known://auth"), "known");
+			assert.strictEqual(Entries.toolFromPath("known://auth"), "known");
 		});
 	});
 
 	describe("isSystemPath", () => {
 		it("detects /: prefix", () => {
-			assert.ok(Repository.isSystemPath("known://x"));
-			assert.ok(Repository.isSystemPath("search://1"));
-			assert.ok(!Repository.isSystemPath("src/app.js"));
+			assert.ok(Entries.isSystemPath("known://x"));
+			assert.ok(Entries.isSystemPath("search://1"));
+			assert.ok(!Entries.isSystemPath("src/app.js"));
 		});
 	});
 

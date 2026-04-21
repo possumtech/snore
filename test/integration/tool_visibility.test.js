@@ -11,7 +11,7 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -24,7 +24,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 
 	before(async () => {
 		tdb = await TestDb.create();
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 	});

@@ -11,7 +11,7 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import { PermissionError } from "../../src/agent/errors.js";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Scope + permissions (Phase D)", () => {
@@ -19,7 +19,7 @@ describe("Scope + permissions (Phase D)", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("scope_permissions");
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 	});
 
 	after(async () => {

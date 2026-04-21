@@ -18,7 +18,7 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import ContextAssembler from "../../src/agent/ContextAssembler.js";
-import Repository from "../../src/agent/Repository.js";
+import Entries from "../../src/agent/Entries.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -53,7 +53,7 @@ describe("Progress math", () => {
 
 	before(async () => {
 		tdb = await TestDb.create("progress_math");
-		store = new Repository(tdb.db);
+		store = new Entries(tdb.db);
 		await store.loadSchemes(tdb.db);
 	});
 
