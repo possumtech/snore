@@ -217,7 +217,9 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		assertContains(await lastResponse(tdb.db, r.run), "2007", "research-year");
 
 		const entries = await allEntries(tdb.db, r.run);
-		const searched = entries.filter((e) => e.scheme === "search");
+		const searched = entries.filter((e) =>
+			/^log:\/\/turn_\d+\/search\//.test(e.path),
+		);
 		assert.ok(searched.length > 0, "should have performed a web search");
 		const known = entries.filter((e) => e.scheme === "known");
 		assert.ok(known.length > 0, "should have saved discovered knowledge");
@@ -238,7 +240,9 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			run_id: runRow.id,
 		});
 		const writes = entries.filter(
-			(e) => e.scheme === "set" && (e.status === 200 || e.status === 202),
+			(e) =>
+				/^log:\/\/turn_\d+\/set\//.test(e.path) &&
+				(e.state === "resolved" || e.state === "proposed"),
 		);
 		assert.ok(writes.length > 0, "should have a write result");
 	});
@@ -320,7 +324,8 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
 		const rmUnknowns = entries.filter(
 			(e) =>
-				e.scheme === "rm" && decodeURIComponent(e.path).includes("unknown://"),
+				/^log:\/\/turn_\d+\/rm\//.test(e.path) &&
+				decodeURIComponent(e.path).includes("unknown://"),
 		);
 		assert.ok(
 			unknowns.length > 0 || rmUnknowns.length > 0,

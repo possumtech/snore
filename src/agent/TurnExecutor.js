@@ -252,7 +252,14 @@ export default class TurnExecutor {
 		// Sequential queue. Each tool completes before the next starts.
 		// On failure: abort remaining. On proposal: notify client, await
 		// resolution, continue.
-		let hasErrors = !!unparsed?.trim();
+		// Narration text outside tags is fine when the turn also emitted
+		// at least one command — "OK", "Let me check:", reasoning prefixes
+		// are natural. A response that is ONLY text with no tags IS an
+		// error (model failed to act). Parse warnings (malformed XML,
+		// unclosed quotes, mismatched closes) are always an error signal.
+		let hasErrors =
+			warnings.length > 0 ||
+			(commands.length === 0 && !!unparsed?.trim());
 		let abortAfter = null;
 
 		for (const entry of recorded) {

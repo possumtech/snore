@@ -85,7 +85,10 @@ export default class AgentLoop {
 		const unknowns = await this.#entries.getUnknowns(runId);
 		const latestSummary = history
 			.filter((e) => {
-				if (e.tool !== "update") return false;
+				// Updates are under the unified log namespace at
+				// log://turn_N/update/<slug>. Match by path pattern rather
+				// than scheme (scheme is now "log" for all log entries).
+				if (!/^log:\/\/turn_\d+\/update\//.test(e.path)) return false;
 				const attrs =
 					typeof e.attributes === "string"
 						? JSON.parse(e.attributes)
@@ -175,7 +178,7 @@ export default class AgentLoop {
 		});
 	}
 
-	async #ensureRun(projectId, model, run, prompt, options = {}) {
+	async ensureRun(projectId, model, run, prompt, options = {}) {
 		const {
 			fork: isFork = false,
 			temperature = null,
@@ -287,7 +290,7 @@ export default class AgentLoop {
 		const noProposals = options?.noProposals === true;
 		const requestedModel = model;
 
-		const runInfo = await this.#ensureRun(
+		const runInfo = await this.ensureRun(
 			projectId,
 			model,
 			run,

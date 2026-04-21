@@ -55,12 +55,14 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_latest_summary
+-- Updates live in the unified log namespace at log://turn_N/update/<slug>,
+-- not at a dedicated "update" scheme. Match path shape instead of scheme.
 SELECT body
 FROM known_entries
 WHERE
 	run_id = :run_id
 	AND loop_id = :loop_id
-	AND scheme = 'update'
+	AND path LIKE 'log://turn_%/update/%'
 ORDER BY id DESC
 LIMIT 1;
 

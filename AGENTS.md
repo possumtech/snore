@@ -26,6 +26,17 @@
 >   symptom gets reported, read `rummy_dev.db` first, don't guess,
 >   don't blame the environment, don't defer to the next demo.
 
+> **Preamble discipline (when touching prompt.ask.md / prompt.act.md):**
+> - **Brief.** Every token is paid every turn. Cut before expanding.
+> - **Show, don't tell.** Examples teach better than prescriptions. A
+>   three-line worked example beats ten lines of "you must / you should".
+> - **Mind the trade-offs both within and between tools the model must
+>   succeed with.** Instructions that optimize one tool can sabotage
+>   another. The model's context budget is one zero-sum pool shared
+>   across `<get>`, `<set>`, `<rm>`, `<search>`, `<update>`, `<sh>`,
+>   `<ask_user>`. Adding a rule that helps one can cost another its
+>   oxygen.
+
 > **Guiding principles (enshrined):**
 >
 > "Is there a rummy way to do this?" Every `<tag>` the model sees is

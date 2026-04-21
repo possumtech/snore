@@ -165,17 +165,25 @@ export default class Get {
 				{ loopId, attributes: { path: target } },
 			);
 		} else if (matches.length === 0) {
-			// Not-found leaves no data entry to carry the "I tried this"
-			// signal, so the log is the only record. A successful single-
-			// path fetch is recorded by the promoted data entry itself
-			// (turn="N" / tokens="N" in <context>) — creating a separate
-			// get:// log with a tokens attribute for the status-string
-			// body planted a mixed signal pointing at the wrong cost.
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
 				body: `${target} not found`,
+				state: "resolved",
+				loopId,
+				attributes: { path: target },
+			});
+		} else {
+			// Always log successful single-path fetches so the model can
+			// see in its action history that it already got this entry.
+			// Without this record, the model re-issues identical gets and
+			// the cyclic-fingerprint detector strikes the run out.
+			await store.set({
+				runId,
+				turn,
+				path: entry.resultPath,
+				body: `${target} promoted`,
 				state: "resolved",
 				loopId,
 				attributes: { path: target },

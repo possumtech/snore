@@ -602,9 +602,66 @@ export default class Rpc {
 			return { ok: true, alias };
 		}
 
+		// Existing run + fork=true: create a child run synchronously so we
+		// can return the child alias, then kick off the loop against it.
+		// fork needs a brand-new run row with parent_run_id set; inject()
+		// would just add another prompt to the parent.
+		const attrs = params.attributes || {};
+		if (attrs.fork === true) {
+			const { mode } = attrs;
+			if (mode !== "ask" && mode !== "act") {
+				throw new Error(
+					`set run://: attributes.mode is required on fork and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
+				);
+			}
+			const childInfo = await ctx.projectAgent.ensureRun(
+				ctx.projectId,
+				attrs.model || existing.model,
+				alias,
+				params.body ?? "",
+				{
+					fork: true,
+					temperature: attrs.temperature,
+					persona: attrs.persona,
+					contextLimit: attrs.contextLimit,
+				},
+			);
+			const options = {
+				temperature: attrs.temperature,
+				persona: attrs.persona,
+				contextLimit: attrs.contextLimit,
+				noRepo: attrs.noRepo,
+				noInteraction: attrs.noInteraction,
+				noWeb: attrs.noWeb,
+				noProposals: attrs.noProposals,
+				// fork already applied — pass false to reuse the child row.
+				fork: false,
+			};
+			const kickoff =
+				mode === "act"
+					? ctx.projectAgent.act(
+							ctx.projectId,
+							attrs.model || existing.model,
+							params.body ?? "",
+							childInfo.alias,
+							options,
+						)
+					: ctx.projectAgent.ask(
+							ctx.projectId,
+							attrs.model || existing.model,
+							params.body ?? "",
+							childInfo.alias,
+							options,
+						);
+			kickoff.catch((err) => {
+				console.error(`[RUMMY] fork ${childInfo.alias} crashed: ${err.message}`);
+			});
+			return { ok: true, alias: childInfo.alias };
+		}
+
 		// Existing run with body-only update (continuation prompt). Inject.
 		if (params.body) {
-			const { mode } = params.attributes || {};
+			const { mode } = attrs;
 			if (mode !== "ask" && mode !== "act") {
 				throw new Error(
 					`set run://: attributes.mode is required on inject and must be "ask" or "act" (got ${JSON.stringify(mode)})`,

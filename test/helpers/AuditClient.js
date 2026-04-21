@@ -158,8 +158,11 @@ export default class AuditClient extends RpcClient {
 		return this.#runUntilTerminal("act", params);
 	}
 
-	// Starts a run and returns immediately with { run, alias } — for tests
-	// that want to observe the in-flight flow rather than wait for terminal.
+	// Starts a run and waits for the run row to exist in the DB.
+	// Returns { run, alias } — for tests that want to observe the in-flight
+	// flow (seed proposals, stream chunks) rather than wait for terminal.
+	// The server kicks off the run async and returns the alias immediately;
+	// we poll until the row is visible so tests can safely seed by alias.
 	async startRun(params = {}) {
 		const { model, mode = "ask", prompt = "", ...rest } = params;
 		const attributes = { model, mode, ...rest };
@@ -169,7 +172,13 @@ export default class AuditClient extends RpcClient {
 			attributes,
 		});
 		this.#currentRun = res.alias;
-		return { run: res.alias, alias: res.alias };
+		const deadline = Date.now() + 5_000;
+		while (Date.now() < deadline) {
+			const row = await this.#db.get_run_by_alias.get({ alias: res.alias });
+			if (row) return { run: res.alias, alias: res.alias };
+			await new Promise((r) => setTimeout(r, 25));
+		}
+		throw new Error(`startRun: run row not created for ${res.alias}`);
 	}
 
 	// Resolve a proposal. resolution = { path, action: accept|reject|error, output? }
@@ -209,14 +218,19 @@ export default class AuditClient extends RpcClient {
 		console.log(
 			`\n=== AUDIT: ${alias} (${runRow.state}, ${entries.length} entries) ===`,
 		);
+		const bodyLimit = Number(process.env.RUMMY_AUDIT_BODY_LIMIT || 120);
 		for (const t of turns) {
 			const turnEntries = entries.filter((e) => e.turn === t);
 			console.log(`\n  Turn ${t}:`);
 			for (const e of turnEntries) {
 				const attrs = e.attributes ? JSON.parse(e.attributes) : null;
-				const val = (e.body || "").slice(0, 120).replace(/\n/g, "\\n");
-				const attrsStr = attrs ? ` ${JSON.stringify(attrs).slice(0, 60)}` : "";
-				console.log(`    ${e.scheme}:${e.state} ${e.path}${attrsStr}`);
+				const val = (e.body || "")
+					.slice(0, bodyLimit)
+					.replace(/\n/g, "\\n");
+				const attrsStr = attrs ? ` ${JSON.stringify(attrs).slice(0, 200)}` : "";
+				console.log(
+					`    ${e.scheme}:${e.state}:${e.visibility} ${e.path}${attrsStr}`,
+				);
 				if (val) console.log(`      ${val}`);
 			}
 		}

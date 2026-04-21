@@ -87,6 +87,14 @@ export default class ProjectAgent {
 		return this.#agentLoop.inject(run, message, mode);
 	}
 
+	// Synchronously create (or fork) a run row and return the alias.
+	// Caller is expected to follow up with a kickoff (ask/act) that
+	// operates on the returned alias. Lets RPC respond with the real
+	// alias before the long-running loop starts.
+	async ensureRun(projectId, model, run, prompt, options = {}) {
+		return this.#agentLoop.ensureRun(projectId, model, run, prompt, options);
+	}
+
 	async getRunHistory(run) {
 		return this.#agentLoop.getRunHistory(run);
 	}
