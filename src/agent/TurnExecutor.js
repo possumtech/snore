@@ -426,12 +426,7 @@ export default class TurnExecutor {
 			};
 		}
 		const target = rawTarget;
-		const resultPath = await this.#entries.dedup(
-			runId,
-			scheme,
-			target,
-			turn,
-		);
+		const resultPath = await this.#entries.dedup(runId, scheme, target, turn);
 
 		// Pass parsed command fields through as attributes
 		const { name: _, ...attributes } = cmd;

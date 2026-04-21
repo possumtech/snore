@@ -337,8 +337,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_1" });
 			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
 				.default;
-			const Entries = (await import("../../src/agent/Entries.js"))
-				.default;
+			const Entries = (await import("../../src/agent/Entries.js")).default;
 			const store = new Entries(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
@@ -373,8 +372,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const { runId, projectId } = await tdb.seedRun({ alias: "spec_4_2" });
 			const RummyContext = (await import("../../src/hooks/RummyContext.js"))
 				.default;
-			const Entries = (await import("../../src/agent/Entries.js"))
-				.default;
+			const Entries = (await import("../../src/agent/Entries.js")).default;
 			const store = new Entries(tdb.db);
 			const rummy = new RummyContext(
 				{ children: [] },
@@ -456,8 +454,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 	describe("§8 Full Entry Lifecycle", () => {
 		it("§8.2 entry visible in v_model_context after creation", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_2" });
-			const Entries = (await import("../../src/agent/Entries.js"))
-				.default;
+			const Entries = (await import("../../src/agent/Entries.js")).default;
 			const store = new Entries(tdb.db);
 			await store.set({
 				runId,
@@ -475,8 +472,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 		it("§8.3 stored fidelity hides from v_model_context", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_3" });
-			const Entries = (await import("../../src/agent/Entries.js"))
-				.default;
+			const Entries = (await import("../../src/agent/Entries.js")).default;
 			const store = new Entries(tdb.db);
 			await store.set({
 				runId,

@@ -10,8 +10,8 @@
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import { PermissionError } from "../../src/agent/errors.js";
 import Entries from "../../src/agent/Entries.js";
+import { PermissionError } from "../../src/agent/errors.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Scope + permissions (Phase D)", () => {

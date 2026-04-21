@@ -19,12 +19,7 @@ export default class ProjectAgent {
 		});
 		this.#entries.loadSchemes(db);
 
-		const turnExecutor = new TurnExecutor(
-			db,
-			this.#llm,
-			hooks,
-			this.#entries,
-		);
+		const turnExecutor = new TurnExecutor(db, this.#llm, hooks, this.#entries);
 		this.#agentLoop = new AgentLoop(
 			db,
 			this.#llm,
