@@ -35,14 +35,14 @@ export default class Rpc {
 			},
 			description:
 				"Create or update an entry. Wide semantic: write content, change " +
-				"fidelity/state, merge attributes, append (streaming), pattern update. " +
+				"visibility/state, merge attributes, append (streaming), pattern update. " +
 				"Writing to run://<alias> starts or cancels a run.",
 			params: {
 				run: "string — run alias (except for new run:// writes, where the alias is in the path)",
 				path: "string — entry path (e.g. known://fact or run://abc)",
 				body: "string? — entry body",
 				state: "string? — proposed | streaming | resolved | failed | cancelled",
-				fidelity: "string? — promoted | demoted | archived",
+				visibility: "string? — promoted | demoted | archived",
 				outcome: "string? — reason when state ∈ {failed, cancelled}",
 				attributes: "object? — JSON attributes",
 				append: "boolean? — append body rather than overwrite",
@@ -58,12 +58,12 @@ export default class Rpc {
 				return await this.#dispatchGet(params, ctx);
 			},
 			description:
-				"Promote an entry (or matching pattern) to visible fidelity.",
+				"Promote an entry (or matching pattern) to visible visibility.",
 			params: {
 				run: "string — run alias",
 				path: "string — entry path or glob pattern",
 				bodyFilter: "string? — narrow pattern matches by body content",
-				fidelity: "string? — target fidelity (default: promoted)",
+				visibility: "string? — target visibility (default: promoted)",
 			},
 			requiresInit: true,
 		});
@@ -88,7 +88,7 @@ export default class Rpc {
 					runId: runRow.id,
 					from: params.from,
 					to: params.to,
-					fidelity: params.fidelity,
+					visibility: params.visibility,
 					writer: "client",
 				});
 				return { ok: true };
@@ -98,7 +98,7 @@ export default class Rpc {
 				run: "string — run alias",
 				from: "string — source path",
 				to: "string — destination path",
-				fidelity: "string? — target fidelity (default: promoted)",
+				visibility: "string? — target visibility (default: promoted)",
 			},
 			requiresInit: true,
 		});
@@ -110,7 +110,7 @@ export default class Rpc {
 					runId: runRow.id,
 					from: params.from,
 					to: params.to,
-					fidelity: params.fidelity,
+					visibility: params.visibility,
 					writer: "client",
 				});
 				return { ok: true };
@@ -120,7 +120,7 @@ export default class Rpc {
 				run: "string — run alias",
 				from: "string — source path",
 				to: "string — destination path",
-				fidelity: "string? — target fidelity (default: promoted)",
+				visibility: "string? — target visibility (default: promoted)",
 			},
 			requiresInit: true,
 		});
@@ -320,13 +320,13 @@ export default class Rpc {
 				return rows
 					.filter((e) => !params.scheme || e.scheme === params.scheme)
 					.filter((e) => !params.state || e.state === params.state)
-					.filter((e) => !params.fidelity || e.fidelity === params.fidelity)
+					.filter((e) => !params.visibility || e.visibility === params.visibility)
 					.map((e) => ({
 						path: e.path,
 						scheme: e.scheme,
 						state: e.state,
 						outcome: e.outcome,
-						fidelity: e.fidelity,
+						visibility: e.visibility,
 						turn: e.turn,
 						tokens: e.tokens,
 						attributes:
@@ -337,13 +337,13 @@ export default class Rpc {
 			},
 			description:
 				"List entries matching a pattern. Read-only — no promotion. " +
-				"Optional filters: scheme, state, fidelity, bodyFilter.",
+				"Optional filters: scheme, state, visibility, bodyFilter.",
 			params: {
 				run: "string — run alias",
 				pattern: "string? — glob pattern (default '*')",
 				scheme: "string? — filter by scheme (e.g. 'file')",
 				state: "string? — filter by state",
-				fidelity: "string? — filter by fidelity",
+				visibility: "string? — filter by visibility",
 				bodyFilter: "string? — narrow pattern matches by body content",
 			},
 			requiresInit: true,
@@ -505,7 +505,7 @@ export default class Rpc {
 			path: params.path,
 			body: params.body,
 			state: params.state,
-			fidelity: params.fidelity,
+			visibility: params.visibility,
 			outcome: params.outcome,
 			attributes: params.attributes,
 			append: params.append,
@@ -613,7 +613,7 @@ export default class Rpc {
 			turn: await ctx.projectAgent.entries.nextTurn(runRow.id),
 			path: params.path,
 			bodyFilter: params.bodyFilter,
-			fidelity: params.fidelity,
+			visibility: params.visibility,
 		});
 		return { ok: true };
 	}

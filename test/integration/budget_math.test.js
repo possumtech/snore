@@ -2,7 +2,7 @@
  * Budget math verification.
  *
  * Proves that:
- * - Token counts in turn_context reflect ACTUAL context cost, not full-fidelity cost
+ * - Token counts in turn_context reflect ACTUAL context cost, not full-visibility cost
  * - Budget enforcement measures assembled messages accurately
  * - Index entries cost nothing in the budget
  * - Summary entries cost only their summary/path rendering
@@ -45,7 +45,7 @@ describe("Budget math", () => {
 				path: "known://full_entry",
 				body,
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -73,7 +73,7 @@ describe("Budget math", () => {
 				path: "test_file.js",
 				body,
 				state: "resolved",
-				fidelity: "archived",
+				visibility: "archived",
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -104,7 +104,7 @@ describe("Budget math", () => {
 				path: "known://summary_entry",
 				body,
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 				attributes: { summary: "test,keywords,here" },
 			});
 			await materialize(tdb.db, {
@@ -118,7 +118,7 @@ describe("Budget math", () => {
 			});
 			const entry = rows.find((r) => r.path === "known://summary_entry");
 			assert.ok(entry, "summary entry appears in turn_context");
-			assert.strictEqual(entry.fidelity, "demoted");
+			assert.strictEqual(entry.visibility, "summarized");
 			// Body is full until onView transforms it — that's by design
 			assert.ok(entry.body.length > 0, "view projects full body for summary");
 		});
@@ -135,7 +135,7 @@ describe("Budget math", () => {
 				path: "big_archive_file.js",
 				body: pad(500),
 				state: "resolved",
-				fidelity: "archived",
+				visibility: "archived",
 			});
 			// Create a small entry at full — should count
 			await store.set({
@@ -144,7 +144,7 @@ describe("Budget math", () => {
 				path: "known://small",
 				body: "tiny fact",
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 
 			await materialize(tdb.db, {
@@ -198,7 +198,7 @@ describe("Budget math", () => {
 				path: "known://big",
 				body: pad(100),
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 
 			await materialize(tdb.db, {
@@ -248,7 +248,7 @@ describe("Budget math", () => {
 				path: "known://fact",
 				body,
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			let entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			let entry = entries.find((e) => e.path === "known://fact");
@@ -258,7 +258,7 @@ describe("Budget math", () => {
 			await store.set({
 				runId: runId,
 				path: "known://fact",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 			entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			entry = entries.find((e) => e.path === "known://fact");
@@ -290,7 +290,7 @@ describe("Budget math", () => {
 				path: "known://tc_test",
 				body,
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, {
 				runId,
@@ -309,7 +309,7 @@ describe("Budget math", () => {
 			await store.set({
 				runId: runId,
 				path: "known://tc_test",
-				fidelity: "archived",
+				visibility: "archived",
 			});
 			await materialize(tdb.db, {
 				runId,

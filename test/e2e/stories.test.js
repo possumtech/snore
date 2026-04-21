@@ -501,13 +501,13 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			"model should have written known entries",
 		);
 
-		// If demotion fired, some entries will be at summary fidelity with 413 status.
+		// If demotion fired, some entries will be at summary visibility with 413 status.
 		// The run completing without client-facing 413 is the key assertion above.
 		const overflowEntries = entries.filter(
 			(e) => e.scheme === "budget" && e.status === 413,
 		);
 		const demotedEntries = entries.filter(
-			(e) => e.fidelity === "demoted" && e.status === 413,
+			(e) => e.visibility === "summarized" && e.status === 413,
 		);
 		console.log(
 			`[Story 11] overflow entries: ${overflowEntries.length}, demoted: ${demotedEntries.length}`,

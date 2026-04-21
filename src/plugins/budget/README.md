@@ -20,7 +20,7 @@ happens at boundaries.
 2. **Post-dispatch Turn Demotion** (`hooks.budget.postDispatch`): after
    all tools dispatch, re-materialize and check. If over ceiling →
    demote ALL promoted entries from this turn (status < 400, status
-   preserved — demotion only changes fidelity). Write `budget://`
+   preserved — demotion only changes visibility). Write `budget://`
    entry with the 50% rule directive. Model sees it next turn and
    adapts.
 
@@ -40,4 +40,4 @@ happens at boundaries.
 - **Hook**: `hooks.budget.postDispatch` — post-dispatch re-check + Turn
   Demotion.
 - **Scheme**: `budget://` — logging category, model-visible. `onView`
-  renders body at all fidelity levels (demoted shows full content).
+  renders body at all visibility levels (demoted shows full content).

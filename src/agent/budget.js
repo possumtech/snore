@@ -17,7 +17,7 @@ export function measureMessages(messages) {
 
 /**
  * Sum projected row body token counts — what's actually in the packet
- * for each entry at its current fidelity. Used by prompt.js while
+ * for each entry at its current visibility. Used by prompt.js while
  * generating the <prompt> tag (before assembly completes).
  */
 export function measureRows(rows) {
@@ -35,7 +35,7 @@ export function measureRows(rows) {
  *   ceiling     — floor(contextSize × CEILING_RATIO), the hard wall
  *   totalTokens — echoed back
  *   tokenUsage  — sum of promoted controllable entries' tokens
- *                 (data + logging, fidelity=promoted)
+ *                 (data + logging, visibility=promoted)
  *   tokensFree  — ceiling − totalTokens
  *   overflow    — max(0, totalTokens − ceiling)
  *   ok          — overflow === 0
@@ -45,7 +45,7 @@ export function computeBudget({ rows, contextSize, totalTokens }) {
 	const tokenUsage = rows.reduce((sum, r) => {
 		if (
 			(r.category === "data" || r.category === "logging") &&
-			r.fidelity === "promoted"
+			r.visibility === "visible"
 		) {
 			return sum + r.tokens;
 		}

@@ -84,7 +84,7 @@ function resolveCommand(name, a, rawBody) {
 				preview: a.preview,
 			};
 		}
-		// Plain write or fidelity change
+		// Plain write or visibility change
 		const body = trimmed || a.body || "";
 		return { name, ...a, body };
 	}

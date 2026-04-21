@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
 
 -- File constraints: client-set visibility rules, project-scoped.
--- Persists across runs. Orthogonal to fidelity.
+-- Persists across runs. Orthogonal to visibility.
 CREATE TABLE IF NOT EXISTS file_constraints (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
@@ -119,7 +119,7 @@ ON file_constraints (project_id);
 -- Entries: content-addressable by (scope, path). The actual payload.
 -- scope: 'global' | 'project:N' | 'run:N'. Determines read access.
 -- scheme: derived from path via schemeOf(). Generated column.
--- No fidelity, status, turn, loop — those are view-side concerns.
+-- No visibility, status, turn, loop — those are view-side concerns.
 CREATE TABLE IF NOT EXISTS entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, scope TEXT NOT NULL
@@ -137,9 +137,9 @@ ON entries (scope, path);
 CREATE INDEX IF NOT EXISTS idx_entries_scope_scheme
 ON entries (scope, scheme);
 
--- Run views: per-run projection of entries. State, fidelity, turn live here.
+-- Run views: per-run projection of entries. State, visibility, turn live here.
 -- A run has at most one view of any given entry. Absent view = not in context.
--- state: lifecycle. fidelity: visibility. Orthogonal axes (SPEC §0.1).
+-- state: lifecycle. visibility: what the model sees. Orthogonal axes (SPEC §0.1).
 -- outcome: short reason string when state ∈ {failed, cancelled}; NULL otherwise.
 CREATE TABLE IF NOT EXISTS run_views (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -151,8 +151,8 @@ CREATE TABLE IF NOT EXISTS run_views (
 		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
 	)
 	, outcome TEXT
-	, fidelity TEXT NOT NULL DEFAULT 'promoted' CHECK (
-		fidelity IN ('promoted', 'demoted', 'archived')
+	, visibility TEXT NOT NULL DEFAULT 'visible' CHECK (
+		visibility IN ('visible', 'summarized', 'archived')
 	)
 	, write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
 	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
@@ -163,8 +163,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_run_views_run_entry
 ON run_views (run_id, entry_id);
 CREATE INDEX IF NOT EXISTS idx_run_views_run_turn
 ON run_views (run_id, turn);
-CREATE INDEX IF NOT EXISTS idx_run_views_run_fidelity
-ON run_views (run_id, fidelity);
+CREATE INDEX IF NOT EXISTS idx_run_views_run_visibility
+ON run_views (run_id, visibility);
 
 -- Legacy-shape compatibility view. Joins run_views to entries; reads
 -- against this view keep one shape. Writes MUST target entries +
@@ -180,7 +180,7 @@ SELECT
 	, e.scheme AS scheme
 	, rv.state AS state
 	, rv.outcome AS outcome
-	, rv.fidelity AS fidelity
+	, rv.visibility AS visibility
 	, e.hash AS hash
 	, e.attributes AS attributes
 	, e.tokens AS tokens
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
 	)
 	, outcome TEXT
-	, fidelity TEXT NOT NULL CHECK (fidelity IN ('promoted', 'demoted'))
+	, visibility TEXT NOT NULL CHECK (visibility IN ('visible', 'summarized'))
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))

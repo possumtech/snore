@@ -28,23 +28,23 @@ describe("Schema V2 invariants", () => {
 		await tdb.cleanup();
 	});
 
-	describe("fidelity constraint", () => {
+	describe("visibility constraint", () => {
 		it("accepts the three canonical values", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_accept" });
-			for (const fidelity of ["promoted", "demoted", "archived"]) {
+			for (const visibility of ["visible", "summarized", "archived"]) {
 				await store.set({
 					runId,
 					turn: 1,
-					path: `known://fid-${fidelity}`,
+					path: `known://fid-${visibility}`,
 					body: "body",
 					state: "resolved",
-					fidelity,
+					visibility,
 				});
 			}
 			// No throw = accepted.
 		});
 
-		it("rejects stale fidelity vocabulary", async () => {
+		it("rejects stale visibility vocabulary", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_reject" });
 			for (const stale of ["full", "summary", "index", "archive"]) {
 				await assert.rejects(
@@ -54,10 +54,10 @@ describe("Schema V2 invariants", () => {
 						path: `known://fid-${stale}`,
 						body: "body",
 						state: "resolved",
-						fidelity: stale,
+						visibility: stale,
 					}),
-					/constraint|CHECK|fidelity/i,
-					`fidelity="${stale}" must be rejected`,
+					/constraint|CHECK|visibility/i,
+					`visibility="${stale}" must be rejected`,
 				);
 			}
 		});

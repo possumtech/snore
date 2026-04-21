@@ -1,6 +1,6 @@
 -- PREP: get_known_entries
 SELECT
-	path, scheme, state, outcome, fidelity, body, turn, hash
+	path, scheme, state, outcome, visibility, body, turn, hash
 	, attributes, tokens, scope
 FROM known_entries
 WHERE run_id = :run_id
@@ -20,7 +20,7 @@ WHERE
 ORDER BY id;
 
 -- PREP: get_turn_audit
-SELECT path, scheme, state, outcome, fidelity, turn, body, attributes
+SELECT path, scheme, state, outcome, visibility, turn, body, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id

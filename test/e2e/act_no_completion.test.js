@@ -41,7 +41,7 @@ async function dumpRun(db, alias) {
 	for (const t of [...byTurn.keys()].toSorted((a, b) => a - b)) {
 		console.log(`\n[DUMP] turn ${t}:`);
 		for (const e of byTurn.get(t)) {
-			console.log(`  ${e.scheme || "file"}:${e.state}/${e.fidelity} ${e.path}`);
+			console.log(`  ${e.scheme || "file"}:${e.state}/${e.visibility} ${e.path}`);
 		}
 	}
 }

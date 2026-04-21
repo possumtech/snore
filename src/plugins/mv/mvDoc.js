@@ -11,8 +11,8 @@ const LINES = [
 	],
 	['Example: <mv path="src/old_name.js">src/new_name.js</mv>', "File rename."],
 	[
-		'Example: <mv path="known://project/*" fidelity="demoted"/>',
-		"Batch fidelity change via pattern. No destination = fidelity in place.",
+		'Example: <mv path="known://project/*" visibility="summarized"/>',
+		"Batch visibility change via pattern. No destination = visibility in place.",
 	],
 ];
 

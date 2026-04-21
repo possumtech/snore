@@ -7,7 +7,7 @@
  *
  * Contract:
  * - tokenUsage = sum of entry.tokens for entries where
- *     (category === "data" || category === "logging") && fidelity === "promoted"
+ *     (category === "data" || category === "logging") && visibility === "visible"
  * - tokensFree = ceiling - totalTokens (where totalTokens is the
  *   assembled-context size, approximated from row tokens at prompt
  *   generation time)
@@ -96,7 +96,7 @@ describe("Progress math", () => {
 				path: "known://fact",
 				body,
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages, rows } = await assemble(tdb, runId, 1);
@@ -121,7 +121,7 @@ describe("Progress math", () => {
 				path: "known://a",
 				body: pad(40),
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await store.set({
 				runId,
@@ -129,7 +129,7 @@ describe("Progress math", () => {
 				path: "known://b",
 				body: pad(60),
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages, rows } = await assemble(tdb, runId, 1);
@@ -156,7 +156,7 @@ describe("Progress math", () => {
 				path: "known://kept",
 				body: pad(40),
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await store.set({
 				runId,
@@ -164,7 +164,7 @@ describe("Progress math", () => {
 				path: "known://hidden",
 				body: pad(80),
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages, rows } = await assemble(tdb, runId, 1);
@@ -193,7 +193,7 @@ describe("Progress math", () => {
 				path: "unknown://gap",
 				body: "what about X?",
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages } = await assemble(tdb, runId, 1);
@@ -240,7 +240,7 @@ describe("Progress math", () => {
 				path: "known://x",
 				body: pad(75),
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 
@@ -254,7 +254,7 @@ describe("Progress math", () => {
 			await store.set({
 				runId: runId,
 				path: "known://x",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, { runId, turn: 2, systemPrompt: "sys" });
 
@@ -283,7 +283,7 @@ describe("Progress math", () => {
 				path: "known://y",
 				body: pad(60),
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 
@@ -294,7 +294,7 @@ describe("Progress math", () => {
 			).tokens;
 
 			// Demote
-			await store.set({ runId: runId, path: "known://y", fidelity: "demoted" });
+			await store.set({ runId: runId, path: "known://y", visibility: "summarized" });
 			await materialize(tdb.db, { runId, turn: 2, systemPrompt: "sys" });
 
 			const afterRes = await assemble(tdb, runId, 2);

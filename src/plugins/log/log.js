@@ -45,7 +45,7 @@ function renderLogTag(entry) {
 	const stateAttr =
 		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const visibility = entry.visibility ? ` visibility="${entry.visibility}"` : "";
 	const tokens =
 		entry.tokens && !NO_TOKENS_SCHEMES.has(entry.scheme)
 			? ` tokens="${entry.tokens}"`
@@ -55,7 +55,7 @@ function renderLogTag(entry) {
 			? ` summary="${attrs.summary.slice(0, 80)}"`
 			: "";
 
-	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${fidelity}${tokens}`;
+	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}`;
 
 	if (entry.body) {
 		return `<${entry.scheme} path="${target}"${attrStr}>${entry.body}</${entry.scheme}>`;

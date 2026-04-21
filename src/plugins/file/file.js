@@ -16,8 +16,8 @@ export default class File {
 		this.#core = core;
 		// "file" scheme covers bare paths (scheme IS NULL in DB)
 		core.registerScheme({ category: "data" });
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 	}
 
 	full(entry) {

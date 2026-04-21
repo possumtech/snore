@@ -14,7 +14,7 @@ tags in v_model_context sort order.
 Each logging entry renders with its scheme as the tag name (`<get>`,
 `<set>`, `<search>`, `<rm>`, `<cp>`, `<mv>`, `<sh>`, `<env>`,
 `<update>`, `<ask_user>`, `<error>`, `<budget>`). Attributes:
-`path`, `turn`, `status`, `state`, `outcome`, `summary`, `fidelity`,
+`path`, `turn`, `status`, `state`, `outcome`, `summary`, `visibility`,
 `tokens`.
 
 `tokens=` is omitted on `set`, `mv`, `cp`, `sh`, `env` — their log

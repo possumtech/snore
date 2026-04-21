@@ -216,31 +216,31 @@ describe("Entries integration", () => {
 	});
 
 	describe("promote and demote", () => {
-		it("promote sets fidelity to full and updates turn", async () => {
+		it("promote sets visibility to full and updates turn", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 0,
 				path: "src/promoted.js",
 				body: "content",
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 			let row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
-			assert.strictEqual(row.fidelity, "demoted");
+			assert.strictEqual(row.visibility, "summarized");
 
 			await store.get({ runId: RUN_ID, turn: 10, path: "src/promoted.js" });
 			row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
-			assert.strictEqual(row.fidelity, "promoted");
+			assert.strictEqual(row.visibility, "visible");
 			assert.strictEqual(row.turn, 10);
 		});
 
-		it("demote sets fidelity to stored", async () => {
+		it("demote sets visibility to stored", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 10,
@@ -251,14 +251,14 @@ describe("Entries integration", () => {
 			await store.set({
 				runId: RUN_ID,
 				path: "src/demoted.js",
-				fidelity: "archived",
+				visibility: "archived",
 			});
 
 			const row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/demoted.js",
 			});
-			assert.strictEqual(row.fidelity, "archived");
+			assert.strictEqual(row.visibility, "archived");
 		});
 	});
 

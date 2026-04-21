@@ -84,7 +84,7 @@ describe("Handler dispatch", () => {
 				path: "src/target.js",
 				body: "const x = 1;",
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
@@ -103,7 +103,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "src/target.js",
 			});
-			assert.strictEqual(state.fidelity, "promoted", "target promoted to full");
+			assert.strictEqual(state.visibility, "visible", "target promoted to full");
 
 			const log = await store.getBody(RUN_ID, entry.resultPath);
 			assert.strictEqual(log, null, "no get:// log on successful fetch");
@@ -342,7 +342,7 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("set fidelity control", () => {
+	describe("set visibility control", () => {
 		it("archives entry via stored attribute", async () => {
 			await store.set({
 				runId: RUN_ID,
@@ -357,7 +357,7 @@ describe("Handler dispatch", () => {
 				scheme: "set",
 				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
-				attributes: { path: "known://demote_me", fidelity: "archived" },
+				attributes: { path: "known://demote_me", visibility: "archived" },
 				state: "resolved",
 				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};
@@ -368,7 +368,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "known://demote_me",
 			});
-			assert.strictEqual(state.fidelity, "archived", "target archived");
+			assert.strictEqual(state.visibility, "archived", "target archived");
 		});
 	});
 
@@ -513,7 +513,7 @@ describe("Handler dispatch", () => {
 				path: "src/priority_test.js",
 				body: "x",
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });

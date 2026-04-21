@@ -21,10 +21,10 @@ RETURNING id;
 -- PREP: upsert_run_view
 -- View-layer upsert. Called after upsert_entry with the returned entry id.
 INSERT INTO run_views (
-	run_id, entry_id, loop_id, turn, state, outcome, fidelity, updated_at
+	run_id, entry_id, loop_id, turn, state, outcome, visibility, updated_at
 )
 VALUES (
-	:run_id, :entry_id, :loop_id, :turn, :state, :outcome, :fidelity
+	:run_id, :entry_id, :loop_id, :turn, :state, :outcome, :visibility
 	, CURRENT_TIMESTAMP
 )
 ON CONFLICT (run_id, entry_id) DO UPDATE SET
@@ -32,7 +32,7 @@ ON CONFLICT (run_id, entry_id) DO UPDATE SET
 	, turn = excluded.turn
 	, state = excluded.state
 	, outcome = excluded.outcome
-	, fidelity = excluded.fidelity
+	, visibility = excluded.visibility
 	, write_count = run_views.write_count + 1
 	, updated_at = CURRENT_TIMESTAMP;
 
@@ -118,10 +118,10 @@ WHERE id = (
 	LIMIT 1
 );
 
--- PREP: set_file_fidelity
+-- PREP: set_file_visibility
 UPDATE run_views
 SET
-	fidelity = :fidelity
+	visibility = :visibility
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
@@ -135,7 +135,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- PREP: promote_path
 UPDATE run_views
 SET
-	fidelity = 'promoted'
+	visibility = 'visible'
 	, state = 'resolved'
 	, outcome = NULL
 	, turn = :turn
@@ -150,7 +150,7 @@ WHERE run_id = :run_id AND entry_id = (
 -- PREP: demote_path
 UPDATE run_views
 SET
-	fidelity = 'archived'
+	visibility = 'archived'
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id = (
 	SELECT e.id FROM entries AS e
@@ -159,10 +159,10 @@ WHERE run_id = :run_id AND entry_id = (
 	LIMIT 1
 );
 
--- PREP: set_fidelity
+-- PREP: set_visibility
 UPDATE run_views
 SET
-	fidelity = :fidelity
+	visibility = :visibility
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id = (
 	SELECT e.id FROM entries AS e
@@ -178,13 +178,13 @@ JOIN entries AS e ON e.id = rv.entry_id
 WHERE rv.run_id = :run_id AND e.path = :path;
 
 -- PREP: get_entry_state
-SELECT rv.state, rv.outcome, rv.fidelity, e.scheme, rv.turn
+SELECT rv.state, rv.outcome, rv.visibility, e.scheme, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE rv.run_id = :run_id AND e.path = :path;
 
 -- PREP: get_file_states_by_pattern
-SELECT e.path, rv.state, rv.outcome, rv.fidelity, rv.turn
+SELECT e.path, rv.state, rv.outcome, rv.visibility, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE
@@ -214,7 +214,7 @@ WHERE rv.run_id = :run_id AND e.path = :path;
 -- PREP: promote_by_pattern
 UPDATE run_views
 SET
-	fidelity = 'promoted'
+	visibility = 'visible'
 	, state = 'resolved'
 	, outcome = NULL
 	, turn = :turn
@@ -231,7 +231,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- PREP: demote_by_pattern
 UPDATE run_views
 SET
-	fidelity = 'archived'
+	visibility = 'archived'
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND entry_id IN (
 	SELECT e.id FROM entries AS e
@@ -244,7 +244,7 @@ WHERE run_id = :run_id AND entry_id IN (
 
 -- PREP: get_entries_by_pattern
 SELECT
-	e.path, e.body, e.scheme, rv.state, rv.outcome, rv.fidelity
+	e.path, e.body, e.scheme, rv.state, rv.outcome, rv.visibility
 	, e.tokens, e.attributes
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
@@ -309,19 +309,19 @@ JOIN entries AS e ON e.id = rv.entry_id
 WHERE
 	rv.run_id = :run_id
 	AND rv.turn = :turn
-	AND rv.fidelity = 'promoted'
+	AND rv.visibility = 'visible'
 	AND rv.state NOT IN ('failed', 'cancelled');
 
 -- PREP: demote_turn_entries
--- View-layer only — fidelity lives on run_views. State untouched.
+-- View-layer only — visibility lives on run_views. State untouched.
 -- Call get_turn_demotion_targets first if you need the list of what
 -- was demoted (required by budget plugin for the budget:// summary).
 UPDATE run_views
 SET
-	fidelity = 'demoted'
+	visibility = 'summarized'
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
 	AND turn = :turn
-	AND fidelity = 'promoted'
+	AND visibility = 'visible'
 	AND state NOT IN ('failed', 'cancelled');

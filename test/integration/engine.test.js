@@ -117,7 +117,7 @@ describe("Engine integration", () => {
 			await store.set({
 				runId: RUN_ID,
 				path: "known://test_entry",
-				fidelity: "archived",
+				visibility: "archived",
 			});
 			const demoted = await store.getEntriesByPattern(
 				RUN_ID,
@@ -144,15 +144,15 @@ describe("Engine integration", () => {
 		});
 	});
 
-	describe("symbol file fidelity via VIEW", () => {
-		it("files at summary fidelity appear in turn_context", async () => {
+	describe("symbol file visibility via VIEW", () => {
+		it("files at summary visibility appear in turn_context", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 1,
 				path: "src/demoted.js",
 				body: pad(100),
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 				attributes: { symbols: "function foo()" },
 			});
 
@@ -169,20 +169,20 @@ describe("Engine integration", () => {
 			const demoted = rows.find((r) => r.path === "src/demoted.js");
 			assert.ok(demoted, "demoted file should appear in turn_context");
 			assert.strictEqual(
-				demoted.fidelity,
-				"demoted",
-				"demoted fidelity should be preserved",
+				demoted.visibility,
+				"summarized",
+				"demoted visibility should be preserved",
 			);
 		});
 
-		it("demoted files have demoted fidelity with body passed through (engine symbol view)", async () => {
+		it("demoted files have demoted visibility with body passed through (engine symbol view)", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 3,
 				path: "src/active.js",
 				body: "function bar() {}",
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 
 			await materialize(tdb.db, {
@@ -198,13 +198,13 @@ describe("Engine integration", () => {
 			const active = rows.find((r) => r.path === "src/active.js");
 			assert.ok(active, "demoted file should appear in turn_context");
 			assert.strictEqual(
-				active.fidelity,
-				"demoted",
-				"demoted fidelity preserved",
+				active.visibility,
+				"summarized",
+				"demoted visibility preserved",
 			);
 			assert.ok(
 				active.body.includes("function bar()"),
-				"engine plugin's symbol view shows body at demoted fidelity",
+				"engine plugin's symbol view shows body at demoted visibility",
 			);
 		});
 
@@ -215,7 +215,7 @@ describe("Engine integration", () => {
 				path: "src/described.js",
 				body: "const x = 1;",
 				state: "resolved",
-				fidelity: "promoted",
+				visibility: "visible",
 				attributes: { summary: "Utility module for X" },
 			});
 
@@ -223,7 +223,7 @@ describe("Engine integration", () => {
 				path: "src/described.js",
 				scheme: null,
 				body: "const x = 1;",
-				fidelity: "promoted",
+				visibility: "visible",
 				attributes: { summary: "Utility module for X" },
 				category: "data",
 			});
@@ -240,7 +240,7 @@ describe("Engine integration", () => {
 				path: "src/noview.js",
 				body: "const y = 2;",
 				state: "resolved",
-				fidelity: "demoted",
+				visibility: "summarized",
 				attributes: { summary: "Helper for Y calculations" },
 			});
 
@@ -248,14 +248,14 @@ describe("Engine integration", () => {
 				path: "src/noview.js",
 				scheme: null,
 				body: "const y = 2;",
-				fidelity: "demoted",
+				visibility: "summarized",
 				attributes: { summary: "Helper for Y calculations" },
 				category: "data",
 			});
 			assert.strictEqual(
 				viewResult,
 				"",
-				"file plugin returns empty at demoted fidelity — renderer wraps with summary attr",
+				"file plugin returns empty at demoted visibility — renderer wraps with summary attr",
 			);
 		});
 	});

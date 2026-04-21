@@ -9,8 +9,8 @@ export default class Get {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.get = docs;
 			return docsMap;
@@ -57,7 +57,7 @@ export default class Get {
 		);
 
 		// Preview — list matches with their full-body token costs. No promotion,
-		// no fidelity change, no Token Budget spent. Model uses this to plan
+		// no visibility change, no Token Budget spent. Model uses this to plan
 		// which entries to actually promote. getDoc promises this behavior; the
 		// prior implementation silently promoted anyway, burning the Token Budget
 		// on entries the model thought it was only inspecting.
@@ -75,7 +75,7 @@ export default class Get {
 			return;
 		}
 
-		// Partial read — no fidelity promotion, returns a line slice as the log item.
+		// Partial read — no visibility promotion, returns a line slice as the log item.
 		if (line !== null || limit !== null) {
 			if (isPattern) {
 				await store.set({
@@ -129,13 +129,13 @@ export default class Get {
 			return;
 		}
 
-		const VALID_FIDELITY = {
+		const VALID_VISIBILITY = {
 			demoted: 1,
 			promoted: 1,
 			archived: 1,
 		};
-		const fidelityAttr = VALID_FIDELITY[entry.attributes.fidelity]
-			? entry.attributes.fidelity
+		const visibilityAttr = VALID_VISIBILITY[entry.attributes.visibility]
+			? entry.attributes.visibility
 			: null;
 
 		await store.get({
@@ -144,12 +144,12 @@ export default class Get {
 			path: normalized,
 			bodyFilter: bodyFilter,
 		});
-		if (fidelityAttr) {
+		if (visibilityAttr) {
 			for (const match of matches)
 				await store.set({
 					runId: runId,
 					path: match.path,
-					fidelity: fidelityAttr,
+					visibility: visibilityAttr,
 				});
 		}
 

@@ -19,8 +19,8 @@ Tip: Demoted entries save tokens, but you must promote them to verify their (unr
 
 ## Phase 107: Demote
 YOU MUST demote all distilled source entries and archive all resolved unknown entries.
-Example: <set path="https://en.wikipedia.org/France" fidelity="demoted"/>
-Example: <set path="unknown://countries/france/capital" fidelity="archived"/>
+Example: <set path="https://en.wikipedia.org/France" visibility="summarized"/>
+Example: <set path="unknown://countries/france/capital" visibility="archived"/>
 Turn Conclusion: <update status="107">Demoting distilled source entries</update>
 
 ## Phase 108: Deploy

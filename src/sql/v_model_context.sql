@@ -10,17 +10,17 @@ visible AS (
 		, e.scheme
 		, rv.state
 		, rv.outcome
-		, rv.fidelity
+		, rv.visibility
 		, rv.turn
 		, rv.updated_at
 		, e.attributes
 		, e.tokens
 		, COALESCE(s.category, 'logging') AS category
 		, CASE
-			WHEN rv.fidelity = 'archived' THEN NULL
+			WHEN rv.visibility = 'archived' THEN NULL
 			WHEN s.model_visible = 0 THEN NULL
-			ELSE rv.fidelity
-		END AS visible_fidelity
+			ELSE rv.visibility
+		END AS effective_visibility
 	FROM run_views AS rv
 	JOIN entries AS e ON e.id = rv.entry_id
 	JOIN schemes AS s ON s.name = COALESCE(e.scheme, 'file')
@@ -33,7 +33,7 @@ projected AS (
 		, scheme
 		, state
 		, outcome
-		, visible_fidelity AS fidelity
+		, effective_visibility AS visibility
 		, turn
 		, updated_at
 		, attributes
@@ -41,17 +41,17 @@ projected AS (
 		, category
 		, tokens
 		, CASE
-			WHEN visible_fidelity IN ('promoted', 'demoted') THEN body
+			WHEN effective_visibility IN ('visible', 'summarized') THEN body
 			ELSE ''
 		END AS body
 	FROM visible
-	WHERE visible_fidelity IS NOT NULL
+	WHERE effective_visibility IS NOT NULL
 )
 SELECT
 	run_id
 	, path
 	, scheme
-	, fidelity
+	, visibility
 	, state
 	, outcome
 	, body
@@ -70,8 +70,8 @@ SELECT
 				ELSE 5
 			END
 			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
-			, CASE fidelity
-				WHEN 'demoted' THEN 0
+			, CASE visibility
+				WHEN 'summarized' THEN 0
 				ELSE 1
 			END
 			, turn

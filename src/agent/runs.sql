@@ -83,11 +83,11 @@ RETURNING next_turn - 1 AS turn;
 -- and child. Child's subsequent writes diverge via upsert into a new
 -- run-scoped entry.
 INSERT INTO run_views (
-	run_id, entry_id, loop_id, turn, state, outcome, fidelity
+	run_id, entry_id, loop_id, turn, state, outcome, visibility
 	, write_count, refs
 )
 SELECT
-	:new_run_id, entry_id, NULL, turn, state, outcome, fidelity
+	:new_run_id, entry_id, NULL, turn, state, outcome, visibility
 	, write_count, refs
 FROM run_views
 WHERE run_id = :parent_run_id;

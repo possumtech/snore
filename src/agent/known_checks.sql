@@ -39,7 +39,7 @@ WHERE
 	AND scheme IN ('set', 'sh', 'rm', 'mv', 'cp');
 
 -- PREP: get_file_entries
-SELECT path, state, outcome, fidelity, hash, updated_at
+SELECT path, state, outcome, visibility, hash, updated_at
 FROM known_entries
 WHERE
 	run_id = :run_id

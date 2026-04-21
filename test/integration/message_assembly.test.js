@@ -217,7 +217,7 @@ describe("Message assembly", () => {
 			path: "update://test_sum",
 			body: "The answer is 42",
 			state: "resolved",
-			fidelity: "demoted",
+			visibility: "summarized",
 		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");

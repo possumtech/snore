@@ -20,5 +20,5 @@ The Rumsfeld mechanism. The model registers what it doesn't know before acting.
 Unknowns are sticky — they persist across turns until the model explicitly
 removes them with `<rm>`. The model investigates unknowns using `<get>`,
 `<env>`, or `<ask_user>`, then removes resolved ones. Server deduplicates
-on insert. Each unknown renders with turn, fidelity, and tokens for
+on insert. Each unknown renders with turn, visibility, and tokens for
 temporal reasoning and context management.

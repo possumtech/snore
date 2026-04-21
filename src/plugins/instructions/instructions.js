@@ -10,7 +10,7 @@ export default class Instructions {
 
 	constructor(core) {
 		this.#core = core;
-		core.on("promoted", this.full.bind(this));
+		core.on("visible", this.full.bind(this));
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.hooks.instructions.resolveSystemPrompt =
 			this.resolveSystemPrompt.bind(this);
@@ -39,7 +39,7 @@ export default class Instructions {
 			scheme: "instructions",
 			body: entry.body,
 			attributes,
-			fidelity: "promoted",
+			visibility: "visible",
 			category: "system",
 		});
 	}

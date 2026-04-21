@@ -18,7 +18,7 @@ export default async function materialize(
 			turn,
 			ordinal: 0,
 			path: "system://prompt",
-			fidelity: "promoted",
+			visibility: "visible",
 			state: "resolved",
 			body: systemPrompt,
 			tokens: countTokens(systemPrompt),
@@ -29,14 +29,14 @@ export default async function materialize(
 
 	const rows = await db.get_model_context.all({ run_id: runId });
 	for (const row of rows) {
-		// tokens from the view reflect the projected body cost (fidelity-aware)
+		// tokens from the view reflect the projected body cost (visibility-aware)
 		await db.insert_turn_context.run({
 			run_id: runId,
 			loop_id: null,
 			turn,
 			ordinal: row.ordinal,
 			path: row.path,
-			fidelity: row.fidelity,
+			visibility: row.visibility,
 			state: row.state,
 			outcome: row.outcome,
 			body: row.body,

@@ -151,7 +151,7 @@ export default class RummyContext {
 		body = "",
 		state = "resolved",
 		outcome = null,
-		fidelity,
+		visibility,
 		attributes,
 	} = {}) {
 		if (!path) {
@@ -169,7 +169,7 @@ export default class RummyContext {
 			body,
 			state,
 			outcome,
-			fidelity,
+			visibility,
 			attributes,
 			loopId: this.loopId,
 		});

@@ -1,6 +1,6 @@
 # known
 
-Writes knowledge entries into the store at full fidelity.
+Writes knowledge entries into the store at full visibility.
 
 ## Registration
 

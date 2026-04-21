@@ -62,34 +62,34 @@ export default class ToolRegistry {
 		list.sort((a, b) => a.priority - b.priority);
 	}
 
-	onView(scheme, fn, fidelity = "promoted") {
+	onView(scheme, fn, visibility = "visible") {
 		if (!this.#views.has(scheme)) this.#views.set(scheme, new Map());
-		this.#views.get(scheme).set(fidelity, fn);
+		this.#views.get(scheme).set(visibility, fn);
 	}
 
 	async view(scheme, entry) {
-		const fidelityMap = this.#views.get(scheme);
-		if (!fidelityMap) {
+		const visibilityMap = this.#views.get(scheme);
+		if (!visibilityMap) {
 			throw new Error(
 				`No view registered for scheme '${scheme}'. ` +
 					`Every tool must define how its entries appear in the model view.`,
 			);
 		}
 
-		const fidelity = entry.fidelity === undefined ? "promoted" : entry.fidelity;
-		const fn = fidelityMap.get(fidelity);
+		const visibility = entry.visibility === undefined ? "visible" : entry.visibility;
+		const fn = visibilityMap.get(visibility);
 		if (!fn) return "";
 
 		const body = await fn(entry);
 		// View handlers MAY return undefined or null to mean "no projected
-		// body at this fidelity" — normalize at this boundary so callers
+		// body at this visibility" — normalize at this boundary so callers
 		// get a predictable string.
 		return body == null ? "" : body;
 	}
 
 	hasView(scheme) {
-		const fidelityMap = this.#views.get(scheme);
-		return fidelityMap?.size > 0;
+		const visibilityMap = this.#views.get(scheme);
+		return visibilityMap?.size > 0;
 	}
 
 	async dispatch(scheme, entry, rummy) {

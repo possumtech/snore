@@ -9,7 +9,7 @@ const LINES = [
 		"Preview before deleting. Safety pattern for bulk operations.",
 	],
 	[
-		'* Permanent. Prefer <set path="..." fidelity="archived"/> to preserve for later retrieval',
+		'* Permanent. Prefer <set path="..." visibility="archived"/> to preserve for later retrieval',
 		"Nudges toward archive over rm. Path attr included so the model sees a complete invocation shape, not a fragment.",
 	],
 	[

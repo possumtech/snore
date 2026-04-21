@@ -11,8 +11,8 @@ export default class Budget {
 			modelVisible: 1,
 			category: "logging",
 		});
-		core.hooks.tools.onView("budget", (entry) => entry.body, "promoted");
-		core.hooks.tools.onView("budget", (entry) => entry.body, "demoted");
+		core.hooks.tools.onView("budget", (entry) => entry.body, "visible");
+		core.hooks.tools.onView("budget", (entry) => entry.body, "summarized");
 		core.hooks.budget = {
 			enforce: this.enforce.bind(this),
 			postDispatch: this.postDispatch.bind(this),
@@ -69,7 +69,7 @@ export default class Budget {
 			await rummy.entries.set({
 				runId: ctx.runId,
 				path: promptRow.path,
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 		}
 		const reMat = await materializeContext({
@@ -128,17 +128,17 @@ export default class Budget {
 			await store.set({
 				runId: ctx.runId,
 				path: promptRow.path,
-				fidelity: "demoted",
+				visibility: "summarized",
 			});
 		}
 
 		// NOTE: we do NOT rewrite get-result bodies or flip their state.
 		// The get succeeded (state=resolved); budget demotion is a lifecycle
 		// event, not a failure of the get. Body still reflects what was
-		// true at the moment of the get; fidelity=demoted tells the model
+		// true at the moment of the get; visibility=demoted tells the model
 		// the entry is no longer in the promoted view. The budget:// entry
 		// is the canonical record of the panic. Model reads three consistent
-		// signals: state=resolved (get worked), fidelity=demoted (it's out
+		// signals: state=resolved (get worked), visibility=demoted (it's out
 		// of context now), budget://... (this turn overflowed).
 
 		// The 50% rule is the key directive: it forces the model to sum

@@ -8,8 +8,8 @@ export default class Mv {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.mv = docs;
 			return docsMap;
@@ -20,23 +20,23 @@ export default class Mv {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
 		const VALID = { stored: 1, summary: 1, index: 1, full: 1, archive: 1 };
-		const fidelity = VALID[entry.attributes.fidelity]
-			? entry.attributes.fidelity
+		const visibility = VALID[entry.attributes.visibility]
+			? entry.attributes.visibility
 			: undefined;
 
-		// Fidelity-in-place: no destination, change visibility of matched entries
-		if (fidelity && !to) {
+		// Visibility-in-place: no destination, change visibility of matched entries
+		if (visibility && !to) {
 			const matches = await store.getEntriesByPattern(runId, path);
 			for (const match of matches)
-				await store.set({ runId: runId, path: match.path, fidelity: fidelity });
-			const label = `set to ${fidelity}`;
+				await store.set({ runId: runId, path: match.path, visibility: visibility });
+			const label = `set to ${visibility}`;
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
 				body: `${matches.map((m) => m.path).join(", ")} ${label}`,
 				state: "resolved",
-				fidelity: "archived",
+				visibility: "archived",
 				loopId,
 			});
 			return;
@@ -70,7 +70,7 @@ export default class Mv {
 				path: to,
 				body: source,
 				state: "resolved",
-				fidelity,
+				visibility,
 				loopId,
 			});
 			await store.rm({ runId: runId, path: path });

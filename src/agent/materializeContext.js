@@ -4,7 +4,7 @@ import { countTokens } from "./tokens.js";
 /**
  * Rebuild turn_context from v_model_context, then assemble messages.
  * Called at turn start and again by the budget plugin when it needs a
- * fresh measurement after mutating fidelity.
+ * fresh measurement after mutating visibility.
  */
 export default async function materializeContext({
 	db,
@@ -29,7 +29,7 @@ export default async function materializeContext({
 			scheme,
 			body: row.body,
 			attributes: row.attributes ? JSON.parse(row.attributes) : null,
-			fidelity: row.fidelity,
+			visibility: row.visibility,
 			category: row.category,
 		});
 		await db.insert_turn_context.run({
@@ -38,7 +38,7 @@ export default async function materializeContext({
 			turn,
 			ordinal: row.ordinal,
 			path: row.path,
-			fidelity: row.fidelity,
+			visibility: row.visibility,
 			state: row.state,
 			outcome: row.outcome,
 			body: projectedBody,

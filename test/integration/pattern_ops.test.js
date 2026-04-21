@@ -151,7 +151,7 @@ describe("Pattern operations integration", () => {
 			await store.set({
 				runId: RUN_ID,
 				path: "src/*.js",
-				fidelity: "demoted",
+				visibility: "summarized",
 				pattern: true,
 			});
 			await store.get({
@@ -169,7 +169,7 @@ describe("Pattern operations integration", () => {
 				path: "src/app.js",
 			});
 			assert.strictEqual(utils.turn, 7);
-			assert.strictEqual(app.fidelity, "archived");
+			assert.strictEqual(app.visibility, "archived");
 		});
 	});
 
@@ -184,7 +184,7 @@ describe("Pattern operations integration", () => {
 			await store.set({
 				runId: RUN_ID,
 				path: "src/*.js",
-				fidelity: "demoted",
+				visibility: "summarized",
 				pattern: true,
 			});
 			const matches = await store.getEntriesByPattern(RUN_ID, "src/*.js", null);
@@ -193,7 +193,7 @@ describe("Pattern operations integration", () => {
 					run_id: RUN_ID,
 					path: m.path,
 				});
-				assert.strictEqual(row.fidelity, "archived");
+				assert.strictEqual(row.visibility, "archived");
 			}
 		});
 	});

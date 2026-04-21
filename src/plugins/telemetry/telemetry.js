@@ -92,7 +92,7 @@ export default class Telemetry {
 	}) {
 		const { entries: store, runId, loopId } = rummy;
 		// Audit schemes are system-only writes (see initPlugins).
-		const systemOpts = { loopId, fidelity: "archived", writer: "system" };
+		const systemOpts = { loopId, visibility: "archived", writer: "system" };
 
 		// assistant://N — the model's raw response
 		await store.set({
@@ -169,7 +169,7 @@ export default class Telemetry {
 				state: "failed",
 				outcome: "unparsed",
 				loopId,
-				fidelity: "promoted",
+				visibility: "visible",
 				writer: "system",
 			});
 		}

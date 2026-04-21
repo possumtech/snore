@@ -196,7 +196,7 @@ describe("RummyContext", () => {
 		it("getState() returns the state from getState", async () => {
 			const rummy = new RummyContext(makeRoot(), {
 				store: {
-					getState: async () => ({ state: "failed", fidelity: "demoted" }),
+					getState: async () => ({ state: "failed", visibility: "summarized" }),
 				},
 				runId: 1,
 			});

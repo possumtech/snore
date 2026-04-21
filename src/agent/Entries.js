@@ -117,11 +117,11 @@ export default class Entries {
 		return { kind, writers, category };
 	}
 
-	#defaultFidelity(scheme, category) {
-		if (scheme === "skill") return "promoted";
-		if (category === "prompt") return "promoted";
-		if (category === "unknown") return "promoted";
-		return "demoted";
+	#defaultVisibility(scheme, category) {
+		if (scheme === "skill") return "visible";
+		if (category === "prompt") return "visible";
+		if (category === "unknown") return "visible";
+		return "summarized";
 	}
 
 	#resolveScope(kind, runId, projectId) {
@@ -142,7 +142,7 @@ export default class Entries {
 	 *
 	 * Modes (selected by which options are present):
 	 *   — write content:         body given, state ∈ {proposed,streaming,resolved,failed,cancelled}
-	 *   — change fidelity only:  fidelity given, body omitted
+	 *   — change visibility only:  visibility given, body omitted
 	 *   — change state only:     state given, body omitted (resolve a proposal)
 	 *   — merge attributes:      attributes given, body omitted
 	 *   — append to body:        append:true (streaming)
@@ -155,7 +155,7 @@ export default class Entries {
 		path,
 		body,
 		state,
-		fidelity,
+		visibility,
 		outcome = null,
 		attributes,
 		append,
@@ -175,7 +175,7 @@ export default class Entries {
 		// from the path alone.
 		const isPattern = pattern === true || bodyFilter !== null;
 
-		// Pattern mode: update matching entries (fidelity / body / both).
+		// Pattern mode: update matching entries (visibility / body / both).
 		if (isPattern) {
 			if (body != null && !append) {
 				await this.#db.update_body_by_pattern.run({
@@ -191,7 +191,7 @@ export default class Entries {
 				});
 				this.#emitChanged(runId, path, "body");
 			}
-			if (fidelity === "promoted") {
+			if (visibility === "visible") {
 				await this.#db.promote_by_pattern.run({
 					run_id: runId,
 					path,
@@ -199,7 +199,7 @@ export default class Entries {
 					turn,
 				});
 				this.#emitChanged(runId, path, "promote");
-			} else if (fidelity === "demoted" || fidelity === "archived") {
+			} else if (visibility === "summarized" || visibility === "archived") {
 				await this.#db.demote_by_pattern.run({
 					run_id: runId,
 					path,
@@ -225,7 +225,7 @@ export default class Entries {
 			return;
 		}
 
-		// Body-less state or fidelity change on an existing entry.
+		// Body-less state or visibility change on an existing entry.
 		if (body == null) {
 			if (state != null) {
 				await this.#db.resolve_known_entry_view.run({
@@ -237,13 +237,13 @@ export default class Entries {
 				this.#emitChanged(runId, normalized, "resolve");
 				this.#drainPendingResolution(runId, normalized);
 			}
-			if (fidelity != null) {
-				await this.#db.set_fidelity.run({
+			if (visibility != null) {
+				await this.#db.set_visibility.run({
 					run_id: runId,
 					path: normalized,
-					fidelity,
+					visibility,
 				});
-				this.#emitChanged(runId, normalized, "fidelity");
+				this.#emitChanged(runId, normalized, "visibility");
 			}
 			if (attributes != null) {
 				await this.#db.update_entry_attributes.run({
@@ -256,7 +256,7 @@ export default class Entries {
 			return;
 		}
 
-		// Full write/upsert: body + state + fidelity + attributes.
+		// Full write/upsert: body + state + visibility + attributes.
 		const { kind, writers, category } = await this.#schemeRules(scheme);
 		if (!writers.includes(writer)) {
 			throw new PermissionError(scheme, writer, writers);
@@ -270,10 +270,10 @@ export default class Entries {
 			hash,
 		});
 		const effectiveState = state === undefined ? "resolved" : state;
-		const effectiveFidelity =
-			fidelity === undefined
-				? this.#defaultFidelity(scheme, category)
-				: fidelity;
+		const effectiveVisibility =
+			visibility === undefined
+				? this.#defaultVisibility(scheme, category)
+				: visibility;
 		await this.#db.upsert_run_view.run({
 			run_id: runId,
 			entry_id: entry.id,
@@ -281,7 +281,7 @@ export default class Entries {
 			turn,
 			state: effectiveState,
 			outcome,
-			fidelity: effectiveFidelity,
+			visibility: effectiveVisibility,
 		});
 		this.#emitChanged(runId, normalized, "upsert");
 		if (effectiveState !== "proposed") {
@@ -290,8 +290,8 @@ export default class Entries {
 	}
 
 	/**
-	 * get — promote entry(ies) to visible fidelity. Default fidelity is
-	 * "promoted"; pass fidelity explicitly for a read-with-side-effect at
+	 * get — promote entry(ies) to visible visibility. Default visibility is
+	 * "visible"; pass visibility explicitly for a read-with-side-effect at
 	 * a different visibility (rare).
 	 */
 	async get({
@@ -299,11 +299,11 @@ export default class Entries {
 		turn = 0,
 		path,
 		bodyFilter = null,
-		fidelity = "promoted",
+		visibility = "visible",
 	}) {
 		if (!runId) throw new Error("get: runId is required");
 		if (!path) throw new Error("get: path is required");
-		if (fidelity === "promoted") {
+		if (visibility === "visible") {
 			await this.#db.promote_by_pattern.run({
 				run_id: runId,
 				path,
@@ -358,7 +358,7 @@ export default class Entries {
 		turn = 0,
 		from,
 		to,
-		fidelity,
+		visibility,
 		attributes,
 		loopId,
 		writer,
@@ -372,7 +372,7 @@ export default class Entries {
 			turn,
 			path: to,
 			body: sourceBody,
-			fidelity,
+			visibility,
 			attributes,
 			loopId,
 			writer,
@@ -387,7 +387,7 @@ export default class Entries {
 		turn = 0,
 		from,
 		to,
-		fidelity,
+		visibility,
 		attributes,
 		loopId,
 		writer,
@@ -399,7 +399,7 @@ export default class Entries {
 			turn,
 			from,
 			to,
-			fidelity,
+			visibility,
 			attributes,
 			loopId,
 			writer,

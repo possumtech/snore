@@ -8,8 +8,8 @@ export default class Rm {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.rm = docs;
 			return docsMap;

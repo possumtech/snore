@@ -4,7 +4,7 @@ WHERE run_id = :run_id AND turn = :turn;
 
 -- PREP: get_model_context
 SELECT
-	ordinal, path, scheme, fidelity, state, outcome, body
+	ordinal, path, scheme, visibility, state, outcome, body
 	, tokens, attributes, category, turn
 FROM v_model_context
 WHERE run_id = :run_id
@@ -12,18 +12,18 @@ ORDER BY ordinal;
 
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
-	run_id, loop_id, turn, ordinal, path, fidelity, state, outcome
+	run_id, loop_id, turn, ordinal, path, visibility, state, outcome
 	, body, tokens, attributes, category, source_turn
 )
 VALUES (
-	:run_id, :loop_id, :turn, :ordinal, :path, :fidelity
+	:run_id, :loop_id, :turn, :ordinal, :path, :visibility
 	, :state, :outcome, :body, :tokens
 	, COALESCE(:attributes, '{}'), :category, :source_turn
 );
 
 -- PREP: get_turn_context
 SELECT
-	ordinal, path, scheme, fidelity, state, outcome, body
+	ordinal, path, scheme, visibility, state, outcome, body
 	, tokens, attributes, category, source_turn
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn

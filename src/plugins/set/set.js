@@ -4,7 +4,7 @@ import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const VALID_FIDELITY = { archived: 1, demoted: 1, promoted: 1 };
+const VALID_VISIBILITY = { archived: 1, demoted: 1, promoted: 1 };
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
@@ -14,8 +14,8 @@ export default class Set {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.on("proposal.prepare", this.#materializeRevisions.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.set = docs;
@@ -26,12 +26,12 @@ export default class Set {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
-		const fidelityAttr = VALID_FIDELITY[attrs.fidelity] ? attrs.fidelity : null;
+		const visibilityAttr = VALID_VISIBILITY[attrs.visibility] ? attrs.visibility : null;
 		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 
-		// Pure fidelity/metadata change — no body content
-		if (!entry.body && fidelityAttr && attrs.path) {
+		// Pure visibility/metadata change — no body content
+		if (!entry.body && visibilityAttr && attrs.path) {
 			const target = attrs.path;
 			const matches = await store.getEntriesByPattern(
 				runId,
@@ -46,7 +46,7 @@ export default class Set {
 					body: `${target} not found`,
 					state: "failed",
 					outcome: "not_found",
-					fidelity: "archived",
+					visibility: "archived",
 					loopId,
 				});
 				return;
@@ -55,7 +55,7 @@ export default class Set {
 				await store.set({
 					runId: runId,
 					path: match.path,
-					fidelity: fidelityAttr,
+					visibility: visibilityAttr,
 				});
 				if (summaryText) {
 					await store.set({
@@ -67,14 +67,14 @@ export default class Set {
 					});
 				}
 			}
-			const label = `set to ${fidelityAttr}`;
+			const label = `set to ${visibilityAttr}`;
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
 				body: `${matches.map((m) => m.path).join(", ")} ${label}`,
 				state: "resolved",
-				fidelity: "archived",
+				visibility: "archived",
 				loopId,
 			});
 			return;
@@ -177,7 +177,7 @@ export default class Set {
 					state: "resolved",
 					// Scheme writes default to promoted — the model wrote it, so
 					// it's material unless they explicitly demote/archive.
-					fidelity: fidelityAttr ? fidelityAttr : "promoted",
+					visibility: visibilityAttr ? visibilityAttr : "visible",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
 				});
@@ -199,12 +199,12 @@ export default class Set {
 			}
 		}
 
-		// Apply fidelity after all write operations
-		if (fidelityAttr && attrs.path) {
+		// Apply visibility after all write operations
+		if (visibilityAttr && attrs.path) {
 			const target = attrs.path;
 			const scheme = Entries.scheme(target);
 			if (scheme !== null) {
-				await store.set({ runId: runId, path: target, fidelity: fidelityAttr });
+				await store.set({ runId: runId, path: target, visibility: visibilityAttr });
 			}
 			if (summaryText) {
 				await store.set({

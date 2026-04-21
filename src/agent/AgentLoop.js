@@ -806,7 +806,7 @@ export default class AgentLoop {
 							path: `${path}_${ch}`,
 							body: "",
 							state: "streaming",
-							fidelity: "demoted",
+							visibility: "summarized",
 							attributes: { command, summary: command, channel: ch },
 						});
 					}

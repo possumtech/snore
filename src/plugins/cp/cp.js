@@ -8,8 +8,8 @@ export default class Cp {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.cp = docs;
 			return docsMap;
@@ -20,8 +20,8 @@ export default class Cp {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
 		const VALID = { promoted: 1, demoted: 1, archived: 1 };
-		const fidelity = VALID[entry.attributes.fidelity]
-			? entry.attributes.fidelity
+		const visibility = VALID[entry.attributes.visibility]
+			? entry.attributes.visibility
 			: undefined;
 
 		const source = await store.getBody(runId, path);
@@ -52,7 +52,7 @@ export default class Cp {
 				path: to,
 				body: source,
 				state: "resolved",
-				fidelity,
+				visibility,
 				loopId,
 			});
 			await store.set({

@@ -8,8 +8,8 @@ export default class Unknown {
 			category: "unknown",
 		});
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.filter("assembly.user", this.assembleUnknowns.bind(this), 200);
 		core.markHidden();
 	}
@@ -70,13 +70,13 @@ function renderUnknownTag(entry) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const visibility = entry.visibility ? ` visibility="${entry.visibility}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`
 			: "";
-	const attrStr = `${turn}${summary}${fidelity}${tokens}`;
+	const attrStr = `${turn}${summary}${visibility}${tokens}`;
 	if (entry.body) {
 		return `<unknown path="${entry.path}"${attrStr}>${entry.body}</unknown>`;
 	}

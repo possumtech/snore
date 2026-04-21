@@ -119,7 +119,7 @@ functioning correctly". The LLM judge confirmed the answer is correct.
 The diagnosis for each failed question MUST be one of:
 
 1. **Context problem** — necessary facts were demoted out of context.
-   Recommendation: adjust cascade priority, fidelity, or budget.
+   Recommendation: adjust cascade priority, visibility, or budget.
 2. **Budget problem** — context floor exceeded model limit; run returned 500.
    Recommendation: identify what's consuming the floor (audit entries, stash indices, system prompt).
 3. **Prompt problem** — model misunderstood the task or used wrong tools.
@@ -172,10 +172,10 @@ sqlite3 "$DB" "
 
 # Fidelity distribution at question time
 sqlite3 "$DB" "
-  SELECT fidelity, count(*), sum(tokens)
+  SELECT visibility, count(*), sum(tokens)
   FROM known_entries
   WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_orac_0')
-  GROUP BY fidelity;
+  GROUP BY visibility;
 "
 ```
 

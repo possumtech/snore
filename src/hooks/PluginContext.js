@@ -86,7 +86,7 @@ export default class PluginContext {
 	/**
 	 * Register a named callback for this plugin.
 	 * "handler" registers the tool handler.
-	 * "promoted"/"demoted" register fidelity projections.
+	 * "visible"/"summarized" register visibility projections.
 	 * "docs" sets tool documentation.
 	 * Everything else resolves to a hook event.
 	 */
@@ -96,7 +96,7 @@ export default class PluginContext {
 			this.#hooks.tools.onHandle(this.#name, callback, priority);
 			return;
 		}
-		if (event === "promoted" || event === "demoted") {
+		if (event === "visible" || event === "summarized") {
 			this.#hooks.tools.onView(this.#name, callback, event);
 			return;
 		}

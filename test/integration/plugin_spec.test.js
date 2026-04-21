@@ -278,7 +278,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.strictEqual(events[0].changeType, "upsert");
 		});
 
-		it("§7.4.2 Entries emits onChanged on fidelity change", async () => {
+		it("§7.4.2 Entries emits onChanged on visibility change", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_7_4_2" });
 			const events = [];
 			const store = new (await import("../../src/agent/Entries.js")).default(
@@ -288,19 +288,19 @@ describe("PLUGINS.md Spec Compliance", () => {
 			await store.set({
 				runId,
 				turn: 1,
-				path: "known://fidelity_test",
+				path: "known://visibility_test",
 				body: "body",
 				state: "resolved",
 			});
 			events.length = 0;
 			await store.set({
 				runId: runId,
-				path: "known://fidelity_test",
-				fidelity: "demoted",
+				path: "known://visibility_test",
+				visibility: "summarized",
 			});
 			assert.ok(
-				events.some((e) => e.changeType === "fidelity"),
-				"onChanged should fire with changeType=fidelity",
+				events.some((e) => e.changeType === "visibility"),
+				"onChanged should fire with changeType=visibility",
 			);
 		});
 
@@ -467,14 +467,14 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_vis");
 			assert.ok(row, "entry appears in v_model_context");
-			// Default fidelity for data-category entries is demoted —
+			// Default visibility for data-category entries is demoted —
 			// the folksonomic pattern: summary indexes, body on-demand.
 			// Writers that need promoted (e.g. the set tool handler on a
-			// model-authored scheme write) pass fidelity explicitly.
-			assert.strictEqual(row.fidelity, "demoted");
+			// model-authored scheme write) pass visibility explicitly.
+			assert.strictEqual(row.visibility, "summarized");
 		});
 
-		it("§8.3 stored fidelity hides from v_model_context", async () => {
+		it("§8.3 stored visibility hides from v_model_context", async () => {
 			const { runId } = await tdb.seedRun({ alias: "spec_8_3" });
 			const Entries = (await import("../../src/agent/Entries.js")).default;
 			const store = new Entries(tdb.db);
@@ -484,7 +484,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 				path: "known://lifecycle_stored",
 				body: "hidden",
 				state: "resolved",
-				fidelity: "archived",
+				visibility: "archived",
 			});
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });

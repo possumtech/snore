@@ -131,14 +131,14 @@ describe("Scheme registration via plugins", () => {
 		assert.strictEqual(entry.state, "proposed");
 	});
 
-	it("stored fidelity entries hidden from model context", async () => {
+	it("stored visibility entries hidden from model context", async () => {
 		await store.set({
 			runId,
 			turn: 1,
 			path: "known://stored_fact",
 			body: "archive",
 			state: "resolved",
-			fidelity: "archived",
+			visibility: "archived",
 		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "known://stored_fact");

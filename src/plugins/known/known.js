@@ -10,8 +10,8 @@ export default class Known {
 		this.#core = core;
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
-		core.on("promoted", this.full.bind(this));
-		core.on("demoted", this.summary.bind(this));
+		core.on("visible", this.full.bind(this));
+		core.on("summarized", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleContext.bind(this), 100);
 		// <known> is internal — written via <set path="known://...">. Hidden
 		// from all model-facing tool lists. Handler still dispatches if the
@@ -118,7 +118,7 @@ function renderContextTag(entry, demotedSet) {
 	const stateAttr =
 		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const visibility = entry.visibility ? ` visibility="${entry.visibility}"` : "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
 	// Always render summary attribute on knowns — empty value hints the model
 	// it forgot to add searchable keywords.
@@ -128,7 +128,7 @@ function renderContextTag(entry, demotedSet) {
 			: "";
 	const summary = ` summary="${summaryText}"`;
 
-	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${fidelity}${tokens}${flag}`;
+	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${flag}`;
 	if (entry.body) {
 		return `<${tag} path="${entry.path}"${attrStr}>${entry.body}</${tag}>`;
 	}

@@ -1,7 +1,7 @@
 /**
  * Tool visibility test.
  *
- * Every model-visible scheme with fidelity != 'null' must have its content
+ * Every model-visible scheme with visibility != 'null' must have its content
  * projected through v_model_context. If a scheme's content is silently
  * dropped to '', the model can see that a tool was used but not what it
  * returned — causing infinite retry loops.

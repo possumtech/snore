@@ -53,7 +53,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 			path,
 			body: "",
 			status: 202,
-			fidelity: "demoted",
+			visibility: "summarized",
 			hash: null,
 			attributes: JSON.stringify({
 				command,
@@ -98,7 +98,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		assert.ok(stdoutEntry, "_1 entry exists");
 		assert.strictEqual(stdoutEntry.status, 102, "_1 at status 102");
 		assert.strictEqual(stdoutEntry.body, "", "_1 body empty");
-		assert.strictEqual(stdoutEntry.fidelity, "demoted", "_1 demoted");
+		assert.strictEqual(stdoutEntry.visibility, "summarized", "_1 demoted");
 
 		assert.ok(stderrEntry, "_2 entry exists");
 		assert.strictEqual(stderrEntry.status, 102, "_2 at status 102");
@@ -379,7 +379,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 			path,
 			body: "",
 			status: 202,
-			fidelity: "demoted",
+			visibility: "summarized",
 			hash: null,
 			attributes: JSON.stringify({
 				command: "pwd",

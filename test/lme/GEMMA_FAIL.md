@@ -62,7 +62,7 @@ The LME runner extracts the final answer in this priority order:
 
 **Analysis**: Genuine failure — gemma got stuck in retrieval, emitted status updates, didn't produce an answer. This is a different failure mode than grok's aggregation errors. Gemma seems to use `<update>` as a "thinking aloud" channel, and the response extractor catches that text rather than a conclusion. A second issue: the answer loop terminated before producing content.
 
-**Category**: Agent behavior — meta-commentary instead of answer. Could be: (a) gemma's interpretation of the preamble contract, (b) budget pressure terminating the turn early, or (c) gemma's lower instruction-following fidelity relative to grok.
+**Category**: Agent behavior — meta-commentary instead of answer. Could be: (a) gemma's interpretation of the preamble contract, (b) budget pressure terminating the turn early, or (c) gemma's lower instruction-following visibility relative to grok.
 
 ### Row 24 — temporal-reasoning, sessions=2, 88s
 **Q**: How long had I been a member of 'Book Lovers Unite' when I attended the meetup?

@@ -5,7 +5,7 @@ export default class Prompt {
 
 	constructor(core) {
 		this.#core = core;
-		core.hooks.tools.onView("prompt", (entry) => entry.body, "promoted");
+		core.hooks.tools.onView("prompt", (entry) => entry.body, "visible");
 		core.hooks.tools.onView(
 			"prompt",
 			(entry) => {
@@ -14,7 +14,7 @@ export default class Prompt {
 				if (full.length <= limit) return full;
 				return `${full.slice(0, limit)}\n[truncated — promote to see the complete prompt]`;
 			},
-			"demoted",
+			"summarized",
 		);
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
@@ -63,7 +63,7 @@ export default class Prompt {
 		if (contextSize) {
 			// Messages aren't assembled yet, so measure the projected
 			// row bodies — what each entry actually contributes to the
-			// packet at its current fidelity. The 10% CEILING_RATIO
+			// packet at its current visibility. The 10% CEILING_RATIO
 			// headroom absorbs the per-entry tag/separator overhead
 			// that projected bodies don't include.
 			const totalTokens = measureRows(rows);
@@ -76,12 +76,12 @@ export default class Prompt {
 		}
 
 		const path = promptEntry ? ` path="${promptEntry.path}"` : "";
-		const fidelity = promptEntry?.fidelity
-			? ` fidelity="${promptEntry.fidelity}"`
+		const visibility = promptEntry?.visibility
+			? ` visibility="${promptEntry.visibility}"`
 			: "";
 		const tokens = promptEntry?.tokens
 			? ` tokens="${promptEntry.tokens}"`
 			: "";
-		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${fidelity}${tokens}>${body}</prompt>`;
+		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${visibility}${tokens}>${body}</prompt>`;
 	}
 }

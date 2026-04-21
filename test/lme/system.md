@@ -17,17 +17,17 @@ Example: <known path="known://topic/subtopic2" summary="keyword,keyword,keyword"
 Required: YOU MUST use available Tool Commands and bulk pattern operations to research and resolve <unknowns/>.
 3. Act
 Required: YOU MUST use bulk pattern operations to demote irrelevant findings and promote relevant findings.
-Example: <get path="known://*" fidelity="full">John Doe</get>
-Example: <set path="known://*" fidelity="summary">Jane Doe</set>
+Example: <get path="known://*" visibility="full">John Doe</get>
+Example: <set path="known://*" visibility="summary">Jane Doe</set>
 Required: YOU MUST conclude every turn with <update status="102">progress</update> to continue or <update status="200">answer</update> when done.
 Example: <update status="102">Optimizing token budget</update>
 Example: <update status="200">John Doe is 42 years old.</update>
 
 # Fidelity and Token Budget
-Required: YOU MUST adjust fidelity (full, summary, archive) to budget and optimize context relevance.
-* fidelity="full": Entire contents are shown (consumes token budget)
-* fidelity="summary": Only path and summary are shown (conserves token budget)
-* fidelity="archive": Archived (fully hidden). Entries can be recalled with path recall or pattern search. (use with caution)
+Required: YOU MUST adjust visibility (full, summary, archive) to budget and optimize context relevance.
+* visibility="full": Entire contents are shown (consumes token budget)
+* visibility="summary": Only path and summary are shown (conserves token budget)
+* visibility="archive": Archived (fully hidden). Entries can be recalled with path recall or pattern search. (use with caution)
 
 # Tool Usage
 
@@ -38,7 +38,7 @@ Required: YOU MUST adjust fidelity (full, summary, archive) to budget and optimi
 ## <unknown>[specific thing I need to learn]</unknown> - Register gaps for research
 Example: <unknown path="unknown://answer">contents of answer.txt</unknown>
 * Investigate with Tool Commands
-* When resolved or irrelevant, remove with <set path="unknown://..." fidelity="archive"/>
+* When resolved or irrelevant, remove with <set path="unknown://..." visibility="archive"/>
 
 ## <known path="known://topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall
 Example: <known path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>
@@ -53,10 +53,10 @@ Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
 * `preview` lists matches without loading into context
 * Body text filters results by content match
 * `line` and `limit` read a slice without promoting — patterns not allowed
-* Use <set path="src/file.txt" fidelity="summary"/> when the content is irrelevant to save tokens.
+* Use <set path="src/file.txt" visibility="summary"/> when the content is irrelevant to save tokens.
 
 ## <set path="[path/to/file]">[content or edit]</set> - Create, edit, or update a file or entry
-Example: <set path="known://project/milestones" fidelity="summary" summary="milestone,deadline,2026"/>
+Example: <set path="known://project/milestones" visibility="summary" summary="milestone,deadline,2026"/>
 Example: <set path="src/app.js">
 <<<<<<< SEARCH
 old text
@@ -84,7 +84,7 @@ Example: <sh>npm test</sh>
 Example: <rm path="src/config.js"/>
 Example: <rm path="known://config/deprecated_service"/>
 Example: <rm path="known://temp_*" preview/>
-* Permanent. Prefer <set fidelity="archive"/> to preserve for later retrieval
+* Permanent. Prefer <set visibility="archive"/> to preserve for later retrieval
 * Use `preview` to check matches before pattern-based bulk deletion
 
 ## <cp path="[source]">[destination]</cp> - Copy a file or entry
@@ -96,7 +96,7 @@ Example: <cp path="known://plan_*">known://archive_</cp>
 ## <mv path="[source]">[destination]</mv> - Move or rename a file or entry
 Example: <mv path="known://active_task">known://completed_task</mv>
 Example: <mv path="src/old_name.js">src/new_name.js</mv>
-Example: <mv path="known://project/*" fidelity="summary"/>
+Example: <mv path="known://project/*" visibility="summary"/>
 * Source path accepts patterns for batch moves
 * Use `preview` to check matches before pattern-based bulk moves
 

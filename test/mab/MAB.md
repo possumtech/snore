@@ -113,7 +113,7 @@ Each question gets its own section:
 
 **Diagnosis:** Model resolved author conflict to Charles Dickens (entry 107)
 instead of Charles Darwin (entry 146, later). The conflict override was not
-applied because entry 107 was at full fidelity (visible) while entry 146
+applied because entry 107 was at full visibility (visible) while entry 146
 was demoted to summary (path only, body not visible).
 
 **Recommendation:** Budget cascade should preserve later entries over earlier
@@ -125,7 +125,7 @@ ones when both are in the same scheme, not just by turn number.
 The diagnosis for each failed question MUST be one of:
 
 1. **Context problem** — necessary facts were demoted out of context.
-   Recommendation: adjust cascade priority, fidelity, or budget.
+   Recommendation: adjust cascade priority, visibility, or budget.
 2. **Prompt problem** — model misunderstood the task or used wrong tools.
    Recommendation: adjust question prompt or system prompt.
 3. **Ingestion problem** — facts were never saved during ingestion.

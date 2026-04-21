@@ -53,7 +53,7 @@ A streaming producer plugin:
    analogous) at status=202. Status transitions to 200 when the user
    accepts (this becomes the **log entry**).
 2. On acceptance, creates **data entries** at `{path}_1`, `{path}_2`, etc.
-   at status=102, category=data, fidelity=demoted, empty body.
+   at status=102, category=data, visibility=demoted, empty body.
 3. Client or external producer calls `stream` RPC with chunks as they
    arrive.
 4. When the producer is done, the client/producer calls

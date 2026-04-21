@@ -6,8 +6,8 @@ const LINES = [
 		'## <set path="[path/to/file]">[content or edit]</set> - Create, edit, or update a file or entry',
 	],
 	[
-		'Example: <set path="known://project/milestones" fidelity="demoted" summary="milestone,deadline,2026"/>',
-		"Fidelity control first — most unique capability of set.",
+		'Example: <set path="known://project/milestones" visibility="summarized" summary="milestone,deadline,2026"/>',
+		"Visibility control first — most unique capability of set.",
 	],
 	[
 		`Example: <set path="src/app.js">
