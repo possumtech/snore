@@ -23,7 +23,7 @@ describe("ResponseHealer", () => {
 			assert.strictEqual(r.updateText, null);
 			assert.ok(r.warning.includes("update"));
 			assert.ok(r.warning.includes("200"));
-			assert.ok(r.warning.includes("102"));
+			assert.ok(r.warning.includes("1xx"));
 		});
 	});
 

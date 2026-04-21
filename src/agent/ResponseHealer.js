@@ -3,7 +3,7 @@ const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
 
 const CONTRACT_REMINDER =
-	"Missing update (status = 102 to continue, status = 200 to conclude)";
+	"Missing update — use 1xx to continue or 200 to conclude.";
 
 /**
  * Build a stable fingerprint for a single recorded entry: scheme + all

@@ -10,12 +10,6 @@ export default class Unknown {
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
-		// Unknowns render inside <context> at the bottom — the known
-		// plugin's assembleContext filter covers both data and unknown
-		// categories, and v_model_context sorts unknowns after data.
-		// <unknown> is internal — written via <set path="unknown://...">.
-		// Hidden from all model-facing tool lists. Handler still dispatches
-		// if the model emits <unknown> directly out of habit.
 		core.markHidden();
 	}
 

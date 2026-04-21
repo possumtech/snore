@@ -1,9 +1,8 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 
-// Schemes whose log-entry body is a small summary while the "real"
-// content lives on a data entry produced as a side effect. A `tokens=`
-// attribute on these log tags advertises the summary's size, which the
-// model reads as the action's cost — a mixed signal. Drop it.
+// Schemes whose log-entry body is a small summary while the real
+// content lives on the companion data entry — tokens= on these would
+// point at the summary's size, not the action's cost.
 const NO_TOKENS_SCHEMES = new Set(["set", "mv", "cp", "sh", "env"]);
 
 export default class Log {
@@ -15,13 +14,8 @@ export default class Log {
 	}
 
 	async assembleLog(content, ctx) {
-		// Every logging-category entry across the entire run, ordered by
-		// v_model_context's sort (category → recency). No loop-boundary
-		// split — the `turn` attribute on each entry carries when it
-		// happened; the model derives loop membership from the data.
 		const entries = ctx.rows.filter((r) => r.category === "logging");
 		if (entries.length === 0) return content;
-
 		const lines = entries.map((e) => renderLogTag(e));
 		return `${content}<log>\n${lines.join("\n")}\n</log>\n`;
 	}

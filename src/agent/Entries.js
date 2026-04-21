@@ -117,14 +117,6 @@ export default class Entries {
 		return { kind, writers, category };
 	}
 
-	/**
-	 * Default fidelity for a new entry. Carve-outs that stay promoted:
-	 *   - prompt (the anchor for what the model is doing)
-	 *   - unknown (open questions, bottom of <context>)
-	 *   - skill (attached by RPC, top of <context>)
-	 * Everything else defaults demoted — the folksonomic pattern: summary
-	 * tags index, bodies on-demand via <get>.
-	 */
 	#defaultFidelity(scheme, category) {
 		if (scheme === "skill") return "promoted";
 		if (category === "prompt") return "promoted";
@@ -277,9 +269,6 @@ export default class Entries {
 			attributes: attributes ? JSON.stringify(attributes) : null,
 			hash,
 		});
-		// State defaults to resolved for content writes; fidelity defaults
-		// by category/scheme — the folksonomic rule. Writers that need a
-		// different default pass fidelity explicitly.
 		const effectiveState = state === undefined ? "resolved" : state;
 		const effectiveFidelity =
 			fidelity === undefined

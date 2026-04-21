@@ -11,8 +11,6 @@ export default class Budget {
 			modelVisible: 1,
 			category: "logging",
 		});
-		// Budget overflow messages are feedback the model must see —
-		// demoted projection shows the body, not "".
 		core.hooks.tools.onView("budget", (entry) => entry.body, "promoted");
 		core.hooks.tools.onView("budget", (entry) => entry.body, "demoted");
 		core.hooks.budget = {

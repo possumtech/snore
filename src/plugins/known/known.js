@@ -91,16 +91,10 @@ export default class Known {
 	}
 
 	async assembleContext(content, ctx) {
-		// v_model_context sorts by category first (data=2 before unknown=4),
-		// so unknown:// entries naturally land at the bottom of this block
-		// — last thing the model reads before the prompt.
 		const entries = ctx.rows.filter(
 			(r) => r.category === "data" || r.category === "unknown",
 		);
 		if (entries.length === 0) return content;
-
-		// Rows arrive pre-sorted by SQL: demoted → promoted, then by recency
-		// `new Set(undefined)` yields an empty set, matching "nothing demoted".
 		const demotedSet = new Set(ctx.demoted);
 		const lines = entries.map((e) => renderContextTag(e, demotedSet));
 		return `${content}\n\n<context>\n${lines.join("\n")}\n</context>`;

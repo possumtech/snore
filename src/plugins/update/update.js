@@ -2,7 +2,11 @@ import ResponseHealer from "../../agent/ResponseHealer.js";
 import docs from "./updateDoc.js";
 
 const TERMINAL_STATUSES = new Set([200, 204, 422]);
-const VALID_STATUSES = new Set([102, ...TERMINAL_STATUSES]);
+
+function isValidStatus(status) {
+	if (TERMINAL_STATUSES.has(status)) return true;
+	return Number.isInteger(status) && status >= 100 && status < 200;
+}
 
 export default class Update {
 	#core;
@@ -35,12 +39,12 @@ export default class Update {
 	 *   - summaryText: non-null → the turn is terminal (run concludes at 200)
 	 *   - updateText:  non-null → the turn continues
 	 *   - strike:      true → the model violated the update contract
-	 *                  (no update emitted, missing status attribute, or
+	 *                  (no update emitted, missing/invalid status, or
 	 *                  terminal claim overridden by action failures)
 	 *
 	 * Rules:
 	 *   <update status="200|204|422"> body → summaryText (terminal)
-	 *   <update status="102"> body          → updateText (continuation)
+	 *   <update status="1xx"> body          → updateText (continuation)
 	 *   <update> body with no status        → strike, log contract reminder
 	 *   terminal update + failed actions    → strike, override to continuation
 	 *   no update emitted                   → strike, log contract reminder
@@ -59,14 +63,14 @@ export default class Update {
 		}
 		let strike = false;
 
-		if (entry && !VALID_STATUSES.has(status)) {
+		if (entry && !isValidStatus(status)) {
 			strike = true;
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
-				message: `Invalid status ${entry.attributes?.status} on update (status = 102 to continue, status = 200 to conclude)`,
+				message: `Invalid status ${entry.attributes?.status} on update — use 1xx to continue or 200 to conclude.`,
 			});
 		}
 
@@ -102,9 +106,6 @@ export default class Update {
 		return { summaryText, updateText, strike };
 	}
 
-	// Update is the turn-closer signal — demoted projection still shows
-	// the body so the model can read prior-turn updates without having
-	// to promote each one.
 	full(entry) {
 		return `# update\n${entry.body}`;
 	}
