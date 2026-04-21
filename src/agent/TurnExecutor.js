@@ -292,23 +292,6 @@ export default class TurnExecutor {
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 
-			// Incremental state so the client waterfall builds live. The
-			// turn is genuinely in 102 (in-progress) during dispatch.
-			// The client's guard (handle_run_state) prevents a late 102
-			// from regressing a terminal status.
-			const history = await this.#entries.getLog(currentRunId);
-			const unknowns = await this.#entries.getUnknowns(currentRunId);
-			await this.#hooks.run.state.emit({
-				projectId,
-				run: currentAlias,
-				turn,
-				status: 102,
-				summary: "",
-				history,
-				unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
-				telemetry: null,
-			});
-
 			// Plugins (e.g. set) materialize pending proposals from the
 			// recorded entry — e.g. search/replace revisions → set:// 202.
 			await this.#hooks.proposal.prepare.emit({ rummy, recorded: [entry] });

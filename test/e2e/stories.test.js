@@ -118,9 +118,10 @@ async function _acceptAll(client, result, db, projectRoot) {
 				}
 			}
 
-			current = await client.call("run/resolve", {
-				run: current.run,
-				resolution: { path: p.path, action: "accept", output: "applied" },
+			await client.resolveProposal(current.run, {
+				path: p.path,
+				action: "accept",
+				output: "applied",
 			});
 			resolves++;
 		}
@@ -193,7 +194,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// Story 1: Simple factual answer from file content.
 	// Model should answer from context without needing to read.
 	it("factual answer from context", { timeout: TIMEOUT }, async () => {
-		const r = await client.call("ask", {
+		const r = await client.ask({
 			model,
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
@@ -206,7 +207,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// Story 2: Research — model searches the web, discovers information
 	// not in context, and saves it as knowledge. ONE prompt.
 	it("autonomous research session", { timeout: TIMEOUT }, async () => {
-		const r = await client.call("ask", {
+		const r = await client.ask({
 			model,
 			prompt:
 				"Search the web for when Mass Effect 1 was released. Save the release year as a known entry. Tell me the year.",
@@ -225,7 +226,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// Story 3: Autonomous file edit — model reads, edits, proposes.
 	// We accept the proposal. Tests the full act lifecycle in one prompt.
 	it("autonomous file edit", { timeout: TIMEOUT }, async () => {
-		const r = await client.call("act", {
+		const r = await client.act({
 			model,
 			prompt:
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
@@ -246,7 +247,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// The model edits a file, we accept, then ask what the file contains.
 	// If the scanner doesn't pick up the disk write, the model sees stale content.
 	it("accepted edits visible on next turn", { timeout: TIMEOUT }, async () => {
-		const r1 = await client.call("act", {
+		const r1 = await client.act({
 			model,
 			prompt:
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
@@ -264,7 +265,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 
 		// Verify the model can see the edit on the next turn
-		const r2 = await client.call("ask", {
+		const r2 = await client.ask({
 			model,
 			prompt:
 				'Read src/app.js. Does it contain "error handler configured"? One word answer: yes or no.',
@@ -279,7 +280,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// Each question is a separate ask on the same run.
 	// The model must answer the LATEST question, not an earlier one.
 	it("prompt coherence across questions", { timeout: TIMEOUT }, async () => {
-		const r1 = await client.call("ask", {
+		const r1 = await client.ask({
 			model,
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
@@ -292,7 +293,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			"coherence-1",
 		);
 
-		const r2 = await client.call("ask", {
+		const r2 = await client.ask({
 			model,
 			prompt:
 				"How many users are in data/users.json? Reply ONLY with the number.",
@@ -307,7 +308,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// register unknowns, investigate them, and answer.
 	// Multi-hop: needs to find config.json, read it, extract host, then answer.
 	it("autonomous unknown investigation", { timeout: TIMEOUT }, async () => {
-		const r = await client.call("ask", {
+		const r = await client.ask({
 			model,
 			prompt:
 				"Investigate this project and answer: what is the database connection pool size AND the database host? You MUST register unknowns for what you need to find, then investigate with <get>.",
@@ -330,7 +331,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	// Story 6: Lite mode — no file context, multi-turn memory.
 	// One prompt that requires recalling information across turns.
 	it("lite mode sustained session", { timeout: TIMEOUT }, async () => {
-		const r1 = await client.call("ask", {
+		const r1 = await client.ask({
 			model,
 			prompt: "Remember the number 42. Reply with just 'OK'.",
 			noRepo: true,
@@ -338,7 +339,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		});
 		await client.assertRun(r1, 200, "lite-1");
 
-		const r2 = await client.call("ask", {
+		const r2 = await client.ask({
 			model,
 			prompt:
 				"What number did I tell you to remember? Reply with just the number.",
@@ -358,7 +359,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		client.on("run/progress", captureRun);
 		client.on("run/state", captureRun);
 
-		const askPromise = client.call("ask", {
+		const askPromise = client.ask({
 			model,
 			prompt:
 				"Carefully analyze every file in this project. Write a 500-word summary of each one. Then cross-reference all summaries.",
@@ -370,7 +371,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		}
 
 		if (runAlias) {
-			await client.call("run/abort", { run: runAlias });
+			await client.abortRun(runAlias);
 		}
 
 		const result = await askPromise;
@@ -393,17 +394,14 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		// Reject rm proposals for notes.md via custom resolve handler
 		client.resolveHandler = async (c, run, proposal) => {
 			const action = proposal.path?.startsWith("rm://") ? "reject" : "accept";
-			await c.call("run/resolve", {
-				run,
-				resolution: {
-					path: proposal.path,
-					action,
-					output: action === "reject" ? "Do not delete." : "",
-				},
+			await c.resolveProposal(run, {
+				path: proposal.path,
+				action,
+				output: action === "reject" ? "Do not delete." : "",
 			});
 		};
 
-		const _r1 = await client.call("act", {
+		const _r1 = await client.act({
 			model,
 			prompt: "Delete the file notes.md from the project.",
 		});
@@ -430,7 +428,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	it("model answers under tight context limit", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r1 = await client.call("ask", {
+		const r1 = await client.ask({
 			model,
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
@@ -447,7 +445,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 
 	// Story 10: Web search — model searches, gets results, answers from them.
 	it("autonomous web search", { timeout: TIMEOUT }, async () => {
-		const r = await client.call("ask", {
+		const r = await client.ask({
 			model,
 			prompt:
 				'Search the web for "Mitch Hedberg death date" and tell me when he died. Limit search results to 3.',
@@ -476,7 +474,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	it("turn demotion fires and run completes", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r = await client.call("ask", {
+		const r = await client.ask({
 			model,
 			prompt:
 				"Save 10 separate known entries: for each number 1 through 10, save a known entry with the key 'number-N' and value 'The number N is important because it has N digits of history.' Then summarize when done.",
@@ -521,7 +519,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		timeout: TIMEOUT,
 	}, async () => {
 		// Step 1: Create a run with a tight context and fill it with known entries
-		const r1 = await client.call("ask", {
+		const r1 = await client.ask({
 			model,
 			prompt:
 				"Save 5 separate known entries about colors: red is warm, blue is cool, green is nature, yellow is bright, purple is royal. Then summarize.",
@@ -538,7 +536,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		// near the ceiling from step 1. This triggers a new loop whose
 		// pre-turn budget check may 413. The model should get a recovery
 		// chance, not an immediate 413 to the client.
-		const r2 = await client.call("ask", {
+		const r2 = await client.ask({
 			model,
 			prompt: "What color is associated with royalty?",
 			run: r1.run,
@@ -559,7 +557,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 	it("turn demotion fires on tight context and model continues", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const r1 = await client.call("ask", {
+		const r1 = await client.ask({
 			model,
 			prompt:
 				"Save 3 known entries: known://colors/warm with body 'red orange yellow', known://colors/cool with body 'blue green teal', known://colors/neutral with body 'gray white black'. Then summarize.",

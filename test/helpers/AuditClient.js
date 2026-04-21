@@ -44,13 +44,11 @@ export default class AuditClient extends RpcClient {
 					if (p.path?.startsWith("rm://") && this.#projectRoot) {
 						await this.#applyRmToDisk(run, p.path);
 					}
-					await this.call("run/resolve", {
+					await super.call("set", {
 						run,
-						resolution: {
-							path: p.path,
-							action: "accept",
-							output: p.path?.startsWith("ask_user://") ? "N/A" : "",
-						},
+						path: p.path,
+						state: "resolved",
+						body: p.path?.startsWith("ask_user://") ? "N/A" : "",
 					});
 				} catch {}
 			}
@@ -106,13 +104,94 @@ export default class AuditClient extends RpcClient {
 	}
 
 	async call(method, params = {}) {
-		const result = await super.call(method, params);
+		return super.call(method, params);
+	}
 
-		if ((method === "ask" || method === "act") && result?.run) {
-			this.#currentRun = result.run;
+	// Start a run and wait for terminal status. Returns { run, status, state }
+	// where status === state (numeric HTTP-style). Covers what the legacy
+	// `ask`/`act` RPC methods used to do: one call = one completed run.
+	async #runUntilTerminal(mode, params = {}) {
+		const {
+			model,
+			prompt,
+			run,
+			persona,
+			fork,
+			contextLimit,
+			temperature,
+			noRepo,
+			noWeb,
+			noProposals,
+			noInteraction,
+			timeoutMs = 300_000,
+		} = params;
+		const attributes = { model, mode };
+		if (persona !== undefined) attributes.persona = persona;
+		if (fork !== undefined) attributes.fork = fork;
+		if (contextLimit !== undefined) attributes.contextLimit = contextLimit;
+		if (temperature !== undefined) attributes.temperature = temperature;
+		if (noRepo !== undefined) attributes.noRepo = noRepo;
+		if (noWeb !== undefined) attributes.noWeb = noWeb;
+		if (noProposals !== undefined) attributes.noProposals = noProposals;
+		if (noInteraction !== undefined) attributes.noInteraction = noInteraction;
+		const path = `run://${run ? run : ""}`;
+		const startRes = await super.call("set", { path, body: prompt, attributes });
+		const alias = startRes.alias;
+		this.#currentRun = alias;
+		const TERMINAL = [200, 204, 413, 422, 499, 500];
+		const deadline = Date.now() + timeoutMs;
+		while (Date.now() < deadline) {
+			const row = await this.#db.get_run_by_alias.get({ alias });
+			if (row && TERMINAL.includes(row.status)) {
+				return { run: alias, status: row.status, state: row.status };
+			}
+			await new Promise((r) => setTimeout(r, 250));
 		}
+		throw new Error(`run ${alias} did not reach terminal status in ${timeoutMs}ms`);
+	}
 
-		return result;
+	async ask(params) {
+		return this.#runUntilTerminal("ask", params);
+	}
+
+	async act(params) {
+		return this.#runUntilTerminal("act", params);
+	}
+
+	// Starts a run and returns immediately with { run, alias } — for tests
+	// that want to observe the in-flight flow rather than wait for terminal.
+	async startRun(params = {}) {
+		const { model, mode = "ask", prompt = "", ...rest } = params;
+		const attributes = { model, mode, ...rest };
+		const res = await super.call("set", {
+			path: "run://",
+			body: prompt,
+			attributes,
+		});
+		this.#currentRun = res.alias;
+		return { run: res.alias, alias: res.alias };
+	}
+
+	// Resolve a proposal. resolution = { path, action: accept|reject|error, output? }
+	async resolveProposal(run, resolution) {
+		const stateMap = {
+			accept: "resolved",
+			reject: "cancelled",
+			error: "failed",
+		};
+		const state = stateMap[resolution.action];
+		if (!state)
+			throw new Error(`resolveProposal: unknown action ${resolution.action}`);
+		return super.call("set", {
+			run,
+			path: resolution.path,
+			state,
+			body: resolution.output,
+		});
+	}
+
+	async abortRun(run) {
+		return super.call("set", { path: `run://${run}`, state: "cancelled" });
 	}
 
 	async dumpRun(alias) {

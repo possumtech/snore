@@ -51,7 +51,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 	it("persona on ask creates run with persona", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const result = await client.call("ask", {
+		const result = await client.ask({
 			model,
 			prompt: "What language is main.py written in?",
 			persona: "You are a grumpy senior Python developer.",
@@ -68,7 +68,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 	});
 
 	it("fork preserves parent known store", { timeout: TIMEOUT }, async () => {
-		const run1 = await client.call("ask", {
+		const run1 = await client.ask({
 			model,
 			prompt: "What does the hello function do in main.py?",
 		});
@@ -79,7 +79,7 @@ describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 			run_id: parentRow.id,
 		});
 
-		const run2 = await client.call("ask", {
+		const run2 = await client.ask({
 			model,
 			prompt: "Based on what you already know, summarize.",
 			run: run1.run,

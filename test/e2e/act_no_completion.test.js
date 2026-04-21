@@ -194,8 +194,11 @@ describe("E2E: run completion after set-only final turn", {
 			run_id: (await tdb.db.get_run_by_alias.get({ alias })).id,
 		});
 		const setEntry = entries.find(
-			(e) => e.scheme === "set" && e.state === "resolved",
+			(e) =>
+				e.scheme === "log" &&
+				/^log:\/\/turn_\d+\/set\//.test(e.path) &&
+				e.state === "resolved",
 		);
-		assert.ok(setEntry, "expected at least one resolved set entry");
+		assert.ok(setEntry, "expected at least one resolved log://*/set/ entry");
 	});
 });

@@ -75,8 +75,11 @@ export default class AgentLoop {
 		alias,
 		turn,
 		status,
+		contextSize,
 		result = null,
 	}) {
+		if (!contextSize)
+			throw new Error("#emitRunState: contextSize is required");
 		const runUsage = await this.#db.get_run_usage.get({ run_id: runId });
 		const history = await this.#entries.getLog(runId);
 		const unknowns = await this.#entries.getUnknowns(runId);
@@ -91,21 +94,24 @@ export default class AgentLoop {
 			})
 			.at(-1);
 
-		// Budget + context telemetry only populated when we have a real
-		// turn result. Abort/crash paths without a turn return nulls
-		// instead of hiding the gap with zeros.
-		let budget = null;
+		// Always emit complete telemetry. When we don't have a fresh turn
+		// result (abort/max-turns/crash), read the last turn's context
+		// tokens from the DB instead. Both code paths compute a real
+		// budget from real data — never undefined, never invented.
+		const rows = await this.#db.get_turn_context.all({
+			run_id: runId,
+			turn,
+		});
+		let totalTokens;
 		if (result) {
-			const rows = await this.#db.get_turn_context.all({
+			totalTokens = result.assembledTokens;
+		} else {
+			const lastCtx = await this.#db.get_last_context_tokens.get({
 				run_id: runId,
-				turn,
 			});
-			budget = computeBudget({
-				rows,
-				contextSize: result.contextSize,
-				totalTokens: result.assembledTokens,
-			});
+			totalTokens = lastCtx?.context_tokens ?? 0;
 		}
+		const budget = computeBudget({ rows, contextSize, totalTokens });
 
 		await this.#hooks.run.state.emit({
 			projectId,
@@ -119,11 +125,11 @@ export default class AgentLoop {
 				modelAlias: result?.modelAlias,
 				model: result?.model,
 				temperature: result?.temperature,
-				context_size: result?.contextSize,
-				context_tokens: result?.assembledTokens,
-				ceiling: budget?.ceiling,
-				token_usage: budget?.tokenUsage,
-				tokens_free: budget?.tokensFree,
+				context_size: contextSize,
+				context_tokens: totalTokens,
+				ceiling: budget.ceiling,
+				token_usage: budget.tokenUsage,
+				tokens_free: budget.tokensFree,
 				prompt_tokens: runUsage.prompt_tokens,
 				cached_tokens: runUsage.cached_tokens,
 				completion_tokens: runUsage.completion_tokens,
@@ -481,6 +487,7 @@ export default class AgentLoop {
 						alias: currentAlias,
 						turn: loopIteration,
 						status: 499,
+						contextSize,
 					});
 					const out = {
 						run: currentAlias,
@@ -541,6 +548,7 @@ export default class AgentLoop {
 						alias: currentAlias,
 						turn: result.turn,
 						status: 413,
+						contextSize,
 						result,
 					});
 					const out = {
@@ -568,6 +576,7 @@ export default class AgentLoop {
 					alias: currentAlias,
 					turn: result.turn,
 					status: verdict.continue ? 102 : verdict.status,
+					contextSize,
 					result,
 				});
 				await this.#hooks.run.step.completed.emit({
@@ -610,6 +619,7 @@ export default class AgentLoop {
 				alias: currentAlias,
 				turn: loopIteration,
 				status: 200,
+				contextSize,
 			});
 			const out = {
 				run: currentAlias,
@@ -627,6 +637,7 @@ export default class AgentLoop {
 				alias: currentAlias,
 				turn: loopIteration,
 				status,
+				contextSize,
 			});
 			if (status === 500) {
 				await this.#hooks.error.log.emit({

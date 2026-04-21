@@ -174,3 +174,133 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
   the path. If identity is WHAT, turn is an attribute.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
+
+### 2026-04-21 session — e2e repair
+
+**What landed this session (uncommitted at write time):**
+
+- `TurnExecutor.js` — removed the incremental `run.state.emit` inside the
+  per-command dispatch loop. It had `telemetry: null` and fired many times
+  per turn. Tests assert "exactly one run/state per turn, with full telemetry"
+  (`terminal_state_with_proposal.test.js:178, 203-217`). Live progress still
+  goes through `run/progress`; `run/state` is now one-per-turn from AgentLoop.
+- `set.js::summary()` — was returning `""`, blanking all summarized log bodies
+  so the model saw `<set target="..." status="200"/>` with no evidence of
+  what it wrote, and re-declared unknowns every phase cycle. Now returns a
+  whitespace-collapsed body truncated to 77+"..." (<= 80 chars).
+- `set.js` file-write and direct-scheme branches — forward `summaryText` into
+  the log entry's attributes so `log.js` renders `summary=` on `<set>` in
+  `<log>`. Previously summary only lived on the target entry, invisible in
+  action history.
+- `AuditClient.js` — added `ask()`, `act()`, `startRun()`, `resolveProposal()`,
+  `abortRun()` helper methods that compose the current `set`-based surface.
+  Auto-resolve now uses `set {state: "resolved"}` (not removed `run/resolve`).
+  Tests using the helpers will read as intent, not as protocol plumbing.
+- `bin/demo.js` + `npm run test:demo` — one-shot inspector for a run:
+  turns table, system/user/assistant packet per turn, log entries, unresolved,
+  unknowns, knowns. Replaces ad-hoc sqlite queries. `--turn N`, `--run alias`,
+  `--packet`, `--all` flags.
+
+**Mode-fallback fix (prior to this session, already committed):** `rpc.js`
+dispatchRunSet, dispatchSet inject path; `ProjectAgent.inject`;
+`AgentLoop.inject` — all four sites that hardcoded `mode: "ask"` or defaulted
+`mode = "ask"` now throw on missing/invalid mode. nvim was already sending
+mode correctly; server was silently dropping it on continuation inject.
+
+**E2E landscape (29/30 failing before fixes):**
+
+- **Ask/act modes are first-class current features** (nvim exposes
+  `:RummyAsk` / `:RummyAct` commands, both heavily used). What changed is
+  the RPC surface — the dedicated `ask` / `act` / `startRun` / `run/resolve`
+  / `run/abort` RPC *method names* were consolidated into `set`. Start a
+  run: `set run://` with `attributes.mode="ask"|"act"`. Resolve a proposal:
+  `set {path, state:"resolved"}`. Abort: `set run://<alias> state="cancelled"`.
+  Tests calling the removed RPC *method names* need to migrate to `set`
+  while still exercising ask/act modes. Modes themselves are not going
+  anywhere.
+- `stream`, `stream/completed`, `stream/aborted`, `stream/cancel` ARE in
+  protocol (registered by stream plugin). Streaming tests just need current
+  SQL helpers; `upsert_known_entry` was removed in favor of
+  `upsert_entry` + `upsert_run_view`.
+
+**Next (explicit plan):**
+
+1. Migrate `persona_fork.test.js` (2 tests) and `stories.test.js` (17 tests)
+   to use `AuditClient.ask()`/`act()` + `resolveProposal()`/`abortRun()`
+   helpers. No production code changes — tests at the helper level only.
+2. Fix `act_no_completion.test.js:197` assertion — looks for
+   `scheme === "set"` but after unified log namespace all action entries
+   have `scheme === "log"` with `action` in attributes. Update query.
+3. Rewrite `streaming.test.js` — seed proposals via `upsert_entry` +
+   `upsert_run_view` (not `upsert_known_entry`), switch `startRun` calls to
+   `set run://`, `run/resolve` to `set {state: "resolved"}`. The underlying
+   stream RPCs (`stream`, `stream/completed` etc.) stay as-is.
+4. Re-run e2e; investigate any residual hydrology/telemetry failures against
+   the live model. Note: `set.summary` + summary-attr-forwarding should help
+   gemma converge faster on the hydrology prompt (prior run re-declared
+   unknowns 11-15× per path; model couldn't see what it had set).
+
+**Second pass findings (partial walk-back):** extended the body-truncation
+summary to get/rm/cp/mv/sh/env assuming "model needs to see what it did."
+That *regressed* e2e from 10/30 → 7/30. Reverted those; kept set only.
+Lesson: the fingerprint used by the cyclic detector (ResponseHealer) does
+NOT include body content — `<get path="X">` has the same fingerprint
+regardless of what X evaluated to, so body visibility doesn't prevent the
+strike. For get/rm/cp/mv — the result content is already visible as the
+target state entry (the promoted file, the changed known). Showing it
+twice (in log AND in state) created redundancy that appears to confuse
+gemma. Set is different: the body IS the model's new content assertion,
+not a duplicate of anything. Keep set.summary with truncation; leave the
+other action plugins returning "" for summarized projection.
+
+**Stories `after()` hang observed:** Worker process survived 8 min past
+stories' final test completing. `client.close()` / `tserver.stop()` /
+`tdb.cleanup()` chain — one or more is not returning. Need to
+investigate after the e2e green-up. Probably a dangling promise or
+WebSocket from the cycle-detected runs that never got properly aborted.
+Tracked as open item.
+
+**Stories failures all showed "Cyclic tool pattern (period 1, 3 repetitions)"**
+— the 499 strike-out from the healer when the model emits identical
+fingerprint 3x in a row. The summary() fix above addresses the root:
+model couldn't see its own action history. If cyclic strikes persist
+after the fix, the detector itself may need loosening (min_cycles=4?)
+or the feedback channel reshaping.
+
+**Final e2e state this session: 1/30 → 7/30 passing.** File results:
+  ✔ act_no_completion          (set-only final turn reaches completion)
+  ✔ terminal_state_notification (basic completion path)
+  ✖ hydrology                  (model-behavior: proposals fire but inconsistent)
+  ✖ persona_fork               (fork test: 499 on continuation)
+  ✖ stories                    (14 tests, 5 pass; 9 fail gemma strike-outs)
+  ✖ streaming                  (9 tests; blocked on rewrite task #46)
+  ✖ terminal_state_with_proposal (model didn't fire proposal in 5 turns)
+
+**Stories `after()` hang is GONE** — was 8+ min previously. Probably
+fixed by the TurnExecutor one-run-state-per-turn change (removed
+incremental emits that lingered after dispatch errors).
+
+**Next session options to get past 7/30:**
+1. Rewrite `streaming.test.js` (task #46) — 9 deterministic tests, no
+   LLM dependency. High confidence they'd pass once migrated.
+2. Loosen `ResponseHealer.MIN_CYCLES` from 3 to 4 or 5 — currently
+   `<get path="X">` 3 turns in a row triggers strike-out even when the
+   model is making legitimate progress. Real runs that eventually
+   converge in 20+ turns are getting killed at turn 6.
+3. Increase `RUMMY_MAX_TURNS` in stories.test.js (currently unset,
+   uses env default). Many stories give gemma 3-5 turns to complete a
+   multi-step task. That's too tight.
+4. Persona_fork: investigate why fork continuation fails with 499
+   on turn 1. May be a real bug in `inject()` path now that mode is
+   required; test starts run, forks, injects — does fork preserve mode?
+
+**Hard rules reinforced this session:**
+
+- Do not assume a test is "legacy" because a method isn't registered. Check
+  SPEC.md and the nvim client first — the method might be a real contract
+  gap (server bug), not dead test code. Confirmed this turn: ask/act/etc.
+  are genuinely removed; stream/* are real current protocol.
+- Test helpers composing the current RPC surface (`AuditClient.ask()` →
+  `set run://`) are ergonomics, not fallbacks. Fallbacks are in production
+  code that silently substitutes missing contract data. Helpers are explicit
+  methods with clear names that build on the contract.
