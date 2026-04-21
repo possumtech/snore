@@ -164,18 +164,18 @@ export default class Get {
 				matches,
 				{ loopId, attributes: { path: target } },
 			);
-		} else {
-			const total = matches.reduce((s, m) => s + m.tokens, 0);
-			const paths = matches.map((m) => m.path).join(", ");
-			const body =
-				matches.length > 0
-					? `${paths} promoted (${total} tokens)`
-					: `${target} not found`;
+		} else if (matches.length === 0) {
+			// Not-found leaves no data entry to carry the "I tried this"
+			// signal, so the log is the only record. A successful single-
+			// path fetch is recorded by the promoted data entry itself
+			// (turn="N" / tokens="N" in <knowns>) — creating a separate
+			// get:// log with a tokens attribute for the status-string
+			// body planted a mixed signal pointing at the wrong cost.
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
-				body,
+				body: `${target} not found`,
 				state: "resolved",
 				loopId,
 				attributes: { path: target },

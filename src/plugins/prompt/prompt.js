@@ -75,6 +75,13 @@ export default class Prompt {
 			budget = ` tokenUsage="${tokenUsage}" tokensFree="${tokensFree}"`;
 		}
 
-		return `${content}<prompt mode="${mode}" commands="${commands}"${warn}${budget}>${body}</prompt>`;
+		const path = promptEntry ? ` path="${promptEntry.path}"` : "";
+		const fidelity = promptEntry?.fidelity
+			? ` fidelity="${promptEntry.fidelity}"`
+			: "";
+		const tokens = promptEntry?.tokens
+			? ` tokens="${promptEntry.tokens}"`
+			: "";
+		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${fidelity}${tokens}>${body}</prompt>`;
 	}
 }

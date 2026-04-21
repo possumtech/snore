@@ -77,7 +77,7 @@ describe("Handler dispatch", () => {
 	});
 
 	describe("get handler", () => {
-		it("promotes target and writes confirmation", async () => {
+		it("promotes target; no redundant log entry on success", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 0,
@@ -105,8 +105,26 @@ describe("Handler dispatch", () => {
 			});
 			assert.strictEqual(state.fidelity, "promoted", "target promoted to full");
 
-			const result = await store.getBody(RUN_ID, entry.resultPath);
-			assert.ok(result.includes("tokens"), "confirmation written");
+			const log = await store.getBody(RUN_ID, entry.resultPath);
+			assert.strictEqual(log, null, "no get:// log on successful fetch");
+		});
+
+		it("writes log on not-found so the attempt is recorded", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const entry = {
+				scheme: "get",
+				path: "get://missing.js",
+				body: "",
+				attributes: { path: "src/missing.js" },
+				state: "resolved",
+				resultPath: "get://missing.js",
+			};
+
+			await hooks.tools.dispatch("get", entry, rummy);
+
+			const log = await store.getBody(RUN_ID, entry.resultPath);
+			assert.ok(log, "not-found log written");
+			assert.ok(log.includes("not found"), "log says not found");
 		});
 	});
 

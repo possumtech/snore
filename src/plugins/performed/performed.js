@@ -1,5 +1,11 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 
+// Schemes whose log-entry body is a small summary while the "real"
+// content lives on a data entry produced as a side effect. A `tokens=`
+// attribute on these log tags advertises the summary's size, which the
+// model reads as the action's cost — a mixed signal. Drop it.
+const NO_TOKENS_SCHEMES = new Set(["set", "mv", "cp", "sh", "env"]);
+
 export default class Performed {
 	#core;
 
@@ -45,7 +51,10 @@ function renderToolTag(entry) {
 		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
-	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
+	const tokens =
+		entry.tokens && !NO_TOKENS_SCHEMES.has(entry.scheme)
+			? ` tokens="${entry.tokens}"`
+			: "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.slice(0, 80)}"`
