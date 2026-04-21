@@ -73,6 +73,21 @@ export default class Entries {
 		return `${candidate}_${++this.#seq}`;
 	}
 
+	// Log entries share a single namespace at log://turn_N/action/slug.
+	// The action segment is the tool/plugin name (set, get, search, update,
+	// error, etc.). Target is URL-encoded so slashes and scheme separators
+	// survive round-trips.
+	async logPath(runId, turn, action, target) {
+		const encodedTarget = encodeURIComponent(target);
+		const candidate = `log://turn_${turn}/${action}/${encodedTarget}`;
+		const existing = await this.#db.get_entry_body.get({
+			run_id: runId,
+			path: candidate,
+		});
+		if (!existing) return candidate;
+		return `${candidate}_${++this.#seq}`;
+	}
+
 	async slugPath(runId, scheme, content, summary) {
 		// Prefer summary, fall back to body content, then empty — slugify
 		// handles empty explicitly by returning "" and the caller generates
@@ -262,11 +277,23 @@ export default class Entries {
 			throw new PermissionError(scheme, writer, writers);
 		}
 		const scope = this.#resolveScope(kind, runId, projectId);
+		// Log entries self-describe via `action` so consumers (renderer,
+		// client UIs, tests) can read the action without parsing the path.
+		let effectiveAttributes = attributes ? { ...attributes } : null;
+		if (scheme === "log") {
+			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+			if (m) {
+				if (effectiveAttributes) effectiveAttributes.action = m[1];
+				else effectiveAttributes = { action: m[1] };
+			}
+		}
 		const entry = await this.#db.upsert_entry.get({
 			scope,
 			path: normalized,
 			body,
-			attributes: attributes ? JSON.stringify(attributes) : null,
+			attributes: effectiveAttributes
+				? JSON.stringify(effectiveAttributes)
+				: null,
 			hash,
 		});
 		const effectiveState = state === undefined ? "resolved" : state;
@@ -425,7 +452,7 @@ export default class Entries {
 	}) {
 		if (!runId) throw new Error("update: runId is required");
 		if (body == null) throw new Error("update: body is required");
-		const path = await this.slugPath(runId, "update", body);
+		const path = await this.logPath(runId, turn, "update", body);
 		await this.set({
 			runId,
 			turn,

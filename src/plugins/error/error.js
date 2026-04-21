@@ -5,7 +5,7 @@ export default class ErrorLog {
 		core.on("summarized", (entry) => entry.body);
 
 		core.hooks.error.log.on(async ({ store, runId, turn, message, loopId }) => {
-			const path = await store.dedup(runId, "error", message, turn);
+			const path = await store.logPath(runId, turn, "error", message);
 			await store.set({
 				runId,
 				turn,

@@ -51,7 +51,8 @@
 		"test:lme": "bash -c 'mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/runner.js \"$@\" 2>&1 | tee /tmp/rummy_test_diag/lme_$(date +%Y%m%dT%H%M%S).log' --",
 		"test:mab:clean": "rm -rf test/mab/results/*/",
 		"test:lme:clean": "rm -rf test/lme/results/*/",
-		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*"
+		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*",
+		"test:demo": "node --env-file-if-exists=.env.example --env-file-if-exists=.env bin/demo.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

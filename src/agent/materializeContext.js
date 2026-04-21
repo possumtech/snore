@@ -24,11 +24,20 @@ export default async function materializeContext({
 		// schemeOf() yields NULL (or "") for bare file paths — translate
 		// to "file" so the view lookup finds the file scheme handler.
 		const scheme = row.scheme ? row.scheme : "file";
-		const projectedBody = await hooks.tools.view(scheme, {
+		const attrs = row.attributes ? JSON.parse(row.attributes) : null;
+		// Log entries live at log://turn_N/action/slug. Dispatch projection
+		// to the action plugin's view (set, update, search, etc.) by
+		// extracting the action segment from the path.
+		let projectionKey = scheme;
+		if (scheme === "log") {
+			const m = row.path.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+			if (m) projectionKey = m[1];
+		}
+		const projectedBody = await hooks.tools.view(projectionKey, {
 			path: row.path,
 			scheme,
 			body: row.body,
-			attributes: row.attributes ? JSON.parse(row.attributes) : null,
+			attributes: attrs,
 			visibility: row.visibility,
 			category: row.category,
 		});

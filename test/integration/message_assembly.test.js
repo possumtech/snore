@@ -136,7 +136,7 @@ describe("Message assembly", () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "get://src_js",
+			path: "log://turn_1/get/src_js",
 			body: 'get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			state: "resolved",
 		});
@@ -150,7 +150,7 @@ describe("Message assembly", () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "get://preview_test",
+			path: "log://turn_1/get/preview_test",
 			body: 'PREVIEW get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			state: "resolved",
 		});
@@ -163,35 +163,35 @@ describe("Message assembly", () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "search://test_query",
+			path: "log://turn_1/search/test_query",
 			body: "10 results for test",
 			state: "resolved",
 		});
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "env://node_ver",
+			path: "log://turn_1/env/node_ver",
 			body: "<env>node --version</env>",
 			state: "resolved",
 		});
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "rm://rm_test",
+			path: "log://turn_1/rm/rm_test",
 			body: "rm src/old.js",
 			state: "resolved",
 		});
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "mv://mv_test",
+			path: "log://turn_1/mv/mv_test",
 			body: "mv known://a known://b",
 			state: "resolved",
 		});
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "cp://cp_test",
+			path: "log://turn_1/cp/cp_test",
 			body: "cp known://x known://y",
 			state: "resolved",
 		});
@@ -214,7 +214,7 @@ describe("Message assembly", () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "update://test_sum",
+			path: "log://turn_1/update/test_sum",
 			body: "The answer is 42",
 			state: "resolved",
 			visibility: "summarized",

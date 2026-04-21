@@ -130,6 +130,7 @@ export default class Set {
 						merge,
 						beforeTokens,
 						afterTokens,
+						summary: summaryText,
 					},
 					loopId,
 				});
@@ -194,6 +195,7 @@ export default class Set {
 						merge,
 						beforeTokens,
 						afterTokens,
+						summary: summaryText,
 					},
 				});
 			}
@@ -228,8 +230,10 @@ export default class Set {
 		return `# set ${target}${tokens}\n${attrs.merge}`;
 	}
 
-	summary() {
-		return "";
+	summary(entry) {
+		if (!entry.body) return "";
+		const flat = entry.body.replace(/\s+/g, " ").trim();
+		return flat.length <= 80 ? flat : `${flat.slice(0, 77)}...`;
 	}
 
 	async #processEdit(rummy, entry, attrs) {

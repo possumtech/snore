@@ -560,7 +560,12 @@ export default class Rpc {
 					"set run://: attributes.model is required for a new run",
 				);
 			}
-			const { mode = "ask" } = attrs;
+			const { mode } = attrs;
+			if (mode !== "ask" && mode !== "act") {
+				throw new Error(
+					`set run://: attributes.mode is required and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
+				);
+			}
 			const options = {
 				temperature: attrs.temperature,
 				persona: attrs.persona,
@@ -599,7 +604,13 @@ export default class Rpc {
 
 		// Existing run with body-only update (continuation prompt). Inject.
 		if (params.body) {
-			await ctx.projectAgent.inject(alias, params.body);
+			const { mode } = params.attributes || {};
+			if (mode !== "ask" && mode !== "act") {
+				throw new Error(
+					`set run://: attributes.mode is required on inject and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
+				);
+			}
+			await ctx.projectAgent.inject(alias, params.body, mode);
 			return { ok: true, alias };
 		}
 
@@ -657,11 +668,11 @@ async function buildRunContext(hooks, ctx, runAlias) {
 
 async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 	const store = rummy.entries;
-	const resultPath = await store.dedup(
+	const resultPath = await store.logPath(
 		rummy.runId,
+		rummy.sequence,
 		scheme,
 		path,
-		rummy.sequence,
 	);
 
 	await store.set({

@@ -79,7 +79,7 @@ export default class Rm {
 			const resultPath =
 				schemeMatches.length === 0 && fileMatches.length === 1
 					? entry.resultPath
-					: await store.dedup(runId, "rm", match.path, turn);
+					: await store.logPath(runId, turn, "rm", match.path);
 			await store.set({
 				runId,
 				turn,

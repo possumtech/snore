@@ -1,8 +1,5 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 
-// Schemes whose log-entry body is a small summary while the real
-// content lives on the companion data entry — tokens= on these would
-// point at the summary's size, not the action's cost.
 const NO_TOKENS_SCHEMES = new Set(["set", "mv", "cp", "sh", "env"]);
 
 export default class Log {
@@ -14,11 +11,21 @@ export default class Log {
 	}
 
 	async assembleLog(content, ctx) {
-		const entries = ctx.rows.filter((r) => r.category === "logging");
+		const entries = ctx.rows.filter(
+			(r) => r.category === "logging" && r.scheme === "log",
+		);
 		if (entries.length === 0) return content;
 		const lines = entries.map((e) => renderLogTag(e));
 		return `${content}<log>\n${lines.join("\n")}\n</log>\n`;
 	}
+}
+
+// Log paths are log://turn_N/action/slug. The second segment is the
+// action — the plugin/tool that produced this log entry (set, get,
+// search, update, error, etc.). Used as the XML tag name.
+function actionFromPath(path) {
+	const match = path?.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+	return match ? match[1] : "log";
 }
 
 function renderLogTag(entry) {
@@ -27,14 +34,8 @@ function renderLogTag(entry) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 
-	// Display target: attrs.path for store tools, attrs.command for shell
-	// tools, else the entry's own DB path so update/search/rm/ask_user
-	// surface meaningful identity instead of rendering path="".
-	let target = "";
-	if (attrs?.path) target = attrs.path;
-	else if (attrs?.command) target = attrs.command;
-	else if (entry.path) target = entry.path;
-	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
+	const action = actionFromPath(entry.path);
+
 	const statusValue =
 		attrs?.status != null
 			? attrs.status
@@ -42,23 +43,28 @@ function renderLogTag(entry) {
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
 	const status = statusValue != null ? ` status="${statusValue}"` : "";
-	const stateAttr =
-		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const visibility = entry.visibility ? ` visibility="${entry.visibility}"` : "";
 	const tokens =
-		entry.tokens && !NO_TOKENS_SCHEMES.has(entry.scheme)
+		entry.tokens && !NO_TOKENS_SCHEMES.has(action)
 			? ` tokens="${entry.tokens}"`
 			: "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.slice(0, 80)}"`
 			: "";
+	const query =
+		typeof attrs?.query === "string" ? ` query="${attrs.query}"` : "";
+	const command =
+		typeof attrs?.command === "string" ? ` command="${attrs.command}"` : "";
+	// target= is the path the action touched (e.g. the file/known that was
+	// set, the URL that was fetched). Plugins store it in attrs.path when
+	// they write the log entry.
+	const target = attrs?.path ? ` target="${attrs.path}"` : "";
 
-	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}`;
+	const attrStr = `${target}${status}${outcomeAttr}${query}${command}${summary}${tokens}`;
 
 	if (entry.body) {
-		return `<${entry.scheme} path="${target}"${attrStr}>${entry.body}</${entry.scheme}>`;
+		return `<${action} path="${entry.path}"${attrStr}>${entry.body}</${action}>`;
 	}
-	return `<${entry.scheme} path="${target}"${attrStr}/>`;
+	return `<${action} path="${entry.path}"${attrStr}/>`;
 }

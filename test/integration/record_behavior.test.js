@@ -151,7 +151,7 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 
 	// --- Update recording ---
 
-	it("terminal update (status=200) creates entry with slug path", {
+	it("terminal update (status=200) creates entry at log://.../update/", {
 		timeout: TIMEOUT,
 	}, async () => {
 		const r = await startAskRun(
@@ -166,14 +166,10 @@ describe("TurnExecutor #record() behavior", { concurrency: 1 }, () => {
 		);
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const updates = entries.filter((e) => e.scheme === "update");
-		assert.ok(updates.length > 0, "at least one update entry");
-		for (const u of updates) {
-			assert.ok(
-				u.path.startsWith("update://"),
-				`update path should start with update://, got: ${u.path}`,
-			);
-		}
+		const updates = entries.filter(
+			(e) => e.scheme === "log" && /^log:\/\/turn_\d+\/update\//.test(e.path),
+		);
+		assert.ok(updates.length > 0, "at least one log://.../update/ entry");
 	});
 
 	// --- Reasoning bleed rejection ---

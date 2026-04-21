@@ -403,11 +403,11 @@ export default class TurnExecutor {
 		else if (cmd.question) rawTarget = cmd.question;
 		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
 		if (rawTarget.length > 512 || /\p{Cc}/u.test(rawTarget)) {
-			const rejectPath = await this.#entries.dedup(
+			const rejectPath = await this.#entries.logPath(
 				runId,
-				scheme,
-				`${scheme}://invalid`,
 				turn,
+				scheme,
+				"invalid",
 			);
 			await this.#entries.set({
 				runId,
@@ -416,6 +416,7 @@ export default class TurnExecutor {
 				body: `Invalid path: too long or contains non-printing characters`,
 				state: "failed",
 				outcome: "validation",
+				attributes: { action: scheme },
 				loopId,
 			});
 			return {
@@ -429,7 +430,7 @@ export default class TurnExecutor {
 			};
 		}
 		const target = rawTarget;
-		const resultPath = await this.#entries.dedup(runId, scheme, target, turn);
+		const resultPath = await this.#entries.logPath(runId, turn, scheme, target);
 
 		// Pass parsed command fields through as attributes
 		const { name: _, ...attributes } = cmd;

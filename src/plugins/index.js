@@ -94,6 +94,10 @@ const PROMPT_SCHEMES = ["prompt"];
 // and client (RPC in Phase 4).
 const LIFECYCLE_SCHEMES = ["run"];
 
+// Unified log namespace for action history entries under
+// log://turn_N/scheme/slug.
+const LOG_SCHEMES = ["log"];
+
 /**
  * After DB is ready, upsert declared schemes and bootstrap audit/prompt
  * schemes. Takes the plugin collection returned by registerPlugins.
@@ -122,6 +126,15 @@ export async function initPlugins(db, hooks, instances) {
 			category: "prompt",
 			default_scope: "run",
 			writable_by: JSON.stringify(["plugin"]),
+		});
+	}
+	for (const name of LOG_SCHEMES) {
+		await db.upsert_scheme.run({
+			name,
+			model_visible: 1,
+			category: "logging",
+			default_scope: "run",
+			writable_by: JSON.stringify(["system", "plugin", "model"]),
 		});
 	}
 	for (const name of LIFECYCLE_SCHEMES) {

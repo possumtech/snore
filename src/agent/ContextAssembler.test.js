@@ -87,8 +87,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 2,
-					path: "get://file.js",
-					scheme: "get",
+					path: "log://turn_1/get/file.js",
+					scheme: "log",
 					visibility: "visible",
 					state: "resolved",
 					body: "file content",
@@ -115,8 +115,8 @@ describe("ContextAssembler", () => {
 			const rows = [
 				{
 					ordinal: 1,
-					path: "get://old.js",
-					scheme: "get",
+					path: "log://turn_1/get/old.js",
+					scheme: "log",
 					visibility: "visible",
 					state: "resolved",
 					body: "old result",
@@ -138,8 +138,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 3,
-					path: "get://new.js",
-					scheme: "get",
+					path: "log://turn_3/get/new.js",
+					scheme: "log",
 					visibility: "visible",
 					state: "resolved",
 					body: "new result",
@@ -179,8 +179,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 2,
-					path: "set://app.js",
-					scheme: "set",
+					path: "log://turn_1/set/app.js",
+					scheme: "log",
 					visibility: "visible",
 					state: "resolved",
 					body: "",
@@ -191,8 +191,8 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 3,
-					path: "update://done",
-					scheme: "update",
+					path: "log://turn_1/update/done",
+					scheme: "log",
 					visibility: "visible",
 					state: "resolved",
 					body: "Fixed it",

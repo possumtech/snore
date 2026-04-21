@@ -81,26 +81,28 @@ is the remaining work.
 
 ## Open Items
 
-- [ ] **Staged packet-clarity fixes (in order, stop when the model behaves):**
-  1. **Log-tag path fallback.** `src/plugins/log/log.js` `renderLogTag`
-     should fall back to `entry.path` when `attrs.path` is absent, so
-     `<update>`, `<search>`, `<rm>`, `<ask_user>` log tags surface their
-     own DB path instead of rendering `path=""`.
-  2. **Re-split `<unknowns>` from `<context>`.** Unknowns were merged
-     into `<context>` for paradigm simplicity, but turn-11 reasoning
-     (run `gemma_1776782710086`) showed the model reading
-     `<unknown fidelity="promoted">` inside `<context>` as "this
-     unknown has been promoted to a known." Put unknowns in their own
-     `<unknowns>` block between `<log>` and `<prompt>` so the block
-     name ("unknowns") does the semantic work the tag attrs alone
-     aren't doing.
-  3. **Rename fidelity → visibility, values → `{visible, summarized,
-     archived}` — ONLY IF #2 doesn't resolve the confusion.** The root
-     cause is the word "promoted" overloading phase-verb semantics
-     with fidelity-state semantics. Renaming detaches them. Scope:
-     schema column + CHECK, every plugin's `onView` registrations,
-     render paths, tooldocs, preamble examples, tests. Do not start
-     this until the packet evidence says #2 wasn't enough.
+- [x] **Unified `log://` namespace.** All action log entries now live
+  at `log://turn_N/action/slug`. TurnExecutor constructs the path via
+  `Entries.logPath(runId, turn, action, target)`. `log.js` renderer
+  parses action from the path's second segment; materializeContext
+  dispatches projections by action. Log tags render without `turn=`,
+  `visibility=`, `state=` — all redundant with path + status + the
+  filter in v_model_context. Target of the action surfaces as
+  `target=` attribute pulled from `attrs.path`. Prompts remain at
+  `prompt://N` for now (their assembly is structurally distinct from
+  log entries). Budget still writes `budget://` — folding into error
+  pending a follow-up.
+
+- [ ] **Budget → error fold.** `budget.postDispatch` currently writes
+  to `budget://<loopId>/<turn>`. Move to `log://turn_N/error/overflow-N`
+  with `outcome="overflow:N"`. Drop `budget://` scheme. Model sees
+  one kind of "something went wrong" tag.
+
+- [ ] **System auto-pruning.** On loop boundary or when log size
+  crosses threshold, archive `log://turn_{M}/**` where M < current -
+  `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
+  requiring model intervention.
+
 - [ ] **Gemma/MAB benchmark run.** Published baselines are in this
   doc below (60%/5% GPT-4o; 60%/6% best). With preamble stability
   now, we have a meaningful number to measure against. Needed
@@ -159,5 +161,16 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
 - **The codebase is the codebase.** Don't compartmentalize by
   "prior model's code vs my code" when auditing. If you're
   touching it, it's yours now.
+- **Attribute semantics must not split on context.** If `visibility=`
+  means one thing on a state-entry tag (`<known>`) and another on an
+  action-record tag (`<set>` in `<log>`), the model will confuse them
+  and re-emit actions trying to "fix" phantom state. Any attribute
+  rendered in the packet must mean the same thing wherever it
+  appears.
+- **Time-indexed vs topic-indexed paths.** Log entries are time-
+  indexed — path encodes turn. State entries (knowns, files,
+  unknowns) are topic-indexed — path encodes identity, turn is
+  metadata. The rule: if the entry's identity is WHEN, turn goes in
+  the path. If identity is WHAT, turn is an attribute.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)

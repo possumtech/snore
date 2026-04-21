@@ -856,7 +856,12 @@ export default class AgentLoop {
 		}
 	}
 
-	async inject(runAlias, message) {
+	async inject(runAlias, message, mode) {
+		if (mode !== "ask" && mode !== "act") {
+			throw new Error(
+				`inject: mode is required and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
+			);
+		}
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
@@ -869,7 +874,7 @@ export default class AgentLoop {
 			path: `prompt://${nextTurn}`,
 			body: message,
 			state: "resolved",
-			attributes: { mode: "ask" },
+			attributes: { mode },
 			writer: "plugin",
 		});
 
@@ -881,7 +886,7 @@ export default class AgentLoop {
 		await this.#db.enqueue_loop.get({
 			run_id: runRow.id,
 			sequence: injectLoopSeq.sequence,
-			mode: "ask",
+			mode,
 			model: runRow.model,
 			prompt: message,
 			config: "{}",
