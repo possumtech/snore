@@ -6,29 +6,28 @@ import { stateToStatus } from "../../agent/httpStatus.js";
 // model reads as the action's cost — a mixed signal. Drop it.
 const NO_TOKENS_SCHEMES = new Set(["set", "mv", "cp", "sh", "env"]);
 
-export default class Performed {
+export default class Log {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
-		core.filter("assembly.user", this.assemblePerformed.bind(this), 100);
+		core.filter("assembly.user", this.assembleLog.bind(this), 100);
 	}
 
-	async assemblePerformed(content, ctx) {
-		const entries = ctx.rows.filter(
-			(r) =>
-				r.category === "logging" &&
-				r.source_turn >= ctx.loopStartTurn &&
-				r.scheme !== "unknown",
-		);
+	async assembleLog(content, ctx) {
+		// Every logging-category entry across the entire run, ordered by
+		// v_model_context's sort (category → recency). No loop-boundary
+		// split — the `turn` attribute on each entry carries when it
+		// happened; the model derives loop membership from the data.
+		const entries = ctx.rows.filter((r) => r.category === "logging");
 		if (entries.length === 0) return content;
 
-		const lines = entries.map((e) => renderToolTag(e));
-		return `${content}<performed>\n${lines.join("\n")}\n</performed>\n`;
+		const lines = entries.map((e) => renderLogTag(e));
+		return `${content}<log>\n${lines.join("\n")}\n</log>\n`;
 	}
 }
 
-function renderToolTag(entry) {
+function renderLogTag(entry) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)

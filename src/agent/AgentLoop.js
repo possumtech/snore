@@ -813,7 +813,7 @@ export default class AgentLoop {
 					// Overwrite the log entry body with a descriptive line that
 					// references the data entries. resolve() above set the state
 					// to resolved; this is body replacement to make the log
-					// entry self-documenting in <performed>.
+					// entry self-documenting in <log>.
 					await this.#entries.set({
 						runId,
 						path,
@@ -889,7 +889,17 @@ export default class AgentLoop {
 
 		const projectId = runRow.project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		return this.#drainQueue(runRow.id, runAlias, projectId, project, {});
+		const controller = new AbortController();
+		const promise = this.#drainQueue(
+			runRow.id,
+			runAlias,
+			projectId,
+			project,
+			{},
+			controller,
+		);
+		this.#activeRuns.set(runRow.id, { controller, promise });
+		return promise;
 	}
 
 	async getRunHistory(runAlias) {

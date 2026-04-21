@@ -102,6 +102,9 @@ export default class Update {
 		return { summaryText, updateText, strike };
 	}
 
+	// Update is the turn-closer signal — demoted projection still shows
+	// the body so the model can read prior-turn updates without having
+	// to promote each one.
 	full(entry) {
 		return `# update\n${entry.body}`;
 	}

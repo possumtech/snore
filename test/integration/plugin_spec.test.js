@@ -467,7 +467,11 @@ describe("PLUGINS.md Spec Compliance", () => {
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });
 			const row = rows.find((r) => r.path === "known://lifecycle_vis");
 			assert.ok(row, "entry appears in v_model_context");
-			assert.strictEqual(row.fidelity, "promoted");
+			// Default fidelity for data-category entries is demoted —
+			// the folksonomic pattern: summary indexes, body on-demand.
+			// Writers that need promoted (e.g. the set tool handler on a
+			// model-authored scheme write) pass fidelity explicitly.
+			assert.strictEqual(row.fidelity, "demoted");
 		});
 
 		it("§8.3 stored fidelity hides from v_model_context", async () => {

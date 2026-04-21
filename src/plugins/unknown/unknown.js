@@ -10,14 +10,12 @@ export default class Unknown {
 		core.on("handler", this.handler.bind(this));
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
-		// Unknowns live in the user packet, adjacent to the prompt:
-		// system = environment + rules (stable state); user = active
-		// work (what we're doing about it). Priority 200 sits between
-		// performed (100) and prompt (300).
-		core.filter("assembly.user", this.assembleUnknowns.bind(this), 200);
-		// <unknown> is internal — written via <set path="unknown://...">. Hidden
-		// from all model-facing tool lists. Handler still dispatches if the
-		// model emits <unknown> directly out of habit.
+		// Unknowns render inside <context> at the bottom — the known
+		// plugin's assembleContext filter covers both data and unknown
+		// categories, and v_model_context sorts unknowns after data.
+		// <unknown> is internal — written via <set path="unknown://...">.
+		// Hidden from all model-facing tool lists. Handler still dispatches
+		// if the model emits <unknown> directly out of habit.
 		core.markHidden();
 	}
 
@@ -61,20 +59,5 @@ export default class Unknown {
 
 	summary() {
 		return "";
-	}
-
-	async assembleUnknowns(content, ctx) {
-		const entries = ctx.rows.filter((r) => r.category === "unknown");
-		if (entries.length === 0) return content;
-
-		const lines = entries.map((u) => {
-			const fidelity = u.fidelity ? ` fidelity="${u.fidelity}"` : "";
-			const tokens = u.tokens ? ` tokens="${u.tokens}"` : "";
-			if (u.body) {
-				return `<unknown path="${u.path}" turn="${u.source_turn || u.turn}"${fidelity}${tokens}>${u.body}</unknown>`;
-			}
-			return `<unknown path="${u.path}" turn="${u.source_turn || u.turn}"${fidelity}${tokens}/>`;
-		});
-		return `${content}\n\n<unknowns>\n${lines.join("\n")}\n</unknowns>`;
 	}
 }

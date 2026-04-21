@@ -96,16 +96,16 @@ export default class Entries {
 	}
 
 	/**
-	 * Resolve a scheme's declared scope kind + writer list. Unregistered
-	 * or declaration-less schemes default to run-level + model/plugin
-	 * writers so ad-hoc paths (e.g. bare filenames) still work.
+	 * Resolve a scheme's declared scope kind + writer list + category.
+	 * Unregistered or declaration-less schemes default to run-level +
+	 * model/plugin writers so ad-hoc paths (e.g. bare filenames) still
+	 * work.
 	 */
 	async #schemeRules(scheme) {
 		await this.#ensureSchemes();
 		const row = scheme ? this.#schemes.get(scheme) : null;
-		// Unregistered / scope-less scheme defaults to run-level. Model-
-		// and plugin-writable unless the row says otherwise.
 		const kind = row?.default_scope ? row.default_scope : "run";
+		const category = row?.category ? row.category : "logging";
 		let writers = ["model", "plugin"];
 		if (row?.writable_by) {
 			const parsed =
@@ -114,7 +114,22 @@ export default class Entries {
 					: row.writable_by;
 			if (Array.isArray(parsed)) writers = parsed;
 		}
-		return { kind, writers };
+		return { kind, writers, category };
+	}
+
+	/**
+	 * Default fidelity for a new entry. Carve-outs that stay promoted:
+	 *   - prompt (the anchor for what the model is doing)
+	 *   - unknown (open questions, bottom of <context>)
+	 *   - skill (attached by RPC, top of <context>)
+	 * Everything else defaults demoted — the folksonomic pattern: summary
+	 * tags index, bodies on-demand via <get>.
+	 */
+	#defaultFidelity(scheme, category) {
+		if (scheme === "skill") return "promoted";
+		if (category === "prompt") return "promoted";
+		if (category === "unknown") return "promoted";
+		return "demoted";
 	}
 
 	#resolveScope(kind, runId, projectId) {
@@ -250,7 +265,7 @@ export default class Entries {
 		}
 
 		// Full write/upsert: body + state + fidelity + attributes.
-		const { kind, writers } = await this.#schemeRules(scheme);
+		const { kind, writers, category } = await this.#schemeRules(scheme);
 		if (!writers.includes(writer)) {
 			throw new PermissionError(scheme, writer, writers);
 		}
@@ -263,10 +278,13 @@ export default class Entries {
 			hash,
 		});
 		// State defaults to resolved for content writes; fidelity defaults
-		// to promoted since the writer just put content in and expects it
-		// visible unless they explicitly demote/archive.
+		// by category/scheme — the folksonomic rule. Writers that need a
+		// different default pass fidelity explicitly.
 		const effectiveState = state === undefined ? "resolved" : state;
-		const effectiveFidelity = fidelity === undefined ? "promoted" : fidelity;
+		const effectiveFidelity =
+			fidelity === undefined
+				? this.#defaultFidelity(scheme, category)
+				: fidelity;
 		await this.#db.upsert_run_view.run({
 			run_id: runId,
 			entry_id: entry.id,

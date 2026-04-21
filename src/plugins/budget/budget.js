@@ -11,7 +11,10 @@ export default class Budget {
 			modelVisible: 1,
 			category: "logging",
 		});
-		core.hooks.tools.onView("budget", (entry) => entry.body);
+		// Budget overflow messages are feedback the model must see —
+		// demoted projection shows the body, not "".
+		core.hooks.tools.onView("budget", (entry) => entry.body, "promoted");
+		core.hooks.tools.onView("budget", (entry) => entry.body, "demoted");
 		core.hooks.budget = {
 			enforce: this.enforce.bind(this),
 			postDispatch: this.postDispatch.bind(this),
@@ -100,7 +103,7 @@ export default class Budget {
 	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted }
 	 */
 	async postDispatch({ contextSize, ctx, rummy }) {
-		if (!contextSize) return;
+		if (!contextSize) return { failed: false };
 		const postMat = await materializeContext({
 			db: rummy.db,
 			hooks: rummy.hooks,
@@ -118,7 +121,7 @@ export default class Budget {
 			messages: postMat.messages,
 			rows: postMat.rows,
 		});
-		if (post.ok) return;
+		if (post.ok) return { failed: false };
 
 		const store = rummy.entries;
 		const demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
@@ -160,5 +163,6 @@ export default class Budget {
 			outcome: `overflow:${post.overflow}`,
 			loopId: ctx.loopId,
 		});
+		return { failed: true };
 	}
 }

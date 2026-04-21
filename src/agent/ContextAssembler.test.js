@@ -105,13 +105,13 @@ describe("ContextAssembler", () => {
 			);
 
 			const user = messages[1].content;
-			const performedPos = user.indexOf("<performed>");
+			const logPos = user.indexOf("<log>");
 			const promptPos = user.indexOf("<prompt");
-			assert.ok(performedPos < promptPos, "performed before prompt");
+			assert.ok(logPos < promptPos, "log before prompt");
 			assert.ok(user.endsWith("</prompt>"), "prompt is last");
 		});
 
-		it("splits history into previous and performed by loop boundary", async () => {
+		it("unifies all logging entries across loops into a single <log> block", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -157,38 +157,14 @@ describe("ContextAssembler", () => {
 
 			const system = messages[0].content;
 			const user = messages[1].content;
-			assert.ok(system.includes("<previous>"), "system has previous");
-			assert.ok(system.includes("old.js"), "old get in previous");
-			assert.ok(!system.includes("new.js"), "new get not in previous");
-			assert.ok(user.includes("<performed>"), "user has performed");
-			assert.ok(user.includes("new.js"), "new get in performed");
-			assert.ok(!user.includes("old.js"), "old get not in performed");
+			assert.ok(!system.includes("<previous>"), "no <previous> block");
+			assert.ok(!system.includes("<log>"), "log is not in system");
+			assert.ok(user.includes("<log>"), "user has log");
+			assert.ok(user.includes("old.js"), "old get in log");
+			assert.ok(user.includes("new.js"), "new get in log");
 		});
 
-		it("omits previous on first loop", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "prompt://1",
-					scheme: "prompt",
-					fidelity: "promoted",
-					body: "Do the thing",
-					tokens: 3,
-					attributes: JSON.stringify({ mode: "act" }),
-					category: "prompt",
-					source_turn: 1,
-				},
-			];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-
-			assert.ok(!messages[0].content.includes("<previous>"));
-		});
-
-		it("renders results with status symbols in performed", async () => {
+		it("renders results with status symbols in log", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -235,10 +211,10 @@ describe("ContextAssembler", () => {
 
 			assert.ok(user.includes('status="200"'), "pass result has status");
 			assert.ok(user.includes("Fixed it"), "summary renders");
-			assert.ok(user.includes("<performed>"), "results in performed block");
+			assert.ok(user.includes("<log>"), "results in log block");
 			assert.ok(
 				user.includes("<set path="),
-				"tool tags in performed use tool name",
+				"tool tags in log use tool name",
 			);
 		});
 
@@ -305,7 +281,7 @@ describe("ContextAssembler", () => {
 			assert.ok(content.includes("const x = 1;"), "new file rendered");
 		});
 
-		it("renders unknowns in user message", async () => {
+		it("renders unknowns inside <context> (no separate block)", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -338,9 +314,20 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 			const system = messages[0].content;
 
-			assert.ok(user.includes("<unknowns>"));
-			assert.ok(user.includes("which database adapter"));
-			assert.ok(!system.includes("<unknowns>"), "unknowns moved out of system");
+			assert.ok(system.includes("<context>"), "context block rendered");
+			assert.ok(
+				system.includes("<unknown path=\"unknown://config\""),
+				"unknown rendered inside context",
+			);
+			assert.ok(system.includes("which database adapter"));
+			assert.ok(
+				!user.includes("<unknowns>"),
+				"no separate <unknowns> block",
+			);
+			assert.ok(
+				!system.includes("<unknowns>"),
+				"no separate <unknowns> block",
+			);
 		});
 
 		it("prompt element carries tokenUsage and tokensFree attrs", async () => {

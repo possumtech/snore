@@ -342,11 +342,14 @@ export default class TurnExecutor {
 
 		// Turn Demotion: budget plugin re-materializes end-of-turn context,
 		// demotes this turn's promoted entries on overflow, writes budget://.
-		await this.#hooks.budget.postDispatch({
+		// Overflow counts as a turn failure — update.resolve will override
+		// any terminal 200 claim to a continuation with strike.
+		const budgetResult2 = await this.#hooks.budget.postDispatch({
 			contextSize,
 			ctx: budgetCtx,
 			rummy,
 		});
+		if (budgetResult2?.failed) hasErrors = true;
 
 		const { summaryText, updateText, strike } =
 			await this.#hooks.update.resolve({
