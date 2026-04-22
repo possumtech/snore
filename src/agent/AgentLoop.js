@@ -108,10 +108,15 @@ export default class AgentLoop {
 		if (result) {
 			totalTokens = result.assembledTokens;
 		} else {
+			// No fresh turn result — this happens on abort/max-turns/crash
+			// emits that fire before any turn executed, or after a turn
+			// that never produced tokens. Read the last turn's assembled
+			// context_tokens from the DB; absent means no turn ran yet
+			// (zero is the truth, not a fallback).
 			const lastCtx = await this.#db.get_last_context_tokens.get({
 				run_id: runId,
 			});
-			totalTokens = lastCtx?.context_tokens ?? 0;
+			totalTokens = lastCtx ? lastCtx.context_tokens : 0;
 		}
 		const budget = computeBudget({ rows, contextSize, totalTokens });
 

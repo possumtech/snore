@@ -175,10 +175,10 @@ export default class Get {
 				attributes: { path: target },
 			});
 		} else {
-			// Always log successful single-path fetches so the model can
-			// see in its action history that it already got this entry.
-			// Without this record, the model re-issues identical gets and
-			// the cyclic-fingerprint detector strikes the run out.
+			// Log a concise record of the promotion. The promoted entry
+			// itself is visible in <context>; this log line is the model's
+			// proof in <log> that the get has already been done so it
+			// doesn't re-issue the same fetch on a later turn.
 			await store.set({
 				runId,
 				turn,

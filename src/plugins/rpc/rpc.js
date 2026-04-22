@@ -608,7 +608,7 @@ export default class Rpc {
 		// can return the child alias, then kick off the loop against it.
 		// fork needs a brand-new run row with parent_run_id set; inject()
 		// would just add another prompt to the parent.
-		const attrs = params.attributes || {};
+		const attrs = params.attributes ? params.attributes : {};
 		if (attrs.fork === true) {
 			const { mode } = attrs;
 			if (mode !== "ask" && mode !== "act") {
@@ -616,11 +616,13 @@ export default class Rpc {
 					`set run://: attributes.mode is required on fork and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
 				);
 			}
+			const model = attrs.model ? attrs.model : existing.model;
+			const prompt = params.body ? params.body : "";
 			const childInfo = await ctx.projectAgent.ensureRun(
 				ctx.projectId,
-				attrs.model || existing.model,
+				model,
 				alias,
-				params.body ?? "",
+				prompt,
 				{
 					fork: true,
 					temperature: attrs.temperature,
@@ -643,15 +645,15 @@ export default class Rpc {
 				mode === "act"
 					? ctx.projectAgent.act(
 							ctx.projectId,
-							attrs.model || existing.model,
-							params.body ?? "",
+							model,
+							prompt,
 							childInfo.alias,
 							options,
 						)
 					: ctx.projectAgent.ask(
 							ctx.projectId,
-							attrs.model || existing.model,
-							params.body ?? "",
+							model,
+							prompt,
 							childInfo.alias,
 							options,
 						);

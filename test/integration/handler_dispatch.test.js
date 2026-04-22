@@ -77,7 +77,7 @@ describe("Handler dispatch", () => {
 	});
 
 	describe("get handler", () => {
-		it("promotes target; no redundant log entry on success", async () => {
+		it("promotes target and writes a concise log so the model sees the action", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 0,
@@ -109,8 +109,12 @@ describe("Handler dispatch", () => {
 				"target promoted to full",
 			);
 
+			// The log entry is the model's proof in <log> that the fetch
+			// already happened; absence made the model re-issue identical
+			// gets until the cyclic-fingerprint detector struck the run.
 			const log = await store.getBody(RUN_ID, entry.resultPath);
-			assert.strictEqual(log, null, "no get:// log on successful fetch");
+			assert.ok(log, "get:// log written");
+			assert.ok(log.includes("promoted"), `log says promoted, got: ${log}`);
 		});
 
 		it("writes log on not-found so the attempt is recorded", async () => {
@@ -145,7 +149,7 @@ describe("Handler dispatch", () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
 				scheme: "set",
-				path: "set://src%2Fedit_me.js",
+				path: "log://turn_1/set/src%2Fedit_me.js",
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
@@ -154,7 +158,7 @@ describe("Handler dispatch", () => {
 					],
 				},
 				state: "resolved",
-				resultPath: "set://src%2Fedit_me.js",
+				resultPath: "log://turn_1/set/src%2Fedit_me.js",
 			};
 
 			await hooks.tools.dispatch("set", entry, rummy);
@@ -207,7 +211,7 @@ describe("Handler dispatch", () => {
 
 			const entry1 = {
 				scheme: "set",
-				path: "set://src/math.txt",
+				path: "log://turn_1/set/src%2Fmath.txt",
 				body: "",
 				attributes: {
 					path: "src/math.txt",
@@ -215,13 +219,13 @@ describe("Handler dispatch", () => {
 					replace: "7 - a = 5",
 				},
 				state: "resolved",
-				resultPath: "set://src/math.txt",
+				resultPath: "log://turn_1/set/src%2Fmath.txt",
 			};
 			await hooks.tools.dispatch("set", entry1, rummy);
 
 			const entry2 = {
 				scheme: "set",
-				path: "set://src/math.txt",
+				path: "log://turn_1/set/src%2Fmath.txt_1",
 				body: "",
 				attributes: {
 					path: "src/math.txt",
@@ -229,7 +233,7 @@ describe("Handler dispatch", () => {
 					replace: "a + b = 14",
 				},
 				state: "resolved",
-				resultPath: "set://src/math.txt",
+				resultPath: "log://turn_1/set/src%2Fmath.txt_1",
 			};
 			await hooks.tools.dispatch("set", entry2, rummy);
 
