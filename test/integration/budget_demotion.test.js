@@ -5,8 +5,7 @@
  * - demote_turn_entries: all promoted entries at turn N → visibility=demoted.
  *   Status is preserved: a successful operation stays at its original
  *   status (200), because budget demotion is a lifecycle event, not a
- *   failure of the body operation. The budget:// entry is the canonical
- *   record of the panic event.
+ *   failure of the body operation.
  * - Error-state entries are not re-demoted
  * - Other turns are not affected
  */
@@ -131,29 +130,6 @@ describe("Budget demotion", () => {
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "known://errored");
 			assert.strictEqual(entry.visibility, "visible", "4xx entry not demoted");
-		});
-
-		it("demotes budget entries too (onView renders full at summary)", async () => {
-			const { runId } = await tdb.seedRun({ alias: "dte_budget" });
-
-			await store.set({
-				runId,
-				turn: 7,
-				path: "budget://1/7",
-				body: "413 report",
-				state: "resolved",
-				visibility: "visible",
-			});
-
-			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 7 });
-
-			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
-			const entry = entries.find((e) => e.path === "budget://1/7");
-			assert.strictEqual(
-				entry.visibility,
-				"summarized",
-				"budget entry demoted",
-			);
 		});
 	});
 });

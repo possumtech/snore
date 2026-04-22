@@ -1,7 +1,9 @@
-import ResponseHealer from "../../agent/ResponseHealer.js";
 import docs from "./updateDoc.js";
 
 const TERMINAL_STATUSES = new Set([200, 204, 422]);
+
+const CONTRACT_REMINDER =
+	"Missing update — use 1xx to continue or 200 to conclude.";
 
 function isValidStatus(status) {
 	if (TERMINAL_STATUSES.has(status)) return true;
@@ -35,24 +37,17 @@ export default class Update {
 	/**
 	 * Classify this turn's update state.
 	 *
-	 * Returns { summaryText, updateText, strike }:
+	 * Returns { summaryText, updateText }:
 	 *   - summaryText: non-null → the turn is terminal (run concludes at 200)
 	 *   - updateText:  non-null → the turn continues
-	 *   - strike:      true → the model violated the update contract
-	 *                  (no update emitted, missing/invalid status, or
-	 *                  terminal claim overridden by action failures)
 	 *
-	 * Rules:
-	 *   <update status="200|204|422"> body → summaryText (terminal)
-	 *   <update status="1xx"> body          → updateText (continuation)
-	 *   <update> body with no status        → strike, log contract reminder
-	 *   terminal update + failed actions    → strike, override to continuation
-	 *   no update emitted                   → strike, log contract reminder
+	 * Error emissions (all go to hooks.error.log, which tracks strikes):
+	 *   <update> body with no/invalid status → error 422
+	 *   terminal update + this turn had errors → override to continuation
+	 *   no update emitted                     → error 422, contract reminder
 	 */
-	async resolve({ recorded, hasErrors, runId, turn, loopId, rummy }) {
+	async resolve({ recorded, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
-		// No status emitted → default to 102 (continuation) per the
-		// update tool contract documented in updateDoc.js.
 		const status = entry?.attributes?.status ?? 102;
 		const isTerminal = TERMINAL_STATUSES.has(status);
 		let summaryText = null;
@@ -61,21 +56,20 @@ export default class Update {
 			if (isTerminal) summaryText = entry.body;
 			else updateText = entry.body;
 		}
-		let strike = false;
 
 		if (entry && !isValidStatus(status)) {
-			strike = true;
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
 				message: `Invalid status ${entry.attributes?.status} on update — use 1xx to continue or 200 to conclude.`,
+				status: 422,
 			});
 		}
 
-		// Terminal update but actions failed → the model overstated success.
-		// Override to a continuation and mark the update entry failed/conflict.
+		const hasErrors = rummy.hooks.error.turnHasErrors({ loopId });
+
 		if (summaryText && hasErrors) {
 			if (entry?.path) {
 				await rummy.entries.set({
@@ -88,22 +82,20 @@ export default class Update {
 			}
 			updateText = summaryText;
 			summaryText = null;
-			strike = true;
 		}
 
 		if (!summaryText && !updateText) {
-			const healed = ResponseHealer.healStatus();
-			strike = true;
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
-				message: healed.warning,
+				message: CONTRACT_REMINDER,
+				status: 422,
 			});
 		}
 
-		return { summaryText, updateText, strike };
+		return { summaryText, updateText };
 	}
 
 	full(entry) {

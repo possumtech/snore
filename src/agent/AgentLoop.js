@@ -1,6 +1,5 @@
 import { computeBudget } from "./budget.js";
 import msg from "./messages.js";
-import ResponseHealer from "./ResponseHealer.js";
 
 const HTTP_TO_RUN_STATE = {
 	100: "proposed",
@@ -472,7 +471,6 @@ export default class AgentLoop {
 
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS);
-		const healer = new ResponseHealer();
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -542,35 +540,14 @@ export default class AgentLoop {
 					`[LOOP] ${currentAlias} iter=${loopIteration} turn done: status=${result.status} turn=${result.turn}`,
 				);
 
-				if (result.status === 413) {
-					await this.#db.complete_loop.run({
-						id: currentLoopId,
-						status: 413,
-						result: null,
-					});
-					await this.#setRunStatus(currentRunId, currentAlias, 200);
-					await this.#emitRunState({
-						projectId,
-						runId: currentRunId,
-						alias: currentAlias,
-						turn: result.turn,
-						status: 413,
-						contextSize,
-						result,
-					});
-					const out = {
-						run: currentAlias,
-						status: 413,
-						overflow: result.overflow,
-						assembledTokens: result.assembledTokens,
-						contextSize: result.contextSize,
-						turn: result.turn,
-					};
-					await hook.completed.emit({ projectId, ...out });
-					return out;
-				}
-
-				const verdict = healer.assessTurn(result);
+				const verdict = await this.#hooks.error.verdict({
+					store: this.#entries,
+					runId: currentRunId,
+					loopId: currentLoopId,
+					turn: result.turn,
+					recorded: result.recorded,
+					summaryText: result.summaryText,
+				});
 				const vStatus = verdict.status === undefined ? "-" : verdict.status;
 				const vReason = verdict.reason ? verdict.reason : "-";
 				console.error(

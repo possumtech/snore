@@ -104,10 +104,26 @@ is the remaining work.
   log entries). Budget still writes `budget://` — folding into error
   pending a follow-up.
 
-- [ ] **Budget → error fold.** `budget.postDispatch` currently writes
-  to `budget://<loopId>/<turn>`. Move to `log://turn_N/error/overflow-N`
-  with `outcome="overflow:N"`. Drop `budget://` scheme. Model sees
-  one kind of "something went wrong" tag.
+- [ ] **Budget → error fold.** Subsumed by the Error paradigm
+  unification (see Ongoing Development Conversation, 2026-04-22).
+  Budget emits `error.log.emit({status: 413})` instead of
+  `budget://`. Drop `budget://` scheme. Hard-exit 413 path at
+  `TurnExecutor.js:131-141` deleted.
+
+- [ ] **Post-unification audit: bespoke error paths.** Once the
+  Error paradigm unification (2026-04-22) lands, sweep the entire
+  codebase for model-facing error handling that bypasses
+  `hooks.error.log.emit`. Covers:
+  - Plugins: any `entries.set({state:"failed"})`, ad-hoc failure
+    entries, custom "something went wrong" tags or schemes.
+  - Core: `src/agent/*` — any direct failure-entry writes,
+    status-code short-circuits, bespoke "tell the model" branches.
+  - Renderer/view projections that surface error-like content
+    outside the standard error entry shape.
+  Anything found either migrates to `error.log.emit` with an
+  appropriate status code, or documents why it's exempt.
+  Success criterion: one channel in, one channel out; no parallel
+  error paths anywhere the model can see.
 
 - [ ] **System auto-pruning.** On loop boundary or when log size
   crosses threshold, archive `log://turn_{M}/**` where M < current -
@@ -185,6 +201,109 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
   the path. If identity is WHAT, turn is an attribute.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
+
+### 2026-04-22 — Error paradigm unification (ACTIVE, PRE-IMPLEMENTATION)
+
+Triggered by wanting to add protocol enforcement for the preamble's
+step sequence. Investigation surfaced that the "strike system" is not a
+system — it's three unrelated booleans (`strike` from update.resolve,
+`hasErrors` from TurnExecutor, `cycleReason` from ResponseHealer) ORed
+together in `ResponseHealer.assessTurn`. No extension point; outside
+plugins can't contribute strikes. Budget writes `budget://<loopId>/<turn>`
+with `state:"failed"` but its return is ignored by TurnExecutor — a ghost
+entry that does nothing for strike accounting. User called this out as
+a paradigm-level problem, not a protocol-plugin problem.
+
+**Agreed paradigm (locked):**
+
+- Error is a first-class event. One channel: `hooks.error.log.emit`.
+- Error persists as an entry under existing `log://turn_N/error/*`
+  (no new scheme; the standing "error:// entries" phrasing in the
+  guiding principles is aspirational language — we stay on `log://`
+  and distinguish by status code on the entry).
+- Error plugin owns: strike streak counter, 200-gate ("200 cannot
+  complete on a turn that had errors"), 3-strikes-out → 499 rule,
+  and cycle detection (fingerprinting folds in as an internal
+  detection mechanism).
+- Streak rule: **any turn with zero errors resets streak to 0.**
+- Producers emit and don't think about gating or streaks. Each
+  producer keeps its own private domain logic (budget keeps
+  demotion math; set handles rejection semantics; protocol names
+  violations) — they just report errors like everyone else.
+- `ResponseHealer.js` is deleted. `assessTurn` becomes
+  `hooks.error.verdict({runId, loopId, turn, recorded, summaryText})`
+  returning `{continue, status, reason}`.
+- `budget://` scheme is deleted. Budget emits
+  `error.log.emit({status: 413, ...})` instead. Model learns one
+  "something went wrong" tag shape, not a special budget tag.
+
+**Locked protocol rules (for the new `protocol.js` plugin):**
+
+- Rule 1: >1 `<update>` in a turn → `422 "Protocol Violation: Multiple steps in turn"`
+- Rule 2: new status > prevMax+1 → `422 "Protocol Violation: Steps skipped"` (revisits/repeats allowed)
+- Both are advisory/strike-only, not entry-rejecting.
+
+**File changes (ordered):**
+
+1. `src/plugins/error/error.js` — absorbs strike counter, cycle
+   detector, verdict API. Queries DB for `log://turn_N/error/*`
+   count to decide if turn had errors. Streak is per-loop state
+   (matches ResponseHealer's current lifetime).
+2. `src/agent/ResponseHealer.js` — **deleted.** `fingerprint` /
+   `detectCycle` move into error plugin.
+3. `src/agent/AgentLoop.js:475, 573` — drop `new ResponseHealer()`,
+   replace `healer.assessTurn(result)` with `await hooks.error.verdict(...)`.
+4. `src/agent/TurnExecutor.js` — drop local `hasErrors` accumulator
+   (dispatch failures already call `error.log.emit`, just remove the
+   `hasErrors = true` lines). Drop `strike`/`hasErrors` from turnResult.
+5. `src/plugins/update/update.js` — `resolve` returns
+   `{summaryText, updateText}` only. All `strike = true` paths become
+   `error.log.emit`. Delete `ResponseHealer.healStatus` helper call.
+6. `src/plugins/budget/budget.js` — delete `budget://` entry writes,
+   emit `error.log.emit({status: 413, ...})` instead. Keep all
+   demotion/threshold math private to budget.
+7. `src/plugins/instructions/protocol.js` — new file. Emits errors on
+   rule 1 / rule 2. One line added to `instructions.js` constructor:
+   `new Protocol(core)`.
+8. Error entry schema: `log://turn_N/error/<slug>` with `status` and
+   `outcome` on attributes/columns. 413 for budget-overflow, 422 for
+   protocol violation, others as needed.
+
+**Budget overflow treatment (clarified by user 2026-04-22):**
+
+Today's reality (prior session framing was wrong): overflows don't
+kill the loop in common operation. `postDispatch` demotes and writes
+a ghost `budget://` entry the caller ignores; `enforce` first-iteration
+overflow demotes the prompt and retries. Only the rare "even after
+retry didn't fit" path at `TurnExecutor.js:131` hard-exits with 413.
+There is no current strike accounting for budget.
+
+Target behavior (both overflow paths unified):
+
+- Any overflow event → budget performs mass demotion of the
+  overflowing turn as its private recovery. This is budget's
+  internal concern and stays unchanged in shape.
+- Budget emits `error.log.emit({status: 413, message: <current
+  descriptive body>})`. That IS the model-visible signal and the
+  strike contribution — one channel, one path.
+- Three consecutive overflow-strikes (or any mixed 3-in-a-row with
+  other errors) → 499 abandon via the unified error plugin verdict.
+- No hard-exit 413 path. No `budget://` scheme.
+- `TurnExecutor.js:131-141` (the `!budgetResult.ok` short-circuit)
+  is deleted; enforce always returns "proceed" from the caller's
+  POV, with strike accounting done via error emission.
+
+**Standing rules this refactor must respect:**
+
+- No fallbacks outside hedberg/XmlParser.
+- Every `createEvent` / `createFilter` stays — extensibility is the
+  architectural promise.
+- Error entries are time-indexed under `log://` (path encodes turn).
+
+**Not started yet.** All above is design-only at commit time of
+this note. Ready to implement pending user go-ahead.
+
+---
 
 ### 2026-04-21 session — e2e repair
 

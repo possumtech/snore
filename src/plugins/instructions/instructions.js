@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import Protocol from "./protocol.js";
 
 const preamble = readFileSync(
 	new URL("./preamble.md", import.meta.url),
@@ -14,6 +15,7 @@ export default class Instructions {
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.hooks.instructions.resolveSystemPrompt =
 			this.resolveSystemPrompt.bind(this);
+		new Protocol(core);
 	}
 
 	/**

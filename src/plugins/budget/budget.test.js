@@ -26,6 +26,10 @@ describe("Budget", () => {
 			contextSize: 10,
 			messages: [{ role: "system", content: "x".repeat(1000) }],
 			rows: [],
+			ctx: { runId: 1, turn: 1, loopId: 0, loopIteration: 0 },
+			rummy: {
+				hooks: { error: { log: { emit: async () => {} } } },
+			},
 		});
 		assert.strictEqual(result.ok, false);
 		assert.ok(result.overflow > 0);

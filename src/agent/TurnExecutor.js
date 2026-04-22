@@ -132,8 +132,9 @@ export default class TurnExecutor {
 			return {
 				turn,
 				turnId: turnRow.id,
-				state: "failed",
-				outcome: `overflow:${budgetResult.overflow}`,
+				recorded: [],
+				summaryText: null,
+				updateText: null,
 				assembledTokens,
 				contextSize,
 				overflow: budgetResult.overflow,
@@ -161,11 +162,20 @@ export default class TurnExecutor {
 			);
 		} catch (err) {
 			if (err instanceof ContextExceededError) {
+				await this.#hooks.error.log.emit({
+					store: this.#entries,
+					runId: currentRunId,
+					turn,
+					loopId: currentLoopId,
+					message: `LLM context exceeded: ${err.message}`,
+					status: 413,
+				});
 				return {
 					turn,
 					turnId: turnRow.id,
-					state: "failed",
-					outcome: "overflow:llm",
+					recorded: [],
+					summaryText: null,
+					updateText: null,
 					assembledTokens,
 					contextSize,
 				};
@@ -204,6 +214,17 @@ export default class TurnExecutor {
 				turn,
 				message: w,
 				loopId: currentLoopId,
+				status: 422,
+			});
+		}
+		if (commands.length === 0 && !!unparsed?.trim() && warnings.length === 0) {
+			await this.#hooks.error.log.emit({
+				store: this.#entries,
+				runId: currentRunId,
+				turn,
+				loopId: currentLoopId,
+				message: "Response contained no actionable tags.",
+				status: 422,
 			});
 		}
 
@@ -254,11 +275,8 @@ export default class TurnExecutor {
 		// resolution, continue.
 		// Narration text outside tags is fine when the turn also emitted
 		// at least one command — "OK", "Let me check:", reasoning prefixes
-		// are natural. A response that is ONLY text with no tags IS an
-		// error (model failed to act). Parse warnings (malformed XML,
-		// unclosed quotes, mismatched closes) are always an error signal.
-		let hasErrors =
-			warnings.length > 0 || (commands.length === 0 && !!unparsed?.trim());
+		// are natural. Parse warnings and no-tags responses already emitted
+		// errors above; dispatch crashes and failed entries emit below.
 		let abortAfter = null;
 
 		for (const entry of recorded) {
@@ -276,7 +294,6 @@ export default class TurnExecutor {
 					attributes: { error: errorMsg },
 					loopId: currentLoopId,
 				});
-				hasErrors = true;
 				continue;
 			}
 
@@ -290,8 +307,8 @@ export default class TurnExecutor {
 					turn,
 					loopId: currentLoopId,
 					message: `Dispatch crash in ${entry.scheme}: ${dispatchErr.message}`,
+					status: 500,
 				});
-				hasErrors = true;
 				abortAfter = entry.scheme;
 				continue;
 			}
@@ -313,48 +330,53 @@ export default class TurnExecutor {
 				await this.#entries.waitForResolution(currentRunId, p.path);
 				const resolved = await this.#entries.getState(currentRunId, p.path);
 				if (resolved?.status >= 400) {
-					hasErrors = true;
+					await this.#hooks.error.log.emit({
+						store: this.#entries,
+						runId: currentRunId,
+						turn,
+						loopId: currentLoopId,
+						message: `Proposal ${p.path} rejected: status ${resolved.status}.`,
+						status: resolved.status,
+					});
 					abortAfter = entry.scheme;
 				}
 			}
 
-			// Also check the entry itself for direct failures
-			if (!hasErrors) {
+			if (!abortAfter) {
 				const entryPath = entry.resultPath || entry.path;
 				const row = await this.#entries.getState(currentRunId, entryPath);
 				if (row?.status >= 400) {
-					hasErrors = true;
+					await this.#hooks.error.log.emit({
+						store: this.#entries,
+						runId: currentRunId,
+						turn,
+						loopId: currentLoopId,
+						message: `Entry ${entryPath} failed: status ${row.status}.`,
+						status: row.status,
+					});
 					abortAfter = entry.scheme;
 				}
 			}
 		}
 
-		// Turn Demotion: budget plugin re-materializes end-of-turn context,
-		// demotes this turn's promoted entries on overflow, writes budget://.
-		// Budget overflow on end-of-turn materialization: demote this
-		// turn's promoted entries, log a budget:// panic entry. Overflow
-		// is a lifecycle event, not a turn failure — the model's actions
-		// succeeded; the system just couldn't fit them all at their
-		// requested visibility. Model reads the budget:// entry next turn
-		// and adapts. Don't strike: a clean <update status="200"> after
-		// demotion is still a valid completion.
+		// Turn Demotion: budget plugin re-materializes end-of-turn context
+		// and demotes this turn's promoted entries on overflow. Overflow
+		// emits an error (status 413) via the unified error channel.
 		await this.#hooks.budget.postDispatch({
 			contextSize,
 			ctx: budgetCtx,
 			rummy,
 		});
 
-		const { summaryText, updateText, strike } =
-			await this.#hooks.update.resolve({
-				recorded,
-				hasErrors,
-				content,
-				commands,
-				runId: currentRunId,
-				turn,
-				loopId: currentLoopId,
-				rummy,
-			});
+		const { summaryText, updateText } = await this.#hooks.update.resolve({
+			recorded,
+			content,
+			commands,
+			runId: currentRunId,
+			turn,
+			loopId: currentLoopId,
+			rummy,
+		});
 
 		const askUserEntry = recorded.find((e) => e.scheme === "ask_user");
 
@@ -364,8 +386,6 @@ export default class TurnExecutor {
 			recorded,
 			summaryText,
 			updateText,
-			strike,
-			hasErrors,
 			askUserCmd: askUserEntry,
 			model: result.model ? result.model : requestedModel,
 			modelAlias: requestedModel,

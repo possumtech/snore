@@ -315,7 +315,7 @@ WHERE
 -- PREP: demote_turn_entries
 -- View-layer only — visibility lives on run_views. State untouched.
 -- Call get_turn_demotion_targets first if you need the list of what
--- was demoted (required by budget plugin for the budget:// summary).
+-- was demoted (used by budget plugin for the overflow error body).
 UPDATE run_views
 SET
 	visibility = 'summarized'
