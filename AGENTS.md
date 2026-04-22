@@ -278,14 +278,20 @@ model couldn't see its own action history. If cyclic strikes persist
 after the fix, the detector itself may need loosening (min_cycles=4?)
 or the feedback channel reshaping.
 
-**Final e2e state this session: 1/30 → 7/30 passing.** File results:
-  ✔ act_no_completion          (set-only final turn reaches completion)
-  ✔ terminal_state_notification (basic completion path)
-  ✖ hydrology                  (model-behavior: proposals fire but inconsistent)
-  ✖ persona_fork               (fork test: 499 on continuation)
-  ✖ stories                    (14 tests, 5 pass; 9 fail gemma strike-outs)
-  ✖ streaming                  (9 tests; blocked on rewrite task #46)
-  ✖ terminal_state_with_proposal (model didn't fire proposal in 5 turns)
+**Final e2e state this session: 1/30 → 28/30 passing** (from 1/30 start).
+
+**Residual failures (2, both stories.test.js):**
+- `autonomous file edit` — flaky under full-suite ordering (passes in
+  isolation, fails when other stories precede it). Root: some
+  accumulated project/DB state across sequential tests makes the
+  model cycle on `<get>` even after the set succeeded and landed.
+  Not yet isolated to a specific state leak; inter-test isolation
+  (beforeEach resets disk) is present but something persists.
+- `autonomous unknown investigation` — model answers correctly
+  (pool=5, host=db.internal) but skips the `<set path="unknown://…">`
+  ceremony the prompt explicitly requires. Preamble has one research
+  example using unknowns; not enough signal for gemma to apply the
+  pattern to local-file investigations.
 
 **Stories `after()` hang is GONE** — was 8+ min previously. Probably
 fixed by the TurnExecutor one-run-state-per-turn change (removed

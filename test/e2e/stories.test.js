@@ -12,7 +12,7 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
@@ -189,6 +189,28 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
+	});
+
+	// Reset project fixtures between tests so each starts from the same
+	// disk state. Previous tests' <set> proposals modify files in place,
+	// which otherwise bleeds expected content across the suite.
+	beforeEach(async () => {
+		await fs.writeFile(
+			join(projectRoot, "src/app.js"),
+			"const express = require('express');\nconst app = express();\napp.listen(8080);\n// TODO: add error handling\n",
+		);
+		await fs.writeFile(
+			join(projectRoot, "src/config.json"),
+			JSON.stringify({ db: "postgres", pool: 5, host: "db.internal" }, null, 2),
+		);
+		await fs.writeFile(
+			join(projectRoot, "src/utils.js"),
+			"export function greet() { return 'hello'; }\nexport function add(a, b) { return a + b; }\n",
+		);
+		await fs.writeFile(
+			join(projectRoot, "notes.md"),
+			"The project codename is: phoenix\n",
+		);
 	});
 
 	// Story 1: Simple factual answer from file content.

@@ -11,9 +11,20 @@ export default class Log {
 	}
 
 	async assembleLog(content, ctx) {
-		const entries = ctx.rows.filter(
-			(r) => r.category === "logging" && r.scheme === "log",
+		// Log includes action entries (scheme=log) AND prior prompts. The
+		// most recent prompt is rendered separately by the prompt plugin
+		// as `<prompt>`; everything older lives in the log so the model
+		// can see the full question history across a sustained run.
+		const latestPrompt = ctx.rows.findLast(
+			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
+		const entries = ctx.rows.filter((r) => {
+			if (r.category === "logging" && r.scheme === "log") return true;
+			if (r.category === "prompt" && r.scheme === "prompt") {
+				return r !== latestPrompt;
+			}
+			return false;
+		});
 		if (entries.length === 0) return content;
 		const lines = entries.map((e) => renderLogTag(e));
 		return `${content}<log>\n${lines.join("\n")}\n</log>\n`;
@@ -22,8 +33,10 @@ export default class Log {
 
 // Log paths are log://turn_N/action/slug. The second segment is the
 // action — the plugin/tool that produced this log entry (set, get,
-// search, update, error, etc.). Used as the XML tag name.
+// search, update, error, etc.). Used as the XML tag name. Prompt
+// entries live at prompt://N; they render as <prompt> in history.
 function actionFromPath(path) {
+	if (path?.startsWith("prompt://")) return "prompt";
 	const match = path?.match(/^log:\/\/turn_\d+\/([^/]+)\//);
 	return match ? match[1] : "log";
 }

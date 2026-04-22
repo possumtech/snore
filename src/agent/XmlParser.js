@@ -480,6 +480,14 @@ export default class XmlParser {
 		// Strip any orphan chat-format quote tokens left after replacement.
 		result = result.replace(/<\|"\|>/g, '"');
 
+		// Gemma sometimes leaks OpenAI-harmony channel markers around its
+		// real XML output: `<|channel>thought\n<channel|>…<set path=…/>`.
+		// These aren't tool calls (handled above), they're role/channel
+		// tokens. Strip any remaining `<|name>` / `<name|>` pseudo-tags
+		// before the XML parser sees them.
+		result = result.replace(/<\|[\w:/-]+>/g, "");
+		result = result.replace(/<[\w:/-]+\|>/g, "");
+
 		return result;
 	}
 }

@@ -332,14 +332,18 @@ export default class TurnExecutor {
 
 		// Turn Demotion: budget plugin re-materializes end-of-turn context,
 		// demotes this turn's promoted entries on overflow, writes budget://.
-		// Overflow counts as a turn failure — update.resolve will override
-		// any terminal 200 claim to a continuation with strike.
-		const budgetResult2 = await this.#hooks.budget.postDispatch({
+		// Budget overflow on end-of-turn materialization: demote this
+		// turn's promoted entries, log a budget:// panic entry. Overflow
+		// is a lifecycle event, not a turn failure — the model's actions
+		// succeeded; the system just couldn't fit them all at their
+		// requested visibility. Model reads the budget:// entry next turn
+		// and adapts. Don't strike: a clean <update status="200"> after
+		// demotion is still a valid completion.
+		await this.#hooks.budget.postDispatch({
 			contextSize,
 			ctx: budgetCtx,
 			rummy,
 		});
-		if (budgetResult2?.failed) hasErrors = true;
 
 		const { summaryText, updateText, strike } =
 			await this.#hooks.update.resolve({

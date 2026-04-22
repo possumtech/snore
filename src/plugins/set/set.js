@@ -232,6 +232,11 @@ export default class Set {
 
 	summary(entry) {
 		if (!entry.body) return "";
+		// Preserve SEARCH/REPLACE merge blocks intact — truncating them
+		// drops the before/after the model needs to recognize its edit.
+		if (/<<<<<<< SEARCH[\s\S]*>>>>>>> REPLACE/.test(entry.body)) {
+			return entry.body;
+		}
 		const flat = entry.body.replace(/\s+/g, " ").trim();
 		return flat.length <= 80 ? flat : `${flat.slice(0, 77)}...`;
 	}
@@ -257,6 +262,10 @@ export default class Set {
 
 		for (const match of matches) {
 			if (match.scheme === null) {
+				// Bare file path — apply the edit immediately against the
+				// match body so the log carries a concrete before/after
+				// merge. #materializeRevisions still runs at turn-end to
+				// consolidate the set:// proposal for client acceptance.
 				const canonicalPath = `set://${match.path}`;
 				const revision = Set.#buildRevision(attrs);
 				const existingAttrs = await rummy.getAttributes(canonicalPath);
@@ -273,9 +282,32 @@ export default class Set {
 					attributes: { path: match.path, revisions },
 					loopId,
 				});
-				if (Entries.normalizePath(entry.resultPath) !== canonicalPath) {
-					await store.rm({ runId: runId, path: entry.resultPath });
-				}
+				const { patch, searchText, replaceText, warning, error } =
+					Set.#applyRevision(match.body, attrs);
+				const merge =
+					searchText != null
+						? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
+						: null;
+				const beforeTokens = match.tokens;
+				const afterTokens = patch ? countTokens(patch) : beforeTokens;
+				const logState = error ? "failed" : "resolved";
+				await store.set({
+					runId,
+					turn,
+					path: entry.resultPath,
+					body: merge ?? (patch || `edit to ${match.path}`),
+					state: logState,
+					outcome: error ? "conflict" : null,
+					attributes: {
+						path: match.path,
+						merge,
+						beforeTokens,
+						afterTokens,
+						warning,
+						error,
+					},
+					loopId,
+				});
 				return;
 			}
 
@@ -284,7 +316,6 @@ export default class Set {
 
 			const state = error ? "failed" : "resolved";
 			const outcome = error ? "conflict" : null;
-			const resultPath = `set://${match.path}`;
 			const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
 			const merge =
 				searchText != null
@@ -293,10 +324,11 @@ export default class Set {
 			const beforeTokens = match.tokens;
 			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
+			// Log entry at log://turn_N/set/<target> records the action.
 			await store.set({
 				runId,
 				turn,
-				path: resultPath,
+				path: entry.resultPath,
 				body: patch ?? match.body,
 				state,
 				outcome,

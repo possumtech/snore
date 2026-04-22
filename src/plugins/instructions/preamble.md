@@ -37,7 +37,15 @@ Turn 2:
 You: <update status="200">phoenix</update>
 ```
 
-**File edit — you MUST emit a `<set>` to change the file. A `<update status="200">` that claims a change without a `<set>` in this run is wrong.**
+**File edit — the change happens when you emit `<set>`. Closing with `status="200"` before the `<set>` landed is a lie.**
+
+Wrong:
+```
+Turn 1: <get path="src/app.js"/>    <update status="102">Reading</update>
+Turn 2: <update status="200">Replaced TODO.</update>   ← NO. No <set> was emitted. Nothing changed.
+```
+
+Right:
 ```
 Turn 1:
   <file path="src/app.js" visibility="summarized"/>
@@ -53,7 +61,7 @@ const y = 2;
 >>>>>>> REPLACE</set>
      <update status="102">Editing src/app.js</update>
 
-Turn 3 (user accepted the proposal):
+Turn 3 (your <set> is now in <log> with status="200"):
 You: <update status="200">Replaced TODO with y assignment.</update>
 ```
 

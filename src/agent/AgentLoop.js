@@ -759,11 +759,22 @@ export default class AgentLoop {
 					}
 					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 						.next_turn;
+					// Preserve the file entry's current visibility — a <get>
+					// earlier in the run may have promoted it. Updating the
+					// body without specifying visibility falls through to
+					// the data-category default ("summarized") and wipes
+					// the promotion, making the model re-get the file next
+					// turn (then cycle-strike out).
+					const existingState = await this.#entries.getState(
+						runId,
+						attrs.path,
+					);
 					await this.#entries.set({
 						runId,
 						turn,
 						path: attrs.path,
 						body: patched,
+						visibility: existingState?.visibility,
 					});
 					if (projectRoot) {
 						const { writeFile } = await import("node:fs/promises");
