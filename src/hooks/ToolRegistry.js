@@ -76,7 +76,8 @@ export default class ToolRegistry {
 			);
 		}
 
-		const visibility = entry.visibility === undefined ? "visible" : entry.visibility;
+		const visibility =
+			entry.visibility === undefined ? "visible" : entry.visibility;
 		const fn = visibilityMap.get(visibility);
 		if (!fn) return "";
 

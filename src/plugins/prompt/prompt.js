@@ -79,9 +79,7 @@ export default class Prompt {
 		const visibility = promptEntry?.visibility
 			? ` visibility="${promptEntry.visibility}"`
 			: "";
-		const tokens = promptEntry?.tokens
-			? ` tokens="${promptEntry.tokens}"`
-			: "";
+		const tokens = promptEntry?.tokens ? ` tokens="${promptEntry.tokens}"` : "";
 		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${visibility}${tokens}>${body}</prompt>`;
 	}
 }

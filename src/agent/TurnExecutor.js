@@ -258,8 +258,7 @@ export default class TurnExecutor {
 		// error (model failed to act). Parse warnings (malformed XML,
 		// unclosed quotes, mismatched closes) are always an error signal.
 		let hasErrors =
-			warnings.length > 0 ||
-			(commands.length === 0 && !!unparsed?.trim());
+			warnings.length > 0 || (commands.length === 0 && !!unparsed?.trim());
 		let abortAfter = null;
 
 		for (const entry of recorded) {

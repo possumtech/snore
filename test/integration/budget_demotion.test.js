@@ -77,7 +77,11 @@ describe("Budget demotion", () => {
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "get://turn_5/file.js");
-			assert.strictEqual(entry.visibility, "summarized", "logging entry demoted");
+			assert.strictEqual(
+				entry.visibility,
+				"summarized",
+				"logging entry demoted",
+			);
 			assert.strictEqual(entry.state, "resolved", "status preserved");
 		});
 
@@ -145,7 +149,11 @@ describe("Budget demotion", () => {
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			const entry = entries.find((e) => e.path === "budget://1/7");
-			assert.strictEqual(entry.visibility, "summarized", "budget entry demoted");
+			assert.strictEqual(
+				entry.visibility,
+				"summarized",
+				"budget entry demoted",
+			);
 		});
 	});
 });

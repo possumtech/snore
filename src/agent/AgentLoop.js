@@ -78,8 +78,7 @@ export default class AgentLoop {
 		contextSize,
 		result = null,
 	}) {
-		if (!contextSize)
-			throw new Error("#emitRunState: contextSize is required");
+		if (!contextSize) throw new Error("#emitRunState: contextSize is required");
 		const runUsage = await this.#db.get_run_usage.get({ run_id: runId });
 		const history = await this.#entries.getLog(runId);
 		const unknowns = await this.#entries.getUnknowns(runId);
@@ -765,10 +764,7 @@ export default class AgentLoop {
 					// the data-category default ("summarized") and wipes
 					// the promotion, making the model re-get the file next
 					// turn (then cycle-strike out).
-					const existingState = await this.#entries.getState(
-						runId,
-						attrs.path,
-					);
+					const existingState = await this.#entries.getState(runId, attrs.path);
 					await this.#entries.set({
 						runId,
 						turn,

@@ -70,7 +70,9 @@ function renderUnknownTag(entry) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const visibility = entry.visibility ? ` visibility="${entry.visibility}"` : "";
+	const visibility = entry.visibility
+		? ` visibility="${entry.visibility}"`
+		: "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"

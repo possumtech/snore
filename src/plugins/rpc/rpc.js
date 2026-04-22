@@ -320,7 +320,9 @@ export default class Rpc {
 				return rows
 					.filter((e) => !params.scheme || e.scheme === params.scheme)
 					.filter((e) => !params.state || e.state === params.state)
-					.filter((e) => !params.visibility || e.visibility === params.visibility)
+					.filter(
+						(e) => !params.visibility || e.visibility === params.visibility,
+					)
 					.map((e) => ({
 						path: e.path,
 						scheme: e.scheme,
@@ -654,7 +656,9 @@ export default class Rpc {
 							options,
 						);
 			kickoff.catch((err) => {
-				console.error(`[RUMMY] fork ${childInfo.alias} crashed: ${err.message}`);
+				console.error(
+					`[RUMMY] fork ${childInfo.alias} crashed: ${err.message}`,
+				);
 			});
 			return { ok: true, alias: childInfo.alias };
 		}

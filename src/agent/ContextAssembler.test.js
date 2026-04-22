@@ -212,10 +212,7 @@ describe("ContextAssembler", () => {
 			assert.ok(user.includes('status="200"'), "pass result has status");
 			assert.ok(user.includes("Fixed it"), "summary renders");
 			assert.ok(user.includes("<log>"), "results in log block");
-			assert.ok(
-				user.includes("<set path="),
-				"tool tags in log use tool name",
-			);
+			assert.ok(user.includes("<set path="), "tool tags in log use tool name");
 		});
 
 		it("renders empty context when no entries", async () => {
@@ -324,10 +321,7 @@ describe("ContextAssembler", () => {
 				!system.includes("<unknown "),
 				"unknown not rendered inside <context>",
 			);
-			assert.ok(
-				!system.includes("<unknowns>"),
-				"no separate <unknowns> block",
-			);
+			assert.ok(!system.includes("<unknowns>"), "no separate <unknowns> block");
 		});
 
 		it("prompt element carries tokenUsage and tokensFree attrs", async () => {

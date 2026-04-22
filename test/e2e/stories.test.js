@@ -59,7 +59,7 @@ function assertContains(text, substring, label) {
 
 /** Accept all proposed entries, applying file edits to disk. */
 async function _acceptAll(client, result, db, projectRoot) {
-	let current = result;
+	const current = result;
 	let resolves = 0;
 	while (current.status === 202 && resolves < 15) {
 		for (const p of current.proposed) {

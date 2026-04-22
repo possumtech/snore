@@ -103,7 +103,11 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "src/target.js",
 			});
-			assert.strictEqual(state.visibility, "visible", "target promoted to full");
+			assert.strictEqual(
+				state.visibility,
+				"visible",
+				"target promoted to full",
+			);
 
 			const log = await store.getBody(RUN_ID, entry.resultPath);
 			assert.strictEqual(log, null, "no get:// log on successful fetch");

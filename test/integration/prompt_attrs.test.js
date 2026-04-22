@@ -294,7 +294,11 @@ describe("Progress math", () => {
 			).tokens;
 
 			// Demote
-			await store.set({ runId: runId, path: "known://y", visibility: "summarized" });
+			await store.set({
+				runId: runId,
+				path: "known://y",
+				visibility: "summarized",
+			});
 			await materialize(tdb.db, { runId, turn: 2, systemPrompt: "sys" });
 
 			const afterRes = await assemble(tdb, runId, 2);

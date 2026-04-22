@@ -118,7 +118,9 @@ function renderContextTag(entry, demotedSet) {
 	const stateAttr =
 		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const visibility = entry.visibility ? ` visibility="${entry.visibility}"` : "";
+	const visibility = entry.visibility
+		? ` visibility="${entry.visibility}"`
+		: "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
 	// Always render summary attribute on knowns — empty value hints the model
 	// it forgot to add searchable keywords.

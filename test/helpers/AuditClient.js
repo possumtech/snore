@@ -135,7 +135,11 @@ export default class AuditClient extends RpcClient {
 		if (noProposals !== undefined) attributes.noProposals = noProposals;
 		if (noInteraction !== undefined) attributes.noInteraction = noInteraction;
 		const path = `run://${run ? run : ""}`;
-		const startRes = await super.call("set", { path, body: prompt, attributes });
+		const startRes = await super.call("set", {
+			path,
+			body: prompt,
+			attributes,
+		});
 		const alias = startRes.alias;
 		this.#currentRun = alias;
 		const TERMINAL = [200, 204, 413, 422, 499, 500];
@@ -147,7 +151,9 @@ export default class AuditClient extends RpcClient {
 			}
 			await new Promise((r) => setTimeout(r, 250));
 		}
-		throw new Error(`run ${alias} did not reach terminal status in ${timeoutMs}ms`);
+		throw new Error(
+			`run ${alias} did not reach terminal status in ${timeoutMs}ms`,
+		);
 	}
 
 	async ask(params) {
@@ -224,9 +230,7 @@ export default class AuditClient extends RpcClient {
 			console.log(`\n  Turn ${t}:`);
 			for (const e of turnEntries) {
 				const attrs = e.attributes ? JSON.parse(e.attributes) : null;
-				const val = (e.body || "")
-					.slice(0, bodyLimit)
-					.replace(/\n/g, "\\n");
+				const val = (e.body || "").slice(0, bodyLimit).replace(/\n/g, "\\n");
 				const attrsStr = attrs ? ` ${JSON.stringify(attrs).slice(0, 200)}` : "";
 				console.log(
 					`    ${e.scheme}:${e.state}:${e.visibility} ${e.path}${attrsStr}`,

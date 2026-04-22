@@ -28,7 +28,11 @@ export default class Mv {
 		if (visibility && !to) {
 			const matches = await store.getEntriesByPattern(runId, path);
 			for (const match of matches)
-				await store.set({ runId: runId, path: match.path, visibility: visibility });
+				await store.set({
+					runId: runId,
+					path: match.path,
+					visibility: visibility,
+				});
 			const label = `set to ${visibility}`;
 			await store.set({
 				runId,

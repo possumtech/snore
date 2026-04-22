@@ -26,7 +26,9 @@ export default class Set {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
-		const visibilityAttr = VALID_VISIBILITY[attrs.visibility] ? attrs.visibility : null;
+		const visibilityAttr = VALID_VISIBILITY[attrs.visibility]
+			? attrs.visibility
+			: null;
 		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 
@@ -206,7 +208,11 @@ export default class Set {
 			const target = attrs.path;
 			const scheme = Entries.scheme(target);
 			if (scheme !== null) {
-				await store.set({ runId: runId, path: target, visibility: visibilityAttr });
+				await store.set({
+					runId: runId,
+					path: target,
+					visibility: visibilityAttr,
+				});
 			}
 			if (summaryText) {
 				await store.set({
