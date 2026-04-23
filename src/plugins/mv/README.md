@@ -1,4 +1,4 @@
-# mv
+# mv {#mv_plugin}
 
 Moves (renames) an entry from one path to another within the K/V store.
 

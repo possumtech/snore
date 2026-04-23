@@ -1,4 +1,4 @@
-# get
+# get {#get_plugin}
 
 Retrieves and promotes entries by path or glob pattern.
 

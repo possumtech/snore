@@ -1,4 +1,4 @@
-# skill
+# skill {#skill_plugin}
 
 Runtime skill management. A skill is a markdown file that gets
 attached to a run as a `skill://<name>` entry. Models see skills
@@ -11,7 +11,7 @@ like any other entry.
 ## Registration
 
 - **Scheme**: `skill` (category: `data`)
-- **Projections**: promoted → body; demoted → empty.
+- **Projections**: visible → body; summarized → empty.
 
 ## RPC Methods
 

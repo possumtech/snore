@@ -1,4 +1,4 @@
-# update
+# update {#update_plugin}
 
 Lifecycle signal — the model declares it has more work to do.
 

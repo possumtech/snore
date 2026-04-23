@@ -1,4 +1,4 @@
-# policy
+# policy {#policy_plugin}
 
 Per-invocation enforcement of ask-mode restrictions. Rejects
 model-emitted commands that would mutate the filesystem when the run

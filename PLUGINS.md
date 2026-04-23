@@ -5,7 +5,7 @@ its owner. Every operation — model, client, plugin — flows through the
 same tool handler. Exceptions to that discipline must justify themselves
 in the architecture spec (SPEC.md).
 
-## §0 Quickstart
+## Quickstart {#plugins_quickstart}
 
 A complete tool plugin in four parts: register, handle, render, document.
 
@@ -21,8 +21,8 @@ export default class Ping {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("promoted", this.full.bind(this));
-        core.on("demoted", this.summary.bind(this));
+        core.on("visible", this.full.bind(this));
+        core.on("summarized", this.summary.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
             docsMap.ping = docs;
             return docsMap;
@@ -63,7 +63,7 @@ Install external plugins via npm + env var:
 RUMMY_PLUGIN_PING=@myorg/rummy.ping
 ```
 
-## §1 Plugin Contract
+## Plugin Contract {#plugins_contract}
 
 A plugin is a directory under `src/plugins/` containing a `.js` file
 that exports a default class. The class name matches the file name.
@@ -79,8 +79,8 @@ export default class MyTool {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("promoted", this.full.bind(this));
-        core.on("demoted", this.summary.bind(this));
+        core.on("visible", this.full.bind(this));
+        core.on("summarized", this.summary.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
             docsMap.mytool = docs;
             return docsMap;
@@ -106,7 +106,7 @@ RUMMY_PLUGIN_WEB=@possumtech/rummy.web
 RUMMY_PLUGIN_REPO=@possumtech/rummy.repo
 ```
 
-## §2 Unified API
+## Unified API {#plugins_unified_api}
 
 Three tiers share the tool vocabulary, but the invocation shape and
 dispatch path differ.
@@ -121,7 +121,7 @@ Plugin:  rummy.rm(path) / rummy.set({...})   → Entries.set / Entries.rm
                                              → (Entries also fires entry events)
 ```
 
-Three surfaces, one grammar (SPEC §0.3). The model dispatches through
+Three surfaces, one grammar (see [surfaces](SPEC.md#surfaces)). The model dispatches through
 the handler chain (`TurnExecutor.#record()` → `hooks.tools.dispatch`
 → policy filter → turn-scoped recording → abort cascade → budget
 lifecycle around it). The client primitives (`set`/`get`/`rm`/`cp`/
@@ -135,21 +135,21 @@ Plugin code wanting full handler semantics (policy filter, proposal
 flow, turn recording) calls `hooks.tools.dispatch` directly instead
 of going through a primitive.
 
-Verb signatures vary. See §4.1.
+Verb signatures vary. See [plugins_rummy_verbs](#plugins_rummy_verbs).
 
-## §3 Registration
+## Registration {#plugins_registration}
 
 All registration happens in the constructor via `core.on()`,
 `core.filter()`, `core.ensureTool()`, and `core.registerScheme()`.
 
-### §3.1 core.ensureTool()
+### core.ensureTool() {#plugins_ensure_tool}
 
 Declares this plugin as a model-facing tool. Required for the tool
 to appear in the model's tool list. Called automatically by
 `core.on("handler", ...)` but must be called explicitly for tools
 without handlers (e.g., `update`, `unknown`).
 
-### §3.2 core.registerScheme(config?)
+### core.registerScheme(config?) {#plugins_register_scheme}
 
 Registers this plugin's scheme in the database. Called once in the
 constructor.
@@ -168,27 +168,29 @@ All fields optional. `core.registerScheme()` with no args gives a
 sensible result-type scheme (logging category, run scope, writable by
 model + plugin).
 
-`scope` determines where entries at this scheme land (see SPEC §0.1 /
-§0.7). `writableBy` is enforced at `Entries.set` — writes from a
-writer not in the list throw a typed `PermissionError` (importable
-from `src/agent/errors.js`). The four writer tiers (SPEC §0.4) form
+`scope` determines where entries at this scheme land (see
+[entries](SPEC.md#entries) / [physical_layout](SPEC.md#physical_layout)).
+`writableBy` is enforced at `Entries.set` — writes from a writer
+not in the list throw a typed `PermissionError` (importable from
+`src/agent/errors.js`). The four writer tiers
+(see [writer_tiers](SPEC.md#writer_tiers)) form
 a strict hierarchy: **system > plugin > client > model**. Each tier
 is a superset of what's below.
 
-### §3.3 core.on(event, callback, priority?)
+### core.on(event, callback, priority?) {#plugins_on}
 
 | Event | Payload | Purpose |
 |-------|---------|---------|
 | `"handler"` | `(entry, rummy)` | Tool handler — called when model/client invokes this tool |
-| `"promoted"` | `(entry)` | Promoted-fidelity projection — body shown in `<knowns>` / `<performed>` |
-| `"demoted"` | `(entry)` | Demoted-fidelity projection — path + summary only (body hidden) |
+| `"visible"` | `(entry)` | Visible-visibility projection — body shown in `<knowns>` / `<performed>` |
+| `"summarized"` | `(entry)` | Summarized-visibility projection — path + summary only (body hidden) |
 | `"turn.started"` | `({rummy, mode, prompt, loopIteration, isContinuation})` | Turn beginning — plugins write prompt/instructions entries |
 | `"turn.response"` | `({rummy, turn, result, responseMessage, content, commands, ...})` | LLM responded — write audit entries, commit usage |
 | `"proposal.prepare"` | `({rummy, recorded})` | Tool dispatched — materialize proposals (e.g. file edit 202 revisions) |
 | `"proposal.pending"` | `({projectId, run, proposed})` | Proposal awaits client resolution |
 | `"turn.completed"` | `(turnResult)` | Turn resolved — full turnResult |
 | `"entry.created"` | `(entry)` | Entry created during dispatch |
-| `"entry.changed"` | `({runId, path, changeType})` | Entry content, fidelity, or status modified |
+| `"entry.changed"` | `({runId, path, changeType})` | Entry content, visibility, or status modified |
 | `"run.state"` | `({projectId, run, turn, status, summary, history, unknowns, telemetry})` | Incremental client-facing state push (wire-layer `status` HTTP code stays; DB stores the 5-value state enum) |
 | `"error.log"` | `({runId, turn, loopId, message})` | Runtime error — creates an `error://` entry |
 | Any `"dotted.name"` | varies | Resolves to the matching hook in `src/hooks/Hooks.js` |
@@ -196,14 +198,14 @@ is a superset of what's below.
 ```js
 // One-liner examples
 core.on("handler", async (entry, rummy) => { /* tool logic */ });
-core.on("promoted", (entry) => entry.body);
-core.on("demoted", (entry) => entry.attributes?.summary || "");
+core.on("visible", (entry) => entry.body);
+core.on("summarized", (entry) => entry.attributes?.summary || "");
 core.on("turn.started", async ({ rummy, mode }) => { /* write entries */ });
 core.on("turn.response", async ({ rummy, result }) => { /* audit */ });
 core.on("entry.changed", ({ runId, path, changeType }) => { /* react */ });
 ```
 
-### §3.4 core.filter(name, callback, priority?)
+### core.filter(name, callback, priority?) {#plugins_filter}
 
 | Filter | Signature | Purpose |
 |--------|-----------|---------|
@@ -239,12 +241,12 @@ ctx = {
     toolSet,           // Set<string> of active tool names for this loop
     contextSize,       // Model context window size
     lastContextTokens, // Actual API tokens from the prior turn (0 on turn 1)
-    demoted,           // Mutable array — plugins push paths they demoted
+    demoted,           // Mutable array — plugins push paths they summarized
     turn,              // Current turn number
 }
 ```
 
-### §3.5 Tool Docs
+### Tool Docs {#plugins_tool_docs}
 
 Each tool plugin has a `*Doc.js` file with annotated line arrays.
 Text goes to the model. Rationale stays in source. Registered via
@@ -262,7 +264,7 @@ core.filter("instructions.toolDocs", async (docsMap) => {
 The instructions plugin filters by the active tool set — tools
 excluded by mode or flags are automatically omitted from the docs.
 
-### §3.6 handler(entry, rummy)
+### handler(entry, rummy) {#plugins_handler}
 
 The handler receives the parsed command entry and a per-turn
 RummyContext:
@@ -280,17 +282,17 @@ entry = {
 Multiple handlers per scheme. Lower priority runs first. Return
 `false` to stop the chain.
 
-### §3.7 full(entry) / summary(entry)
+### full(entry) / summary(entry) {#plugins_views}
 
 Returns the string the model sees for this tool's entries at the
-given fidelity. Every tool MUST register `full`. `summary` is
+given visibility. Every tool MUST register `full`. `summary` is
 optional — if unregistered, falls back to `attributes.summary`
 (model-authored keyword description) or empty string.
 
-At summary fidelity, `attributes.summary` is prepended above the
+At summary visibility, `attributes.summary` is prepended above the
 plugin's summary output automatically by ToolRegistry.view().
 
-## §4 Two Objects
+## Two Objects {#plugins_two_objects}
 
 Plugins interact with two objects at different scopes:
 
@@ -302,7 +304,7 @@ lifetime.
 **RummyContext** (`rummy`) — turn-scoped. Passed to handlers per
 invocation. Has tool verbs, per-turn state, database access.
 
-### §4.1 Tool Verbs (on RummyContext)
+### Tool Verbs (on RummyContext) {#plugins_rummy_verbs}
 
 Convenience wrappers that bind `runId`, `turn`, `loopId` from context
 and delegate to Entries. Signatures vary per verb. For full
@@ -312,14 +314,14 @@ instead.
 
 | Method | Effect |
 |--------|--------|
-| `rummy.set({ path?, body?, state?, fidelity?, outcome?, attributes? })` | Create/update entry. If `path` omitted, slugifies from body/summary. State defaults to `"resolved"`. |
-| `rummy.get(path)` | Promote entries matching a pattern (default fidelity `"promoted"`). |
+| `rummy.set({ path?, body?, state?, visibility?, outcome?, attributes? })` | Create/update entry. If `path` omitted, slugifies from body/summary. State defaults to `"resolved"`. |
+| `rummy.get(path)` | Promote entries matching a pattern (default visibility `"visible"`). |
 | `rummy.rm(path)` | Remove entry's view. |
 | `rummy.mv(from, to)` | Rename entry. |
 | `rummy.cp(from, to)` | Copy entry to a new path. |
 | `rummy.update(body, { status?, attributes? })` | Write the once-per-turn lifecycle signal to `update://<slug>`. |
 
-### §4.2 Query Methods
+### Query Methods {#plugins_rummy_queries}
 
 | Method | Returns |
 |--------|---------|
@@ -331,7 +333,7 @@ instead.
 | `rummy.getEntries(pattern, bodyFilter?)` | Array of matching entries |
 | `rummy.setAttributes(path, attrs)` | Merge attributes via json_patch |
 
-### §4.3 Properties
+### Properties {#plugins_rummy_properties}
 
 | Property | Type | Notes |
 |----------|------|-------|
@@ -347,9 +349,9 @@ instead.
 | `rummy.contextSize` | number \| null | Model context window |
 | `rummy.systemPrompt` / `rummy.loopPrompt` | string | |
 | `rummy.noRepo` / `rummy.noInteraction` / `rummy.noWeb` | boolean | Loop flags |
-| `rummy.writer` | `"system"` \| `"plugin"` \| `"client"` \| `"model"` | Default `"model"` in handler dispatch. The Proxy on `rummy.entries` binds this to every write for permission checks (SPEC §0.4). |
+| `rummy.writer` | `"system"` \| `"plugin"` \| `"client"` \| `"model"` | Default `"model"` in handler dispatch. The Proxy on `rummy.entries` binds this to every write for permission checks (see [writer_tiers](SPEC.md#writer_tiers)). |
 
-## §5 Tool Display Order
+## Tool Display Order {#plugins_display_order}
 
 Tools are presented to the model in priority order:
 gather → reason → act → communicate.
@@ -364,7 +366,7 @@ handles all exclusions:
 | `noWeb` flag | `search` |
 | `noProposals` flag | `ask_user`, `env`, `sh` |
 
-## §6 Hedberg
+## Hedberg {#plugins_hedberg}
 
 The hedberg plugin exposes pattern matching and interpretation
 utilities on `core.hooks.hedberg` for all plugins to use:
@@ -383,20 +385,20 @@ const { match, search, replace, parseSed, parseEdits,
 | `parseEdits(content)` | Detect edit format (merge conflict, udiff, sed) |
 | `generatePatch(path, old, new)` | Generate unified diff |
 
-## §7 Events & Filters
+## Events & Filters {#plugins_events_overview}
 
 **Events** are fire-and-forget. All handlers run. Return values ignored.
 **Filters** transform data through a chain. Lower priority runs first.
 All hooks are async.
 
-### §7.1 Project Lifecycle
+### Project Lifecycle {#plugins_project_lifecycle}
 
 | Hook | Type | When |
 |------|------|------|
 | `project.init.started` | event | Before project DB upsert |
 | `project.init.completed` | event | After project created |
 
-### §7.2 Run & Loop Lifecycle
+### Run & Loop Lifecycle {#plugins_run_loop_lifecycle}
 
 | Hook | Type | When |
 |------|------|------|
@@ -414,7 +416,7 @@ All hooks are async.
 | `proposal.prepare` | event | Per recorded entry — plugins materialize proposals (e.g. set plugin turns search/replace revisions into 202 entries) |
 | `proposal.pending` | event | A materialized proposal awaits client resolution |
 
-### §7.3 Turn Pipeline
+### Turn Pipeline {#plugins_turn_pipeline}
 
 Hooks fire in this order every turn:
 
@@ -439,7 +441,7 @@ Hooks fire in this order every turn:
 |    | `run.state` | event | Incremental state push to connected clients |
 |    | `proposal.prepare` | event | This entry's dispatch may have created proposals (e.g. set → 202 revisions) |
 |    | `proposal.pending` | event | Per each materialized proposal — client is notified, dispatch awaits resolution |
-| 13 | `budget.postDispatch` | call | Re-materialize + check. If over ceiling → Turn Demotion (fidelity=demoted on turn's promoted rows) + write `budget://` entry. |
+| 13 | `budget.postDispatch` | call | Re-materialize + check. If over ceiling → Turn Demotion (visibility=summarized on turn's visible rows) + emit 413 error. |
 | 14 | `hooks.update.resolve` | call | Update plugin classifies this turn's `<update>` (terminal/continuation, override-to-continuation if actions failed, heal from raw content if missing) |
 | 15 | `turn.completed` | event | Turn fully resolved with final status |
 
@@ -447,13 +449,13 @@ Hooks fire in this order every turn:
 pipeline-ordered. Subscribe when you need to react to any entry
 modification (used by budget remeasurement and file-on-disk detection).
 
-### §7.4 Entry Events
+### Entry Events {#plugins_entry_events}
 
 | Hook | Type | When |
 |------|------|------|
 | `entry.recording` | filter | Before entry stored. Return `{ state: "failed", outcome }` to reject. |
 | `entry.created` | event | New entry added during dispatch |
-| `entry.changed` | event | Entry content, fidelity, or state modified |
+| `entry.changed` | event | Entry content, visibility, or state modified |
 
 `entry.recording` is a filter — plugins can validate, transform, or
 reject entries before they hit the store. Payload:
@@ -464,11 +466,11 @@ entry object (modified or not). Set `state: "failed"` with an
 the policy plugin uses this pattern for ask-mode rejections.
 
 `entry.changed` fires on any mutation to an existing entry — body
-update, fidelity change, state change, attribute update. Payload:
+update, visibility change, state change, attribute update. Payload:
 `{ runId, path, changeType }`. Subscribers include the budget plugin
 (remeasure context) and the repo plugin (detect file changes on disk).
 
-### §7.5 Budget
+### Budget {#plugins_budget}
 
 | Hook | Type | When |
 |------|------|------|
@@ -487,26 +489,26 @@ is strictly for DISPLAY — showing token costs in `<knowns>` tags so
 the model can reason about entry sizes. It is NEVER used for budget
 decisions. Budget math uses only assembled message token counts.
 These are two separate numbers that must never be conflated. See
-SPEC §4.5 for the three-measure table.
+See [budget_enforcement](SPEC.md#budget_enforcement) for the three-measure table.
 
-### §7.6 Client Notifications
+### Client Notifications {#plugins_client_notifications}
 
 | Hook | Type | When |
 |------|------|------|
 | `ui.render` | event | Text for client display |
 | `ui.notify` | event | Status notification |
 
-## §8 Entry Lifecycle
+## Entry Lifecycle {#plugins_entry_lifecycle}
 
 Every entry follows the same lifecycle regardless of origin:
 
 1. **Created** — `entries` row (content) + `run_views` row (per-run
-   projection) via the two-prep upsert flow (SPEC §0.7).
+   projection) via the two-prep upsert flow (see [physical_layout](SPEC.md#physical_layout)).
 2. **Dispatched** — tool handler chain executes.
 3. **State set** — handler sets `state` (`"proposed"` \| `"streaming"`
    \| `"resolved"` \| `"failed"` \| `"cancelled"`) + optional
    `outcome` string on the `run_views` row. State is view-side; body
-   is content-side. (SPEC §0.1)
+   is content-side. (See [entries](SPEC.md#entries).)
 4. **Materialized** — `v_model_context` joins entries + run_views,
    projects into `turn_context`.
 5. **Assembled** — filter chain renders into system/user messages.
@@ -515,34 +517,34 @@ Every entry follows the same lifecycle regardless of origin:
    vocabulary is HTTP; the DB is categorical.
 6. **Visible** — model sees the entry in its context.
 
-Entries at `fidelity = 'archived'` skip steps 4–6 (invisible to
-model, discoverable via pattern search). Entries at `fidelity =
-'demoted'` render with `attributes.summary` (model-authored keyword
-description) prepended above the plugin's `demoted` view output —
+Entries at `visibility = 'archived'` skip steps 4–6 (invisible to
+model, discoverable via pattern search). Entries at `visibility =
+'summarized'` render with `attributes.summary` (model-authored keyword
+description) prepended above the plugin's `summarized` view output —
 the body is hidden; promoting with `<get>` brings it back.
 
-**Per-plugin fidelity projection reference.** Each plugin chooses
-what its `promoted` / `demoted` view hooks return. Renderers trust
-the projected body — they do NOT re-check `entry.fidelity`.
+**Per-plugin visibility projection reference.** Each plugin chooses
+what its `visible` / `summarized` view hooks return. Renderers trust
+the projected body — they do NOT re-check `entry.visibility`.
 
-| Plugin | Category | `promoted` body | `demoted` body | Notes |
+| Plugin | Category | `visible` body | `summarized` body | Notes |
 |--------|----------|-----------------|----------------|-------|
-| `known` | data | `entry.body` | `""` | Tag's `summary` attr carries the keywords at demoted fidelity |
+| `known` | data | `entry.body` | `""` | Tag's `summary` attr carries the keywords at summarized visibility |
 | `unknown` | unknown | `entry.body` | `""` | Same pattern as known |
 | `prompt` | prompt | `entry.body` | 500-char truncation with `[truncated — promote to see the complete prompt]` marker | |
 | `budget` | logging | `entry.body` | `entry.body` | Feedback signal — kept visible |
-| `update` | logging | `# update\n${entry.body}` | same as promoted | Already 80-char capped by tool doc rule |
-| `get` / `set` / `rm` / `cp` / `mv` / `sh` / `env` / `search` | logging | result body | `""` | Just the self-closing tag at demoted |
+| `update` | logging | `# update\n${entry.body}` | same as visible | Already 80-char capped by tool doc rule |
+| `get` / `set` / `rm` / `cp` / `mv` / `sh` / `env` / `search` | logging | result body | `""` | Just the self-closing tag at summarized |
 | `skill` | data | `entry.body` | `""` | Same as known |
 | `file` (bare paths) | data | `entry.body` | `""` | Same as known |
 
-Plugins providing only a `promoted` hook fall back to
-`attributes.summary` (model-authored keyword description) at demoted;
+Plugins providing only a `visible` hook fall back to
+`attributes.summary` (model-authored keyword description) at summarized;
 the renderer inserts it automatically. Plugins providing neither
 default to empty body — the tag still renders with its attributes so
 the model can pattern-match the path.
 
-### §8.1 Streaming Entries
+### Streaming Entries {#plugins_streaming_entries}
 
 Producers whose output arrives over time (shell commands, web fetches,
 log tails, file watches) use the **streaming entry pattern**. The
@@ -564,7 +566,7 @@ state: "proposed" (user decision pending)
    proposal path), `AgentLoop.resolve()` transitions the proposal
    entry to `state: "resolved"` (it becomes the **log entry**) and
    creates **data entries** at `{path}_1`, `{path}_2`, etc. with
-   `state: "streaming"`, category=data, fidelity=demoted, empty body.
+   `state: "streaming"`, category=data, visibility=summarized, empty body.
 3. Producer/client calls `stream { run, path, channel, chunk }` RPC
    to append chunks to the appropriate channel.
 4. When the producer is done, `stream/completed { run, path, exit_code? }`
@@ -590,17 +592,17 @@ only need to:
 No scheme registration or tooldoc for the stream plugin itself — it's
 pure RPC plumbing shared across all streaming producers.
 
-## §9 Bundled Plugins
+## Bundled Plugins
 
 | Plugin | Type | Description |
 |--------|------|-------------|
 | `get` | Core tool | Load file/entry into context |
-| `set` | Core tool | Edit file/entry, fidelity control |
+| `set` | Core tool | Edit file/entry, visibility control |
 | `known` | Core tool + Assembly | Save knowledge, render `<knowns>` section |
 | `rm` | Core tool | Delete permanently |
 | `mv` | Core tool | Move entry |
 | `cp` | Core tool | Copy entry |
-| `sh` | Core tool | Shell command (act mode only). Streaming producer — see §8.1 |
+| `sh` | Core tool | Shell command (act mode only). Streaming producer — see [plugins_streaming_entries](#plugins_streaming_entries) |
 | `env` | Core tool | Exploratory command. Streaming producer — see §8.1 |
 | `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
@@ -622,7 +624,7 @@ pure RPC plumbing shared across all streaming producers.
 | `openai` / `ollama` / `xai` / `openrouter` | LLM provider | Register with `hooks.llm.providers`; handle `{prefix}/...` model aliases. Silently inert if their env isn't configured. |
 | `persona` / `skill` | Internal | Runtime persona/skill management via RPC |
 
-## §10 External Plugins
+## External Plugins {#plugins_external}
 
 | Plugin | Package | Description |
 |--------|---------|-------------|
@@ -632,14 +634,14 @@ pure RPC plumbing shared across all streaming producers.
 Loaded via `RUMMY_PLUGIN_*` env vars. External plugins have access
 to the same PluginContext API as bundled plugins.
 
-## §11 RPC Methods
+## RPC Methods {#plugins_rpc}
 
 Client-facing JSON-RPC 2.0 over WebSocket. Protocol version **2.0.0**.
 The client surface is a thin projection of the plugin API (SPEC §0.3):
 the six primitives match the plugin's `rummy.set` / `rummy.get` / etc.
 exactly, plus a connection handshake and a few config verbs.
 
-### §11.1 Wire Format
+### Wire Format {#plugins_rpc_wire_format}
 
 ```json
 // Request
@@ -655,7 +657,7 @@ exactly, plus a connection handshake and a few config verbs.
 { "jsonrpc": "2.0", "method": "run/state", "params": { "run": "my_run", "turn": 3, "status": 200, ... } }
 ```
 
-### §11.2 Connection Handshake
+### Connection Handshake {#plugins_rpc_handshake}
 
 First call every client makes. Establishes project identity and
 enforces protocol-version compatibility.
@@ -664,7 +666,7 @@ enforces protocol-version compatibility.
 |--------|--------|-------|
 | `rummy/hello` | `{ name, projectRoot, configPath?, clientVersion? }` | Returns `{ rummyVersion, projectId, projectRoot }`. Server rejects MAJOR mismatch with a protocol-mismatch error. |
 
-### §11.3 Primitives (SPEC §0.2)
+### Primitives (see [primitives](SPEC.md#primitives)) {#plugins_rpc_primitives}
 
 Six verbs. Object-args matching the entry grammar. Writer is fixed to
 `"client"` server-side; permissions enforced per-scheme via the
@@ -672,14 +674,14 @@ scheme's `writable_by`.
 
 | Method | Params | Notes |
 |--------|--------|-------|
-| `set` | `{ run, path, body?, state?, fidelity?, outcome?, attributes?, append?, pattern?, bodyFilter? }` | Wide semantic: write content, change fidelity/state, merge attributes, append (streaming), pattern update. Writing to `run://<alias>` starts or cancels a run (see §11.4). State transitions on proposed entries route through `AgentLoop.resolve()` for scheme-specific side effects. |
-| `get` | `{ run, path, bodyFilter?, fidelity? }` | Promote an entry (or pattern) to visible fidelity. |
+| `set` | `{ run, path, body?, state?, visibility?, outcome?, attributes?, append?, pattern?, bodyFilter? }` | Wide semantic: write content, change visibility/state, merge attributes, append (streaming), pattern update. Writing to `run://<alias>` starts or cancels a run (see §11.4). State transitions on proposed entries route through `AgentLoop.resolve()` for scheme-specific side effects. |
+| `get` | `{ run, path, bodyFilter?, visibility? }` | Promote an entry (or pattern) to visible visibility. |
 | `rm` | `{ run, path, bodyFilter? }` | Remove entry's view. |
-| `cp` | `{ run, from, to, fidelity? }` | Copy entry to new path. |
-| `mv` | `{ run, from, to, fidelity? }` | Rename entry. |
+| `cp` | `{ run, from, to, visibility? }` | Copy entry to new path. |
+| `mv` | `{ run, from, to, visibility? }` | Rename entry. |
 | `update` | `{ run, body, status?, attributes? }` | Write the once-per-turn lifecycle signal to `update://<slug>`. |
 
-### §11.4 Run Lifecycle via Primitives
+### Run Lifecycle via Primitives {#plugins_rpc_run_lifecycle}
 
 Runs are addressable as `run://<alias>` entries (SPEC §0.5). The
 client manipulates run lifecycle via ordinary `set` calls:
@@ -697,7 +699,7 @@ Starting a new run is fire-and-forget: server returns `{ ok: true, alias }`
 immediately; client watches the run's state transitions via the
 `run/state` notification (and the `run://` entry itself).
 
-### §11.5 Config & Query Methods
+### Config & Query Methods {#plugins_rpc_queries}
 
 Not every server capability fits the entry grammar. These are
 dedicated verbs with 1:1 plugin-API equivalents.
@@ -708,7 +710,7 @@ dedicated verbs with 1:1 plugin-API equivalents.
 | `discover` | — | Return the live RPC catalog |
 | `getModels` / `addModel` / `removeModel` | (see rpc.js) | Model aliases |
 | `getRuns` / `getRun` | `{ limit?, offset? }` / `{ run }` | Run listing and detail |
-| `getEntries` | `{ run, pattern?, scheme?, state?, fidelity?, bodyFilter? }` | Read-only entry query. Returns `[{path, scheme, state, fidelity, attributes, turn, tokens}]`. No promotion side-effect. Pair with `get` primitive (which is a write verb). |
+| `getEntries` | `{ run, pattern?, scheme?, state?, visibility?, bodyFilter? }` | Read-only entry query. Returns `[{path, scheme, state, visibility, attributes, turn, tokens}]`. No promotion side-effect. Pair with `get` primitive (which is a write verb). |
 | `file/constraint` | `{ pattern, visibility }` | Project-scoped: set overlay. `visibility ∈ {active, readonly, ignore}`. Patterns can be globs. `readonly` is enforced on `set://` accept in `AgentLoop.resolve()`. |
 | `file/drop` | `{ pattern }` | Project-scoped: remove overlay row. |
 | `getConstraints` | — | Project-scoped: returns `[{pattern, visibility}]`. |
@@ -723,7 +725,7 @@ primitive call requires a run alias; constraints don't have one. The
 typed verbs match the capability's actual shape rather than contorting
 the grammar.
 
-### §11.6 Notifications (server → client)
+### Notifications (server → client) {#plugins_rpc_notifications}
 
 | Method | Purpose |
 |--------|---------|
@@ -733,7 +735,7 @@ the grammar.
 | `ui/render` | Streaming UI output |
 | `ui/notify` | Toast notification |
 
-### §11.7 Retired Methods (2.0.0)
+### Retired Methods (2.0.0)
 
 Protocol 1.x shipped many methods that collapsed into the primitive
 grammar. Clients migrating from 1.x need to replace the following:
@@ -747,6 +749,6 @@ grammar. Clients migrating from 1.x need to replace the following:
 | `run/rename` | `mv { run, from: "run://<old>", to: "run://<new>" }` |
 | `run/inject` | `set { path: "run://<alias>", body: <message> }` on an existing run |
 | `run/config` | `set { path: "run://<alias>", attributes: { ... } }` |
-| `store` (demote) | `set { run, path, fidelity: "demoted", pattern: true }` |
-| `getEntries` | Kept as §11.5 typed helper — now filter-capable (scheme/state/fidelity). Pairs with the `get` write primitive. |
+| `store` (demote) | `set { run, path, visibility: "summarized", pattern: true }` |
+| `getEntries` | Kept as §11.5 typed helper — now filter-capable (scheme/state/visibility). Pairs with the `get` write primitive. |
 | `get { persist }` / `store { persist, clear, ignore }` (file constraints) | `file/constraint { pattern, visibility }` and `file/drop { pattern }`. Project-scoped helpers in §11.5 with real server enforcement for `readonly`. |

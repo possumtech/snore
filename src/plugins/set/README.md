@@ -1,4 +1,4 @@
-# set
+# set {#set_plugin}
 
 Writes or edits entry content. Handles new files, full overwrites,
 SEARCH/REPLACE edits, and pattern updates.

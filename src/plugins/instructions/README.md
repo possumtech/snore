@@ -1,4 +1,4 @@
-# instructions
+# instructions {#instructions_plugin}
 
 Projects the system prompt instructions into model context.
 

@@ -1,4 +1,4 @@
-# think
+# think {#think_plugin}
 
 Provides a `<think>` tag for model reasoning. Not a tool — does not
 appear in the tool list.

@@ -1,4 +1,4 @@
-# xai
+# xai {#xai_plugin}
 
 xAI (Grok) LLM provider. Handles model aliases prefixed with `xai/`
 (e.g. `xai/grok-2`).

@@ -1,4 +1,4 @@
-# unknown
+# unknown {#unknown_plugin}
 
 The Rumsfeld mechanism. The model registers what it doesn't know before acting.
 

@@ -1,4 +1,4 @@
-# cp
+# cp {#cp_plugin}
 
 Copies an entry from one path to another within the K/V store.
 

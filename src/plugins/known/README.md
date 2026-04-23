@@ -1,4 +1,4 @@
-# known
+# known {#known_plugin}
 
 Writes knowledge entries into the store at full visibility.
 

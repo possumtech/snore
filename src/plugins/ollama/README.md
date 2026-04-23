@@ -1,4 +1,4 @@
-# ollama
+# ollama {#ollama_plugin}
 
 Ollama LLM provider. Handles model aliases prefixed with `ollama/`
 (e.g. `ollama/llama3.1:8b`).

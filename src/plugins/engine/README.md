@@ -1,10 +1,10 @@
-# engine
+# engine {#engine_plugin}
 
 SQL infrastructure for context assembly and turn management. No JS plugin.
 
 ## Files
 
-- **engine.sql** — Queries for retrieving promoted entries by scheme tier, model visibility, and state.
+- **engine.sql** — Queries for retrieving visible entries by scheme tier, model visibility, and state.
 - **turn_context.sql** — Queries for clearing and reading the `turn_context` / `v_model_context` view, which produces the ordered context sent to the model.
 
 ## Behavior

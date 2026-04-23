@@ -1,4 +1,4 @@
-# telemetry
+# telemetry {#telemetry_plugin}
 
 Console logging for RPC lifecycle and turn events.
 

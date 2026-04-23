@@ -1,4 +1,4 @@
-# prompt
+# prompt {#prompt_plugin}
 
 Renders the `<prompt mode="ask|act">` tag at the end of the user message.
 Always present on every turn — the model always sees its task.

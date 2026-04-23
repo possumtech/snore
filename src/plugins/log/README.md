@@ -1,4 +1,4 @@
-# log
+# log {#log_plugin}
 
 Assembles the `<log>` block in the user message: every
 `category="logging"` entry across the entire run, rendered as XML tool

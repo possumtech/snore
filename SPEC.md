@@ -1089,6 +1089,16 @@ this section itself) stay as plain headings. The anchor *implies
 testability* — if there's nothing observable to verify, adding an
 anchor creates a permanent false obligation.
 
+**PLUGINS.md and `src/plugins/*/README.md`** use the same
+`{#snake_case_id}` anchor convention for internal links and
+cross-references (e.g. linking from plugin docs back to SPEC
+concepts). They are developer documentation, not contract
+documentation — `npm run test:spec` scans only `SPEC.md` for
+anchors and only `test/integration/` + `test/e2e/` for `@` refs.
+Plugin doc anchors are prefixed (`plugins_*`, `<plugin>_plugin`) so
+they never collide with SPEC anchors. If a plugin claim graduates
+to a contract guarantee, the anchor moves into SPEC.
+
 ---
 
 ## SQL Functions {#sql_functions}

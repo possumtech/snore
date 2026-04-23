@@ -1,4 +1,4 @@
-# error
+# error {#error_plugin}
 
 Subscribes to `error.log` hook and writes `error://` entries for any
 runtime error a plugin or the turn executor wants surfaced to the

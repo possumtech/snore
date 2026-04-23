@@ -1,4 +1,4 @@
-# ask_user
+# ask_user {#ask_user_plugin}
 
 Presents a question to the user with optional multiple-choice answers.
 

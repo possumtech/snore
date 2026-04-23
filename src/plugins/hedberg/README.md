@@ -1,4 +1,4 @@
-# hedberg
+# hedberg {#hedberg_plugin}
 
 The interpretation boundary between stochastic model output and
 deterministic system operations.

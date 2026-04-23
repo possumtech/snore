@@ -322,6 +322,25 @@ at a stable enough checkpoint to leave. Resume after this.
 **Phase E baseline: `npm run test:spec` → OK, 33 anchors × 34
 test files, zero violations. Unit tests 228/228 green.**
 
+#### Phase E.2 — Plugin doc anchor consistency (COMPLETE 2026-04-23)
+- [x] `PLUGINS.md`: 34 `{#plugins_*}` anchors added to major
+      headings. `§X.Y` numeric references stripped. Inline
+      cross-refs to SPEC sections use markdown links with the
+      same slug format.
+- [x] 30 plugin READMEs (`src/plugins/*/README.md`): each H1
+      gets a `{#<plugin_name>_plugin}` anchor.
+- [x] Stale terminology in plugin docs fixed
+      (fidelity→visibility, promoted→visible, demoted→summarized)
+      where values, not verbs.
+- [x] SPEC.md `spec_anchored_testing` section documents the
+      scope split: PLUGINS.md and plugin READMEs use the same
+      anchor convention for internal linking, but only SPEC.md
+      anchors are enforced by `npm run test:spec`. Developer docs
+      share formatting; contract docs share enforcement.
+- [x] All anchors unique across SPEC.md + PLUGINS.md + READMEs
+      (prefix conventions: SPEC uses bare slugs, PLUGINS uses
+      `plugins_*`, READMEs use `<name>_plugin`).
+
 #### Phase F — Continuing error paradigm audit
 - [ ] Post-unification audit task from earlier (still open):
       codebase sweep for bespoke error paths that bypass

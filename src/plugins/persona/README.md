@@ -1,4 +1,4 @@
-# persona
+# persona {#persona_plugin}
 
 Runtime persona management. A persona is free-form text that gets
 prepended to the model's system prompt for a run.

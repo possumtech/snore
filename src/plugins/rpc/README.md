@@ -1,4 +1,4 @@
-# rpc
+# rpc {#rpc_plugin}
 
 Registers core RPC methods and provides automatic tool dispatch for
 all registered tools.

@@ -1,4 +1,4 @@
-# file
+# file {#file_plugin}
 
 Owns file-related projections and file constraint management.
 
@@ -13,10 +13,10 @@ Owns file-related projections and file constraint management.
 
 Static methods `setConstraint` and `dropConstraint` manage per-project
 file constraints in the database. Constraints are project-level config
-(backbone), not tool dispatch. See SPEC.md §2.3.
+(backbone), not tool dispatch. See [file_constraints](../../../SPEC.md#file_constraints).
 
-- `active` / `readonly` — promoted into context.
-- `ignore` — excluded from scans; demotes existing entries.
+- `active` / `readonly` — promoted into context (visibility=visible).
+- `ignore` — excluded from scans; summarizes existing entries.
 
-Entry promotion/demotion from constraints goes through the standard
-tool handler chain via `dispatchTool`.
+Promotion/demotion from constraints goes through the standard tool
+handler chain via `dispatchTool`.

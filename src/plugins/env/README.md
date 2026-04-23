@@ -1,4 +1,4 @@
-# env
+# env {#env_plugin}
 
 Runs an exploratory shell command and records the output.
 

@@ -1,4 +1,4 @@
-# rm
+# rm {#rm_plugin}
 
 Removes entries by path or glob pattern.
 

@@ -1,4 +1,4 @@
-# sh
+# sh {#sh_plugin}
 
 Proposes shell command execution for client approval.
 
