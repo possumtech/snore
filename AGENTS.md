@@ -323,23 +323,34 @@ at a stable enough checkpoint to leave. Resume after this.
 test files, zero violations. Unit tests 228/228 green.**
 
 #### Phase E.2 — Plugin doc anchor consistency (COMPLETE 2026-04-23)
-- [x] `PLUGINS.md`: 34 `{#plugins_*}` anchors added to major
+- [x] `PLUGINS.md`: 32 `{#plugins_*}` anchors added to testable
       headings. `§X.Y` numeric references stripped. Inline
       cross-refs to SPEC sections use markdown links with the
-      same slug format.
-- [x] 30 plugin READMEs (`src/plugins/*/README.md`): each H1
-      gets a `{#<plugin_name>_plugin}` anchor.
-- [x] Stale terminology in plugin docs fixed
-      (fidelity→visibility, promoted→visible, demoted→summarized)
-      where values, not verbs.
-- [x] SPEC.md `spec_anchored_testing` section documents the
-      scope split: PLUGINS.md and plugin READMEs use the same
-      anchor convention for internal linking, but only SPEC.md
-      anchors are enforced by `npm run test:spec`. Developer docs
-      share formatting; contract docs share enforcement.
-- [x] All anchors unique across SPEC.md + PLUGINS.md + READMEs
-      (prefix conventions: SPEC uses bare slugs, PLUGINS uses
-      `plugins_*`, READMEs use `<name>_plugin`).
+      same slug format. Quickstart + External Plugins sections
+      kept plain (tutorial / loader-level — no integration tier).
+- [x] 26 plugin READMEs: each H1 gets a `{#<plugin>_plugin}`
+      anchor. LLM providers (ollama/openai/openrouter/xai) kept
+      plain — verified via `test/live/` which sits outside the
+      integration/e2e coverage gate.
+- [x] `test/spec-coverage.js` extended to scan PLUGINS.md and
+      `src/plugins/*/README.md` in addition to SPEC.md. Uniqueness
+      enforced across the whole doc set; collision = script error.
+- [x] Anchored every PLUGINS.md and README anchor to a matching
+      existing test (mostly via multi-anchor `describe` names) or
+      added a smoke test where none existed
+      (`plugin_smoke.test.js` covers skill/telemetry/think/unknown/
+      update — five internal plugins that didn't warrant full
+      dedicated test files but still make README-level promises).
+- [x] Stale terminology cleaned in PLUGINS.md + 6 READMEs
+      (fidelity→visibility, promoted/demoted→visible/summarized,
+      value vs verb discrimination preserved).
+- [x] SPEC.md `spec_anchored_testing` updated: "anchors imply
+      testability" applies uniformly across SPEC.md, PLUGINS.md,
+      and READMEs. Sections that can't be verified at the
+      integration/e2e tier stay plain.
+
+**Phase E.2 baseline: `npm run test:spec` → OK, 91 anchors × 35
+test files. Unit tests 228/228 green.**
 
 #### Phase F — Continuing error paradigm audit
 - [ ] Post-unification audit task from earlier (still open):
