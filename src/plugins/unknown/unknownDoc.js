@@ -4,7 +4,7 @@
 const LINES = [
 	[
 		'## <set path="unknown://{question}">[specific thing I need to learn]</set> - Register gaps for research',
-		"Use <set> to write unknown entries (not <unknown>). Matches preamble examples.",
+		"Use <set> to write unknown entries (not <unknown>). Matches instructions examples.",
 	],
 	[
 		'Example: <set path="unknown://answer" summary="answer,contents">contents of answer.txt</set>',

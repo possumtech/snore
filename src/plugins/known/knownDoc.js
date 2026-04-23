@@ -4,7 +4,7 @@
 const LINES = [
 	[
 		'## <set path="known://topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</set> - Sort and save what you learn for later recall',
-		"Use <set> to write known entries (not <known>). Matches preamble examples.",
+		"Use <set> to write known entries (not <known>). Matches instructions examples.",
 	],
 	[
 		'Example: <set path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</set>',

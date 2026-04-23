@@ -8,7 +8,7 @@ const LINES = [
 	],
 	[
 		"REQUIRED: the valid values of N are defined by your current phase instructions.",
-		"Single source of truth for codes is the phase preamble, not this doc. Listing codes here leaks termination knowledge (e.g. 200) that strong models use to short-circuit the protocol.",
+		"Single source of truth for codes is the current phase instructions block, not this doc. Listing codes here leaks termination knowledge (e.g. 200) that strong models use to short-circuit the protocol.",
 	],
 	[
 		"REQUIRED: YOU MUST keep <update></update> body to <= 80 characters.",

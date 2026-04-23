@@ -41,7 +41,8 @@
 >   here where everyone can see them and the next session can read
 >   them. Internal memory is for user-wide preferences only.
 
-> **Preamble discipline (when touching prompt.ask.md / prompt.act.md):**
+> **Instructions discipline (when touching `src/plugins/instructions/instructions.md`
+> or any `instructions_10N.md` phase file):**
 > - **Brief.** Every token is paid every turn. Cut before expanding.
 > - **Show, don't tell.** Examples teach better than prescriptions. A
 >   three-line worked example beats ten lines of "you must / you should".
@@ -51,6 +52,13 @@
 >   across `<get>`, `<set>`, `<rm>`, `<search>`, `<update>`, `<sh>`,
 >   `<ask_user>`. Adding a rule that helps one can cost another its
 >   oxygen.
+> - **Static base in system, phase-specific in user.** The base
+>   template (`instructions.md`) is part of the system prompt — it
+>   must stay stable across turns within a run so prompt caching
+>   holds. The phase-specific `instructions_10N.md` files render as
+>   `<instructions>` in the user message (dynamic by design).
+>   Anything that would change mid-run belongs in the phase files,
+>   never the base template.
 
 > **Guiding principles (enshrined):**
 >
@@ -69,21 +77,22 @@
 >
 > **Reference + feedback over broadcast.** Steer the model through
 > three channels in priority order: (1) tooldocs at the decision
-> point, (2) error:// entries for dynamic feedback, (3) preamble
-> for genuinely cross-cutting identity. Preamble pays context every
-> turn; prefer the other two channels first.
+> point, (2) error:// entries for dynamic feedback, (3) instructions
+> for genuinely cross-cutting identity. System instructions pay context
+> every turn; prefer the other two channels first.
 
 ---
 
 ## Where We Are
 
-The contract (SPEC §0) is fully delivered. Schema, primitives, entry
-grammar, client RPC surface, plugin hygiene, and external repo
-rewrites (`rummy.repo`, `rummy.web`, `rummy.nvim`) are all landed.
-The preamble was reformed apophatically and stabilized gemma on
-realistic demo workflows. Lifecycle handshake, budget math, and
-fallback hygiene are all clean. Phase 7 (verification + benchmark)
-is the remaining work.
+The contract (SPEC the_contract) is fully delivered. Schema,
+primitives, entry grammar, client RPC surface, plugin hygiene, and
+external repo rewrites (`rummy.repo`, `rummy.web`, `rummy.nvim`) are
+all landed. The system instructions were split into a stable base
+(identity + tools + tooldocs) plus a dynamic `<instructions>` block
+that rides the user message to keep prompt caching intact. Lifecycle
+handshake, budget math, and fallback hygiene are all clean. Phase 7
+(verification + benchmark) is the remaining work.
 
 ## The Plan
 
@@ -146,9 +155,9 @@ is the remaining work.
   requiring model intervention.
 
 - [ ] **Gemma/MAB benchmark run.** Published baselines are in this
-  doc below (60%/5% GPT-4o; 60%/6% best). With preamble stability
-  now, we have a meaningful number to measure against. Needed
-  *before* any more preamble-shape experiments.
+  doc below (60%/5% GPT-4o; 60%/6% best). With the instructions
+  system stable now, we have a meaningful number to measure against.
+  Needed *before* any more instruction-shape experiments.
 - [ ] **`notification_log` table.** `rpc_log` captures
   request/response; `run/state` / `run/progress` / `run/proposal`
   fly out untracked. Mirroring the shape would let us replay
@@ -232,8 +241,8 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
    `proposal.accepting/content/accepted/rejected` hooks.
 
 **Paused for this refactor:** model behavior work (forced-march
-preamble, protocol enforcement, phase-scoped tool restrictions) is
-at a stable enough checkpoint to leave. Resume after this.
+instructions, protocol enforcement, phase-scoped tool restrictions)
+is at a stable enough checkpoint to leave. Resume after this.
 
 **Scope (in order; earlier phases unblock later):**
 
@@ -377,8 +386,9 @@ line under that phase rather than proceeding on assumption.
 
 ### 2026-04-22 — Error paradigm unification (ACTIVE, PRE-IMPLEMENTATION)
 
-Triggered by wanting to add protocol enforcement for the preamble's
-step sequence. Investigation surfaced that the "strike system" is not a
+Triggered by wanting to add protocol enforcement for the
+instructions' step sequence. Investigation surfaced that the "strike
+system" is not a
 system — it's three unrelated booleans (`strike` from update.resolve,
 `hasErrors` from TurnExecutor, `cycleReason` from ResponseHealer) ORed
 together in `ResponseHealer.assessTurn`. No extension point; outside

@@ -1,8 +1,9 @@
 # RUMMY: Architecture Specification
 
-The authoritative reference for Rummy's design. The sacred prompt
-The instructions plugin (`preamble.md` + tool docs) defines
-model-facing behavior. This document defines everything else.
+The authoritative reference for Rummy's design. The instructions
+plugin (`instructions.md` + phase-specific `instructions_10N.md` +
+tool docs) defines model-facing behavior. This document defines
+everything else.
 
 ---
 
@@ -567,30 +568,36 @@ Two messages per turn. System = stable truth. User = active task.
 ```
 [system message]
     instructions text
-        (preamble.md + tool docs injected via
+        (instructions.md base template + tool docs injected via
          instructions.toolDocs filter; optional persona appended)
-    <knowns>
-        entries sorted by category → skill-first → demoted-first
-        → turn → updated_at
-    </knowns>
-    <previous>
-        (pre-loop entries, each with turn, status, visibility, tokens)
-    </previous>
+    <context>
+        all category=data entries (knowns, files, http/https),
+        wrapped by known.js on assembly.system at priority 100
+    </context>
 [user message]
-    <performed>
-        (current loop entries, each with turn, status, visibility, tokens)
-    </performed>
+    <log>
+        action history — log:// entries + pre-latest prompts
+        (log.js, assembly.user priority 100)
+    </log>
     <unknowns>
-        (open questions, each with path, turn, visibility, tokens)
+        (open questions at category=unknown, unknown.js priority 200)
     </unknowns>
+    <instructions>
+        current phase directive — one of instructions_104.md …
+        instructions_108.md, selected by the latest <update status="1XY">
+        emission (instructions.js, assembly.user priority 250)
+    </instructions>
     <prompt mode="ask|act" tokenUsage="N" tokensFree="M">user prompt</prompt>
 ```
 
-**System** = environment and rules (stable world state the model operates
-within). **User** = active work (what the model is doing about it).
-Unknowns are active work — the open questions the model intends to
-resolve this turn — so they live adjacent to `<prompt>` in the user
-packet, not with the stable `<knowns>` in the system packet.
+**System** = stable world state the model operates within (identity,
+tools, tool docs, reference context). Stable across turns within a
+run, which keeps prompt caching intact. **User** = active work (what
+the model is doing right now): history, open questions, current
+phase, and current prompt. The phase-specific `<instructions>` block
+lives in the user message precisely *because* it changes between
+turns — putting it in system would invalidate the cache on every
+phase transition.
 
 The `<prompt>` tag is present on every turn — first turn and
 continuations alike. The model always sees its task. The active prompt
@@ -621,7 +628,7 @@ continues (next turn), new results append to `<performed>`.
 
 | Path | Lifetime | Body | Attributes |
 |------|----------|------|-----------|
-| `instructions://system` | One per run (mutable) | Empty (projection builds from preamble + tool docs + optional persona) | `{ persona, toolSet }` |
+| `instructions://system` | One per run (mutable) | Empty (projection builds from `instructions.md` + tool docs + optional persona) | `{ persona, toolSet }` |
 | `system://N` | Audit, one per turn | Full assembled system message | — |
 | `user://N` | Audit, one per turn | Full assembled user message | — |
 | `assistant://N` | Audit, one per turn | Model's raw response | — |

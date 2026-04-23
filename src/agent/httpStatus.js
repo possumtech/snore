@@ -3,7 +3,7 @@
  * model-facing tag rendering.
  *
  * Model-facing tags still carry `status="NNN"` because the model's
- * vocabulary (preamble + tooldocs + training) is HTTP-shaped. The DB
+ * vocabulary (instructions + tooldocs + training) is HTTP-shaped. The DB
  * stores categorical state + textual outcome (see SPEC entries); this helper
  * is the one-way translation for rendering.
  *
