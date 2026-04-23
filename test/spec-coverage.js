@@ -1,29 +1,34 @@
 #!/usr/bin/env node
-// Validate 1:1 coverage between SPEC.md numbered sections and
+// Validate 1:1 coverage between SPEC.md snake_case anchors and
 // integration + e2e test references. Exits 1 on any missing link
 // in either direction.
 //
-// Rule (SPEC §10.1): every `## X.` and `### X.Y` heading in SPEC.md
-// has at least one `§X[.Y[.Z]]` reference in test/integration/ or
-// test/e2e/. Every test under those dirs references at least one §.
+// Rule (SPEC.md → spec_anchored_testing): every heading with an
+// explicit `{#snake_case_id}` anchor has at least one `@snake_case_id`
+// reference in test/integration/ or test/e2e/. Every test file in
+// those dirs references at least one `@`-anchor. Anchors die on
+// rename; they're permanent once published.
 
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const SPEC = join(ROOT, "SPEC.md");
 const TEST_DIRS = [join(ROOT, "test/integration"), join(ROOT, "test/e2e")];
 
-const HEADING_RE = /^(#+)\s+([0-9]+(?:\.[0-9]+)*)\.?\s+(.+)$/gm;
-const REF_RE = /§([0-9]+(?:\.[0-9]+)*)/g;
+// Heading with explicit snake_case anchor: "## Title {#snake_case_id}"
+const HEADING_RE = /^#+\s+(.+?)\s*\{#([a-z0-9_]+)\}\s*$/gm;
+// Test reference: "@snake_case_id" as a standalone token. The
+// lookbehind ensures we don't match addresses, npm packages, etc.
+const REF_RE = /(?<![a-zA-Z0-9_/@])@([a-z][a-z0-9_]*)\b/g;
 
-async function readSpecSections() {
+async function readSpecAnchors() {
 	const text = await readFile(SPEC, "utf8");
-	const sections = [];
+	const anchors = [];
 	for (const m of text.matchAll(HEADING_RE)) {
-		sections.push({ id: m[2], title: m[3].trim() });
+		anchors.push({ id: m[2], title: m[1].trim() });
 	}
-	return sections;
+	return anchors;
 }
 
 async function walkJs(dir) {
@@ -58,37 +63,36 @@ async function gatherRefs() {
 	return { fileRefs, allRefs };
 }
 
-function referenceMatches(sectionId, ref) {
-	// A reference to a parent also counts as a reference to its
-	// children. E.g. §4 in a test anchors to §4, §4.1, §4.2, ...
-	// But we want a test on §4.2 to count for §4.2 specifically; a
-	// test tagged only with §4 does NOT count as covering §4.2.
-	return ref === sectionId;
-}
-
 async function main() {
-	const sections = await readSpecSections();
+	const anchors = await readSpecAnchors();
 	const { fileRefs, allRefs } = await gatherRefs();
 
 	const errors = [];
 
-	// Direction 1: every SPEC section must have >=1 test reference.
-	for (const s of sections) {
-		if (![...allRefs].some((r) => referenceMatches(s.id, r))) {
-			errors.push(`MISSING TEST: §${s.id} "${s.title}" has no reference in test/integration or test/e2e`);
+	// Direction 1: every SPEC anchor has >=1 test reference.
+	for (const a of anchors) {
+		if (!allRefs.has(a.id)) {
+			errors.push(
+				`MISSING TEST: @${a.id} "${a.title}" has no reference in test/integration or test/e2e`,
+			);
 		}
 	}
 
-	// Direction 2: every test file must reference >=1 SPEC section.
-	const specIds = new Set(sections.map((s) => s.id));
+	// Direction 2: every test file references >=1 anchor, and every
+	// reference points at a real anchor.
+	const anchorIds = new Set(anchors.map((a) => a.id));
 	for (const [file, refs] of fileRefs) {
 		if (refs.size === 0) {
-			errors.push(`UNANCHORED TEST: ${file.replace(ROOT, "")} references no §-section`);
+			errors.push(
+				`UNANCHORED TEST: ${file.replace(ROOT, "")} references no @-anchor`,
+			);
 			continue;
 		}
 		for (const r of refs) {
-			if (!specIds.has(r)) {
-				errors.push(`DEAD REFERENCE: ${file.replace(ROOT, "")} references §${r} which is not a SPEC.md heading`);
+			if (!anchorIds.has(r)) {
+				errors.push(
+					`DEAD REFERENCE: ${file.replace(ROOT, "")} references @${r} which is not a SPEC.md anchor`,
+				);
 			}
 		}
 	}
@@ -96,12 +100,14 @@ async function main() {
 	if (errors.length > 0) {
 		console.error("SPEC coverage check FAILED:\n");
 		for (const e of errors) console.error(`  ${e}`);
-		console.error(`\n${errors.length} violation(s). See SPEC §10.1.`);
+		console.error(
+			`\n${errors.length} violation(s). See SPEC.md section spec_anchored_testing.`,
+		);
 		process.exit(1);
 	}
 
 	console.log(
-		`SPEC coverage OK: ${sections.length} sections × ${fileRefs.size} test files.`,
+		`SPEC coverage OK: ${anchors.length} anchors × ${fileRefs.size} test files.`,
 	);
 }
 

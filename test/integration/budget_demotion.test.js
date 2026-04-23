@@ -1,13 +1,12 @@
 /**
  * Budget demotion integration tests.
  *
- * Covers:
- * - demote_turn_entries: all promoted entries at turn N → visibility=demoted.
- *   Status is preserved: a successful operation stays at its original
- *   status (200), because budget demotion is a lifecycle event, not a
- *   failure of the body operation.
- * - Error-state entries are not re-demoted
- * - Other turns are not affected
+ * Covers @budget_enforcement — specifically the post-dispatch
+ * `demote_turn_entries` SQL that flips all visible turn entries to
+ * `visibility=summarized` when the ceiling is breached. Status is
+ * preserved: a successful operation stays at its original status
+ * (200), because budget demotion is a lifecycle event, not a failure
+ * of the body operation.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";

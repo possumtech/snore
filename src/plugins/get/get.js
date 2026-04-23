@@ -130,8 +130,8 @@ export default class Get {
 		}
 
 		const VALID_VISIBILITY = {
-			demoted: 1,
-			promoted: 1,
+			summarized: 1,
+			visible: 1,
 			archived: 1,
 		};
 		const visibilityAttr = VALID_VISIBILITY[entry.attributes.visibility]

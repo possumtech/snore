@@ -1,8 +1,9 @@
 /**
  * E2E: Streaming shell/env pipeline.
  *
- * Exercises the full server-side protocol for streaming producers
- * without requiring a live LLM — the test manually seeds the sh
+ * Covers @streaming_entries, @resolution — exercises the full
+ * server-side protocol for streaming producers without requiring a
+ * live LLM — the test manually seeds the sh
  * proposal that the model would ordinarily emit, then drives the
  * accept + stream + completion flow through real RPC calls on a real
  * WebSocket server.

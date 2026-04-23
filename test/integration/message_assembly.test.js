@@ -1,9 +1,10 @@
 /**
  * Message assembly integration test.
  *
- * Verifies what we actually send to the model by populating known_entries,
- * materializing turn_context, and assembling the messages. Inspects the
- * system and user message content directly.
+ * Covers @packet_structure, @message_structure — what we actually
+ * send to the model. Populates known_entries, materializes
+ * turn_context, assembles the messages, and inspects system and
+ * user content directly.
  */
 import assert from "node:assert";
 import { dirname, join } from "node:path";

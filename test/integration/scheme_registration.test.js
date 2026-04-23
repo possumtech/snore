@@ -1,8 +1,9 @@
 /**
  * Scheme registration integration test.
  *
- * Verifies that plugins register schemes correctly and the
- * v_model_context VIEW can resolve all scheme types.
+ * Covers @scheme_registry, @materialization — plugins register
+ * schemes correctly and the v_model_context VIEW can resolve
+ * all scheme types.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";

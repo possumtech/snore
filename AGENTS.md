@@ -25,13 +25,21 @@
 > - **The user is right until the DB proves otherwise.** When a
 >   symptom gets reported, read `rummy_dev.db` first, don't guess,
 >   don't blame the environment, don't defer to the next demo.
-> - **Integration and e2e tests are 1:1 with SPEC.md's numeric
->   system.** Every `### X.Y` (and `## X.`) section in SPEC.md has
->   at least one `§X.Y` reference in `test/integration/` or
+> - **Integration and e2e tests are 1:1 with SPEC.md's snake_case
+>   anchor system.** Every SPEC.md heading carries an explicit
+>   `{#snake_case_id}` anchor. Every anchor has at least one
+>   `@snake_case_id` reference in `test/integration/` or
 >   `test/e2e/`. Every test in those dirs is attributed to at least
->   one `§`-reference. No integration or e2e test exists outside
->   this system; no SPEC section exists without a test anchoring
->   it. See SPEC §10.1. Enforced by `npm run test:spec`.
+>   one `@`-reference. No integration or e2e test exists outside
+>   this system; no SPEC anchor exists without a test anchoring
+>   it. See `SPEC.md` section `spec_anchored_testing`. Enforced by
+>   `npm run test:spec`. Numeric `§X.Y` references are dead — use
+>   snake_case anchors that don't churn when sections move.
+> - **AGENTS.md is the project memory scratchpad.** Never store
+>   project-scoped decisions, plans, or state in Claude internal
+>   memory (`~/.claude/projects/...`). Project-specific facts live
+>   here where everyone can see them and the next session can read
+>   them. Internal memory is for user-wide preferences only.
 
 > **Preamble discipline (when touching prompt.ask.md / prompt.act.md):**
 > - **Brief.** Every token is paid every turn. Cut before expanding.
@@ -208,6 +216,120 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
   the path. If identity is WHAT, turn is an attribute.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
+
+### 2026-04-23 — Doc/test/codebase consolidation (ACTIVE)
+
+**Trigger.** Two compounding failures surfaced in one session:
+1. Fidelity→visibility migration was half-landed weeks ago — schema
+   renamed, SPEC.md and rummy.web never updated. All `http`/`https`
+   fetched entries render as empty strings to the model because
+   rummy.web's view handlers bind to old-terminology visibilities
+   (`demoted`) that the new schema enum doesn't produce.
+2. Unified-log-namespace migration left dead `startsWith("set://")`
+   branches in `AgentLoop.resolve`, breaking proposal accept side
+   effects for set/rm/mv/ask_user/sh/env for weeks. Fixed in-session
+   by moving accept logic into the owning plugins via new
+   `proposal.accepting/content/accepted/rejected` hooks.
+
+**Paused for this refactor:** model behavior work (forced-march
+preamble, protocol enforcement, phase-scoped tool restrictions) is
+at a stable enough checkpoint to leave. Resume after this.
+
+**Scope (in order; earlier phases unblock later):**
+
+#### Phase A — Convention + tooling (COMPLETE 2026-04-23)
+- [x] Snake_case anchor format defined: `{#snake_case_id}` on
+      SPEC.md headings; `@snake_case_id` in tests. `@` sigil chosen
+      to disambiguate from prose/addresses.
+- [x] `test/spec-coverage.js` rewritten: parses `{#id}` anchors and
+      `@id` refs; errors on missing/extra on either side.
+- [x] SPEC.md section `spec_anchored_testing` documents the
+      convention and the "anchors are forever" rule.
+- [x] AGENTS.md standing rule flipped from numeric to snake_case.
+- [x] `§X.Y` references in SPEC.md prose replaced with
+      `[slug](#slug)` markdown links. No grandfather path.
+- [x] All SPEC.md `##`/`###` headings migrated to snake_case
+      anchors. Numeric prefixes dropped from heading text; order is
+      advisory, not canonical.
+
+#### Phase B — Finish the fidelity→visibility migration
+- [x] SPEC.md: `fidelity` field → `visibility`; values `promoted/
+      demoted` → `visible/summarized` throughout. Verb usages of
+      "promote/demote" kept (they still describe the action).
+- [x] `feedback_fidelity_terminology` internal memory retired,
+      replaced with `feedback_agents_md_is_memory`.
+- [x] rummy.web: `onView` registrations updated to
+      `visible/summarized`. Also updated SEARCH_DOCS prose and the
+      `fidelity: "demoted"` attribute write. This fixes the
+      "model can't see http fetched URLs" bug from 2026-04-23.
+- [x] rummy.repo: `onView` and tests updated to `visibility`.
+- [x] rummy.nvim: `fidelity_map` → `visibility_map`; `promoted` →
+      `visible` value; HUD comment updated.
+- [x] src/plugins/get/get.js + src/plugins/cp/cp.js: VALID_VISIBILITY
+      tables updated to `visible/summarized/archived`.
+- [x] src/agent/budget.js: JSDoc comment updated.
+
+#### Phase C — SPEC.md reorganization
+- [ ] Walk every SPEC.md heading, assign a snake_case slug via
+      `{#id}` syntax. No duplicates.
+- [ ] Remove numeric prefixes from headings; order becomes advisory
+      not canonical.
+- [ ] Re-run `npm run test:spec` — establish new baseline.
+
+#### Phase D — Test anchoring and decomposition (MOSTLY COMPLETE 2026-04-23)
+- [x] `plugin_spec.test.js` decomposed into six per-feature files
+      (plugin_registration, unified_api, tool_display, hedberg_api,
+      events_and_filters, entry_lifecycle). Budget §7.5 tests merged
+      into `budget_cascade.test.js`. Original god-file deleted.
+- [x] All 18 integration test files + 7 e2e test files anchored to
+      relevant `@slug` references in their top-level `describe` or
+      header JSDoc. Existing tests kept in place; headers updated.
+- [x] Baseline after Phase D: 68 violations → 17. Unit tests
+      228/228 green throughout.
+- [ ] Remaining 17 violations are umbrella sections and
+      docs-only content. Phase E handles the testable ones;
+      the rest (e.g. `@configuration`, `@debugging`) get an
+      inline "intentionally unverified" note or a meta-test in
+      Phase E.
+- [ ] Extract shared test helpers (Phase D.5, non-blocking):
+      `new Entries(tdb.db)` appears in 19 test files; a tiny
+      `test/helpers/store.js` or similar would de-dup. Deferred —
+      not blocking Phase E.
+
+#### Phase E — Fill coverage gaps
+- [ ] ~19 SPEC sections (from pre-rename inventory) with no test
+      reference: either add a test or mark the section as
+      intentionally unverified with inline note.
+- [ ] Add positive-presence assertions for known-silent-failure
+      paths: (a) set proposal accept creates bare-path entry,
+      file_constraint active, disk write; (b) rm proposal deletes
+      entry + file; (c) mv proposal rm's source; (d) ask_user stores
+      answer on accept; (e) sh/env create companion `_1`/`_2`
+      entries. These are the exact bugs that went undetected for
+      weeks — positive tests turn them into tripwires.
+
+#### Phase F — Continuing error paradigm audit
+- [ ] Post-unification audit task from earlier (still open):
+      codebase sweep for bespoke error paths that bypass
+      `hooks.error.log.emit`. Carries over from this session.
+- [ ] Revisit `update.js`'s "terminal + errors → override" — did
+      this cleanly collapse, or are there residual conditionals?
+      Verify `turnHasErrors` API is truly removed.
+
+**Standing invariants this refactor must respect:**
+- No fallbacks outside hedberg/XmlParser.
+- Every createEvent/createFilter in Hooks.js stays.
+- Snake_case anchors are forever; don't rename once published.
+- AGENTS.md is where project plans and state live — not internal
+  memory.
+
+**Checkpoint discipline.** After each phase, re-run
+`npm run test:spec` and `npm test` (unit + integration where
+feasible), record results below this block, and update the checkbox
+set. If a phase blocks on a decision, add a `**DECISION NEEDED:**`
+line under that phase rather than proceeding on assumption.
+
+---
 
 ### 2026-04-22 — Error paradigm unification (ACTIVE, PRE-IMPLEMENTATION)
 

@@ -34,8 +34,8 @@ export function measureRows(rows) {
  * Returns:
  *   ceiling     — floor(contextSize × CEILING_RATIO), the hard wall
  *   totalTokens — echoed back
- *   tokenUsage  — sum of promoted controllable entries' tokens
- *                 (data + logging, visibility=promoted)
+ *   tokenUsage  — sum of visible controllable entries' tokens
+ *                 (data + logging, visibility=visible)
  *   tokensFree  — ceiling − totalTokens
  *   overflow    — max(0, totalTokens − ceiling)
  *   ok          — overflow === 0

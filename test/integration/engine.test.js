@@ -19,7 +19,7 @@ function pad(n) {
 	return Array(n).fill("hello").join(" ");
 }
 
-describe("Engine integration", () => {
+describe("Engine integration (@materialization, @upsert_semantics)", () => {
 	let tdb;
 	let store;
 

@@ -1,9 +1,10 @@
 /**
  * Characterization tests for TurnExecutor #record() behavior.
  *
- * Each test exercises one code path in #record(). Runs kicked off via
- * `set path=run://` with `attributes.mode="ask"` — `ask` is a mode, not
- * a first-class RPC method.
+ * Covers @dispatch_path — each test exercises one code path in
+ * #record(). Runs kicked off via `set path=run://` with
+ * `attributes.mode="ask"` — `ask` is a mode, not a first-class RPC
+ * method.
  */
 import assert from "node:assert";
 import fs from "node:fs/promises";

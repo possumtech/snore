@@ -21,7 +21,7 @@ async function waitForRunStatus(db, alias, targetStatuses, timeoutMs) {
 	return null;
 }
 
-describe("E2E: terminal run/state notification", { concurrency: 1 }, () => {
+describe("E2E: terminal run/state notification (@notifications, @run_state_machine)", { concurrency: 1 }, () => {
 	if (!model) {
 		it.skip("RUMMY_TEST_MODEL not set — skipping", () => {});
 		return;

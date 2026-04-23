@@ -19,7 +19,7 @@ export default class Cp {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
-		const VALID = { promoted: 1, demoted: 1, archived: 1 };
+		const VALID = { visible: 1, summarized: 1, archived: 1 };
 		const visibility = VALID[entry.attributes.visibility]
 			? entry.attributes.visibility
 			: undefined;

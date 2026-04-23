@@ -6,11 +6,11 @@ model-facing behavior. This document defines everything else.
 
 ---
 
-## 0. The Contract
+## The Contract {#the_contract}
 
 Rummy has one contract. Every actor speaks it.
 
-### 0.1 Entries
+### Entries {#entries}
 
 An entry is the sole unit of state the contract names. Every entry
 carries:
@@ -20,25 +20,25 @@ carries:
 | **path** | Identity. `scheme://locator` or bare filepath. |
 | **body** | Content (text). |
 | **attributes** | JSON bag of structured metadata. |
-| **fidelity** | `promoted \| demoted \| archived`. What the model sees of this entry next turn. Visibility. |
+| **visibility** | `visible \| summarized \| archived`. What the model sees of this entry next turn. |
 | **state** | `proposed \| streaming \| resolved \| failed \| cancelled`. Where the entry is in its lifecycle. |
 | **outcome** | Short reason string when state ∈ {failed, cancelled}. Opaque to most callers; a few plugins parse it. |
 | **writer** | Which tier wrote it last. |
 | **scope** | `run:N \| project:N \| global`. Determines namespace and readership. |
 
-Fidelity and state are independent axes. An entry can be `state=resolved,
-fidelity=archived` (complete and hidden) or `state=streaming,
-fidelity=demoted` (in-flight, shown as summary) or `state=proposed,
-fidelity=promoted` (visible, awaiting resolution).
+Visibility and state are independent axes. An entry can be `state=resolved,
+visibility=archived` (complete and hidden) or `state=streaming,
+visibility=summarized` (in-flight, shown as summary) or `state=proposed,
+visibility=visible` (visible, awaiting resolution).
 
-### 0.2 Six primitives
+### Six Primitives {#primitives}
 
 The entire grammar for changing entries:
 
 | Verb | Effect |
 |------|--------|
-| **set** | Create or update an entry. Writes content, state, fidelity, attributes. |
-| **get** | Promote an entry to `fidelity=promoted`. The read-with-side-effect. |
+| **set** | Create or update an entry. Writes content, state, visibility, attributes. |
+| **get** | Promote an entry to `visibility=visible`. The read-with-side-effect. |
 | **rm** | Remove an entry from the caller's view (or delete it when scope permits). |
 | **cp** | Copy an entry to a new path. |
 | **mv** | Rename an entry to a new path. |
@@ -51,7 +51,7 @@ proposed entry; on user accept, a stream plugin drives body appends
 via `set` and eventually a state transition to `resolved`. The
 primitives are the atoms; tools are the molecules.
 
-### 0.3 Three surfaces, one grammar
+### Three Surfaces, One Grammar {#surfaces}
 
 | Actor | Syntax |
 |-------|--------|
@@ -64,7 +64,7 @@ Syntactic skins over the same semantics. A plugin calling
 emitting `<set/>` are the same event at the store layer, authorized by
 the respective writer identity against the scheme's permissions.
 
-### 0.4 Four writer tiers
+### Four Writer Tiers {#writer_tiers}
 
 A strict hierarchy of writer identities. Each tier is a superset of
 what's below it:
@@ -80,7 +80,7 @@ Every scheme declares `writable_by` as a subset of `{system, plugin,
 client, model}`. A write from an identity outside that subset rejects
 with state=failed, outcome="permission:403".
 
-### 0.5 Runs are entries
+### Runs Are Entries {#runs_are_entries}
 
 Starting a run is not a separate API — it is a `set` to
 `run://{alias}` with a prompt body and attributes carrying model,
@@ -91,7 +91,7 @@ is a state transition on that entry's path.
 
 The lifecycle API is the entry grammar. No parallel verb set.
 
-### 0.6 Events & filters
+### Events & Filters {#events_and_filters}
 
 Between the primitive-write layer and the actual work, rummy is a
 hooks-and-filters system. Plugins subscribe to events (fire-and-forget
@@ -114,13 +114,13 @@ Priority determines ordering. Lower numbers run first.
 calls `assembly.system.filter(systemPrompt, ctx)` and
 `assembly.user.filter("", ctx)`. Everything else is plugins.
 
-### 0.7 Physical layout
+### Physical Layout {#physical_layout}
 
 The contract is realized across two tables plus a compat view:
 
 - **`entries`** — content layer. `(scope, path)` unique. Body,
   attributes, hash, tokens.
-- **`run_views`** — per-run projection. Fidelity, state, outcome,
+- **`run_views`** — per-run projection. Visibility, state, outcome,
   turn, loop. A run sees an entry only if it has a view row.
 - **`known_entries`** — compatibility VIEW joining the two for legacy
   SELECT queries. Not writable.
@@ -132,14 +132,14 @@ directly.
 
 ---
 
-## 1. The Known Store
+## The Known Store {#known_store}
 
 All model-facing state is stored across two tables joined via the
 `known_entries` compatibility VIEW. Files, knowledge, tool results,
 skills, audit — everything is a keyed entry with a URI path, body,
-attributes, per-run status, and per-run fidelity.
+attributes, per-run status, and per-run visibility.
 
-### 1.1 Schema
+### Schema {#schema}
 
 **Content layer** — `entries` (shared, scope-owned):
 
@@ -166,7 +166,7 @@ entries (
 ```sql
 run_views (
     id, run_id, entry_id, loop_id, turn,
-    status INTEGER, fidelity TEXT,
+    status INTEGER, visibility TEXT,
     write_count, refs, created_at, updated_at,
     UNIQUE (run_id, entry_id)
 )
@@ -177,12 +177,12 @@ run_views (
 | `run_id`, `entry_id` | (run, entry) unique pair. Absent view = not in context. |
 | `loop_id`, `turn` | Freshness — when this run last touched the entry. |
 | `status` | HTTP status code — outcome of the run's last operation on this entry. |
-| `fidelity` | `promoted` \| `demoted` \| `archived`. The run's relationship to the entry. |
+| `visibility` | `visible` \| `summarized` \| `archived`. The run's relationship to the entry. |
 | `write_count` | How many times this run has written this entry. |
 
 **Compatibility view** — `known_entries` joins the two tables so
 legacy SELECT queries keep working. Not writable; new write code must
-target `entries` + `run_views` directly (see §1.4).
+target `entries` + `run_views` directly (see [upsert_semantics](#upsert_semantics)).
 
 **No shadowing.** A run cannot override a global (or project-scoped)
 entry with a run-scoped copy of the same path. Scope is resolved from
@@ -199,21 +199,22 @@ rows — no body copies, O(row-count) rather than O(body-bytes).
 A forked child's subsequent writes diverge by creating new entries
 at the child's scope; the parent's entries stay untouched.
 
-### 1.2 Schemes, Status & Fidelity
+### Schemes, Status & Visibility {#schemes_status_visibility}
 
 Every entry has two independent dimensions: **status** (HTTP integer —
-view-side) and **fidelity** (visibility level — view-side). These are
-separate concerns.
+view-side) and **visibility** (what the model sees — view-side). These
+are separate concerns.
 
 **Status** (operation outcome): 200 (OK), 202 (proposed), 400 (bad
 request), 403 (permission denied), 404 (not found), 409 (conflict),
 413 (too large), 499 (aborted), 500 (error).
 
-**Fidelity** (visibility in the run's context): `promoted` (body
-visible), `demoted` (path + attrs visible, body hidden; promote via
-`<get>`), `archived` (invisible; retrievable via pattern search).
+**Visibility** (the model's view in the run's context): `visible` (body
+shown), `summarized` (path + attrs shown, body hidden or condensed;
+promote via `<get>`), `archived` (invisible; retrievable via pattern
+search).
 
-Lifecycle events (budget Turn Demotion, fork copy) change `fidelity`
+Lifecycle events (budget Turn Demotion, fork copy) change `visibility`
 but never `status` — status stays truthful about the last body
 operation. See `demote_turn_entries` in `known_store.sql`.
 
@@ -246,7 +247,7 @@ Every entry plays one of four roles:
 | `tool://` | audit | `system` | Internal plugin metadata. `model_visible = 0`. |
 | `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | audit | `system` | Audit entries. `model_visible = 0`. Written only by server-level code. |
 
-### 1.3 Scheme Registry
+### Scheme Registry {#scheme_registry}
 
 The `schemes` table is a bootstrap registry — rows of
 `(name, model_visible, category, default_scope, writable_by)`.
@@ -264,9 +265,9 @@ scope, writableBy})` in the constructor. Defaults:
   (`model` \| `plugin` \| `system` \| `client`). `Entries.set` throws
   `PermissionError` when the caller's writer isn't in the list.
 
-### 1.4 UPSERT Semantics
+### UPSERT Semantics {#upsert_semantics}
 
-Writes go through `Entries.set({runId, path, body, state?, fidelity?,
+Writes go through `Entries.set({runId, path, body, state?, visibility?,
 attributes?, outcome?, turn?, loopId?, writer?, projectId?, ...})`
 — two-prep flow:
 
@@ -281,7 +282,7 @@ future concern).
 
 ---
 
-## 2. Relational Tables
+## Relational Tables {#relational_tables}
 
 The K/V store is the memory. Relational tables are the skeleton.
 
@@ -299,9 +300,9 @@ turns    (id, run_id, loop_id, sequence, context_tokens,
           created_at)
 
 file_constraints (id, project_id, pattern, visibility, created_at)
-  -- Project-level config. NOT tool dispatch. See §2.3.
+  -- Project-level config. NOT tool dispatch. See [file_constraints](#file_constraints).
 turn_context     (id, run_id, loop_id, turn, ordinal, path, scheme,
-                  status, fidelity, body, tokens, attributes,
+                  status, visibility, body, tokens, attributes,
                   category, source_turn)
 rpc_log          (id, project_id, method, rpc_id, params, result, error)
 ```
@@ -313,7 +314,7 @@ name can access any run. Temperature, persona, and context_limit are per-run.
 Clients can add/remove models at runtime via RPC. No default model — the
 client picks for every run.
 
-### 2.1 Run State Machine
+### Run State Machine {#run_state_machine}
 
 All status fields are HTTP integer codes. `runs.status` transitions
 are enforced by `trg_run_state_transition` (see initial migration):
@@ -330,13 +331,13 @@ are enforced by `trg_run_state_transition` (see initial migration):
 All terminal states (200/500/499) allow transition back to running.
 Runs are long-lived.
 
-### 2.2 Loops Table
+### Loops Table {#loops_table}
 
 The loops table IS the prompt queue. Each `ask`/`act` creates a loop.
 FIFO per run (ordered by sequence). One active at a time. Abort stops
 the current loop; pending loops survive. Projects > runs > loops > turns.
 
-### 2.3 File Constraints
+### File Constraints {#file_constraints}
 
 The `file_constraints` table is project-level configuration — it
 defines which files a project cares about. This is backbone, not tool
@@ -350,7 +351,7 @@ dispatch. Constraints have three visibilities:
 project-config write. Promoting/demoting the matching entries is tool
 dispatch that goes through the handler chain with budget enforcement.
 These are separate operations: constraint persists across runs, entry
-fidelity is scoped to a run and subject to the same budget rules as
+visibility is scoped to a run and subject to the same budget rules as
 a model `<get>`.
 
 `store` RPC manages constraints directly — it is not a model tool.
@@ -358,9 +359,9 @@ a model `<get>`.
 
 ---
 
-## 3. Entry-Driven Dispatch
+## Entry-Driven Dispatch {#entry_driven_dispatch}
 
-### 3.1 Unified API
+### Unified API {#unified_api}
 
 Three callers share a tool vocabulary. The invocation shape is
 per-tier; params shape is not uniform across tiers.
@@ -388,7 +389,7 @@ search. The model writes `known` and `unknown` entries via
 plugins don't advertise their own tag name — they render and filter.
 Client tier requires project init. Plugin tier has no restrictions.
 
-### 3.2 Dispatch Path
+### Dispatch Path {#dispatch_path}
 
 Each tier feeds into the shared tool handler chain, but through a
 different entry point:
@@ -430,12 +431,12 @@ turn as a continuation. Multiple `<update>` tags → last signal wins.
 **Post-dispatch budget check:** After all tools dispatch, the budget
 plugin re-materializes context and checks the ceiling
 (`hooks.budget.postDispatch`). If context exceeds the ceiling, Turn
-Demotion fires — all promoted `run_views` rows for the current turn
-have their `fidelity` flipped to `demoted`, and a `budget://` entry is
-written. Status is NOT touched (see §1.2). The tools already ran;
+Demotion fires — all `visible` `run_views` rows for the current turn
+have their `visibility` flipped to `summarized`, and a `budget://` entry is
+written. Status is NOT touched (see [schemes_status_visibility](#schemes_status_visibility)). The tools already ran;
 their outcomes are settled.
 
-### 3.3 Plugin Convention
+### Plugin Convention {#plugin_convention}
 
 A plugin is an instantiated class. The class name matches the file name.
 The constructor receives `core` (a PluginContext) — the plugin's
@@ -450,8 +451,8 @@ export default class Rm {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("promoted", this.full.bind(this));
-        core.on("demoted", this.summary.bind(this));
+        core.on("visible", this.full.bind(this));
+        core.on("summarized", this.summary.bind(this));
     }
 
     async handler(entry, rummy) {
@@ -465,8 +466,8 @@ export default class Rm {
 
 **Registration verbs on PluginContext:**
 - `"handler"` — tool handler (dispatches when a matching entry is recorded).
-- `"promoted"` / `"demoted"` — fidelity view projections. Return the
-  projected body string for the given fidelity level.
+- `"visible"` / `"summarized"` — visibility view projections. Return the
+  projected body string for the given visibility level.
 - Any hook name (e.g. `"turn.started"`, `"entry.created"`) — subscribes
   to that event.
 - `core.filter(name, callback, priority)` — subscribes to a filter chain.
@@ -476,7 +477,7 @@ export default class Rm {
 - `rummy` argument — RummyContext (per-turn). For runtime: tool verbs, queries.
 
 **Plugin types:**
-- **Tool plugins**: register `handler` + `promoted`/`demoted`. Model-invokable.
+- **Tool plugins**: register `handler` + `visible`/`summarized`. Model-invokable.
 - **Assembly plugins**: register `core.filter("assembly.system"|"assembly.user", ...)`. Own a packet tag.
 - **Infrastructure plugins**: subscribe to lifecycle events
   (`turn.started`, `turn.response`, `turn.completed`, `entry.created`,
@@ -484,7 +485,7 @@ export default class Rm {
 
 A plugin can be multiple types. Known is a tool AND an assembly plugin.
 
-### 3.4 Mode Enforcement
+### Mode Enforcement {#mode_enforcement}
 
 Two mechanisms, operating at different layers:
 
@@ -500,7 +501,7 @@ Two mechanisms, operating at different layers:
    status 403 and emits `error://`. The tool remains advertised; the
    specific invocation is blocked.
 
-### 3.5 Streaming Entries
+### Streaming Entries {#streaming_entries}
 
 Producers that generate output over time (shell commands, web fetches,
 log tails, file watches) use the streaming-entry pattern. Entry
@@ -523,7 +524,7 @@ lifecycle extends beyond the synchronous 202→200/400+ flow.
 
 {scheme}://turn_N/{slug}_1   category=data      status=102 → 200/500
                              body: primary stream (stdout for shell)
-                             summary="{command}" fidelity=demoted
+                             summary="{command}" visibility=summarized
                              (renders in <knowns>)
 
 {scheme}://turn_N/{slug}_2   category=data      status=102 → 200/500
@@ -549,20 +550,20 @@ aborted via `stream/aborted`). The log entry is rewritten with final
 stats (exit code, duration, channel sizes, or abort reason).
 
 **Budget demotion preserves status.** A 102 entry demoted by Turn
-Demotion stays at 102 — status reflects operation outcome, fidelity
-reflects visibility. See §1.2 for the status-vs-fidelity separation.
+Demotion stays at 102 — status reflects operation outcome, visibility
+reflects visibility. See [schemes_status_visibility](#schemes_status_visibility) for the status-vs-visibility separation.
 
-**Stream plugin (§6) owns the append and completion RPCs.** Producer
+**Stream plugin ([plugin_system](#plugin_system)) owns the append and completion RPCs.** Producer
 plugins (sh, env) create the proposal and data entries; the stream
 plugin handles the subsequent growth and terminal transitions.
 
 ---
 
-## 4. Message Structure
+## Message Structure {#message_structure}
 
 Two messages per turn. System = stable truth. User = active task.
 
-### 4.1 Packet Structure
+### Packet Structure {#packet_structure}
 
 ```
 [system message]
@@ -574,14 +575,14 @@ Two messages per turn. System = stable truth. User = active task.
         → turn → updated_at
     </knowns>
     <previous>
-        (pre-loop entries, each with turn, status, fidelity, tokens)
+        (pre-loop entries, each with turn, status, visibility, tokens)
     </previous>
 [user message]
     <performed>
-        (current loop entries, each with turn, status, fidelity, tokens)
+        (current loop entries, each with turn, status, visibility, tokens)
     </performed>
     <unknowns>
-        (open questions, each with path, turn, fidelity, tokens)
+        (open questions, each with path, turn, visibility, tokens)
     </unknowns>
     <prompt mode="ask|act" tokenUsage="N" tokensFree="M">user prompt</prompt>
 ```
@@ -598,7 +599,7 @@ is extracted from its chronological position and placed last for maximum
 recency. The `<prompt>` element carries `tokenUsage` / `tokensFree`
 attributes so the model can do budget arithmetic in-line with the cause.
 
-### 4.2 Loops, Previous, and Performed
+### Loops, Previous, and Performed {#loops_previous_performed}
 
 A **loop** is one `ask` or `act` invocation and all its continuation
 turns until `<update status="200">`, fail, or abort.
@@ -617,7 +618,7 @@ When a new prompt arrives on an existing run, the prior loop's
 `<performed>` content plus its prompt move to `<previous>`. When a loop
 continues (next turn), new results append to `<performed>`.
 
-### 4.3 Key Entries
+### Key Entries {#key_entries}
 
 | Path | Lifetime | Body | Attributes |
 |------|----------|------|-----------|
@@ -631,7 +632,7 @@ framework auto-populates `toolDescriptions` from tool registrations
 that include `docs`. The instructions projection assembles the final
 text from body + attributes.
 
-### 4.4 Materialization
+### Materialization {#materialization}
 
 Each turn:
 
@@ -640,7 +641,7 @@ Each turn:
 3. Resolve the instructions system prompt (`hooks.instructions.resolveSystemPrompt`)
 4. Query `v_model_context` VIEW → visible entries (joined from
    `run_views` + `entries` + `schemes`)
-5. Project each entry through its scheme's `promoted`/`demoted` projection
+5. Project each entry through its scheme's `visible`/`summarized` projection
 6. Insert projected rows into `turn_context`
 7. Invoke `assembly.system` filter chain (instructions text as base):
    - Known plugin (priority 100) → `<knowns>` section
@@ -652,11 +653,11 @@ Each turn:
      `tokenUsage` / `tokensFree` attrs when `contextSize` is set)
 9. Store as `system://N` and `user://N` audit entries (telemetry plugin)
 
-The VIEW determines visibility from `fidelity` and `status`:
-- `fidelity = 'promoted'` → full body visible in `<knowns>` / `<performed>`.
-- `fidelity = 'demoted'` → demoted projection visible (typically path +
+The VIEW determines visibility from `visibility` and `status`:
+- `visibility = 'visible'` → full body visible in `<knowns>` / `<performed>`.
+- `visibility = 'summarized'` → summarized projection visible (typically path +
   summary attr). Promote with `<get>` to expand.
-- `fidelity = 'archived'` → invisible. Discoverable via pattern search
+- `visibility = 'archived'` → invisible. Discoverable via pattern search
   (`<get path="known://*">keyword</get>`); promote to bring back into view.
 - `status = 202` → invisible (proposed, pending client resolution).
 - `model_visible = 0` → invisible (audit schemes: instructions, system,
@@ -664,16 +665,16 @@ The VIEW determines visibility from `fidelity` and `status`:
 
 **Partial read:** `<get path="..." line="N" limit="M"/>` returns lines N
 through N+M−1 of the entry body as the log item without changing
-fidelity or promoting the entry to context. Use after reading a
+visibility or promoting the entry to context. Use after reading a
 demoted entry (which shows path + summary) to target a specific slice.
 Single-path only — glob or body filter with `line`/`limit` is a 400 error.
 
-Model controls fidelity via `<set>` attributes:
-`fidelity="archived|demoted|promoted"`. The `summary="..."` attribute
-attaches a description (≤ 80 chars) that persists across fidelity
+Model controls visibility via `<set>` attributes:
+`visibility="archived|summarized|visible"`. The `summary="..."` attribute
+attaches a description (≤ 80 chars) that persists across visibility
 changes.
 
-### 4.5 Budget Enforcement
+### Budget Enforcement {#budget_enforcement}
 
 The model owns its context. The system enforces a hard ceiling and
 surfaces the numbers — it does not automatically manage entries.
@@ -690,7 +691,7 @@ the LLM call). Measures the assembled messages (using
 
 - `assembledTokens ≤ ceiling` → return 200, proceed to LLM.
 - `assembledTokens > ceiling` on the first turn of a loop → **Prompt
-  Demotion**: demote the incoming `prompt://N` entry to `fidelity =
+  Demotion**: demote the incoming `prompt://N` entry to `visibility =
   demoted`, re-materialize, re-check. If the retry fits, proceed.
 - `assembledTokens > ceiling` on a non-first turn, or still over after
   Prompt Demotion → return 413. AgentLoop exits the loop with 413.
@@ -698,8 +699,8 @@ the LLM call). Measures the assembled messages (using
 **Post-dispatch Turn Demotion** (`hooks.budget.postDispatch`, after
 all tool dispatches complete). Re-materializes end-of-turn context
 and re-checks. If still over the ceiling, flips every `run_views` row
-for this turn from `fidelity = promoted` to `fidelity = demoted`
-(status preserved — see §1.2) and writes a `budget://{loopId}/{turn}`
+for this turn from `visibility = visible` to `visibility = summarized`
+(status preserved — see [schemes_status_visibility](#schemes_status_visibility)) and writes a `budget://{loopId}/{turn}`
 entry summarizing what was demoted and stating the 50% rule for the
 next turn. The model sees the `budget://` entry next turn and adjusts.
 
@@ -750,11 +751,11 @@ These two will diverge rapidly on any multi-turn run. A run at turn 50 might sho
 
 ---
 
-## 5. RPC Protocol
+## RPC Protocol {#rpc_protocol}
 
 JSON-RPC 2.0 over WebSocket. `discover` returns the live catalog.
 
-### 5.1 Methods
+### Methods {#rpc_methods}
 
 #### Protocol
 
@@ -807,7 +808,7 @@ be added explicitly by the client).
 `noInteraction` removes `ask_user` from the tool list.
 `noWeb` removes `search` from the tool list.
 
-#### Streaming (§3.5)
+#### Streaming (see [streaming_entries](#streaming_entries))
 
 | Method | Params |
 |--------|--------|
@@ -847,7 +848,7 @@ connected clients). `stream/cancel` also handles stale 102 cleanup.
 Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
 `RUMMY_HOME/personas/{name}.md`.
 
-### 5.2 Notifications
+### Notifications {#notifications}
 
 | Notification | Scoped by | Purpose |
 |-------------|-----------|---------|
@@ -875,7 +876,7 @@ notification and `getRun` RPC:
       "status": 200,
       "body": "Donald Trump is the 47th president…",
       "turn": 4,
-      "attributes": "{\"summary\":\"president,current,trump\",\"fidelity\":\"promoted\"}"
+      "attributes": "{\"summary\":\"president,current,trump\",\"visibility\":\"visible\"}"
     }
   ],
   "unknowns": [{ "path": "unknown://…", "body": "…" }],
@@ -893,7 +894,7 @@ block (token usage, context distribution, cost).
 already transitioned the entries to 499 (`Client Closed Request`);
 client should stop sending `stream` chunks for that path.
 
-### 5.3 Resolution
+### Resolution {#resolution}
 
 | Resolution | Model signal | Outcome |
 |-----------|-------------|---------|
@@ -905,7 +906,7 @@ client should stop sending `stream` chunks for that path.
 
 ---
 
-## 6. Plugin System
+## Plugin System {#plugin_system}
 
 See [PLUGINS.md](PLUGINS.md) for the full plugin development guide,
 including the RummyContext API, tool registration, handler chains,
@@ -915,7 +916,7 @@ Each plugin has its own README at `src/plugins/{name}/README.md`.
 
 ---
 
-## 7. Tool Documentation Design
+## Tool Documentation Design {#tool_documentation}
 
 Tool docs are the most carefully designed text in rummy. Every line
 simultaneously teaches syntax, implies workflow priority, demonstrates
@@ -934,7 +935,7 @@ docs demonstrate `<get path="known://*">keyword</get>` for pattern recall
 and `<get path="..." line="N" limit="M"/>` for partial reads that don't
 promote. The known docs reference `<get path="known://*">keyword</get>`
 for recall. The unknown docs reference `<set path="unknown://..."
-fidelity="archived"/>` for retiring resolved questions, `<get/>` for
+visibility="archived"/>` for retiring resolved questions, `<get/>` for
 investigation. A model reading the full tool docs encounters a coherent
 workflow: discover → load → reason → edit → archive → recall.
 
@@ -989,7 +990,7 @@ are universal — not a feature of any single tool.
 
 ---
 
-## 8. Hedberg Editing Syntax
+## Hedberg Editing Syntax {#hedberg}
 
 The model picks its preferred edit format. The parser understands all of them:
 
@@ -1004,7 +1005,7 @@ The model picks its preferred edit format. The parser understands all of them:
 
 ---
 
-## 9. Response Healing
+## Response Healing {#response_healing}
 
 The server never throws on model output. "Model behavior" is never an
 acceptable explanation. Recovery order:
@@ -1034,7 +1035,7 @@ Format normalization:
 
 ---
 
-## 10. Testing
+## Testing {#testing}
 
 | Tier | Location | LLM? |
 |------|----------|------|
@@ -1046,32 +1047,44 @@ Format normalization:
 E2E tests must NEVER mock the LLM. Environment cascade:
 `.env.example` → `.env` → `.env.test`. Always use `npm run test:*`.
 
-### 10.1 Spec-Anchored Testing
+### Spec-Anchored Testing {#spec_anchored_testing}
 
-Integration and e2e tests MUST be anchored to SPEC.md's numeric
-system. The rule is bidirectional:
+Integration and e2e tests MUST be anchored to SPEC.md's snake_case
+anchor system. The rule is bidirectional:
 
-1. **Every numbered section in SPEC.md has at least one integration
-   or e2e test that references it.** The reference is literal: a
-   `§X.Y` or `§X.Y.Z` token appearing in the test file (suite name,
-   test name, or comment). A section without a test reference is a
-   spec with no verified guarantee.
+1. **Every SPEC.md heading with a `{#snake_case_id}` anchor has at
+   least one integration or e2e test that references it.** The
+   reference is literal: an `@snake_case_id` token appearing in the
+   test file (suite name, test name, or comment). A heading without
+   a test reference is a spec with no verified guarantee.
 2. **Every integration or e2e test is attributed to at least one
-   §-reference.** A test describing behavior that isn't in SPEC
+   `@`-reference.** A test describing behavior that isn't in SPEC
    either adds the behavior to SPEC or isn't under the integration
    / e2e tiers.
 
-Enforcement: `npm run test:spec` parses SPEC.md's numbered
-headings and greps `test/integration/` + `test/e2e/` for `§X.Y[.Z]`
-references. Missing references fail the script. The check runs in
-CI and blocks merges.
+Enforcement: `npm run test:spec` parses SPEC.md's `{#id}` anchors
+and greps `test/integration/` + `test/e2e/` for `@id` references.
+Missing references fail the script. The check runs in CI and blocks
+merges.
 
 Unit tests (`src/**/*.test.js`) are exempt — they verify
 implementation details, not spec guarantees.
 
+**Why snake_case, not numeric `§X.Y`:** slugs are stable identifiers
+independent of section ordering. Numbering required a rewrite of
+every test reference whenever SPEC.md reorganized. Slugs never
+churn — rename a section's text, leave the anchor, no tests break.
+
+**Anchor naming rules:**
+- Lowercase `[a-z0-9_]`, underscores for word separation.
+- Unique across the whole document.
+- Stable once published: treat as a permanent identifier; renames
+  are a breaking change requiring a test sweep.
+- Short and semantic (`entries`, not `section_0_1_the_entry_contract`).
+
 ---
 
-## 11. SQL Functions
+## SQL Functions {#sql_functions}
 
 | Function | Purpose |
 |----------|---------|
@@ -1086,7 +1099,7 @@ See [PLUGINS.md](PLUGINS.md) for the hedberg pattern type reference.
 
 ---
 
-## 13. Debugging: E2E and Benchmark Results
+## Debugging: E2E and Benchmark Results {#debugging}
 
 ### E2E test failures
 
@@ -1107,7 +1120,7 @@ The dump format is: `scheme:state path {attributes}\n  body (120 chars)` grouped
 
 Key things to look for in a dump:
 - **202**: unresolved proposals — model issued `<sh>`, `<rm>`, or `<mv>` that needs approval
-- **413**: budget overflow — assembled context exceeded ceiling (see §4.5 Prompt/Turn Demotion)
+- **413**: budget overflow — assembled context exceeded ceiling (see [budget_enforcement](#budget_enforcement))
 - **403**: policy rejection (ask-mode file writes) or permission denial (writer ∉ `writable_by`)
 - **`budget://` entries**: Turn Demotion fired — model received a directive to demote promotions next turn
 - **`error://` entries**: runtime errors (parser warnings, cycle/stall detection, policy rejections, dispatch crashes)
@@ -1135,7 +1148,7 @@ Run with: `npm run test:lme`
 
 ---
 
-## 12. Configuration
+## Configuration {#configuration}
 
 Full reference is `.env.example` — these are the load-bearing vars.
 

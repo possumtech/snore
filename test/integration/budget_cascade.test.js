@@ -1,3 +1,10 @@
+/**
+ * Budget ceiling enforcement.
+ *
+ * Covers @budget_enforcement — the pre-LLM check that materialized
+ * context fits under `ceiling(contextSize)`, returning overflow
+ * when it doesn't.
+ */
 import assert from "node:assert";
 import { after, before, beforeEach, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
@@ -8,7 +15,7 @@ function pad(n) {
 	return Array(n).fill("hello world test data").join(" ");
 }
 
-describe("Budget — ceiling check", () => {
+describe("budget ceiling check (@budget_enforcement)", () => {
 	let tdb, store, cascade, RUN_ID;
 
 	before(async () => {

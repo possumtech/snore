@@ -1,8 +1,8 @@
 /**
  * Prompt attrs math verification.
  *
- * The `<prompt>` element carries two numeric attrs the model reads to
- * do budget arithmetic:
+ * Covers @key_entries, @budget_enforcement — the `<prompt>` element
+ * carries numeric attrs the model reads to do budget arithmetic:
  *   tokenUsage="N" tokensFree="M"
  *
  * Contract:

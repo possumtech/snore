@@ -1,5 +1,8 @@
 /**
- * Schema V2 Phase D — scope + permissions end-to-end.
+ * Scope and permissions end-to-end.
+ *
+ * Covers @writer_tiers, @scheme_registry — which writer tiers may
+ * write which schemes.
  *
  * Verifies:
  * - Default writable_by for plugin-declared schemes allows model + plugin.

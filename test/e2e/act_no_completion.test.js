@@ -48,7 +48,7 @@ async function dumpRun(db, alias) {
 	}
 }
 
-describe("E2E: run completion after set-only final turn", {
+describe("E2E: run completion after set-only final turn (@resolution, @run_state_machine)", {
 	concurrency: 1,
 }, () => {
 	if (!model) {

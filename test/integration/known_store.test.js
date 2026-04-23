@@ -1,9 +1,16 @@
+/**
+ * Entries store integration.
+ *
+ * Covers @known_store, @schema, @upsert_semantics — the content
+ * layer (entries table) and view layer (run_views) and the rules
+ * that govern writing, reading, and querying them.
+ */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("Entries integration", () => {
+describe("Entries integration (@known_store, @schema, @upsert_semantics)", () => {
 	let tdb;
 	let store;
 	let RUN_ID;

@@ -1,6 +1,10 @@
 /**
  * Budget math verification.
  *
+ * Covers @budget_enforcement — the numeric correctness of ceiling,
+ * assembled-token measurement, and overflow computation that feed
+ * the accept/reject decision in `budget.enforce`.
+ *
  * Proves that:
  * - Token counts in turn_context reflect ACTUAL context cost, not full-visibility cost
  * - Budget enforcement measures assembled messages accurately

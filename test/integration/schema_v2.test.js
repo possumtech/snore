@@ -1,6 +1,8 @@
 /**
- * Schema V2 invariants — constraint-level claims from SPEC §1.1 / §1.2
- * that the database layer enforces.
+ * Schema V2 invariants.
+ *
+ * Covers @schema, @schemes_status_visibility — constraint-level
+ * claims the database layer enforces.
  *
  * Not covered here:
  * - "`known_entries` is a read-only VIEW" is a SQLite guarantee (views

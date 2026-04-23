@@ -7,7 +7,7 @@ import TestDb from "../helpers/TestDb.js";
 let RUN_ID;
 const TURN = 1;
 
-describe("turn_context distribution bucket correctness", () => {
+describe("turn_context distribution bucket correctness (@materialization)", () => {
 	let tdb;
 	let store;
 

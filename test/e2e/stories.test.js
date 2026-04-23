@@ -129,7 +129,7 @@ async function _acceptAll(client, result, db, projectRoot) {
 	return current;
 }
 
-describe("E2E Stories", { concurrency: 1 }, () => {
+describe("E2E Stories (@dispatch_path, @resolution, @unified_api)", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-stories-${Date.now()}`);

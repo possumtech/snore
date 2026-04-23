@@ -21,7 +21,7 @@ async function waitForRunStatus(db, alias, targetStatuses, timeoutMs) {
 	return null;
 }
 
-describe("E2E: hydrology demo scenario reproduction", {
+describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_machine)", {
 	concurrency: 1,
 }, () => {
 	if (!model) {

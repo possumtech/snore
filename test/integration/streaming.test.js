@@ -1,7 +1,8 @@
 /**
  * Streaming integration tests.
  *
- * Covers the storage-layer half of the streaming entry pipeline:
+ * Covers @streaming_entries — the storage-layer half of the
+ * streaming entry pipeline:
  * - appendBody grows an entry's body and recomputes tokens
  * - Negative line with streamed content performs tail reads correctly
  * - Status transitions through 202 (proposal) → 102 (running) → 200/500

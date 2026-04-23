@@ -1,8 +1,9 @@
 /**
  * Mode enforcement integration test.
  *
- * Verifies that ask mode rejects file mutations and <sh> while
- * allowing K/V operations.
+ * Covers @mode_enforcement — ask mode rejects file mutations and
+ * <sh>; act mode allows them. Also covers the tool-exclusion flags
+ * (noInteraction, noWeb, noProposals) applied before each loop.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";

@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("State lock: proposed entries block execution", () => {
+describe("State lock: proposed entries block execution (@run_state_machine)", () => {
 	let tdb, store, RUN_ID;
 
 	before(async () => {
