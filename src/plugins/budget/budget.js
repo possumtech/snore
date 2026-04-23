@@ -26,14 +26,20 @@ export default class Budget {
 	}
 
 	#overflowBody(overflow, contextSize, demotedCount, demotedTokens) {
-		return [
-			`Token Budget overflow: exceeded by ${overflow} tokens. Ceiling: ${ceiling(contextSize)}.`,
-			`Your ${demotedCount} promotions from last turn (${demotedTokens} tokens total) were demoted to fit.`,
-			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
-		].join("\n");
+		const cap = ceiling(contextSize);
+		const size = cap + overflow;
+		return `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${demotedCount} promotion${demotedCount === 1 ? "" : "s"} (${demotedTokens} tokens) demoted to fit.`;
 	}
 
-	async #emitOverflow({ message, runId, turn, loopId, rummy }) {
+	async #emitOverflow({
+		message,
+		runId,
+		turn,
+		loopId,
+		rummy,
+		demotedCount = 0,
+		demotedTokens = 0,
+	}) {
 		await rummy.hooks.error.log.emit({
 			store: rummy.entries,
 			runId,
@@ -41,6 +47,7 @@ export default class Budget {
 			loopId,
 			message,
 			status: 413,
+			attributes: { demotedCount, demotedTokens },
 		});
 	}
 
@@ -75,8 +82,9 @@ export default class Budget {
 		if (first.ok) return first;
 
 		if (ctx?.loopIteration !== 1) {
+			const cap = ceiling(contextSize);
 			await this.#emitOverflow({
-				message: `Token Budget overflow: exceeded by ${first.overflow} tokens. Ceiling: ${ceiling(contextSize)}.`,
+				message: `Token Budget overflow: packet was ${cap + first.overflow} tokens, ceiling is ${cap}.`,
 				runId: ctx.runId,
 				turn: ctx.turn,
 				loopId: ctx.loopId,
@@ -114,8 +122,9 @@ export default class Budget {
 			lastPromptTokens: reMat.lastContextTokens,
 		});
 		if (!rechecked.ok) {
+			const cap = ceiling(contextSize);
 			await this.#emitOverflow({
-				message: `Token Budget overflow: exceeded by ${rechecked.overflow} tokens after demoting the prompt. Ceiling: ${ceiling(contextSize)}.`,
+				message: `Token Budget overflow: packet was ${cap + rechecked.overflow} tokens after demoting the prompt, ceiling is ${cap}.`,
 				runId: ctx.runId,
 				turn: ctx.turn,
 				loopId: ctx.loopId,
@@ -173,6 +182,8 @@ export default class Budget {
 				demotedEntries.length,
 				totalDemoted,
 			),
+			demotedCount: demotedEntries.length,
+			demotedTokens: totalDemoted,
 			runId: ctx.runId,
 			turn: ctx.turn,
 			loopId: ctx.loopId,

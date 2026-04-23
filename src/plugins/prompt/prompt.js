@@ -61,18 +61,45 @@ export default class Prompt {
 
 		let budget = "";
 		if (contextSize) {
-			// Messages aren't assembled yet, so measure the projected
-			// row bodies — what each entry actually contributes to the
-			// packet at its current visibility. The 10% CEILING_RATIO
-			// headroom absorbs the per-entry tag/separator overhead
-			// that projected bodies don't include.
-			const totalTokens = measureRows(rows);
+			// Prefer last turn's actual API token count — it's the only
+			// measurement that reflects the true packet size the model
+			// sees. measureRows is ~3-7× under for XML-heavy packets
+			// (SPEC @budget_enforcement warns about this), so on turn 2+
+			// we always use the real number. Turn 1 has no prior to
+			// reference; the row estimate is the best available.
+			const totalTokens =
+				ctx.lastContextTokens > 0 ? ctx.lastContextTokens : measureRows(rows);
 			const { tokenUsage, tokensFree } = computeBudget({
-				rows,
 				contextSize,
 				totalTokens,
 			});
 			budget = ` tokenUsage="${tokenUsage}" tokensFree="${tokensFree}"`;
+		}
+
+		// Surface the most recent prior-turn budget demotion as a
+		// `reverted="N"` attribute on <prompt>. Historical error
+		// entries sit in <log> but read as ambient noise; this signal
+		// is dynamic and always fresh — the model sees that its
+		// promotions last turn were reverted, in the same spot where
+		// it reads budget numbers.
+		let reverted = "";
+		const priorTurn = ctx.turn - 1;
+		if (priorTurn >= 1) {
+			const priorDemotion = rows.find((r) => {
+				if (!r.path.startsWith(`log://turn_${priorTurn}/error/`)) return false;
+				const attrs =
+					typeof r.attributes === "string"
+						? JSON.parse(r.attributes)
+						: r.attributes;
+				return attrs?.status === 413 && attrs?.demotedCount > 0;
+			});
+			if (priorDemotion) {
+				const attrs =
+					typeof priorDemotion.attributes === "string"
+						? JSON.parse(priorDemotion.attributes)
+						: priorDemotion.attributes;
+				reverted = ` reverted="${attrs.demotedCount}"`;
+			}
 		}
 
 		const path = promptEntry ? ` path="${promptEntry.path}"` : "";
@@ -80,6 +107,6 @@ export default class Prompt {
 			? ` visibility="${promptEntry.visibility}"`
 			: "";
 		const tokens = promptEntry?.tokens ? ` tokens="${promptEntry.tokens}"` : "";
-		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${visibility}${tokens}>${body}</prompt>`;
+		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${reverted}${visibility}${tokens}>${body}</prompt>`;
 	}
 }

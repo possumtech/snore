@@ -33,30 +33,22 @@ export function measureRows(rows) {
  *
  * Returns:
  *   ceiling     — floor(contextSize × CEILING_RATIO), the hard wall
- *   totalTokens — echoed back
- *   tokenUsage  — sum of visible controllable entries' tokens
- *                 (data + logging, visibility=visible)
- *   tokensFree  — ceiling − totalTokens
+ *   totalTokens — echoed back (the full packet size the caller measured)
+ *   tokenUsage  — same as totalTokens. Kept under this name for the
+ *                 `<prompt tokenUsage="N">` attribute on the wire. Must
+ *                 agree with totalTokens so the model's math is honest.
+ *   tokensFree  — ceiling − totalTokens (floor 0)
  *   overflow    — max(0, totalTokens − ceiling)
  *   ok          — overflow === 0
  */
-export function computeBudget({ rows, contextSize, totalTokens }) {
+export function computeBudget({ contextSize, totalTokens }) {
 	const cap = ceiling(contextSize);
-	const tokenUsage = rows.reduce((sum, r) => {
-		if (
-			(r.category === "data" || r.category === "logging") &&
-			r.visibility === "visible"
-		) {
-			return sum + r.tokens;
-		}
-		return sum;
-	}, 0);
 	const tokensFree = Math.max(0, cap - totalTokens);
 	const overflow = Math.max(0, totalTokens - cap);
 	return {
 		ceiling: cap,
 		totalTokens,
-		tokenUsage,
+		tokenUsage: totalTokens,
 		tokensFree,
 		overflow,
 		ok: overflow === 0,

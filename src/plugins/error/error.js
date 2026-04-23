@@ -64,7 +64,15 @@ export default class ErrorPlugin {
 		state.turnErrors = 0;
 	}
 
-	async #onErrorLog({ store, runId, turn, loopId, message, status }) {
+	async #onErrorLog({
+		store,
+		runId,
+		turn,
+		loopId,
+		message,
+		status,
+		attributes,
+	}) {
 		const statusValue = status ?? 400;
 		const path = await store.logPath(runId, turn, "error", message);
 		await store.set({
@@ -75,7 +83,7 @@ export default class ErrorPlugin {
 			state: "failed",
 			outcome: `status:${statusValue}`,
 			loopId,
-			attributes: { status: statusValue },
+			attributes: { ...(attributes || {}), status: statusValue },
 		});
 		const state = this.#loopState.get(loopId);
 		if (state) state.turnErrors++;
