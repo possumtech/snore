@@ -4,7 +4,7 @@ XML Commands Available: [%TOOLS%]
 
 # Commands
 
-Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require Tool Command operations.
+Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require XML Command operations.
 Example: <set path="src/file.txt">new file content</set>
 Example: <get path="src/*.txt" preview/>
 
