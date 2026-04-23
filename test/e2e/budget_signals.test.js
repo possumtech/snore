@@ -1,0 +1,159 @@
+/**
+ * E2E: budget signals align with API ground truth.
+ *
+ * Covers @budget_enforcement. The integration-tier tests prove the
+ * wiring: if you pass lastContextTokens=X, you get tokenUsage=X on
+ * the `<prompt>` tag. This test proves that the value we pass and
+ * the value we get back AGREES with what the LLM actually charged
+ * — the `turns.prompt_tokens` column backfilled from LLM usage.
+ *
+ * What a failure here means: the model is being told one number
+ * for its packet size and getting charged a different one. That's
+ * the exact bug that let runs silently over-promote for weeks.
+ */
+import assert from "node:assert";
+import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, describe, it } from "node:test";
+import RpcClient from "../helpers/RpcClient.js";
+import TestDb from "../helpers/TestDb.js";
+import TestServer from "../helpers/TestServer.js";
+
+const model = process.env.RUMMY_TEST_MODEL;
+const TIMEOUT = 360_000;
+const POLL_INTERVAL_MS = 500;
+
+async function waitForRunStatus(db, alias, targetStatuses, timeoutMs) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const row = await db.get_run_by_alias.get({ alias });
+		if (row && targetStatuses.includes(row.status)) return row.status;
+		await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+	}
+	return null;
+}
+
+function promptAttrs(userBody) {
+	const m = userBody.match(/<prompt\b([^>]*)>/);
+	if (!m) return {};
+	const attrStr = m[1];
+	const attrs = {};
+	for (const pair of attrStr.matchAll(/(\w+)="([^"]*)"/g)) {
+		attrs[pair[1]] = pair[2];
+	}
+	return attrs;
+}
+
+describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
+	concurrency: 1,
+}, () => {
+	if (!model) {
+		it.skip("RUMMY_TEST_MODEL not set — skipping", () => {});
+		return;
+	}
+
+	let tdb, tserver, client;
+	const projectRoot = join(tmpdir(), `rummy-budget-${Date.now()}`);
+	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
+
+	before(async () => {
+		process.env.RUMMY_MAX_TURNS = "5";
+
+		await fs.mkdir(projectRoot, { recursive: true });
+		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
+		const { execSync } = await import("node:child_process");
+		execSync(
+			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
+			{ cwd: projectRoot },
+		);
+
+		tdb = await TestDb.create("budget_signals");
+		tserver = await TestServer.start(tdb);
+		client = new RpcClient(tserver.url);
+		await client.connect();
+
+		await client.call("rummy/hello", {
+			name: "budget-signals-test",
+			projectRoot,
+			clientVersion: "2.0.0",
+		});
+
+		// Auto-accept proposals so the run can progress.
+		client.on("run/proposal", async ({ run, proposed }) => {
+			for (const p of proposed || []) {
+				try {
+					await client.call("set", { run, path: p.path, state: "resolved" });
+				} catch {}
+			}
+		});
+	}, TIMEOUT);
+
+	after(async () => {
+		client?.close();
+		await tserver?.stop();
+		await tdb?.cleanup();
+		await fs.rm(projectRoot, { recursive: true, force: true });
+		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
+		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
+	});
+
+	it("tokenUsage reported at turn N+1 matches actual prompt_tokens from turn N", {
+		timeout: TIMEOUT,
+	}, async () => {
+		const startRes = await client.call("set", {
+			path: "run://",
+			body: "Briefly list three primes and emit <update status=\"200\">done</update>.",
+			attributes: { model, mode: "act" },
+		});
+		const alias = startRes.alias;
+		const finalStatus = await waitForRunStatus(
+			tdb.db,
+			alias,
+			[200, 413, 499, 500],
+			300_000,
+		);
+		assert.ok(finalStatus, "run reached terminal status");
+
+		const runRow = await tdb.db.get_run_by_alias.get({ alias });
+		const turns = await tdb.db.get_turns_by_run.all({ run_id: runRow.id });
+
+		// Collect the user message per turn (audit entry).
+		const userMsgs = {};
+		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
+		for (const e of entries) {
+			const m = e.path.match(/^user:\/\/(\d+)$/);
+			if (m) userMsgs[Number(m[1])] = e.body;
+		}
+
+		// Turn 1 has no prior to reference (lastContextTokens = 0 on
+		// turn 1), so we only check turn 2+.
+		let checked = 0;
+		for (const t of turns) {
+			if (t.sequence < 2) continue;
+			const body = userMsgs[t.sequence];
+			assert.ok(body, `user message for turn ${t.sequence} exists`);
+			const attrs = promptAttrs(body);
+			assert.ok(
+				attrs.tokenUsage,
+				`turn ${t.sequence} <prompt> has tokenUsage attr`,
+			);
+			const reported = Number(attrs.tokenUsage);
+
+			// The value reported on turn N+1 should equal the actual
+			// API context_tokens from turn N (that's what
+			// lastContextTokens feeds from — backfilled input token
+			// count from LLM usage).
+			const prior = turns.find((x) => x.sequence === t.sequence - 1);
+			assert.ok(prior, `prior turn ${t.sequence - 1} exists`);
+			const actualPrior = prior.context_tokens;
+			assert.strictEqual(
+				reported,
+				actualPrior,
+				`turn ${t.sequence}: reported tokenUsage=${reported} should equal prior turn's context_tokens=${actualPrior}`,
+			);
+			checked++;
+		}
+		assert.ok(checked > 0, "at least one turn-pair verified");
+	});
+});

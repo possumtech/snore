@@ -337,4 +337,234 @@ describe("Budget math", () => {
 			);
 		});
 	});
+
+	// The wire contract between budget math and what the model sees.
+	// These tests verify the two signals the model actually reads when
+	// regulating itself: `<prompt tokenUsage="N" tokensFree="M">` and
+	// the `reverted="N"` attribute that surfaces after a demotion.
+	describe("prompt signal correctness", () => {
+		let Prompt;
+		let assemblePrompt;
+
+		before(async () => {
+			Prompt = (await import("../../src/plugins/prompt/prompt.js")).default;
+			// Construct the plugin against a shim core so we can call the
+			// assemblePrompt filter directly.
+			const shim = {
+				hooks: {
+					tools: {
+						onView() {},
+						names: ["get", "set"],
+						advertisedNames: ["get", "set"],
+					},
+				},
+				on() {},
+				filter() {},
+			};
+			const plugin = new Prompt(shim);
+			assemblePrompt = plugin.assemblePrompt.bind(plugin);
+		});
+
+		function fakePromptRow(body = "hello") {
+			return {
+				ordinal: 1,
+				path: "prompt://1",
+				scheme: "prompt",
+				visibility: "visible",
+				body,
+				tokens: countTokens(body),
+				attributes: JSON.stringify({ mode: "act" }),
+				category: "prompt",
+				source_turn: 1,
+			};
+		}
+
+		it("tokenUsage uses ctx.lastContextTokens when > 0 (turn 2+)", async () => {
+			const contextSize = 10000;
+			const out = await assemblePrompt("", {
+				rows: [fakePromptRow()],
+				contextSize,
+				lastContextTokens: 8421,
+				type: "act",
+				turn: 2,
+			});
+			const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
+			assert.ok(m, "prompt carries tokenUsage/tokensFree attrs");
+			assert.strictEqual(
+				Number(m[1]),
+				8421,
+				"tokenUsage echoes lastContextTokens",
+			);
+			assert.strictEqual(
+				Number(m[2]),
+				Math.floor(contextSize * 0.9) - 8421,
+				"tokensFree = ceiling − tokenUsage",
+			);
+		});
+
+		it("tokenUsage falls back to measureRows when lastContextTokens=0", async () => {
+			const contextSize = 10000;
+			const rows = [fakePromptRow("x".repeat(200))];
+			const expectedTokens = rows.reduce(
+				(sum, r) => sum + countTokens(r.body),
+				0,
+			);
+			const out = await assemblePrompt("", {
+				rows,
+				contextSize,
+				lastContextTokens: 0,
+				type: "act",
+				turn: 1,
+			});
+			const m = out.match(/tokenUsage="(\d+)"/);
+			assert.ok(m);
+			assert.strictEqual(
+				Number(m[1]),
+				expectedTokens,
+				"turn 1: tokenUsage is the measured row total",
+			);
+		});
+
+		it("tokenUsage + tokensFree <= ceiling, both honest", async () => {
+			// The numbers must never claim more room than the ceiling
+			// actually provides. Any caller reading them should be able
+			// to reason: "I have N bytes of room left before overflow."
+			const contextSize = 10000;
+			const ceiling = Math.floor(contextSize * 0.9);
+			const out = await assemblePrompt("", {
+				rows: [fakePromptRow()],
+				contextSize,
+				lastContextTokens: 1234,
+				type: "act",
+				turn: 2,
+			});
+			const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
+			const used = Number(m[1]);
+			const free = Number(m[2]);
+			assert.strictEqual(used + free, ceiling, "used + free = ceiling");
+		});
+
+		it("reverted='N' surfaces when prior turn had a 413 demotion", async () => {
+			const contextSize = 10000;
+			const out = await assemblePrompt("", {
+				rows: [
+					fakePromptRow(),
+					{
+						ordinal: 2,
+						path: "log://turn_2/error/Token%20Budget%20overflow%3A%20foo",
+						scheme: "log",
+						visibility: "summarized",
+						body: "Token Budget overflow: ...",
+						tokens: 30,
+						attributes: JSON.stringify({
+							status: 413,
+							demotedCount: 4,
+							demotedTokens: 22000,
+						}),
+						category: "logging",
+						source_turn: 2,
+					},
+				],
+				contextSize,
+				lastContextTokens: 5000,
+				type: "act",
+				turn: 3,
+			});
+			assert.ok(
+				/reverted="4"/.test(out),
+				`reverted=4 must surface; got: ${out}`,
+			);
+		});
+
+		it("reverted absent when prior turn had no 413", async () => {
+			const contextSize = 10000;
+			const out = await assemblePrompt("", {
+				rows: [fakePromptRow()],
+				contextSize,
+				lastContextTokens: 5000,
+				type: "act",
+				turn: 3,
+			});
+			assert.ok(!out.includes("reverted="), "no reverted attr when no prior 413");
+		});
+
+		it("reverted only looks at PRIOR turn, not older ones", async () => {
+			const contextSize = 10000;
+			// 413 occurred on turn 1. Current turn is 5. Prior turn is 4.
+			// We should NOT surface reverted from turn 1 — that's old news,
+			// the model has seen it many times.
+			const out = await assemblePrompt("", {
+				rows: [
+					fakePromptRow(),
+					{
+						ordinal: 2,
+						path: "log://turn_1/error/Token%20Budget%20overflow",
+						scheme: "log",
+						visibility: "summarized",
+						body: "Token Budget overflow: ...",
+						tokens: 30,
+						attributes: JSON.stringify({
+							status: 413,
+							demotedCount: 2,
+							demotedTokens: 8000,
+						}),
+						category: "logging",
+						source_turn: 1,
+					},
+				],
+				contextSize,
+				lastContextTokens: 5000,
+				type: "act",
+				turn: 5,
+			});
+			assert.ok(
+				!out.includes("reverted="),
+				"reverted only for immediately-prior turn",
+			);
+		});
+	});
+
+	describe("413 error carries structured demotion attrs", () => {
+		it("emits demotedCount and demotedTokens on the 413 error entry", async () => {
+			const { runId } = await tdb.seedRun({ alias: "err_attrs_413" });
+			// Seed enough content to trip the post-dispatch ceiling.
+			for (let i = 0; i < 20; i++) {
+				await store.set({
+					runId,
+					turn: 1,
+					path: `known://big_${i}`,
+					body: pad(100),
+					state: "resolved",
+					visibility: "visible",
+				});
+			}
+			await tdb.hooks.budget.postDispatch({
+				contextSize: 1000,
+				ctx: {
+					runId,
+					loopId: null,
+					turn: 1,
+					systemPrompt: "test",
+					mode: "act",
+					toolSet: null,
+					demoted: [],
+				},
+				rummy: {
+					db: tdb.db,
+					hooks: tdb.hooks,
+					entries: store,
+				},
+			});
+
+			const rows = await tdb.db.get_known_entries.all({ run_id: runId });
+			const err = rows.find(
+				(r) => r.path.startsWith("log://turn_1/error/") && r.scheme === "log",
+			);
+			assert.ok(err, "413 error entry written");
+			const attrs = JSON.parse(err.attributes);
+			assert.strictEqual(attrs.status, 413);
+			assert.ok(attrs.demotedCount > 0, "demotedCount present and positive");
+			assert.ok(attrs.demotedTokens > 0, "demotedTokens present and positive");
+		});
+	});
 });

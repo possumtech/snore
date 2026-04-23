@@ -39,4 +39,12 @@ WHERE run_id = :run_id AND context_tokens > 0
 ORDER BY sequence DESC
 LIMIT 1;
 
+-- PREP: get_turns_by_run
+SELECT
+	id, run_id, loop_id, sequence, context_tokens, prompt_tokens,
+	cached_tokens, completion_tokens, reasoning_tokens, total_tokens, cost
+FROM turns
+WHERE run_id = :run_id
+ORDER BY sequence;
+
 -- get_run_log retired — use get_results (v_run_log) instead.
