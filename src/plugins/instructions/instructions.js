@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import Protocol from "./protocol.js";
 
 const baseInstructions = readFileSync(
@@ -6,19 +6,19 @@ const baseInstructions = readFileSync(
 	"utf8",
 );
 
-const PHASES = [4, 5, 6, 7, 8];
+// 1XY status encoding: X=current phase, Y=next phase. Y routes through
+// phaseForStatus to select next turn's <instructions>. Phases 4–9 are
+// reserved (status codes 1X4..1X9); add new phases by dropping in
+// `instructions_10N.md`. Absent files render no <instructions> block —
+// the model runs on base instructions only. This lets you route ahead
+// of writing the prose (e.g. an upcoming "ask lite" phase 9).
+const PHASES = [4, 5, 6, 7, 8, 9];
 const phaseInstructions = Object.fromEntries(
-	PHASES.map((p) => [
-		p,
-		readFileSync(
-			new URL(`./instructions_10${p}.md`, import.meta.url),
-			"utf8",
-		).trim(),
-	]),
+	PHASES.flatMap((p) => {
+		const url = new URL(`./instructions_10${p}.md`, import.meta.url);
+		return existsSync(url) ? [[p, readFileSync(url, "utf8").trim()]] : [];
+	}),
 );
-const VALID_STATUSES = new Set([
-	144, 145, 155, 156, 166, 167, 177, 178, 188, 200,
-]);
 const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\/update\//;
 
 function phaseForStatus(status) {
@@ -32,6 +32,10 @@ function phaseForStatus(status) {
 // emission's status. Used by the assembly.user filter so the phase
 // instructions ride with the user message (dynamic, expected to
 // change every turn) instead of the system prompt (stable, cached).
+// Validation is upstream (update.js isValidStatus + 422 error log) so
+// we trust the status and route on it directly — a whitelist here
+// silently drops advertised completion codes whose contracts drift,
+// which is worse than a noisy fallback.
 function latestUpdateStatusFromRows(rows) {
 	let bestTurn = -1;
 	let bestStatus = null;
@@ -44,7 +48,7 @@ function latestUpdateStatusFromRows(rows) {
 				? JSON.parse(r.attributes)
 				: r.attributes;
 		const status = attrs?.status;
-		if (!VALID_STATUSES.has(status)) continue;
+		if (status == null) continue;
 		if (turn > bestTurn || (turn === bestTurn && status > bestStatus)) {
 			bestTurn = turn;
 			bestStatus = status;
@@ -153,9 +157,12 @@ export default class Instructions {
 	// block in the user message. Runs at priority 250 — after <log>
 	// and <unknowns>, immediately before <prompt>. System prompt stays
 	// static so prompt caching keeps its prefix intact across turns.
+	// A routed phase without an instructions_10N.md file emits nothing —
+	// the model proceeds on base instructions alone.
 	assembleInstructions(content, ctx) {
 		const status = latestUpdateStatusFromRows(ctx.rows);
 		const step = phaseInstructions[phaseForStatus(status)];
+		if (!step) return content;
 		return `${content}<instructions>\n${step}\n</instructions>\n`;
 	}
 }

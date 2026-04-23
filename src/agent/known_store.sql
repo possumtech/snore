@@ -325,3 +325,30 @@ WHERE
 	AND turn = :turn
 	AND visibility = 'visible'
 	AND state NOT IN ('failed', 'cancelled');
+
+-- PREP: get_run_visible_targets
+-- All visible entries across the run, oldest promotion first. Used by
+-- budget postDispatch as the fallback demotion set when this-turn
+-- demotion yields nothing but the packet still overflows (promotions
+-- from prior turns the model forgot to demote themselves).
+SELECT e.path, e.tokens, rv.turn
+FROM run_views AS rv
+JOIN entries AS e ON e.id = rv.entry_id
+WHERE
+	rv.run_id = :run_id
+	AND rv.visibility = 'visible'
+	AND rv.state NOT IN ('failed', 'cancelled')
+ORDER BY rv.turn, e.id;
+
+-- PREP: demote_run_visible
+-- Broad cross-turn demotion. Separate prep from demote_turn_entries
+-- so the caller's intent (surgical this-turn vs fallback all-visible)
+-- stays explicit.
+UPDATE run_views
+SET
+	visibility = 'summarized'
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND visibility = 'visible'
+	AND state NOT IN ('failed', 'cancelled');

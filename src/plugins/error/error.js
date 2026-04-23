@@ -98,7 +98,7 @@ export default class ErrorPlugin {
 			state.history.push(fp);
 			const cycle = detectCycle(state.history);
 			if (cycle.detected) {
-				cycleReason = `Cyclic tool pattern (period ${cycle.period}, ${cycle.cycles} repetitions)`;
+				cycleReason = "Loop detected";
 				await this.#core.hooks.error.log.emit({
 					store,
 					runId,

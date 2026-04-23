@@ -576,6 +576,22 @@ export default class Entries {
 	}
 
 	/**
+	 * Demote every currently-visible entry in a run. Used by budget
+	 * postDispatch as the fallback when this-turn demotion finds nothing
+	 * and the packet still overflows — left-over promotions from prior
+	 * turns the model didn't demote themselves. Returns the affected
+	 * rows (path, tokens, turn) ordered oldest promotion first so the
+	 * error body can name them.
+	 */
+	async demoteRunVisibleEntries(runId) {
+		const targets = await this.#db.get_run_visible_targets.all({
+			run_id: runId,
+		});
+		await this.#db.demote_run_visible.run({ run_id: runId });
+		return targets;
+	}
+
+	/**
 	 * Run metadata lookup. Exposed here so plugins don't reach into
 	 * core.db for run-scoped lookups.
 	 */

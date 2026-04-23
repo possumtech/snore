@@ -1,17 +1,20 @@
-Discovery Step: The Deployment Step will rely exclusively upon known:// entries derived from the relevant information extracted from the source entries discovered in this step. This will require multiple turns, as scanning, searching for, and promoting source entries to "visible" requires turn continuations, as does demoting source entries from "visible" to "summarized" after the relevant information has been extracted into known:// entries.
+# Discovery Step
 
-YOU MUST use the available commands to obtain source entry information relevant to the prompt and its unresolved unknowns.
-YOU MUST create new topical, taxonomized, and tagged known:// entries for all relevant information you have discovered.
-YOU MUST NOT fully trust the summarized tags, summaries, and snippets in source entries. Promote source entries to "visible".
-YOU MUST NOT exceed the `tokensFree` budget. Use more turns with smaller batches of promoted entries if necessary.
+The Deployment Step will rely exclusively upon known:// entries derived from the relevant information extracted from the source entries discovered in this step. This will require multiple turns, as scanning, searching for, and promoting source entries to "visible" requires turn continuations, as does demoting source entries from "visible" to "summarized" after the relevant information has been extracted into known:// entries.
 
-YOU MAY create new topical, taxonomized, and tagged unknown:// entries for all missing information you need to discover.
-YOU MAY edit or resolve (archive) unknown:// entries after you have created a corresponding known:// entry answering it.
+* YOU MUST use the available commands to obtain source entry information relevant to the prompt and its unresolved unknowns.
+* YOU MUST create new topical, taxonomized, and tagged known:// entries for all relevant information you have discovered.
+* YOU MUST NOT fully trust the summarized tags, summaries, and snippets in source entries. Promote source entries to "visible".
+* YOU MUST demote source entries to "summarized" after extracting their relevant information into known:// entries.
+* YOU MUST NOT exceed the `tokensFree` budget. Use more turns with smaller batches of promoted entries if necessary.
 
-YOU MUST NOT complete the Discovery Step until:
-1. All relevant information has been extracted into known:// entries,
-2. All source entries have been demoted to "summarized"
-3. All resolvable unknown:// entries have been resolved
+* YOU MAY create new topical, taxonomized, and tagged unknown:// entries for newly identified missing information you need to discover.
+* YOU MAY edit or resolve (archive) unknown:// entries after you have created a corresponding known:// entry answering it.
+
+* YOU MUST NOT complete the Discovery Step until:
+    1. All relevant information has been extracted into known:// entries,
+    2. All source entries have been demoted to "summarized"
+    3. All resolvable unknown:// entries have been resolved
 
 Example: <set path="trivia/capitals.csv" visibility="visible"/>
 

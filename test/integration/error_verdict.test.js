@@ -232,8 +232,7 @@ describe("error verdict (@response_healing)", () => {
 			null,
 		);
 		const cycleError = errors.find(
-			(e) =>
-				e.path.includes("/error/") && e.body.toLowerCase().includes("cyclic"),
+			(e) => e.path.includes("/error/") && e.body === "Loop detected",
 		);
 		assert.ok(cycleError, "cycle detection emits a log://.../error/... entry");
 	});

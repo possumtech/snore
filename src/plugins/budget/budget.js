@@ -1,6 +1,28 @@
 import { ceiling, computeBudget, measureMessages } from "../../agent/budget.js";
 import materializeContext from "../../agent/materializeContext.js";
 
+/**
+ * Format the 413 error body. Names each demoted path with its turn
+ * and token count so the model can avoid re-promoting them next turn.
+ * Exported (not private) so unit tests can assert the exact wire
+ * format — the model reads this string, so its shape is part of the
+ * contract.
+ */
+export function overflowBody(overflow, contextSize, demoted) {
+	const cap = ceiling(contextSize);
+	const size = cap + overflow;
+	const count = demoted.length;
+	const totalTokens = demoted.reduce((s, r) => s + r.tokens, 0);
+	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} promotion${count === 1 ? "" : "s"} (${totalTokens} tokens) demoted to fit.`;
+	if (count === 0) return head;
+	const lines = demoted.map((d) =>
+		d.turn
+			? `- ${d.path} (turn ${d.turn}, ${d.tokens} tokens)`
+			: `- ${d.path} (${d.tokens} tokens)`,
+	);
+	return `${head}\nDemoted:\n${lines.join("\n")}`;
+}
+
 export default class Budget {
 	#core;
 
@@ -23,12 +45,6 @@ export default class Budget {
 			overflow: b.overflow,
 			ok: b.ok,
 		};
-	}
-
-	#overflowBody(overflow, contextSize, demotedCount, demotedTokens) {
-		const cap = ceiling(contextSize);
-		const size = cap + overflow;
-		return `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${demotedCount} promotion${demotedCount === 1 ? "" : "s"} (${demotedTokens} tokens) demoted to fit.`;
 	}
 
 	async #emitOverflow({
@@ -164,7 +180,18 @@ export default class Budget {
 		if (post.ok) return { failed: false };
 
 		const store = rummy.entries;
-		const demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
+		let demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
+		// Fallback: if this turn had nothing to demote but the packet still
+		// overflows, the pressure is coming from prior-turn promotions the
+		// model never demoted itself. Widen to all currently-visible
+		// entries in the run. Without this fallback, overflow-with-nothing
+		// strikes out runs where the base context has drifted over ceiling
+		// through no fault of the current turn (observed: runs where 3
+		// stale promotions from turns 12–14 saturate every subsequent
+		// turn's budget).
+		if (demotedEntries.length === 0) {
+			demotedEntries = await store.demoteRunVisibleEntries(ctx.runId);
+		}
 		const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
 		if (promptRow) {
 			await store.set({
@@ -176,12 +203,7 @@ export default class Budget {
 
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
 		await this.#emitOverflow({
-			message: this.#overflowBody(
-				post.overflow,
-				contextSize,
-				demotedEntries.length,
-				totalDemoted,
-			),
+			message: overflowBody(post.overflow, contextSize, demotedEntries),
 			demotedCount: demotedEntries.length,
 			demotedTokens: totalDemoted,
 			runId: ctx.runId,

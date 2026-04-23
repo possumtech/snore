@@ -131,4 +131,94 @@ describe("Budget demotion", () => {
 			assert.strictEqual(entry.visibility, "visible", "4xx entry not demoted");
 		});
 	});
+
+	describe("demoteRunVisibleEntries — cross-turn fallback (@budget_enforcement)", () => {
+		// Observed in rummy_dev.db::test:demo: promotions from turns 12–14
+		// stayed visible through turns 15–17 because the model never
+		// demoted them and `demote_turn_entries(turn)` is scoped to the
+		// current turn. The base context drifted over ceiling, each
+		// subsequent turn's postDispatch found 0 this-turn promotions to
+		// demote, and the error plugin struck out the run.
+		//
+		// The fallback demotes all currently-visible entries across the
+		// run when this-turn demotion yields nothing. That keeps the loop
+		// alive the same way auto-demotion does for single-turn overshoots.
+		it("demotes visible entries from prior turns and returns their paths+turns", async () => {
+			const { runId } = await tdb.seedRun({ alias: "dte_cross" });
+
+			await store.set({
+				runId,
+				turn: 12,
+				path: "https://example.com/old",
+				body: "old page content",
+				state: "resolved",
+				visibility: "visible",
+			});
+			await store.set({
+				runId,
+				turn: 14,
+				path: "https://example.com/newer",
+				body: "newer page content",
+				state: "resolved",
+				visibility: "visible",
+			});
+
+			const demoted = await store.demoteRunVisibleEntries(runId);
+			const paths = demoted.map((d) => d.path);
+			assert.ok(
+				paths.includes("https://example.com/old"),
+				"turn 12 visible entry demoted by fallback",
+			);
+			assert.ok(
+				paths.includes("https://example.com/newer"),
+				"turn 14 visible entry demoted by fallback",
+			);
+			// Turn ordering: oldest promotion first.
+			const oldIdx = demoted.findIndex((d) => d.path === "https://example.com/old");
+			const newIdx = demoted.findIndex((d) => d.path === "https://example.com/newer");
+			assert.ok(oldIdx < newIdx, "oldest turn listed first");
+			// Each result carries turn + tokens so the error body can show them.
+			for (const d of demoted) {
+				assert.ok(typeof d.turn === "number", "turn returned");
+				assert.ok(typeof d.tokens === "number", "tokens returned");
+			}
+
+			// DB state: both now summarized.
+			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
+			assert.strictEqual(
+				entries.find((e) => e.path === "https://example.com/old").visibility,
+				"summarized",
+			);
+			assert.strictEqual(
+				entries.find((e) => e.path === "https://example.com/newer").visibility,
+				"summarized",
+			);
+		});
+
+		it("skips failed/cancelled entries (already not contributing)", async () => {
+			const { runId } = await tdb.seedRun({ alias: "dte_cross_skip" });
+
+			await store.set({
+				runId,
+				turn: 3,
+				path: "https://example.com/ok",
+				body: "kept",
+				state: "resolved",
+				visibility: "visible",
+			});
+			await store.set({
+				runId,
+				turn: 3,
+				path: "https://example.com/bad",
+				body: "failed",
+				state: "failed",
+				visibility: "visible",
+			});
+
+			const demoted = await store.demoteRunVisibleEntries(runId);
+			const paths = demoted.map((d) => d.path);
+			assert.ok(paths.includes("https://example.com/ok"));
+			assert.ok(!paths.includes("https://example.com/bad"), "failed skipped");
+		});
+	});
 });
