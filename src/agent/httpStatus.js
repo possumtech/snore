@@ -4,7 +4,7 @@
  *
  * Model-facing tags still carry `status="NNN"` because the model's
  * vocabulary (preamble + tooldocs + training) is HTTP-shaped. The DB
- * stores categorical state + textual outcome (SPEC §0.1); this helper
+ * stores categorical state + textual outcome (see SPEC entries); this helper
  * is the one-way translation for rendering.
  *
  * Outcome strings prefixed with a 3-digit HTTP code (e.g.

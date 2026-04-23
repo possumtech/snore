@@ -1,9 +1,12 @@
 /**
  * Handler dispatch integration test.
  *
- * Covers @dispatch_path, @plugins_handler, @plugins_views,
- * @get_plugin — the record → dispatch → state-change loop that
- * turns parsed XML commands into entries with outcomes.
+ * Covers @dispatch_path, @plugins_handler, @get_plugin — the
+ * record → dispatch → state-change loop that turns parsed XML
+ * commands into entries with outcomes. View projection
+ * (@plugins_views) is tested separately in engine.test.js and
+ * tool_visibility.test.js, which exercise the full/summary
+ * rendering path.
  *
  * Proves the record→dispatch→state-change loop:
  * 1. XmlParser produces commands

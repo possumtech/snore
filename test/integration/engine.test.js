@@ -19,7 +19,7 @@ function pad(n) {
 	return Array(n).fill("hello").join(" ");
 }
 
-describe("Engine integration (@materialization, @upsert_semantics, @engine_plugin)", () => {
+describe("Engine integration (@materialization, @upsert_semantics, @engine_plugin, @plugins_views)", () => {
 	let tdb;
 	let store;
 

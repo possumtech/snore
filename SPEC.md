@@ -242,8 +242,7 @@ Every entry plays one of four roles:
 | `prompt://` | prompt | `plugin` | User prompt with `mode` attribute. Written by prompt plugin, never by model. |
 | `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | `model, plugin` | Tool result entries. |
 | `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
-| `budget://` | logging | `model, plugin` | Turn Demotion panic record (413 overflow). |
-| `error://` | logging | `model, plugin` | Runtime errors (policy rejection, healer warnings, dispatch crashes, etc.). |
+| `error://` | logging | `model, plugin` | Runtime errors — policy rejection, budget overflow (status 413), dispatch crashes, protocol violations. Unified channel via `hooks.error.log.emit`. |
 | `tool://` | audit | `system` | Internal plugin metadata. `model_visible = 0`. |
 | `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | audit | `system` | Audit entries. `model_visible = 0`. Written only by server-level code. |
 
@@ -432,7 +431,7 @@ turn as a continuation. Multiple `<update>` tags → last signal wins.
 plugin re-materializes context and checks the ceiling
 (`hooks.budget.postDispatch`). If context exceeds the ceiling, Turn
 Demotion fires — all `visible` `run_views` rows for the current turn
-have their `visibility` flipped to `summarized`, and a `budget://` entry is
+have their `visibility` flipped to `summarized`, and an `error://` entry at status 413 is
 written. Status is NOT touched (see [schemes_status_visibility](#schemes_status_visibility)). The tools already ran;
 their outcomes are settled.
 
@@ -700,15 +699,16 @@ the LLM call). Measures the assembled messages (using
 all tool dispatches complete). Re-materializes end-of-turn context
 and re-checks. If still over the ceiling, flips every `run_views` row
 for this turn from `visibility = visible` to `visibility = summarized`
-(status preserved — see [schemes_status_visibility](#schemes_status_visibility)) and writes a `budget://{loopId}/{turn}`
-entry summarizing what was demoted and stating the 50% rule for the
-next turn. The model sees the `budget://` entry next turn and adjusts.
+(status preserved — see [schemes_status_visibility](#schemes_status_visibility))
+and emits a 413 error via `hooks.error.log.emit` with the descriptive
+body (what was demoted, the 50% rule for the next turn). The model
+sees the `error://` entry next turn and adjusts.
 
 **LLM-reported context exceeded.** If the LLM rejects the request
 with a "context too long" error (detected via the regex in
 `src/llm/errors.js`), the LlmProvider raises `ContextExceededError`
-which TurnExecutor catches and converts to a 413 exit — same terminal
-path as pre-LLM 413 on a non-first turn.
+which TurnExecutor catches and emits a 413 error through the same
+channel.
 
 **Known-scheme size gate** (in the `known` plugin). Writes to
 `known://` entries exceeding `RUMMY_MAX_ENTRY_TOKENS` (default 512)
@@ -717,8 +717,8 @@ atomic entries instead of dumping transcripts into a single `known://`.
 
 **Advisory feedback.** The model reads `tokensFree` / `tokenUsage`
 attributes on `<prompt>` every turn and self-regulates. No threshold-
-based warnings. When the ceiling is actually breached the `budget://`
-entry is the feedback.
+based warnings. When the ceiling is actually breached the 413
+`error://` entry is the feedback.
 
 **Token math:** `Math.ceil(text.length / RUMMY_TOKEN_DIVISOR)`. One
 formula, one file (`src/agent/tokens.js`), env-configurable. No
@@ -1144,8 +1144,8 @@ Key things to look for in a dump:
 - **202**: unresolved proposals — model issued `<sh>`, `<rm>`, or `<mv>` that needs approval
 - **413**: budget overflow — assembled context exceeded ceiling (see [budget_enforcement](#budget_enforcement))
 - **403**: policy rejection (ask-mode file writes) or permission denial (writer ∉ `writable_by`)
-- **`budget://` entries**: Turn Demotion fired — model received a directive to demote promotions next turn
-- **`error://` entries**: runtime errors (parser warnings, cycle/stall detection, policy rejections, dispatch crashes)
+- **`error://` entries at status 413**: Turn Demotion fired — model received a directive to demote promotions next turn
+- **`error://` entries at other statuses**: runtime errors (422 parser warnings, 429 cycle detection, 403 policy rejections, 500 dispatch crashes)
 - **`<sh>` in ask mode**: the policy plugin rejected it; check for the corresponding `error://` entry
 
 ### MAB benchmark

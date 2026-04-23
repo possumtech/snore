@@ -475,7 +475,7 @@ update, visibility change, state change, attribute update. Payload:
 | Hook | Type | When |
 |------|------|------|
 | `hooks.budget.enforce` | method | Pre-LLM ceiling check. On first-turn 413 → Prompt Demotion + re-check. |
-| `hooks.budget.postDispatch` | method | Post-dispatch re-check. On 413 → Turn Demotion + `budget://` entry. |
+| `hooks.budget.postDispatch` | method | Post-dispatch re-check. On 413 → Turn Demotion + 413 `error://` entry via `hooks.error.log.emit`. |
 
 The budget plugin measures tokens on the assembled messages — the
 actual content being sent to the LLM. No estimates at the ceiling,

@@ -81,4 +81,29 @@ describe("unified API (@unified_api, @plugins_unified_api, @plugins_two_objects,
 		assert.ok(entry);
 		assert.strictEqual(entry.body, "alpha");
 	});
+
+	it("RummyContext exposes writer, sequence, runId, projectId properties", async () => {
+		const { runId, projectId } = await tdb.seedRun({
+			alias: "unified_properties",
+		});
+		const store = new Entries(tdb.db);
+		const rummy = new RummyContext(
+			{ children: [] },
+			{
+				db: tdb.db,
+				store,
+				runId,
+				projectId,
+				sequence: 7,
+				loopId: 42,
+				writer: "plugin",
+			},
+		);
+
+		assert.strictEqual(rummy.runId, runId);
+		assert.strictEqual(rummy.projectId, projectId);
+		assert.strictEqual(rummy.sequence, 7);
+		assert.strictEqual(rummy.loopId, 42);
+		assert.strictEqual(rummy.writer, "plugin");
+	});
 });

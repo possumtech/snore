@@ -24,7 +24,7 @@ export default class Rpc {
 			description: "Returns { methods, notifications } catalog.",
 		});
 
-		// --- Primitives (SPEC §0.2) ---
+		// --- Primitives (SPEC primitives) ---
 		// The client surface is a thin projection of the plugin API.
 		// Six verbs, each takes an object of entry-grammar params.
 		// Writer is fixed to "client"; permissions enforced per scheme.

@@ -5,7 +5,7 @@
 
 /**
  * Thrown when a writer tier isn't permitted to write to a scheme.
- * SPEC §0.4: schemes declare writable_by = subset of
+ * See SPEC writer_tiers: schemes declare writable_by = subset of
  * {system, plugin, client, model}. A write from an excluded tier
  * rejects with this error.
  */

@@ -108,4 +108,63 @@ describe("Tool visibility: v_model_context content projection", () => {
 			`Schemes with invisible content:\n  ${failures.join("\n  ")}`,
 		);
 	});
+
+	it("log://turn_N/<action>/ entries (the production path) project content", async () => {
+		// After the unified-log-namespace migration, tool results don't
+		// live at `<action>://<slug>` — they live at
+		// `log://turn_N/<action>/<slug>`. Production code never writes to
+		// the scheme-native paths the first test uses; that test exercises
+		// a hypothetical. This one exercises the real path every tool
+		// produces.
+		const actions = ["set", "get", "rm", "sh", "env", "search", "ask_user"];
+		for (const action of actions) {
+			const path = await store.logPath(RUN_ID, TURN, action, `probe_${action}`);
+			await store.set({
+				runId: RUN_ID,
+				turn: TURN,
+				path,
+				body: `${MARKER}_${action}`,
+				state: "resolved",
+				attributes: { path: `probe_${action}` },
+			});
+		}
+
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: `prompt://${TURN}`,
+			body: "test question",
+			state: "resolved",
+			attributes: { mode: "ask" },
+		});
+
+		await materialize(tdb.db, {
+			runId: RUN_ID,
+			turn: TURN,
+			systemPrompt: "test",
+		});
+
+		const rows = await tdb.db.get_turn_context.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
+
+		const failures = [];
+		for (const action of actions) {
+			const row = rows.find(
+				(r) =>
+					r.path.startsWith(`log://turn_${TURN}/${action}/`) &&
+					r.body?.includes(`${MARKER}_${action}`),
+			);
+			if (!row) {
+				failures.push(`${action}: no log://turn_${TURN}/${action}/ row with MARKER`);
+			}
+		}
+
+		assert.equal(
+			failures.length,
+			0,
+			`log:// rows with invisible content:\n  ${failures.join("\n  ")}`,
+		);
+	});
 });

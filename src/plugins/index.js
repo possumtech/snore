@@ -19,7 +19,7 @@ function getGlobalPrefix() {
  * Returns a Map of name → PluginContext for the caller to pass to
  * initPlugins. No module-global state — each caller owns its set.
  *
- * Plugin constructors must be declarative (SPEC §0.3 / Phase 5): they
+ * Plugin constructors must be declarative (SPEC surfaces): they
  * register schemes, hooks, filters, RPC methods — but don't dereference
  * infrastructure that might not be ready yet. Because the plugin
  * contract makes constructors side-effect-free on each other, load
