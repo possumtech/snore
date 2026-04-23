@@ -3,23 +3,15 @@
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
 	[
-		'## <update status="N">[brief status]</update> - Status report (ONLY one per turn, at the end)',
+		'## <update status="N">[brief status]</update> - Status report (exactly one per turn, at the end)',
 		"Header defines position, frequency, and status code requirement.",
 	],
 	[
-		'Example: <update status="102">Reading config files</update>',
-		"102 = processing, continue. Default if status omitted.",
+		"REQUIRED: the valid values of N are defined by your current phase instructions.",
+		"Single source of truth for codes is the phase preamble, not this doc. Listing codes here leaks termination knowledge (e.g. 200) that strong models use to short-circuit the protocol.",
 	],
 	[
-		'Example: <update status="200">The capital of France is Paris</update>',
-		"200 = complete. This successfully terminates the run with the answer.",
-	],
-	[
-		'Example: <update status="422">Cannot fulfill request</update>',
-		"422 = complete, unable to fulfill.",
-	],
-	[
-		"REQUIRED: YOU MUST keep <update></update> to <= 80 characters",
+		"REQUIRED: YOU MUST keep <update></update> body to <= 80 characters.",
 		"Length cap.",
 	],
 ];

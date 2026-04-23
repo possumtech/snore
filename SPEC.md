@@ -1046,6 +1046,29 @@ Format normalization:
 E2E tests must NEVER mock the LLM. Environment cascade:
 `.env.example` → `.env` → `.env.test`. Always use `npm run test:*`.
 
+### 10.1 Spec-Anchored Testing
+
+Integration and e2e tests MUST be anchored to SPEC.md's numeric
+system. The rule is bidirectional:
+
+1. **Every numbered section in SPEC.md has at least one integration
+   or e2e test that references it.** The reference is literal: a
+   `§X.Y` or `§X.Y.Z` token appearing in the test file (suite name,
+   test name, or comment). A section without a test reference is a
+   spec with no verified guarantee.
+2. **Every integration or e2e test is attributed to at least one
+   §-reference.** A test describing behavior that isn't in SPEC
+   either adds the behavior to SPEC or isn't under the integration
+   / e2e tiers.
+
+Enforcement: `npm run test:spec` parses SPEC.md's numbered
+headings and greps `test/integration/` + `test/e2e/` for `§X.Y[.Z]`
+references. Missing references fail the script. The check runs in
+CI and blocks merges.
+
+Unit tests (`src/**/*.test.js`) are exempt — they verify
+implementation details, not spec guarantees.
+
 ---
 
 ## 11. SQL Functions

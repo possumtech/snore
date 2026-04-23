@@ -25,6 +25,13 @@
 > - **The user is right until the DB proves otherwise.** When a
 >   symptom gets reported, read `rummy_dev.db` first, don't guess,
 >   don't blame the environment, don't defer to the next demo.
+> - **Integration and e2e tests are 1:1 with SPEC.md's numeric
+>   system.** Every `### X.Y` (and `## X.`) section in SPEC.md has
+>   at least one `§X.Y` reference in `test/integration/` or
+>   `test/e2e/`. Every test in those dirs is attributed to at least
+>   one `§`-reference. No integration or e2e test exists outside
+>   this system; no SPEC section exists without a test anchoring
+>   it. See SPEC §10.1. Enforced by `npm run test:spec`.
 
 > **Preamble discipline (when touching prompt.ask.md / prompt.act.md):**
 > - **Brief.** Every token is paid every turn. Cut before expanding.

@@ -6,6 +6,50 @@ const preamble = readFileSync(
 	"utf8",
 );
 
+const PHASES = [4, 5, 6, 7, 8];
+const phasePreambles = Object.fromEntries(
+	PHASES.map((p) => [
+		p,
+		readFileSync(
+			new URL(`./preamble_10${p}.md`, import.meta.url),
+			"utf8",
+		).trim(),
+	]),
+);
+const VALID_STATUSES = new Set([
+	144, 145, 155, 156, 166, 167, 177, 178, 188, 200,
+]);
+const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\/update\//;
+
+function phaseForStatus(status) {
+	if (status == null) return 4;
+	if (status === 200) return 8;
+	const last = status % 10;
+	return PHASES.includes(last) ? last : 4;
+}
+
+async function latestUpdateStatus(store, runId) {
+	const entries = await store.getEntriesByPattern(runId, "log://**", null);
+	let bestTurn = -1;
+	let bestStatus = null;
+	for (const e of entries) {
+		const m = TURN_FROM_PATH.exec(e.path);
+		if (!m) continue;
+		const turn = Number(m[1]);
+		const attrs =
+			typeof e.attributes === "string"
+				? JSON.parse(e.attributes)
+				: e.attributes;
+		const status = attrs?.status;
+		if (!VALID_STATUSES.has(status)) continue;
+		if (turn > bestTurn || (turn === bestTurn && status > bestStatus)) {
+			bestTurn = turn;
+			bestStatus = status;
+		}
+	}
+	return bestStatus;
+}
+
 export default class Instructions {
 	#core;
 
@@ -52,6 +96,7 @@ export default class Instructions {
 		const toolSet = rummy.toolSet
 			? [...rummy.toolSet]
 			: this.#core.hooks.tools.names;
+		const protocolStatus = await latestUpdateStatus(store, runId);
 		// instructions:// is an audit scheme (writable_by: ["system"]).
 		await store.set({
 			runId,
@@ -65,6 +110,7 @@ export default class Instructions {
 				// a system bug — let the null propagate if runRow exists.
 				persona: runRow.persona,
 				toolSet,
+				protocolStatus,
 			},
 		});
 	}
@@ -87,8 +133,10 @@ export default class Instructions {
 			.filter((key) => toolDocs[key])
 			.map((key) => toolDocs[key])
 			.join("\n\n");
+		const step = phasePreambles[phaseForStatus(attrs.protocolStatus)];
 		let prompt = preamble
 			.replace("[%TOOLS%]", tools)
+			.replace("[%PROTOCOL_STEP%]", step)
 			.replace("[%TOOLDOCS%]", docsText);
 		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;

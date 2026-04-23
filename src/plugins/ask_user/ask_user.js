@@ -1,5 +1,7 @@
 import docs from "./ask_userDoc.js";
 
+const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+
 export default class AskUser {
 	#core;
 
@@ -12,6 +14,22 @@ export default class AskUser {
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.ask_user = docs;
 			return docsMap;
+		});
+		core.on("proposal.accepted", this.#onResolved.bind(this));
+		core.on("proposal.rejected", this.#onResolved.bind(this));
+	}
+
+	async #onResolved(ctx) {
+		const m = LOG_ACTION_RE.exec(ctx.path);
+		if (m?.[1] !== "ask_user") return;
+		if (!ctx.output) return;
+		const turn = (await ctx.db.get_run_by_id.get({ id: ctx.runId })).next_turn;
+		await ctx.entries.set({
+			runId: ctx.runId,
+			turn,
+			path: ctx.path,
+			body: ctx.resolvedBody,
+			attributes: { ...(ctx.attrs || {}), answer: ctx.output },
 		});
 	}
 

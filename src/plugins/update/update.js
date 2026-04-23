@@ -38,13 +38,12 @@ export default class Update {
 	 * Classify this turn's update state.
 	 *
 	 * Returns { summaryText, updateText }:
-	 *   - summaryText: non-null → the turn is terminal (run concludes at 200)
-	 *   - updateText:  non-null → the turn continues
+	 *   - summaryText: non-null → model claimed terminal (200/204/422)
+	 *   - updateText:  non-null → model is continuing (1xx)
 	 *
-	 * Error emissions (all go to hooks.error.log, which tracks strikes):
-	 *   <update> body with no/invalid status → error 422
-	 *   terminal update + this turn had errors → override to continuation
-	 *   no update emitted                     → error 422, contract reminder
+	 * Errors (invalid status, missing update) emit via hooks.error.log.
+	 * The "terminal + turn had errors → not actually terminal" rule
+	 * lives in the error plugin's verdict, not here.
 	 */
 	async resolve({ recorded, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
@@ -66,22 +65,6 @@ export default class Update {
 				message: `Invalid status ${entry.attributes?.status} on update — use 1xx to continue or 200 to conclude.`,
 				status: 422,
 			});
-		}
-
-		const hasErrors = rummy.hooks.error.turnHasErrors({ loopId });
-
-		if (summaryText && hasErrors) {
-			if (entry?.path) {
-				await rummy.entries.set({
-					runId,
-					path: entry.path,
-					state: "failed",
-					body: "Overridden — actions in this turn failed. Continue with status 102.",
-					outcome: "conflict",
-				});
-			}
-			updateText = summaryText;
-			summaryText = null;
 		}
 
 		if (!summaryText && !updateText) {

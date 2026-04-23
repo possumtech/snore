@@ -49,7 +49,6 @@ export default class ErrorPlugin {
 		core.hooks.turn.started.on(this.#onTurnStarted.bind(this));
 
 		core.hooks.error.verdict = this.#verdict.bind(this);
-		core.hooks.error.turnHasErrors = this.#turnHasErrors.bind(this);
 	}
 
 	#onLoopStarted({ loopId }) {
@@ -80,11 +79,6 @@ export default class ErrorPlugin {
 		});
 		const state = this.#loopState.get(loopId);
 		if (state) state.turnErrors++;
-	}
-
-	#turnHasErrors({ loopId }) {
-		const state = this.#loopState.get(loopId);
-		return state.turnErrors > 0;
 	}
 
 	async #verdict({ store, runId, loopId, turn, recorded, summaryText }) {

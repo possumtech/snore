@@ -1,6 +1,8 @@
 import Entries from "../../agent/Entries.js";
 import docs from "./rmDoc.js";
 
+const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+
 export default class Rm {
 	#core;
 
@@ -14,6 +16,25 @@ export default class Rm {
 			docsMap.rm = docs;
 			return docsMap;
 		});
+		core.on("proposal.accepted", this.#onAccepted.bind(this));
+	}
+
+	async #onAccepted(ctx) {
+		const m = LOG_ACTION_RE.exec(ctx.path);
+		if (m?.[1] !== "rm") return;
+		const target = ctx.attrs?.path;
+		if (!target) return;
+		await ctx.entries.rm({ runId: ctx.runId, path: target });
+		if (ctx.projectRoot) {
+			const { unlink } = await import("node:fs/promises");
+			const { join } = await import("node:path");
+			try {
+				await unlink(join(ctx.projectRoot, target));
+			} catch (err) {
+				// File may already be absent — entry rm'd regardless.
+				if (err.code !== "ENOENT") throw err;
+			}
+		}
 	}
 
 	async handler(entry, rummy) {

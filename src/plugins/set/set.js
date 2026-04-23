@@ -1,3 +1,4 @@
+import File from "../file/file.js";
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
@@ -5,6 +6,12 @@ import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
 const VALID_VISIBILITY = { archived: 1, demoted: 1, promoted: 1 };
+const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+
+function isSetProposal(path) {
+	const m = LOG_ACTION_RE.exec(path);
+	return m?.[1] === "set";
+}
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
@@ -21,6 +28,79 @@ export default class Set {
 			docsMap.set = docs;
 			return docsMap;
 		});
+		core.filter("proposal.accepting", this.#vetoReadonly.bind(this));
+		core.filter("proposal.content", this.#preferExistingBody.bind(this));
+		core.on("proposal.accepted", this.#materializeFile.bind(this));
+	}
+
+	async #vetoReadonly(current, ctx) {
+		if (current) return current;
+		if (!isSetProposal(ctx.path)) return current;
+		if (!ctx.attrs?.path) return current;
+		const blocked = await File.isReadonly(
+			ctx.db,
+			ctx.projectId,
+			ctx.attrs.path,
+		);
+		if (!blocked) return current;
+		return {
+			allow: false,
+			outcome: "readonly",
+			body: `refused: ${ctx.attrs.path} is readonly`,
+		};
+	}
+
+	async #preferExistingBody(defaultBody, ctx) {
+		if (!isSetProposal(ctx.path)) return defaultBody;
+		const existing = await ctx.entries.getBody(ctx.runId, ctx.path);
+		if (existing) return existing;
+		return defaultBody;
+	}
+
+	async #materializeFile(ctx) {
+		if (!isSetProposal(ctx.path)) return;
+		const { attrs, runId, projectId, projectRoot, db, entries } = ctx;
+		if (!attrs?.path || !attrs?.merge) return;
+
+		const existing = await entries.getBody(runId, attrs.path);
+		const isNewFile = existing === null;
+		const fileBody = isNewFile ? "" : existing;
+		const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
+		let patched = fileBody;
+		for (const block of blocks) {
+			const m = block.match(
+				/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
+			);
+			if (!m) continue;
+			if (m[1] === "") {
+				patched = m[2];
+			} else {
+				patched = patched.replace(m[1], m[2]);
+			}
+		}
+		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
+		// Preserve the file entry's current visibility — a <get>
+		// earlier in the run may have promoted it. Updating the
+		// body without specifying visibility falls through to
+		// the data-category default ("summarized") and wipes
+		// the promotion, making the model re-get the file next
+		// turn (then cycle-strike out).
+		const existingState = await entries.getState(runId, attrs.path);
+		await entries.set({
+			runId,
+			turn,
+			path: attrs.path,
+			body: patched,
+			visibility: existingState?.visibility,
+		});
+		if (projectRoot) {
+			const { writeFile } = await import("node:fs/promises");
+			const { join } = await import("node:path");
+			await writeFile(join(projectRoot, attrs.path), patched).catch(() => {});
+		}
+		if (isNewFile && projectId) {
+			await File.setConstraint(db, projectId, attrs.path, "active");
+		}
 	}
 
 	async handler(entry, rummy) {

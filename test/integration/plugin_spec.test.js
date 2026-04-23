@@ -434,6 +434,10 @@ describe("PLUGINS.md Spec Compliance", () => {
 				contextSize: 1000,
 				messages: [{ role: "system", content: bigMessage }],
 				rows: [],
+				ctx: { runId: 1, turn: 1, loopId: 0, loopIteration: 0 },
+				rummy: {
+					hooks: { error: { log: { emit: async () => {} } } },
+				},
 			});
 			assert.strictEqual(result.ok, false);
 			assert.ok(result.overflow > 0, "overflow is positive");

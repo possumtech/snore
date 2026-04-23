@@ -52,7 +52,8 @@
 		"test:mab:clean": "rm -rf test/mab/results/*/",
 		"test:lme:clean": "rm -rf test/lme/results/*/",
 		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*",
-		"test:demo": "node --env-file-if-exists=.env.example --env-file-if-exists=.env bin/demo.js"
+		"test:demo": "node --env-file-if-exists=.env.example --env-file-if-exists=.env bin/demo.js",
+		"test:spec": "node test/spec-coverage.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

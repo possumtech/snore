@@ -654,178 +654,11 @@ export default class AgentLoop {
 
 		const { path, action, output } = resolution;
 
-		if (action === "accept" || action === "error") {
-			const attrs = await this.#entries.getAttributes(runId, path);
+		if (action !== "accept" && action !== "error" && action !== "reject") {
+			throw new Error(msg("error.resolution_invalid", { action }));
+		}
 
-			// readonly constraint enforcement: refuse to accept a set:// that
-			// would rewrite a path the project has marked readonly. Bleeds
-			// the refusal back to the model as state=failed outcome=readonly,
-			// which it handles the same as any other rejected proposal.
-			if (action === "accept" && path.startsWith("set://") && attrs?.path) {
-				const File = (await import("../plugins/file/file.js")).default;
-				const blocked = await File.isReadonly(
-					this.#db,
-					runRow.project_id,
-					attrs.path,
-				);
-				if (blocked) {
-					await this.#entries.set({
-						runId,
-						path,
-						state: "failed",
-						outcome: "readonly",
-						body: `refused: ${attrs.path} is readonly`,
-					});
-					return { ok: true, state: "failed", outcome: "readonly" };
-				}
-			}
-
-			const resolvedBody = await this.#composeResolvedContent(
-				runId,
-				path,
-				attrs,
-				output,
-			);
-			const state = action === "error" ? "failed" : "resolved";
-			const outcome = action === "error" ? "error" : null;
-			const existing = await this.#entries.getState(runId, path);
-			const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
-			await this.#entries.set({
-				runId,
-				turn: existingTurn,
-				path,
-				state,
-				body: resolvedBody,
-				outcome,
-			});
-
-			// Store answer in attributes for ask_user
-			if (path.startsWith("ask_user://") && output) {
-				const turn = (await this.#db.get_run_by_id.get({ id: runId }))
-					.next_turn;
-				await this.#entries.set({
-					runId,
-					turn,
-					path,
-					body: resolvedBody,
-					state,
-					outcome,
-					attributes: { ...attrs, answer: output },
-				});
-			}
-
-			if (action === "accept") {
-				const projectId = runRow.project_id;
-				const project = await this.#db.get_project_by_id.get({
-					id: projectId,
-				});
-				const projectRoot = project?.project_root;
-
-				if (path.startsWith("set://") && attrs?.path && attrs?.merge) {
-					const existing = await this.#entries.getBody(runId, attrs.path);
-					const isNewFile = existing === null;
-					const fileBody = isNewFile ? "" : existing;
-					const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
-					let patched = fileBody;
-					for (const block of blocks) {
-						const m = block.match(
-							/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
-						);
-						if (!m) continue;
-						if (m[1] === "") {
-							patched = m[2];
-						} else {
-							patched = patched.replace(m[1], m[2]);
-						}
-					}
-					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
-						.next_turn;
-					// Preserve the file entry's current visibility — a <get>
-					// earlier in the run may have promoted it. Updating the
-					// body without specifying visibility falls through to
-					// the data-category default ("summarized") and wipes
-					// the promotion, making the model re-get the file next
-					// turn (then cycle-strike out).
-					const existingState = await this.#entries.getState(runId, attrs.path);
-					await this.#entries.set({
-						runId,
-						turn,
-						path: attrs.path,
-						body: patched,
-						visibility: existingState?.visibility,
-					});
-					if (projectRoot) {
-						const { writeFile } = await import("node:fs/promises");
-						const { join } = await import("node:path");
-						await writeFile(join(projectRoot, attrs.path), patched).catch(
-							() => {},
-						);
-					}
-					if (isNewFile && projectId) {
-						const File = (await import("../plugins/file/file.js")).default;
-						await File.setConstraint(this.#db, projectId, attrs.path, "active");
-					}
-				}
-
-				if (path.startsWith("rm://")) {
-					if (attrs?.path) {
-						await this.#entries.rm({ runId: runId, path: attrs.path });
-						if (projectRoot) {
-							const { unlink } = await import("node:fs/promises");
-							const { join } = await import("node:path");
-							try {
-								await unlink(join(projectRoot, attrs.path));
-							} catch (err) {
-								// File may already be absent — entry rm'd regardless.
-								if (err.code !== "ENOENT") throw err;
-							}
-						}
-					}
-				}
-
-				if (path.startsWith("mv://")) {
-					if (attrs?.isMove && attrs?.from) {
-						await this.#entries.rm({ runId: runId, path: attrs.from });
-					}
-				}
-
-				// sh/env accept: proposal entry becomes the log entry at 200;
-				// create companion data entries `{path}_1` (stdout) and
-				// `{path}_2` (stderr) at status=102, demoted, empty body.
-				// The stream plugin will receive chunks via the `stream` RPC
-				// and append to these entries. On completion, they transition
-				// to 200/500. Unix FD numbering: 1=stdout, 2=stderr.
-				if (path.startsWith("sh://") || path.startsWith("env://")) {
-					let command = "";
-					if (attrs?.command) command = attrs.command;
-					else if (attrs?.summary) command = attrs.summary;
-					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
-						.next_turn;
-					const channels = [1, 2];
-					for (const ch of channels) {
-						await this.#entries.set({
-							runId,
-							turn,
-							path: `${path}_${ch}`,
-							body: "",
-							state: "streaming",
-							visibility: "summarized",
-							attributes: { command, summary: command, channel: ch },
-						});
-					}
-					// Overwrite the log entry body with a descriptive line that
-					// references the data entries. resolve() above set the state
-					// to resolved; this is body replacement to make the log
-					// entry self-documenting in <log>.
-					await this.#entries.set({
-						runId,
-						path,
-						state: "resolved",
-						body: `ran '${command}' (in progress). Output: ${path}_1, ${path}_2`,
-					});
-				}
-			}
-		} else if (action === "reject") {
+		if (action === "reject") {
 			await this.#entries.set({
 				runId,
 				path,
@@ -833,30 +666,77 @@ export default class AgentLoop {
 				body: output ? output : "rejected",
 				outcome: "permission",
 			});
-		} else {
-			throw new Error(msg("error.resolution_invalid", { action }));
+			await this.#hooks.proposal.rejected.emit({
+				runId,
+				runRow,
+				path,
+				output,
+				db: this.#db,
+				entries: this.#entries,
+			});
+			return { run: runAlias, status: 200 };
 		}
 
-		// The dispatch loop is awaiting resolution. This unblocks it.
-		// Dispatch continuation is handled by the loop, not here.
-		return { run: runAlias, status: 200 };
-	}
+		const attrs = await this.#entries.getAttributes(runId, path);
+		const project = await this.#db.get_project_by_id.get({
+			id: runRow.project_id,
+		});
+		const ctx = {
+			runId,
+			runRow,
+			projectId: runRow.project_id,
+			projectRoot: project?.project_root,
+			path,
+			attrs,
+			output,
+			db: this.#db,
+			entries: this.#entries,
+		};
 
-	async #composeResolvedContent(runId, path, _attrs, output) {
-		const scheme = path.split("://")[0];
-		switch (scheme) {
-			case "set": {
-				// Prefer existing body (e.g. the set result entry already has
-				// the model's proposed content); fall back to the client-
-				// supplied output on acceptance; empty string otherwise.
-				const existing = await this.#entries.getBody(runId, path);
-				if (existing) return existing;
-				if (output) return output;
-				return "";
+		// Plugins veto acceptance (e.g. readonly) via proposal.accepting.
+		// First veto wins: state=failed with plugin-supplied outcome + body.
+		if (action === "accept") {
+			const veto = await this.#hooks.proposal.accepting.filter(null, ctx);
+			if (veto?.allow === false) {
+				await this.#entries.set({
+					runId,
+					path,
+					state: "failed",
+					outcome: veto.outcome,
+					body: veto.body,
+				});
+				return { ok: true, state: "failed", outcome: veto.outcome };
 			}
-			default:
-				return output ? output : "";
 		}
+
+		// Compose the resolved body. Default is output || "". Plugins may
+		// override via proposal.content (e.g. set prefers the existing
+		// proposed body from the log entry).
+		const defaultBody = output ? output : "";
+		const resolvedBody = await this.#hooks.proposal.content.filter(
+			defaultBody,
+			ctx,
+		);
+		const state = action === "error" ? "failed" : "resolved";
+		const outcome = action === "error" ? "error" : null;
+		const existing = await this.#entries.getState(runId, path);
+		const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
+		await this.#entries.set({
+			runId,
+			turn: existingTurn,
+			path,
+			state,
+			body: resolvedBody,
+			outcome,
+		});
+
+		const event =
+			action === "accept"
+				? this.#hooks.proposal.accepted
+				: this.#hooks.proposal.rejected;
+		await event.emit({ ...ctx, resolvedBody });
+
+		return { run: runAlias, status: 200 };
 	}
 
 	async inject(runAlias, message, mode) {

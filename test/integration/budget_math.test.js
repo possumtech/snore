@@ -225,6 +225,10 @@ describe("Budget math", () => {
 				messages,
 				rows,
 				lastPromptTokens: 0,
+				ctx: { runId: 1, turn: 1, loopId: 0, loopIteration: 0 },
+				rummy: {
+					hooks: { error: { log: { emit: async () => {} } } },
+				},
 			});
 
 			assert.strictEqual(result.ok, false, "should overflow");

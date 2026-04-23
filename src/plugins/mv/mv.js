@@ -1,6 +1,8 @@
 import Entries from "../../agent/Entries.js";
 import docs from "./mvDoc.js";
 
+const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+
 export default class Mv {
 	#core;
 
@@ -14,6 +16,14 @@ export default class Mv {
 			docsMap.mv = docs;
 			return docsMap;
 		});
+		core.on("proposal.accepted", this.#onAccepted.bind(this));
+	}
+
+	async #onAccepted(ctx) {
+		const m = LOG_ACTION_RE.exec(ctx.path);
+		if (m?.[1] !== "mv") return;
+		if (!ctx.attrs?.isMove || !ctx.attrs?.from) return;
+		await ctx.entries.rm({ runId: ctx.runId, path: ctx.attrs.from });
 	}
 
 	async handler(entry, rummy) {

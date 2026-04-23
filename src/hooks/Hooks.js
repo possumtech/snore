@@ -62,6 +62,19 @@ export default function createHooks(debug = false) {
 		proposal: {
 			prepare: createEvent("proposal.prepare"),
 			pending: createEvent("proposal.pending"),
+			// Plugins veto acceptance by returning {allow:false, outcome, body}.
+			// Used e.g. by set plugin's readonly constraint check.
+			accepting: createFilter("proposal.accepting"),
+			// Plugins compose the resolved body based on path/action. Default
+			// is output || "". Used e.g. by set plugin to preserve the
+			// model's proposed content as the resolved body.
+			content: createFilter("proposal.content"),
+			// Fires after a proposal resolves with action="accept". Plugins
+			// perform their side effects (file materialize, unlink, stream
+			// setup, etc.) here — NOT in AgentLoop.resolve.
+			accepted: createEvent("proposal.accepted"),
+			// Fires after a proposal resolves with action="error" or "reject".
+			rejected: createEvent("proposal.rejected"),
 		},
 		assembly: {
 			system: createFilter("assembly.system"),
