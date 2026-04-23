@@ -1,6 +1,12 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 
-const NO_TOKENS_SCHEMES = new Set(["set", "mv", "cp", "sh", "env"]);
+// Schemes whose log body is an action summary, not the cost-bearing
+// content. For these, the action's cost lives on a separate data entry
+// (sh/env: streaming channels; set/mv/cp: the target entry). Report
+// tokens from the target when we can resolve it (set/mv/cp via
+// attrs.path); omit entirely for sh/env (multiple channels, no single
+// target to point at).
+const STREAM_NO_TOKENS = new Set(["sh", "env"]);
 
 export default class Log {
 	#core;
@@ -26,7 +32,9 @@ export default class Log {
 			return false;
 		});
 		if (entries.length === 0) return content;
-		const lines = entries.map((e) => renderLogTag(e));
+		const rowsByPath = new Map();
+		for (const r of ctx.rows) rowsByPath.set(r.path, r);
+		const lines = entries.map((e) => renderLogTag(e, rowsByPath));
 		return `${content}<log>\n${lines.join("\n")}\n</log>\n`;
 	}
 }
@@ -41,7 +49,7 @@ function actionFromPath(path) {
 	return match ? match[1] : "log";
 }
 
-function renderLogTag(entry) {
+function renderLogTag(entry, rowsByPath) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -57,10 +65,20 @@ function renderLogTag(entry) {
 				: null;
 	const status = statusValue != null ? ` status="${statusValue}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const tokens =
-		entry.tokens && !NO_TOKENS_SCHEMES.has(action)
-			? ` tokens="${entry.tokens}"`
-			: "";
+	// `tokens=` is the full-visibility cost of the thing this tag
+	// represents — not the log entry's own stub body. For actions that
+	// reference a separate data entry (get/set/mv/cp), resolve it via
+	// attrs.path and report the target's tokens. For actions whose log
+	// body IS the cost-bearing content (search/update/error/ask_user),
+	// fall back to entry.tokens. sh/env span multiple channel entries
+	// and are omitted — the channels render their own tokens in
+	// <context>.
+	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
+	let tokenSource = null;
+	if (STREAM_NO_TOKENS.has(action)) tokenSource = null;
+	else if (targetEntry) tokenSource = targetEntry.tokens;
+	else tokenSource = entry.tokens;
+	const tokens = tokenSource ? ` tokens="${tokenSource}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.slice(0, 80)}"`

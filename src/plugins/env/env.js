@@ -1,3 +1,4 @@
+import { logPathToDataBase } from "../helpers.js";
 import docs from "./envDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -7,9 +8,10 @@ export default class Env {
 
 	constructor(core) {
 		this.#core = core;
-		// Same behavior as sh; different scheme name for ask-mode policy
-		// differentiation (env is safe/read-only; sh has side effects).
-		core.registerScheme();
+		// `env` scheme holds the streamed stdout/stderr payload. See sh.js
+		// for the scheme/category split rationale. env differs from sh only
+		// in ask-mode policy (env is safe/read-only; sh has side effects).
+		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
@@ -27,11 +29,12 @@ export default class Env {
 		if (ctx.attrs?.command) command = ctx.attrs.command;
 		else if (ctx.attrs?.summary) command = ctx.attrs.summary;
 		const turn = (await ctx.db.get_run_by_id.get({ id: ctx.runId })).next_turn;
+		const dataBase = logPathToDataBase(ctx.path);
 		for (const ch of [1, 2]) {
 			await ctx.entries.set({
 				runId: ctx.runId,
 				turn,
-				path: `${ctx.path}_${ch}`,
+				path: `${dataBase}_${ch}`,
 				body: "",
 				state: "streaming",
 				visibility: "summarized",
@@ -42,7 +45,7 @@ export default class Env {
 			runId: ctx.runId,
 			path: ctx.path,
 			state: "resolved",
-			body: `ran '${command}' (in progress). Output: ${ctx.path}_1, ${ctx.path}_2`,
+			body: `ran '${command}' (in progress). Output: ${dataBase}_1, ${dataBase}_2`,
 		});
 	}
 

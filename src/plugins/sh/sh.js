@@ -1,3 +1,4 @@
+import { logPathToDataBase } from "../helpers.js";
 import docs from "./shDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -7,10 +8,12 @@ export default class Sh {
 
 	constructor(core) {
 		this.#core = core;
-		// Category "logging" on the proposal entry — it records an action.
-		// On accept, this plugin (via proposal.accepted) creates companion
-		// _{channel} data entries (category "data") that hold streamed output.
-		core.registerScheme();
+		// `sh` scheme holds the streamed stdout/stderr payload — that's
+		// data the model reads, not an audit record. The log entry at
+		// log://turn_N/sh/{slug} (scheme=log, category=logging) is the
+		// audit record; it lives in a separate namespace by design.
+		// See SPEC §streaming_entries and the scheme/category invariant.
+		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
@@ -28,11 +31,12 @@ export default class Sh {
 		if (ctx.attrs?.command) command = ctx.attrs.command;
 		else if (ctx.attrs?.summary) command = ctx.attrs.summary;
 		const turn = (await ctx.db.get_run_by_id.get({ id: ctx.runId })).next_turn;
+		const dataBase = logPathToDataBase(ctx.path);
 		for (const ch of [1, 2]) {
 			await ctx.entries.set({
 				runId: ctx.runId,
 				turn,
-				path: `${ctx.path}_${ch}`,
+				path: `${dataBase}_${ch}`,
 				body: "",
 				state: "streaming",
 				visibility: "summarized",
@@ -43,7 +47,7 @@ export default class Sh {
 			runId: ctx.runId,
 			path: ctx.path,
 			state: "resolved",
-			body: `ran '${command}' (in progress). Output: ${ctx.path}_1, ${ctx.path}_2`,
+			body: `ran '${command}' (in progress). Output: ${dataBase}_1, ${dataBase}_2`,
 		});
 	}
 

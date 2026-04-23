@@ -1,3 +1,5 @@
+import { logPathToDataBase } from "../helpers.js";
+
 /**
  * Stream plugin — generic streaming entry infrastructure.
  *
@@ -5,6 +7,12 @@
  * existing data entries. Producers (sh/env handlers) create the data
  * entries at status=102 on proposal acceptance; this plugin handles the
  * subsequent append + terminal-status transition via two RPC methods.
+ *
+ * RPC `path` param is the **log-entry path** (log://turn_N/{action}/{slug}
+ * — that's what the client sees on `run/proposal`). Channels live under
+ * the producer scheme ({action}://turn_N/{slug}_N) for a clean
+ * data-vs-logging namespace split; this plugin derives the data base from
+ * the log path on every RPC call.
  *
  * Not a model-facing tool. No scheme, no tooldoc, no dispatch handler.
  * Pure RPC plumbing that any streaming-producer plugin can leverage.
@@ -33,7 +41,13 @@ export default class Stream {
 				});
 				if (!runRow) throw new Error(`run not found: ${params.run}`);
 
-				const entryPath = `${params.path}_${params.channel}`;
+				const dataBase = logPathToDataBase(params.path);
+				if (!dataBase) {
+					throw new Error(
+						`path must be a log entry (log://turn_N/...); got: ${params.path}`,
+					);
+				}
+				const entryPath = `${dataBase}_${params.channel}`;
 				await ctx.projectAgent.entries.set({
 					runId: runRow.id,
 					path: entryPath,
@@ -46,7 +60,7 @@ export default class Stream {
 				"Append a chunk to a streaming entry channel. Used by clients and producers to grow a 102 entry's body.",
 			params: {
 				run: "string — run alias",
-				path: "string — base path of the streaming producer (channel is appended)",
+				path: "string — log-entry path (log://turn_N/{action}/{slug}); server derives the data channel path",
 				channel: "number — channel index (Unix FD: 1=stdout, 2=stderr)",
 				chunk: "string — content to append to the entry body",
 			},
@@ -70,11 +84,17 @@ export default class Stream {
 				const terminalState = exitCode === 0 ? "resolved" : "failed";
 				const terminalOutcome = exitCode === 0 ? null : `exit:${exitCode}`;
 
-				// Find all `{path}_*` data entries (channels 1, 2, ...).
+				const dataBase = logPathToDataBase(params.path);
+				if (!dataBase) {
+					throw new Error(
+						`path must be a log entry (log://turn_N/...); got: ${params.path}`,
+					);
+				}
+				// Find all `{dataBase}_*` data entries (channels 1, 2, ...).
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
 					runId,
-					`${params.path}_*`,
+					`${dataBase}_*`,
 					null,
 				);
 				for (const ch of channels) {
@@ -110,7 +130,7 @@ export default class Stream {
 				"Finalize a streaming producer. Transitions all `{path}_*` data channels to terminal status (200 on exit_code=0, 500 otherwise) and rewrites the log entry body with exit code, duration, and channel sizes.",
 			params: {
 				run: "string — run alias",
-				path: "string — base path of the streaming producer",
+				path: "string — log-entry path (log://turn_N/{action}/{slug}); server derives the data channel path",
 				exit_code:
 					"number? — exit code (0=success→200, non-zero=failure→500). Defaults to 0 for non-process producers.",
 				duration: "string? — human-readable duration for the log entry",
@@ -136,10 +156,16 @@ export default class Stream {
 
 				const { duration = null, reason = null } = params;
 
+				const dataBase = logPathToDataBase(params.path);
+				if (!dataBase) {
+					throw new Error(
+						`path must be a log entry (log://turn_N/...); got: ${params.path}`,
+					);
+				}
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
 					runId,
-					`${params.path}_*`,
+					`${dataBase}_*`,
 					null,
 				);
 				for (const ch of channels) {
@@ -177,7 +203,7 @@ export default class Stream {
 				"Abort a streaming producer. Transitions all `{path}_*` data channels to status 499 (Client Closed Request) and rewrites the log entry body to note the abort.",
 			params: {
 				run: "string — run alias",
-				path: "string — base path of the streaming producer",
+				path: "string — log-entry path (log://turn_N/{action}/{slug}); server derives the data channel path",
 				reason:
 					"string? — human-readable abort reason (e.g. 'user cancelled', 'timeout')",
 				duration: "string? — human-readable duration at abort time",
@@ -204,10 +230,16 @@ export default class Stream {
 
 				const { reason = null } = params;
 
+				const dataBase = logPathToDataBase(params.path);
+				if (!dataBase) {
+					throw new Error(
+						`path must be a log entry (log://turn_N/...); got: ${params.path}`,
+					);
+				}
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
 					runId,
-					`${params.path}_*`,
+					`${dataBase}_*`,
 					null,
 				);
 				for (const ch of channels) {
@@ -248,7 +280,7 @@ export default class Stream {
 				"Server-initiated cancellation. Transitions all `{path}_*` data channels to status 499 and pushes a stream/cancelled notification to connected clients. Also used for stale 102 cleanup when the originating client is gone.",
 			params: {
 				run: "string — run alias",
-				path: "string — base path of the streaming producer",
+				path: "string — log-entry path (log://turn_N/{action}/{slug}); server derives the data channel path",
 				reason:
 					"string? — cancellation reason (e.g. 'budget exceeded', 'stale cleanup', 'user cancelled from another client')",
 			},

@@ -1,14 +1,34 @@
 # stream {#stream_plugin}
 
-Generic streaming entry infrastructure. Provides two RPC methods that
-any producer plugin (sh, env, future: search, fetch, watch) can use to
+Generic streaming entry infrastructure. Provides RPC methods that any
+producer plugin (sh, env, future: search, fetch, watch) can use to
 populate data entries over time.
+
+## Namespace split
+
+A streaming action lives in **two namespaces** by design:
+
+- **Log entry** (audit record): `log://turn_N/{action}/{slug}` —
+  scheme=`log`, category=`logging`. Created by the producer's dispatch
+  handler (via `TurnExecutor` → `logPath`). This is the proposal the
+  client resolves. Renders inside `<log>`.
+- **Data channels** (payload): `{action}://turn_N/{slug}_1`,
+  `{action}://turn_N/{slug}_2`, ... — scheme=`{action}` (sh, env, ...),
+  category=`data`. Created at status=102 on proposal acceptance. Grow
+  via `stream`; terminal via `stream/completed` / `stream/aborted` /
+  `stream/cancel`. Render inside `<context>`.
+
+The stream RPC `path` param is always the **log-entry path** (that's
+what clients receive on `run/proposal`). The server derives the data
+base path internally via `logPathToDataBase`. See
+[scheme_category_split](#scheme_category_split).
 
 ## RPC Methods
 
 ### `stream { run, path, channel, chunk }`
 
-Append `chunk` to the entry at `{path}_{channel}`. Entry must exist
+Append `chunk` to the data channel entry at `{dataBase}_{channel}`,
+where `dataBase` is derived from the log path. Entry must exist
 (created by the producer plugin on proposal acceptance, at status=102).
 
 Unix FD convention for the channel number: 1=stdout, 2=stderr, higher
@@ -16,7 +36,7 @@ numbers for additional producer channels.
 
 ### `stream/completed { run, path, exit_code?, duration? }`
 
-Transition all `{path}_*` data channels to terminal status:
+Transition all `{dataBase}_*` data channels to terminal status:
 - `exit_code=0` (or omitted) → status=200
 - `exit_code≠0` → status=500
 
@@ -25,10 +45,10 @@ duration, and channel sizes.
 
 ### `stream/aborted { run, path, reason?, duration? }`
 
-Client-initiated cancellation. Transition all `{path}_*` data channels
-to status **499 (Client Closed Request)** — the de-facto HTTP status
-for a request terminated by the client. Rewrite the log entry body to
-note the abort (with optional `reason` and `duration`).
+Client-initiated cancellation. Transition all `{dataBase}_*` data
+channels to status **499 (Client Closed Request)** — the de-facto HTTP
+status for a request terminated by the client. Rewrite the log entry
+body to note the abort (with optional `reason` and `duration`).
 
 Client contract: kill the underlying process first, then call
 `stream/aborted`. Body of each data channel is preserved at whatever
@@ -49,13 +69,17 @@ mid-stream (`stream/completed` never arrived), any client can call
 
 A streaming producer plugin:
 
-1. On dispatch, creates a **proposal entry** at `sh://turn_N/{slug}` (or
-   analogous) at status=202. Status transitions to 200 when the user
-   accepts (this becomes the **log entry**).
-2. On acceptance, creates **data entries** at `{path}_1`, `{path}_2`, etc.
-   at status=102, category=data, visibility=summarized, empty body.
-3. Client or external producer calls `stream` RPC with chunks as they
-   arrive.
+1. On model dispatch, writes the **proposal/log entry** at
+   `log://turn_N/{action}/{slug}` at status=202 (this is automatic —
+   `TurnExecutor` builds the path via `logPath`; the producer's
+   `handler` just persists it).
+2. On `proposal.accepted`, derives the data base
+   (`logPathToDataBase(ctx.path)`) and creates **data entries** at
+   `{dataBase}_1`, `{dataBase}_2`, etc. at status=102, category=data,
+   visibility=summarized, empty body. Then rewrites the log entry body
+   to reference the channel paths.
+3. Client or external producer calls the `stream` RPC with chunks as
+   they arrive.
 4. When the producer is done, the client/producer calls
    `stream/completed`.
 

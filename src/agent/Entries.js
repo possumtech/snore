@@ -278,14 +278,17 @@ export default class Entries {
 		}
 		const scope = this.#resolveScope(kind, runId, projectId);
 		// Log entries self-describe via `action` so consumers (renderer,
-		// client UIs, tests) can read the action without parsing the path.
+		// client UIs, tests) can read the action without parsing the
+		// path. Only inject `action` when the caller passes attributes
+		// — a null `attributes` means "don't touch existing" and the
+		// SQL's COALESCE handles preservation on UPDATE. If we generated
+		// `{action: m[1]}` for every null-attributes log write, every
+		// body-only update to a log entry would clobber existing attrs
+		// (command, summary, demotedCount, ...).
 		let effectiveAttributes = attributes ? { ...attributes } : null;
-		if (scheme === "log") {
+		if (scheme === "log" && effectiveAttributes) {
 			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
-			if (m) {
-				if (effectiveAttributes) effectiveAttributes.action = m[1];
-				else effectiveAttributes = { action: m[1] };
-			}
+			if (m) effectiveAttributes.action = m[1];
 		}
 		const entry = await this.#db.upsert_entry.get({
 			scope,

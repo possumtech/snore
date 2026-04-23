@@ -226,8 +226,8 @@ Every entry plays one of four roles:
 
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
-| **Data** | `data` | `<knowns>` | Entries the model works with — persistent state |
-| **Logging** | `logging` | `<performed>`/`<previous>` | Records of what happened — tool results, lifecycle signals |
+| **Data** | `data` | `<context>` | Entries the model works with — persistent state and captured payload |
+| **Logging** | `logging` | `<log>` | Records of what happened — tool results, lifecycle signals |
 | **Unknowns** | `unknown` | `<unknowns>` | Open questions the model is tracking |
 | **Prompt** | `prompt` | `<prompt>` | The task driving the loop |
 
@@ -239,13 +239,35 @@ Every entry plays one of four roles:
 | `known://` | data | `model, plugin` | Model-registered knowledge. One fact per entry. |
 | `skill://` | data | `model, plugin` | Skill docs. Rendered in system message. |
 | `http://`, `https://` | data | `model, plugin` | Web content. |
+| `sh://`, `env://` | data | `model, plugin` | Streaming-producer payload — stdout/stderr channel entries from shell/env commands. **Channels only**; the action audit record lives in `log://`. See [scheme_category_split](#scheme_category_split). |
 | `unknown://` | unknown | `model, plugin` | Unresolved questions. |
 | `prompt://` | prompt | `plugin` | User prompt with `mode` attribute. Written by prompt plugin, never by model. |
-| `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | `model, plugin` | Tool result entries. |
+| `log://` | logging | `system, plugin, model` | Unified audit record namespace for all tool actions. One entry per action at `log://turn_N/{action}/{slug}`. |
 | `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
 | `error://` | logging | `model, plugin` | Runtime errors — policy rejection, budget overflow (status 413), dispatch crashes, protocol violations. Unified channel via `hooks.error.log.emit`. |
 | `tool://` | audit | `system` | Internal plugin metadata. `model_visible = 0`. |
 | `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | audit | `system` | Audit entries. `model_visible = 0`. Written only by server-level code. |
+
+### Scheme / Category Split {#scheme_category_split}
+
+**Scheme determines category.** Every entry's category is looked up
+from its scheme registration; entries of the same scheme always share a
+category. Data and logging never share a scheme.
+
+Streaming producers (sh, env, and future fetch/search/tail/watch) split
+across two namespaces as a direct consequence:
+
+- **Action audit record** lives in `log://turn_N/{action}/{slug}` —
+  scheme=`log`, category=`logging`. Renders in `<log>`.
+- **Payload channels** live in `{action}://turn_N/{slug}_N` —
+  scheme=`{action}` (registered as `category: "data"`). Render in
+  `<context>`.
+
+This keeps `<log>` a terse audit trail (what happened, exit code,
+paths) while `<context>` carries the actual streamed bytes the model
+reads. Conflating the two — e.g., writing channels under `log://...` —
+mislabels payload as audit and pollutes the logging section with
+multi-line command output. See [streaming_entries](#streaming_entries).
 
 ### Scheme Registry {#scheme_registry}
 
@@ -515,22 +537,29 @@ lifecycle extends beyond the synchronous 202→200/400+ flow.
   → reject → 403
 ```
 
-**Entry shape for a streaming producer:**
+**Entry shape for a streaming producer** — two namespaces per
+invocation, one for the audit record, one for the payload (see
+[scheme_category_split](#scheme_category_split)):
 
 ```
-{scheme}://turn_N/{slug}     category=logging   status=200
-                             body: "ran 'command', exit=0, Output: {paths}"
-                             (renders in <performed>)
+log://turn_N/{action}/{slug}    scheme=log       category=logging   status=202→200
+                                body: "ran 'command', exit=0, Output: {paths}"
+                                (renders in <log>)
 
-{scheme}://turn_N/{slug}_1   category=data      status=102 → 200/500
-                             body: primary stream (stdout for shell)
-                             summary="{command}" visibility=summarized
-                             (renders in <knowns>)
+{action}://turn_N/{slug}_1      scheme={action}  category=data      status=102 → 200/500
+                                body: primary stream (stdout for shell)
+                                summary="{command}" visibility=summarized
+                                (renders in <context>)
 
-{scheme}://turn_N/{slug}_2   category=data      status=102 → 200/500
-                             body: alt stream (stderr for shell)
-                             (renders in <knowns>, often empty)
+{action}://turn_N/{slug}_2      scheme={action}  category=data      status=102 → 200/500
+                                body: alt stream (stderr for shell)
+                                (renders in <context>, often empty)
 ```
+
+`{action}` is the producer plugin's name (`sh`, `env`, future: `search`,
+`fetch`, ...). The stream RPC accepts the **log-entry path** and derives
+the data base internally via `logPathToDataBase` — see
+[stream_plugin](#stream_plugin).
 
 **Channel numbering follows Unix file descriptor convention.** Channel
 1 is primary output (stdout for shell); channel 2 is alternate/error

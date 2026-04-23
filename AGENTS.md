@@ -623,3 +623,31 @@ incremental emits that lingered after dispatch errors).
   `set run://`) are ergonomics, not fallbacks. Fallbacks are in production
   code that silently substitutes missing contract data. Helpers are explicit
   methods with clear names that build on the contract.
+
+### 2026-04-23 — Scheme/category split for streaming producers
+
+**Mistake caught.** In the unified-log-namespace migration,
+`proposal.accepted` handlers in sh/env were moved out of `AgentLoop`
+and into the plugins themselves — correct refactor — but the channel
+paths were also migrated from `sh://turn_N/{slug}_N` to
+`log://turn_N/sh/{slug}_N`, which made the streamed stdout/stderr
+entries inherit `category=logging` from the log scheme. The `<log>`
+block started carrying multi-line payload that belonged in
+`<context>`, and the `<context>` section stopped seeing the output at
+all. The user asked "you didn't get streaming (data) and logging (log)
+for sh and env mixed up, did you?" — yes, I had.
+
+**Invariant restated and anchored.** `scheme determines category`.
+Data and logging never share a scheme. Streaming producers split
+across two namespaces per invocation:
+
+- `log://turn_N/{action}/{slug}` — scheme=log, category=logging
+  (audit record; renders in `<log>`)
+- `{action}://turn_N/{slug}_N` — scheme={action}, category=data
+  (payload channels; render in `<context>`)
+
+Documented in SPEC.md `{#scheme_category_split}` +
+`{#streaming_entries}`, and in plugin READMEs (sh, env, stream, log).
+Fix: `logPathToDataBase` helper in `src/plugins/helpers.js`; sh/env
+register with `category: "data"`; stream RPC derives the data base
+from the log path on every call.

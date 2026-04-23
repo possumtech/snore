@@ -17,6 +17,7 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import { stateToStatus } from "../../src/agent/httpStatus.js";
+import { logPathToDataBase } from "../../src/plugins/helpers.js";
 import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
@@ -68,7 +69,10 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	}
 
 	async function seedShProposal(runAlias, slug, command) {
-		const path = `sh://turn_1/${slug}`;
+		// The proposal/log entry is in the unified log namespace; the
+		// streamed stdout/stderr payload lives under sh:// (category=data)
+		// at the derived data base path. See @scheme_category_split.
+		const path = `log://turn_1/sh/${slug}`;
 		return seedProposal(runAlias, path, { command, summary: command });
 	}
 
@@ -94,13 +98,14 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("accept creates _1 and _2 data channels at status 102", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "echo_test", "echo hello");
+		const dataBase = logPathToDataBase(path);
 
 		await accept(run, path);
 
 		const entries = await allEntries(run);
 		const logEntry = entries.find((e) => e.path === path);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
-		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${dataBase}_2`);
 
 		assert.ok(logEntry, "log entry exists");
 		assert.strictEqual(status(logEntry), 200, "log entry transitioned to 200");
@@ -109,22 +114,25 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 			`log body mentions command: ${logEntry.body}`,
 		);
 		assert.ok(
-			logEntry.body.includes(`${path}_1`),
+			logEntry.body.includes(`${dataBase}_1`),
 			"log body references stdout channel",
 		);
 
 		assert.ok(stdoutEntry, "_1 entry exists");
+		assert.strictEqual(stdoutEntry.scheme, "sh", "_1 uses sh scheme (data)");
 		assert.strictEqual(status(stdoutEntry), 102, "_1 at status 102");
 		assert.strictEqual(stdoutEntry.body, "", "_1 body empty");
 		assert.strictEqual(stdoutEntry.visibility, "summarized", "_1 demoted");
 
 		assert.ok(stderrEntry, "_2 entry exists");
+		assert.strictEqual(stderrEntry.scheme, "sh", "_2 uses sh scheme (data)");
 		assert.strictEqual(status(stderrEntry), 102, "_2 at status 102");
 	});
 
 	it("stream RPC appends chunks to the right channel", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "append_test", "seq 1 3");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream", {
@@ -153,8 +161,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		});
 
 		const entries = await allEntries(run);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
-		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${dataBase}_2`);
 
 		assert.strictEqual(stdoutEntry.body, "line 1\nline 2\nline 3\n");
 		assert.strictEqual(status(stdoutEntry), 102, "still running during stream");
@@ -166,6 +174,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("stream/completed transitions channels to 200 on exit_code=0", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "success_test", "true");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream", {
@@ -183,8 +192,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 		const entries = await allEntries(run);
 		const logEntry = entries.find((e) => e.path === path);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
-		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${dataBase}_2`);
 
 		assert.strictEqual(status(stdoutEntry), 200, "stdout transitioned to 200");
 		assert.strictEqual(status(stderrEntry), 200, "stderr transitioned to 200");
@@ -202,6 +211,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("stream/completed transitions channels to 500 on non-zero exit_code", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "failure_test", "false");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream", {
@@ -218,8 +228,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 		const entries = await allEntries(run);
 		const logEntry = entries.find((e) => e.path === path);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
-		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${dataBase}_2`);
 
 		assert.strictEqual(status(stdoutEntry), 500, "stdout transitioned to 500");
 		assert.strictEqual(status(stderrEntry), 500, "stderr transitioned to 500");
@@ -233,6 +243,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("stream/aborted transitions channels to 499 with abort body", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "abort_test", "sleep 60");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream", {
@@ -250,8 +261,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 		const entries = await allEntries(run);
 		const logEntry = entries.find((e) => e.path === path);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
-		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${dataBase}_2`);
 
 		assert.strictEqual(status(stdoutEntry), 499, "stdout transitioned to 499");
 		assert.strictEqual(status(stderrEntry), 499, "stderr transitioned to 499");
@@ -274,7 +285,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 			`log body has duration: ${logEntry.body}`,
 		);
 		assert.ok(
-			logEntry.body.includes(`${path}_1`),
+			logEntry.body.includes(`${dataBase}_1`),
 			"log body references channel",
 		);
 	});
@@ -282,13 +293,14 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("stream/aborted works without reason or duration", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "abort_bare", "yes");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream/aborted", { run, path });
 
 		const entries = await allEntries(run);
 		const logEntry = entries.find((e) => e.path === path);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
 
 		assert.strictEqual(status(stdoutEntry), 499);
 		assert.ok(logEntry.body.startsWith("aborted 'yes'"));
@@ -297,6 +309,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("stream/cancel transitions channels to 499 server-side", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "cancel_test", "make build");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream", {
@@ -313,8 +326,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 		const entries = await allEntries(run);
 		const logEntry = entries.find((e) => e.path === path);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
-		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${dataBase}_2`);
 
 		assert.strictEqual(status(stdoutEntry), 499, "stdout → 499");
 		assert.strictEqual(status(stderrEntry), 499, "stderr → 499");
@@ -337,6 +350,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	it("stream/cancel works for stale 102 cleanup (no prior chunks)", async () => {
 		const run = await startRun();
 		const path = await seedShProposal(run, "stale_test", "hang");
+		const dataBase = logPathToDataBase(path);
 		await accept(run, path);
 
 		await client.call("stream/cancel", {
@@ -346,7 +360,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		});
 
 		const entries = await allEntries(run);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
 
 		assert.strictEqual(status(stdoutEntry), 499);
 		assert.strictEqual(stdoutEntry.body, "", "empty body preserved");
@@ -354,10 +368,11 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 	it("env scheme follows identical streaming pattern", async () => {
 		const run = await startRun();
-		const path = await seedProposal(run, "env://turn_1/pwd", {
+		const path = await seedProposal(run, "log://turn_1/env/pwd", {
 			command: "pwd",
 			summary: "pwd",
 		});
+		const dataBase = logPathToDataBase(path);
 
 		await accept(run, path);
 		await client.call("stream", {
@@ -369,9 +384,10 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		await client.call("stream/completed", { run, path, exit_code: 0 });
 
 		const entries = await allEntries(run);
-		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
+		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
 
 		assert.ok(stdoutEntry, "env _1 entry exists");
+		assert.strictEqual(stdoutEntry.scheme, "env", "env channel uses env scheme");
 		assert.strictEqual(status(stdoutEntry), 200);
 		assert.strictEqual(stdoutEntry.body, "/tmp\n");
 	});

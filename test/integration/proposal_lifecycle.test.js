@@ -22,6 +22,7 @@ import AgentLoop from "../../src/agent/AgentLoop.js";
 import Entries from "../../src/agent/Entries.js";
 import LlmProvider from "../../src/llm/LlmProvider.js";
 import TurnExecutor from "../../src/agent/TurnExecutor.js";
+import { logPathToDataBase } from "../../src/plugins/helpers.js";
 import TestDb from "../helpers/TestDb.js";
 
 async function makeAgent(tdb) {
@@ -249,8 +250,11 @@ describe("proposal lifecycle (@resolution)", () => {
 				action: "accept",
 			});
 
+			// Channels live under the `sh://` data scheme; log and data
+			// live in separate namespaces. See @scheme_category_split.
+			const dataBase = logPathToDataBase(proposalPath);
 			for (const ch of [1, 2]) {
-				const chPath = `${proposalPath}_${ch}`;
+				const chPath = `${dataBase}_${ch}`;
 				const body = await entries.getBody(runId, chPath);
 				assert.strictEqual(
 					body,
