@@ -1,4 +1,4 @@
-# openrouter {#openrouter_plugin}
+# openrouter
 
 OpenRouter LLM provider. Handles model aliases prefixed with
 `openrouter/` (e.g. `openrouter/anthropic/claude-3-opus`). Strips the

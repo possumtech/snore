@@ -1,4 +1,4 @@
-# openai {#openai_plugin}
+# openai
 
 OpenAI-compatible LLM provider. Handles any model whose alias doesn't
 carry a provider prefix — the default fallback provider. Works with

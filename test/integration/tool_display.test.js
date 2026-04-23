@@ -8,7 +8,7 @@ import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import TestDb from "../helpers/TestDb.js";
 
-describe("tool display (@tool_documentation)", () => {
+describe("tool display (@tool_documentation, @plugins_display_order)", () => {
 	let tdb;
 
 	before(async () => {

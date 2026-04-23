@@ -12,7 +12,7 @@ import Entries from "../../src/agent/Entries.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("unified API (@unified_api)", () => {
+describe("unified API (@unified_api, @plugins_unified_api, @plugins_two_objects, @plugins_rummy_verbs, @plugins_rummy_queries, @plugins_rummy_properties)", () => {
 	let tdb;
 
 	before(async () => {

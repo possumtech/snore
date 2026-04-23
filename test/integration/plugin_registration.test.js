@@ -11,7 +11,7 @@ import Entries from "../../src/agent/Entries.js";
 import PluginContext from "../../src/hooks/PluginContext.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("plugin registration (@plugin_system, @plugin_convention, @scheme_registry)", () => {
+describe("plugin registration (@plugin_system, @plugin_convention, @scheme_registry, @plugins_contract, @plugins_registration, @plugins_ensure_tool, @plugins_register_scheme, @plugins_tool_docs)", () => {
 	let tdb;
 
 	before(async () => {

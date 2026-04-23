@@ -15,7 +15,7 @@ function pad(n) {
 	return Array(n).fill("hello world test data").join(" ");
 }
 
-describe("budget ceiling check (@budget_enforcement)", () => {
+describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_plugin)", () => {
 	let tdb, store, cascade, RUN_ID;
 
 	before(async () => {

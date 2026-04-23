@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("Entries integration (@known_store, @schema, @upsert_semantics)", () => {
+describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_plugin)", () => {
 	let tdb;
 	let store;
 	let RUN_ID;

@@ -1,7 +1,9 @@
 /**
  * Proposal lifecycle — accept side effects per scheme.
  *
- * Covers @resolution, @file_constraints — the silent-failure paths
+ * Covers @resolution, @file_constraints, @set_plugin, @rm_plugin,
+ * @mv_plugin, @ask_user_plugin, @sh_plugin, @env_plugin,
+ * @file_plugin — the silent-failure paths
  * that let `startsWith("set://")` dead code rot for weeks. Each test
  * drives `AgentLoop.resolve` with action="accept" on a seeded
  * proposal and asserts the plugin's side effects actually landed:

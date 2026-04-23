@@ -1,8 +1,9 @@
 /**
  * Handler dispatch integration test.
  *
- * Covers @dispatch_path — the record → dispatch → state-change
- * loop that turns parsed XML commands into entries with outcomes.
+ * Covers @dispatch_path, @plugins_handler, @plugins_views,
+ * @get_plugin — the record → dispatch → state-change loop that
+ * turns parsed XML commands into entries with outcomes.
  *
  * Proves the record→dispatch→state-change loop:
  * 1. XmlParser produces commands

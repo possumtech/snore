@@ -2,7 +2,8 @@
  * Message assembly integration test.
  *
  * Covers @packet_structure, @message_structure,
- * @loops_previous_performed — what we actually send to the model.
+ * @loops_previous_performed, @instructions_plugin, @log_plugin —
+ * what we actually send to the model.
  * Populates known_entries, materializes turn_context, assembles the
  * messages, and inspects system and user content directly including
  * the rendering of prior-loop and current-loop entries.

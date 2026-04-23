@@ -1,7 +1,8 @@
 /**
  * Error verdict and cycle detection.
  *
- * Covers @response_healing, @loops_table — the strike streak +
+ * Covers @response_healing, @loops_table, @error_plugin — the
+ * strike streak +
  * cycle detection that live in the error plugin's verdict, which
  * operates over loops (strike state is per-loop). This is the
  * behavior that decides "continue" vs "run abandoned with 499"

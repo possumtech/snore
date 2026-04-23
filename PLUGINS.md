@@ -5,7 +5,7 @@ its owner. Every operation — model, client, plugin — flows through the
 same tool handler. Exceptions to that discipline must justify themselves
 in the architecture spec (SPEC.md).
 
-## Quickstart {#plugins_quickstart}
+## Quickstart
 
 A complete tool plugin in four parts: register, handle, render, document.
 
@@ -624,7 +624,7 @@ pure RPC plumbing shared across all streaming producers.
 | `openai` / `ollama` / `xai` / `openrouter` | LLM provider | Register with `hooks.llm.providers`; handle `{prefix}/...` model aliases. Silently inert if their env isn't configured. |
 | `persona` / `skill` | Internal | Runtime persona/skill management via RPC |
 
-## External Plugins {#plugins_external}
+## External Plugins
 
 | Plugin | Package | Description |
 |--------|---------|-------------|

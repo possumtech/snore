@@ -1,9 +1,10 @@
 /**
  * Mode enforcement integration test.
  *
- * Covers @mode_enforcement — ask mode rejects file mutations and
- * <sh>; act mode allows them. Also covers the tool-exclusion flags
- * (noInteraction, noWeb, noProposals) applied before each loop.
+ * Covers @mode_enforcement, @policy_plugin — ask mode rejects file
+ * mutations and <sh>; act mode allows them. Also covers the
+ * tool-exclusion flags (noInteraction, noWeb, noProposals) applied
+ * before each loop.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";

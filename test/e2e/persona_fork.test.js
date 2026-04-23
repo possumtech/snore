@@ -12,7 +12,7 @@ const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 120_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-describe("E2E: Persona & Fork (@runs_are_entries)", { concurrency: 1 }, () => {
+describe("E2E: Persona & Fork (@runs_are_entries, @plugins_rpc_run_lifecycle, @persona_plugin)", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-persona-${Date.now()}`);

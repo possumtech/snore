@@ -26,7 +26,7 @@ async function waitForRunStatus(db, alias, targetStatuses, timeoutMs) {
  * proposal flow (202 awaiting resolve). If anything about the proposal
  * path disrupts the terminal run/state emission, this test catches it.
  */
-describe("E2E: terminal run/state after proposal acceptance (@notifications, @resolution)", {
+describe("E2E: terminal run/state after proposal acceptance (@notifications, @resolution, @plugins_rpc_queries)", {
 	concurrency: 1,
 }, () => {
 	if (!model) {

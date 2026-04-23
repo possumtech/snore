@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("events and filters (@events_and_filters)", () => {
+describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter, @plugins_events_overview, @plugins_project_lifecycle, @plugins_run_loop_lifecycle, @plugins_turn_pipeline, @plugins_entry_events)", () => {
 	let tdb;
 
 	before(async () => {

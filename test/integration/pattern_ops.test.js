@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("Pattern operations integration (@hedberg, @upsert_semantics)", () => {
+describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugin)", () => {
 	let tdb, store, RUN_ID;
 
 	before(async () => {

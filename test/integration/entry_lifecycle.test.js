@@ -9,7 +9,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("entry lifecycle (@entries, @upsert_semantics)", () => {
+describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle)", () => {
 	let tdb;
 
 	before(async () => {
