@@ -1,9 +1,10 @@
 /**
  * Unified API tests.
  *
- * Covers @unified_api — the three-surface grammar where model (XML),
- * client (JSON-RPC), and plugin (RummyContext) speak the same verbs
- * against the same store.
+ * Covers @unified_api, @primitives, @surfaces — the three-surface
+ * grammar where model (XML), client (JSON-RPC), and plugin
+ * (RummyContext) speak the same six primitive verbs (set, get,
+ * rm, cp, mv, update) against the same store.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";

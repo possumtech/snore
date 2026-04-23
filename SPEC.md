@@ -6,7 +6,7 @@ model-facing behavior. This document defines everything else.
 
 ---
 
-## The Contract {#the_contract}
+## The Contract
 
 Rummy has one contract. Every actor speaks it.
 
@@ -114,7 +114,7 @@ Priority determines ordering. Lower numbers run first.
 calls `assembly.system.filter(systemPrompt, ctx)` and
 `assembly.user.filter("", ctx)`. Everything else is plugins.
 
-### Physical Layout {#physical_layout}
+### Physical Layout
 
 The contract is realized across two tables plus a compat view:
 
@@ -282,7 +282,7 @@ future concern).
 
 ---
 
-## Relational Tables {#relational_tables}
+## Relational Tables
 
 The K/V store is the memory. Relational tables are the skeleton.
 
@@ -359,7 +359,7 @@ a model `<get>`.
 
 ---
 
-## Entry-Driven Dispatch {#entry_driven_dispatch}
+## Entry-Driven Dispatch
 
 ### Unified API {#unified_api}
 
@@ -751,7 +751,7 @@ These two will diverge rapidly on any multi-turn run. A run at turn 50 might sho
 
 ---
 
-## RPC Protocol {#rpc_protocol}
+## RPC Protocol
 
 JSON-RPC 2.0 over WebSocket. `discover` returns the live catalog.
 
@@ -1035,7 +1035,7 @@ Format normalization:
 
 ---
 
-## Testing {#testing}
+## Testing
 
 | Tier | Location | LLM? |
 |------|----------|------|
@@ -1047,7 +1047,7 @@ Format normalization:
 E2E tests must NEVER mock the LLM. Environment cascade:
 `.env.example` → `.env` → `.env.test`. Always use `npm run test:*`.
 
-### Spec-Anchored Testing {#spec_anchored_testing}
+### Spec-Anchored Testing
 
 Integration and e2e tests MUST be anchored to SPEC.md's snake_case
 anchor system. The rule is bidirectional:
@@ -1082,6 +1082,13 @@ churn — rename a section's text, leave the anchor, no tests break.
   are a breaking change requiring a test sweep.
 - Short and semantic (`entries`, not `section_0_1_the_entry_contract`).
 
+**When a section doesn't get an anchor:** umbrella sections (parents
+of testable subsections, like "The Contract" or "RPC Protocol") and
+pure-documentation sections (env var listings, debugging procedures,
+this section itself) stay as plain headings. The anchor *implies
+testability* — if there's nothing observable to verify, adding an
+anchor creates a permanent false obligation.
+
 ---
 
 ## SQL Functions {#sql_functions}
@@ -1099,7 +1106,7 @@ See [PLUGINS.md](PLUGINS.md) for the hedberg pattern type reference.
 
 ---
 
-## Debugging: E2E and Benchmark Results {#debugging}
+## Debugging: E2E and Benchmark Results
 
 ### E2E test failures
 
@@ -1148,7 +1155,7 @@ Run with: `npm run test:lme`
 
 ---
 
-## Configuration {#configuration}
+## Configuration
 
 Full reference is `.env.example` — these are the load-bearing vars.
 

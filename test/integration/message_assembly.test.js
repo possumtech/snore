@@ -1,10 +1,11 @@
 /**
  * Message assembly integration test.
  *
- * Covers @packet_structure, @message_structure — what we actually
- * send to the model. Populates known_entries, materializes
- * turn_context, assembles the messages, and inspects system and
- * user content directly.
+ * Covers @packet_structure, @message_structure,
+ * @loops_previous_performed — what we actually send to the model.
+ * Populates known_entries, materializes turn_context, assembles the
+ * messages, and inspects system and user content directly including
+ * the rendering of prior-loop and current-loop entries.
  */
 import assert from "node:assert";
 import { dirname, join } from "node:path";

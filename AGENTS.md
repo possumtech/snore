@@ -32,7 +32,7 @@
 >   `test/e2e/`. Every test in those dirs is attributed to at least
 >   one `@`-reference. No integration or e2e test exists outside
 >   this system; no SPEC anchor exists without a test anchoring
->   it. See `SPEC.md` section `spec_anchored_testing`. Enforced by
+>   it. See SPEC.md section "Spec-Anchored Testing". Enforced by
 >   `npm run test:spec`. Numeric `§X.Y` references are dead — use
 >   snake_case anchors that don't churn when sections move.
 > - **AGENTS.md is the project memory scratchpad.** Never store
@@ -296,17 +296,31 @@ at a stable enough checkpoint to leave. Resume after this.
       `test/helpers/store.js` or similar would de-dup. Deferred —
       not blocking Phase E.
 
-#### Phase E — Fill coverage gaps
-- [ ] ~19 SPEC sections (from pre-rename inventory) with no test
-      reference: either add a test or mark the section as
-      intentionally unverified with inline note.
-- [ ] Add positive-presence assertions for known-silent-failure
-      paths: (a) set proposal accept creates bare-path entry,
-      file_constraint active, disk write; (b) rm proposal deletes
-      entry + file; (c) mv proposal rm's source; (d) ask_user stores
-      answer on accept; (e) sh/env create companion `_1`/`_2`
-      entries. These are the exact bugs that went undetected for
-      weeks — positive tests turn them into tripwires.
+#### Phase E — Fill coverage gaps (COMPLETE 2026-04-23)
+- [x] Positive-presence assertions for all five silent-failure
+      paths landed in `test/integration/proposal_lifecycle.test.js`:
+      set accept (bare-path + file_constraint + disk write),
+      readonly veto, rm accept (entry + file), mv accept (source
+      rm), ask_user (answer attribute), sh accept (channel
+      seeding), reject path. **7 tests, all pass.** These turn
+      the `startsWith("set://")` class of silent failure into a
+      loud one.
+- [x] `test/integration/sql_functions.test.js` — 4 tests covering
+      schemeOf + countTokens through their `entries` table
+      integration path.
+- [x] `test/integration/error_verdict.test.js` — 6 tests covering
+      the strike/cycle/verdict behavior in the error plugin.
+- [x] Umbrella and doc-only SPEC headings had their anchors
+      removed (the_contract, relational_tables,
+      entry_driven_dispatch, rpc_protocol, testing,
+      spec_anchored_testing, debugging, configuration,
+      physical_layout). The anchor system now implies
+      testability; non-testable sections stay as plain headings.
+- [x] SPEC.md "Spec-Anchored Testing" section documents the
+      umbrella/meta omission rule.
+
+**Phase E baseline: `npm run test:spec` → OK, 33 anchors × 34
+test files, zero violations. Unit tests 228/228 green.**
 
 #### Phase F — Continuing error paradigm audit
 - [ ] Post-unification audit task from earlier (still open):
