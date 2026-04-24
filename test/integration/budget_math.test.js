@@ -485,7 +485,10 @@ describe("Budget math", () => {
 				type: "act",
 				turn: 3,
 			});
-			assert.ok(!out.includes("reverted="), "no reverted attr when no prior 413");
+			assert.ok(
+				!out.includes("reverted="),
+				"no reverted attr when no prior 413",
+			);
 		});
 
 		it("reverted only looks at PRIOR turn, not older ones", async () => {

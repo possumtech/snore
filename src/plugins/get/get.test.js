@@ -8,8 +8,14 @@ function makeStore(entries = []) {
 		upserted,
 		getEntriesByPattern: async () => entries,
 		get: async () => {},
-		set: async ({ path, body, state, outcome }) => {
-			upserted.push({ path, body, state, outcome: outcome ?? null });
+		set: async ({ path, body, state, outcome, attributes }) => {
+			upserted.push({
+				path,
+				body,
+				state,
+				outcome: outcome ?? null,
+				attributes: attributes ?? null,
+			});
 		},
 	};
 }
@@ -62,12 +68,33 @@ describe("Get partial read (line/limit)", () => {
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
 		assert.ok(
-			result.body.startsWith("[lines 10–14 / 100 total]"),
-			`unexpected header: ${result.body.slice(0, 40)}`,
+			result.body.startsWith(
+				"src/agent/AgentLoop.js\n[lines 10–14 / 100 total]",
+			),
+			`unexpected header: ${result.body.slice(0, 60)}`,
 		);
 		assert.ok(result.body.includes("line 10"));
 		assert.ok(result.body.includes("line 14"));
 		assert.ok(!result.body.includes("line 15"));
+	});
+
+	it("tags the slice log with lineStart/lineEnd/totalLines for renderLogTag", async () => {
+		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
+			"\n",
+		);
+		const store = makeStore([
+			{ path: "src/agent/AgentLoop.js", body, tokens: 500 },
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({ line: "10", limit: "5" });
+
+		await plugin.handler(entry, rummy);
+
+		const { attributes } = store.upserted[0];
+		assert.strictEqual(attributes.path, "src/agent/AgentLoop.js");
+		assert.strictEqual(attributes.lineStart, 10);
+		assert.strictEqual(attributes.lineEnd, 14);
+		assert.strictEqual(attributes.totalLines, 100);
 	});
 
 	it("limit only defaults start to line 1", async () => {
@@ -81,7 +108,9 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const result = store.upserted[0];
-		assert.ok(result.body.startsWith("[lines 1–3 / 5 total]"));
+		assert.ok(
+			result.body.startsWith("src/agent/AgentLoop.js\n[lines 1–3 / 5 total]"),
+		);
 		assert.ok(result.body.includes("a\nb\nc"));
 		assert.ok(!result.body.includes("d"));
 	});
@@ -104,8 +133,10 @@ describe("Get partial read (line/limit)", () => {
 
 		const result = store.upserted[0];
 		assert.ok(
-			result.body.startsWith("[lines 91–100 / 100 total]"),
-			`unexpected header: ${result.body.slice(0, 40)}`,
+			result.body.startsWith(
+				"sh://turn_3/npm_test_1\n[lines 91–100 / 100 total]",
+			),
+			`unexpected header: ${result.body.slice(0, 60)}`,
 		);
 		assert.ok(result.body.includes("line 100"));
 		assert.ok(result.body.includes("line 91"));
@@ -131,8 +162,10 @@ describe("Get partial read (line/limit)", () => {
 
 		const result = store.upserted[0];
 		assert.ok(
-			result.body.startsWith("[lines 81–85 / 100 total]"),
-			`unexpected header: ${result.body.slice(0, 40)}`,
+			result.body.startsWith(
+				"sh://turn_3/npm_test_1\n[lines 81–85 / 100 total]",
+			),
+			`unexpected header: ${result.body.slice(0, 60)}`,
 		);
 		assert.ok(result.body.includes("line 81"));
 		assert.ok(result.body.includes("line 85"));
@@ -149,7 +182,7 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const result = store.upserted[0];
-		assert.ok(result.body.startsWith("[lines 1–3 / 3 total]"));
+		assert.ok(result.body.startsWith("x\n[lines 1–3 / 3 total]"));
 		assert.ok(result.body.includes("a\nb\nc"));
 	});
 
@@ -164,7 +197,9 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const result = store.upserted[0];
-		assert.ok(result.body.startsWith("[lines 2–3 / 3 total]"));
+		assert.ok(
+			result.body.startsWith("src/agent/AgentLoop.js\n[lines 2–3 / 3 total]"),
+		);
 		assert.ok(result.body.includes("y\nz"));
 	});
 

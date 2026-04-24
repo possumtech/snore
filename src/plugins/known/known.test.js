@@ -26,7 +26,8 @@ describe("Known", () => {
 		});
 
 		it("body under 500 chars → returned whole, no truncation marker", () => {
-			const body = "Lost River rises in Washington County, flows west into Orange County, sinks into karst.";
+			const body =
+				"Lost River rises in Washington County, flows west into Orange County, sinks into karst.";
 			const result = plugin.summary({ body });
 			assert.strictEqual(result, body);
 			assert.ok(!result.includes("truncated"));
@@ -42,7 +43,10 @@ describe("Known", () => {
 		it("body over 500 chars → first 500 + truncation marker", () => {
 			const body = `${"x".repeat(500)}CUTOFF_SENTINEL${"x".repeat(400)}`;
 			const result = plugin.summary({ body });
-			assert.ok(result.startsWith("x".repeat(500)), "first 500 chars preserved");
+			assert.ok(
+				result.startsWith("x".repeat(500)),
+				"first 500 chars preserved",
+			);
 			assert.ok(
 				!result.includes("CUTOFF_SENTINEL"),
 				"chars beyond 500 excluded from preview",

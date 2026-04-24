@@ -54,7 +54,9 @@ describe("unified API (@unified_api, @plugins_unified_api, @plugins_two_objects,
 	});
 
 	it("query methods on RummyContext surface attributes and state", async () => {
-		const { runId, projectId } = await tdb.seedRun({ alias: "unified_queries" });
+		const { runId, projectId } = await tdb.seedRun({
+			alias: "unified_queries",
+		});
 		const store = new Entries(tdb.db);
 		const rummy = new RummyContext(
 			{ children: [] },

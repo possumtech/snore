@@ -129,7 +129,9 @@ async function _acceptAll(client, result, db, projectRoot) {
 	return current;
 }
 
-describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, @plugins_rpc, @plugins_rpc_wire_format, @plugins_rpc_primitives, @rpc_plugin)", { concurrency: 1 }, () => {
+describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, @plugins_rpc, @plugins_rpc_wire_format, @plugins_rpc_primitives, @rpc_plugin)", {
+	concurrency: 1,
+}, () => {
 	let tdb, tserver, client;
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-stories-${Date.now()}`);

@@ -387,7 +387,11 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		const stdoutEntry = entries.find((e) => e.path === `${dataBase}_1`);
 
 		assert.ok(stdoutEntry, "env _1 entry exists");
-		assert.strictEqual(stdoutEntry.scheme, "env", "env channel uses env scheme");
+		assert.strictEqual(
+			stdoutEntry.scheme,
+			"env",
+			"env channel uses env scheme",
+		);
 		assert.strictEqual(status(stdoutEntry), 200);
 		assert.strictEqual(stdoutEntry.body, "/tmp\n");
 	});

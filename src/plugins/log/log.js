@@ -69,13 +69,15 @@ function renderLogTag(entry, rowsByPath) {
 	// represents — not the log entry's own stub body. For actions that
 	// reference a separate data entry (get/set/mv/cp), resolve it via
 	// attrs.path and report the target's tokens. For actions whose log
-	// body IS the cost-bearing content (search/update/error/ask_user),
-	// fall back to entry.tokens. sh/env span multiple channel entries
-	// and are omitted — the channels render their own tokens in
-	// <context>.
+	// body IS the cost-bearing content (search/update/error/ask_user,
+	// plus <get> slice reads), fall back to entry.tokens. sh/env span
+	// multiple channel entries and are omitted — the channels render
+	// their own tokens in <context>.
+	const isSlice = attrs?.lineStart != null;
 	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
 	let tokenSource = null;
 	if (STREAM_NO_TOKENS.has(action)) tokenSource = null;
+	else if (isSlice) tokenSource = entry.tokens;
 	else if (targetEntry) tokenSource = targetEntry.tokens;
 	else tokenSource = entry.tokens;
 	const tokens = tokenSource ? ` tokens="${tokenSource}"` : "";
@@ -91,8 +93,14 @@ function renderLogTag(entry, rowsByPath) {
 	// set, the URL that was fetched). Plugins store it in attrs.path when
 	// they write the log entry.
 	const target = attrs?.path ? ` target="${attrs.path}"` : "";
+	// Slice reads tag the log entry with lineStart/lineEnd/totalLines so
+	// the <get> tag surfaces `lines="a-b/total"` — a concrete handle for
+	// the model to re-issue or compare against another slice.
+	const lines = isSlice
+		? ` lines="${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}"`
+		: "";
 
-	const attrStr = `${target}${status}${outcomeAttr}${query}${command}${summary}${tokens}`;
+	const attrStr = `${target}${status}${outcomeAttr}${query}${command}${summary}${lines}${tokens}`;
 
 	if (entry.body) {
 		return `<${action} path="${entry.path}"${attrStr}>${entry.body}</${action}>`;

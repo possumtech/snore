@@ -1,5 +1,23 @@
 import { ceiling, computeBudget, measureMessages } from "../../agent/budget.js";
 import materializeContext from "../../agent/materializeContext.js";
+import { countTokens } from "../../agent/tokens.js";
+
+/**
+ * Delta-from-actual baseline. The pre-call <prompt tokenUsage> reports
+ * the prior turn's actual API prompt_tokens; post-dispatch predicts
+ * next turn's packet = this turn's actual tokens + tokens of new rows
+ * written this turn. Keeps the 413 body on the same scale as the
+ * model's <prompt> arithmetic — a 60% divergence between pre-call
+ * (actual) and post-check (conservative estimator) makes the model
+ * dismiss the system as janky and stop following rules.
+ */
+function predictNextPacket(rows, currentTurn, baseline) {
+	let delta = 0;
+	for (const r of rows) {
+		if (r.source_turn === currentTurn) delta += countTokens(r.body);
+	}
+	return baseline + delta;
+}
 
 /**
  * Format the 413 error body. Names each demoted path with its turn
@@ -172,12 +190,16 @@ export default class Budget {
 			contextSize,
 			demoted: ctx.demoted,
 		});
-		const post = this.#check({
-			contextSize,
-			messages: postMat.messages,
-			rows: postMat.rows,
-		});
-		if (post.ok) return { failed: false };
+		// Baseline from this turn's actual API tokens (telemetry wrote it
+		// before post-dispatch runs). Delta from rows added this turn.
+		// Predicted next-turn packet stays on the tokenUsage scale the
+		// model can verify against its own arithmetic. materializeContext
+		// guarantees a number (0 when no prior API call exists).
+		const baseline = postMat.lastContextTokens;
+		const predicted = predictNextPacket(postMat.rows, ctx.turn, baseline);
+		const cap = ceiling(contextSize);
+		if (predicted <= cap) return { failed: false };
+		const post = { overflow: predicted - cap };
 
 		const store = rummy.entries;
 		let demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);

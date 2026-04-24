@@ -29,7 +29,7 @@ export default class AskUser {
 			turn,
 			path: ctx.path,
 			body: ctx.resolvedBody,
-			attributes: { ...(ctx.attrs || {}), answer: ctx.output },
+			attributes: { ...ctx.attrs, answer: ctx.output },
 		});
 	}
 

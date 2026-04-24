@@ -151,6 +151,77 @@ export default {};
 			assert.strictEqual(commands[0].preview, undefined);
 		});
 
+		// Observed in rummy_dev.db::test:demo (gemma): model correctly
+		// identified budget pressure, read getDoc's partial-read
+		// examples, and emitted `<get path="..." limit="1000"/>`. Parser
+		// silently dropped `limit`, handler fell through to full-
+		// promotion branch, 1194-token page re-promoted, budget
+		// demoted, strike. Model self-regulated; parser sabotaged.
+		// getDoc advertises line/limit — they MUST reach the handler.
+		it("parses get with line and limit (partial-read attrs must survive parsing)", () => {
+			const { commands } = XmlParser.parse(
+				'<get path="src/agent/AgentLoop.js" line="644" limit="80"/>',
+			);
+			assert.strictEqual(commands[0].path, "src/agent/AgentLoop.js");
+			assert.strictEqual(
+				commands[0].line,
+				"644",
+				"line= must reach the handler",
+			);
+			assert.strictEqual(
+				commands[0].limit,
+				"80",
+				"limit= must reach the handler",
+			);
+		});
+
+		it("parses get with negative line (tail idiom)", () => {
+			const { commands } = XmlParser.parse(
+				'<get path="sh://turn_3/npm_test_1" line="-50"/>',
+			);
+			assert.strictEqual(commands[0].line, "-50");
+		});
+
+		it("parses get with limit only", () => {
+			const { commands } = XmlParser.parse(
+				'<get path="https://example.com/page" limit="1000"/>',
+			);
+			assert.strictEqual(commands[0].limit, "1000");
+		});
+
+		it("parses rm with pass-through attributes (mirrors get)", () => {
+			const { commands } = XmlParser.parse(
+				'<rm path="known://x" body="pattern-match"/>',
+			);
+			assert.strictEqual(commands[0].path, "known://x");
+			assert.strictEqual(commands[0].body, "pattern-match");
+		});
+
+		// mvDoc advertises `<mv path="known://..." visibility="summarized"/>`
+		// for batch visibility flips. Parser was silently dropping the
+		// visibility attr before. mv.js's VALID also used stale
+		// pre-migration terminology; both fixed together.
+		it("parses mv with visibility (batch visibility-in-place form)", () => {
+			const { commands } = XmlParser.parse(
+				'<mv path="known://project/*" visibility="summarized"/>',
+			);
+			assert.strictEqual(commands[0].path, "known://project/*");
+			assert.strictEqual(
+				commands[0].visibility,
+				"summarized",
+				"visibility must reach the handler for batch demote",
+			);
+			assert.strictEqual(commands[0].to, null, "no destination on in-place");
+		});
+
+		it("parses cp with visibility pass-through", () => {
+			const { commands } = XmlParser.parse(
+				'<cp path="known://a">known://b</cp>',
+			);
+			assert.strictEqual(commands[0].path, "known://a");
+			assert.strictEqual(commands[0].to, "known://b");
+		});
+
 		it("parses set with search/replace attributes", () => {
 			const { commands } = XmlParser.parse(
 				'<set path="src/*.js" search="localhost" replace="0.0.0.0"/>',

@@ -39,7 +39,7 @@ describe("SQL functions (@sql_functions)", () => {
 				["http://example.com", "http"],
 				["https://example.com", "https"],
 			];
-			for (const [path, expected] of cases) {
+			for (const [path, _expected] of cases) {
 				await store.set({
 					runId: RUN_ID,
 					turn: 1,

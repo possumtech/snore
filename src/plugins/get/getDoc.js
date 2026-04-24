@@ -21,6 +21,10 @@ const LINES = [
 		"Tail: negative line reads the last 50 lines. Works on any growing entry — streaming sh output, logs, knowns.",
 	],
 	[
+		'Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200"/>',
+		"URL partial read. When a page is too large to promote whole, read a slice. Pattern generalizes to every scheme.",
+	],
+	[
 		"* Paths accept patterns: `src/**/*.js`, `known://api_*`",
 		"Reinforces picomatch patterns work everywhere.",
 	],

@@ -174,8 +174,12 @@ describe("Budget demotion", () => {
 				"turn 14 visible entry demoted by fallback",
 			);
 			// Turn ordering: oldest promotion first.
-			const oldIdx = demoted.findIndex((d) => d.path === "https://example.com/old");
-			const newIdx = demoted.findIndex((d) => d.path === "https://example.com/newer");
+			const oldIdx = demoted.findIndex(
+				(d) => d.path === "https://example.com/old",
+			);
+			const newIdx = demoted.findIndex(
+				(d) => d.path === "https://example.com/newer",
+			);
 			assert.ok(oldIdx < newIdx, "oldest turn listed first");
 			// Each result carries turn + tokens so the error body can show them.
 			for (const d of demoted) {

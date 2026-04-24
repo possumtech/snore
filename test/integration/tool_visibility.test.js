@@ -157,7 +157,9 @@ describe("Tool visibility: v_model_context content projection", () => {
 					r.body?.includes(`${MARKER}_${action}`),
 			);
 			if (!row) {
-				failures.push(`${action}: no log://turn_${TURN}/${action}/ row with MARKER`);
+				failures.push(
+					`${action}: no log://turn_${TURN}/${action}/ row with MARKER`,
+				);
 			}
 		}
 

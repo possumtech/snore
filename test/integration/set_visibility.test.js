@@ -25,8 +25,8 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
-import TestDb from "../helpers/TestDb.js";
 import SetPlugin from "../../src/plugins/set/set.js";
+import TestDb from "../helpers/TestDb.js";
 
 function makeRummy(store, runId, turn) {
 	const errors = [];
@@ -101,7 +101,8 @@ describe("Set visibility-only emission preserves body (@schemes_status_visibilit
 
 	for (const visibility of ["visible", "summarized", "archived"]) {
 		it(`<set path=X visibility="${visibility}"/> preserves body (does NOT wipe)`, async () => {
-			const body = "A page full of content that must survive a visibility flip.";
+			const body =
+				"A page full of content that must survive a visibility flip.";
 			const path = `https://example.com/${visibility}-test`;
 			const after = await seedAndFlip(
 				`svis_${visibility}`,

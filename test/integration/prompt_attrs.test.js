@@ -27,7 +27,7 @@ import TestDb from "../helpers/TestDb.js";
 
 const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
 
-function pad(n) {
+function _pad(n) {
 	return Array(n).fill("hello world test data").join(" ");
 }
 
@@ -84,5 +84,4 @@ describe("Progress math", () => {
 			assert.strictEqual(nums.free, Math.max(0, ceiling - rowSum));
 		});
 	});
-
 });

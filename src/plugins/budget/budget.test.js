@@ -114,7 +114,10 @@ describe("overflowBody — 413 error body shape", () => {
 		const oldIdx = body.indexOf("- old");
 		const midIdx = body.indexOf("- mid");
 		const newIdx = body.indexOf("- new");
-		assert.ok(oldIdx < midIdx && midIdx < newIdx, "oldest-first ordering preserved");
+		assert.ok(
+			oldIdx < midIdx && midIdx < newIdx,
+			"oldest-first ordering preserved",
+		);
 	});
 
 	it("packet size reported = ceiling + overflow", () => {

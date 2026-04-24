@@ -92,34 +92,40 @@ function resolveCommand(name, a, rawBody) {
 	if (name === "update") {
 		const body = trimmed || a.body || "";
 		const status = a.status ? Number(a.status) : 102;
-		return { name, body, status };
+		return { name, ...a, body, status };
 	}
 
 	if (name === "get" || name === "rm") {
-		const path = a.path || trimmed || null;
-		return { name, path, body: a.body, preview: a.preview };
+		// Spread `a` so `line`, `limit`, `visibility`, and future attrs
+		// reach the handler. Earlier narrow extraction silently dropped
+		// `line=/limit=` and stranded the partial-read path advertised
+		// in getDoc.
+		return { name, ...a, path: a.path || trimmed || null };
 	}
 
 	if (name === "search") {
 		const path = a.path || trimmed || null;
 		const results = a.results ? Number(a.results) : null;
-		return { name, path, results };
+		return { name, ...a, path, results };
 	}
 
 	if (name === "mv" || name === "cp") {
-		const to = a.to || trimmed || null;
-		return { name, path: a.path, to };
+		// Spread `a` so `visibility` reaches the handler. mvDoc
+		// advertises `<mv path="known://..." visibility="summarized"/>`
+		// for batch visibility changes and was silently stripping that
+		// attr before.
+		return { name, ...a, path: a.path, to: a.to || trimmed || null };
 	}
 
 	if (name === "sh" || name === "env") {
 		const command = a.command || trimmed || null;
-		return { name, command };
+		return { name, ...a, command };
 	}
 
 	if (name === "ask_user") {
 		const question = a.question || null;
 		const options = a.options || trimmed || null;
-		return { name, question, options };
+		return { name, ...a, question, options };
 	}
 
 	return { name, ...a, body: trimmed || a.body };

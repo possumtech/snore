@@ -103,7 +103,7 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 	}, async () => {
 		const startRes = await client.call("set", {
 			path: "run://",
-			body: "Briefly list three primes and emit <update status=\"200\">done</update>.",
+			body: 'Briefly list three primes and emit <update status="200">done</update>.',
 			attributes: { model, mode: "act" },
 		});
 		const alias = startRes.alias;

@@ -144,7 +144,11 @@ describe("error verdict (@response_healing)", () => {
 			// Reset turnErrors for next simulated turn
 			await bumpTurn(i + 2);
 		}
-		assert.strictEqual(verdict.continue, false, `struck out after ${MAX_STRIKES}`);
+		assert.strictEqual(
+			verdict.continue,
+			false,
+			`struck out after ${MAX_STRIKES}`,
+		);
 		assert.strictEqual(verdict.status, 499);
 	});
 
@@ -226,11 +230,7 @@ describe("error verdict (@response_healing)", () => {
 		}
 		// The MIN_CYCLES-th identical turn should have caused the cycle
 		// detector to emit an error. Verify an error entry landed.
-		const errors = await store.getEntriesByPattern(
-			RUN_ID,
-			"log://**",
-			null,
-		);
+		const errors = await store.getEntriesByPattern(RUN_ID, "log://**", null);
 		const cycleError = errors.find(
 			(e) => e.path.includes("/error/") && e.body === "Loop detected",
 		);

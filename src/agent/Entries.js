@@ -136,6 +136,7 @@ export default class Entries {
 		if (scheme === "skill") return "visible";
 		if (category === "prompt") return "visible";
 		if (category === "unknown") return "visible";
+		if (category === "logging") return "visible";
 		return "summarized";
 	}
 
@@ -285,7 +286,7 @@ export default class Entries {
 		// `{action: m[1]}` for every null-attributes log write, every
 		// body-only update to a log entry would clobber existing attrs
 		// (command, summary, demotedCount, ...).
-		let effectiveAttributes = attributes ? { ...attributes } : null;
+		const effectiveAttributes = attributes ? { ...attributes } : null;
 		if (scheme === "log" && effectiveAttributes) {
 			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
 			if (m) effectiveAttributes.action = m[1];

@@ -88,7 +88,11 @@ describe("log plugin tokens= invariant", () => {
 		});
 		const out = await render([target, getLog]);
 		assert.match(out, /<get\b[^>]*\btokens="4418"/, "tokens is target size");
-		assert.doesNotMatch(out, /<get\b[^>]*\btokens="30"/, "stub size not leaked");
+		assert.doesNotMatch(
+			out,
+			/<get\b[^>]*\btokens="30"/,
+			"stub size not leaked",
+		);
 	});
 
 	it("<set> tokens= reports target's full tokens (e.g. the known:// entry)", async () => {
@@ -117,7 +121,11 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { path: "gone://nowhere" },
 		});
 		const out = await render([getLog]);
-		assert.match(out, /<get\b[^>]*\btokens="5"/, "falls back to log body tokens");
+		assert.match(
+			out,
+			/<get\b[^>]*\btokens="5"/,
+			"falls back to log body tokens",
+		);
 	});
 
 	it("<search> tokens= is the log body tokens (results listing)", async () => {
@@ -182,6 +190,41 @@ describe("log plugin tokens= invariant", () => {
 		const out = await render([envLog]);
 		assert.match(out, /<env\b/);
 		assert.doesNotMatch(out, /<env\b[^>]*\btokens=/);
+	});
+
+	it("<get> slice render: lines= attr and slice tokens (not target tokens)", async () => {
+		// Partial-read <get line=.. limit=..> writes slice content into the
+		// log entry body and tags lineStart/lineEnd/totalLines on attrs.
+		// The rendered tag must:
+		//   - surface `lines="a-b/total"` so the model sees the range
+		//   - report tokens= of the SLICE body, not the full target
+		// Otherwise a 19k-token URL with a 200-token slice log would be
+		// mispriced 100x and the model would over- or under-demote.
+		const target = dataRow({
+			path: "https://example.com/page",
+			scheme: "https",
+			tokens: 19500,
+		});
+		const sliceLog = logRow({
+			action: "get",
+			slug: "https%3A//example.com/page",
+			body: "https://example.com/page\n[lines 1–50 / 262 total]\n…slice…",
+			tokens: 200,
+			attrs: {
+				path: "https://example.com/page",
+				lineStart: 1,
+				lineEnd: 50,
+				totalLines: 262,
+			},
+		});
+		const out = await render([target, sliceLog]);
+		assert.match(out, /<get\b[^>]*\blines="1-50\/262"/, "lines attr present");
+		assert.match(out, /<get\b[^>]*\btokens="200"/, "slice tokens, not target");
+		assert.doesNotMatch(
+			out,
+			/<get\b[^>]*\btokens="19500"/,
+			"target size not leaked on slice log",
+		);
 	});
 
 	it("regression: 3 <get> promotions reporting target tokens match 413 demoted figure", async () => {

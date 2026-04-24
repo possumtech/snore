@@ -10,7 +10,7 @@
 // those dirs references at least one `@`-anchor. Anchors die on
 // rename; they're permanent once published.
 
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;

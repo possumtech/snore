@@ -83,7 +83,7 @@ export default class ErrorPlugin {
 			state: "failed",
 			outcome: `status:${statusValue}`,
 			loopId,
-			attributes: { ...(attributes || {}), status: statusValue },
+			attributes: { ...attributes, status: statusValue },
 		});
 		const state = this.#loopState.get(loopId);
 		if (state) state.turnErrors++;

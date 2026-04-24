@@ -31,7 +31,8 @@ export default class Get {
 				runId,
 				turn,
 				loopId,
-				message: 'Missing required "path" attribute on <get>. Use <get path="..."/>.',
+				message:
+					'Missing required "path" attribute on <get>. Use <get path="..."/>.',
 				status: 400,
 			});
 			return;
@@ -119,7 +120,11 @@ export default class Get {
 			const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
 			const slice = allLines.slice(startIdx, endIdx).join("\n");
 			const endLine = endIdx;
-			const header = `[lines ${startLine}–${endLine} / ${total} total]`;
+			// Body leads with the source path so the model can re-issue
+			// a full or different-range read without guessing the URL.
+			// lineStart/lineEnd/totalLines ride attrs so renderLogTag can
+			// surface `lines="a-b/total"` without parsing the body.
+			const header = `${target}\n[lines ${startLine}–${endLine} / ${total} total]`;
 			await store.set({
 				runId,
 				turn,
@@ -127,7 +132,12 @@ export default class Get {
 				body: `${header}\n${slice}`,
 				state: "resolved",
 				loopId,
-				attributes: { path: target },
+				attributes: {
+					path: target,
+					lineStart: startLine,
+					lineEnd: endLine,
+					totalLines: total,
+				},
 			});
 			return;
 		}

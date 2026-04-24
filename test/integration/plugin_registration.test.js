@@ -45,16 +45,16 @@ describe("plugin registration (@plugin_system, @plugin_convention, @scheme_regis
 
 		it("handler-less tools still appear in tool list via explicit ensureTool", () => {
 			const names = tdb.hooks.tools.names;
-			assert.ok(names.includes("update"), "update has no handler but is listed");
+			assert.ok(
+				names.includes("update"),
+				"update has no handler but is listed",
+			);
 			assert.ok(names.includes("unknown"));
 		});
 
 		it("every tool with a handler has a full view registered", () => {
 			for (const tool of ["get", "set", "rm", "mv", "cp", "known"]) {
-				assert.ok(
-					tdb.hooks.tools.hasView(tool),
-					`${tool} has view registered`,
-				);
+				assert.ok(tdb.hooks.tools.hasView(tool), `${tool} has view registered`);
 			}
 		});
 	});

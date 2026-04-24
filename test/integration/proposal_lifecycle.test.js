@@ -20,8 +20,8 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import AgentLoop from "../../src/agent/AgentLoop.js";
 import Entries from "../../src/agent/Entries.js";
-import LlmProvider from "../../src/llm/LlmProvider.js";
 import TurnExecutor from "../../src/agent/TurnExecutor.js";
+import LlmProvider from "../../src/llm/LlmProvider.js";
 import { logPathToDataBase } from "../../src/plugins/helpers.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -35,7 +35,10 @@ async function makeAgent(tdb) {
 }
 
 async function seedProject(tdb, alias) {
-	const projectRoot = join(tmpdir(), `proposal_lifecycle_${alias}_${Date.now()}`);
+	const projectRoot = join(
+		tmpdir(),
+		`proposal_lifecycle_${alias}_${Date.now()}`,
+	);
 	await fs.mkdir(projectRoot, { recursive: true });
 	const { runId, projectId } = await tdb.seedRun({ alias, projectRoot });
 	return { projectRoot, runId, projectId };
@@ -90,8 +93,9 @@ describe("proposal lifecycle (@resolution)", () => {
 			assert.strictEqual(onDisk, newContent, "file written to disk");
 
 			const constraints = await tdb.db.get_file_constraints.all({
-				project_id: (await tdb.db.get_run_by_alias.get({ alias: "set_bare_path" }))
-					.project_id,
+				project_id: (
+					await tdb.db.get_run_by_alias.get({ alias: "set_bare_path" })
+				).project_id,
 			});
 			const active = constraints.find(
 				(c) => c.pattern === "a.md" && c.visibility === "active",
@@ -128,7 +132,11 @@ describe("proposal lifecycle (@resolution)", () => {
 			assert.strictEqual(result.outcome, "readonly");
 
 			const landed = await entries.getBody(runId, "locked.md");
-			assert.strictEqual(landed, null, "readonly veto prevents bare-path write");
+			assert.strictEqual(
+				landed,
+				null,
+				"readonly veto prevents bare-path write",
+			);
 		});
 	});
 
@@ -179,7 +187,12 @@ describe("proposal lifecycle (@resolution)", () => {
 				body: "content",
 				state: "resolved",
 			});
-			const proposalPath = await entries.logPath(runId, 1, "mv", "known://dest");
+			const proposalPath = await entries.logPath(
+				runId,
+				1,
+				"mv",
+				"known://dest",
+			);
 			await entries.set({
 				runId,
 				turn: 1,

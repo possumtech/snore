@@ -29,7 +29,7 @@ export default class Mv {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
-		const VALID = { stored: 1, summary: 1, index: 1, full: 1, archive: 1 };
+		const VALID = { visible: 1, summarized: 1, archived: 1 };
 		const visibility = VALID[entry.attributes.visibility]
 			? entry.attributes.visibility
 			: undefined;
