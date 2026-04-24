@@ -15,11 +15,20 @@ function makeStore(entries = []) {
 }
 
 function makeRummy(store, _attrs = {}) {
+	const emitted = [];
 	return {
 		entries: store,
 		sequence: 1,
 		runId: 1,
 		loopId: 1,
+		hooks: {
+			error: {
+				log: {
+					emit: async (payload) => emitted.push(payload),
+				},
+			},
+		},
+		_emitted: emitted,
 	};
 }
 
@@ -179,6 +188,56 @@ describe("Get partial read (line/limit)", () => {
 
 		assert.strictEqual(store.upserted[0].state, "resolved");
 		assert.ok(store.upserted[0].body.includes("not found"));
+	});
+
+	// A malformed emission like `<get https://example.com/>` (missing
+	// path= attribute) previously wrote a blank-bodied failed log entry
+	// with `{error: "path is required"}` on attributes that the log
+	// renderer didn't surface. Model saw a vague 400 with no guidance
+	// and repeated the mistake across turns. Fix routes the validation
+	// failure through hooks.error.log.emit so the message lands as
+	// <error> in <log> AND the failure counts as a strike.
+	describe("missing path validation (@error_recovery)", () => {
+		it("routes through hooks.error.log.emit with an actionable message", async () => {
+			const store = makeStore([]);
+			const rummy = makeRummy(store);
+			const entry = { attributes: {}, resultPath: "get://result" };
+
+			await plugin.handler(entry, rummy);
+
+			assert.strictEqual(
+				rummy._emitted.length,
+				1,
+				"exactly one error.log emission",
+			);
+			const emission = rummy._emitted[0];
+			assert.strictEqual(emission.status, 400);
+			assert.ok(
+				emission.message.includes("path"),
+				`message mentions path; got: ${emission.message}`,
+			);
+			assert.ok(
+				emission.message.includes('<get path="'),
+				`message shows correct syntax; got: ${emission.message}`,
+			);
+		});
+
+		it("does not write a stray blank failed log entry directly", async () => {
+			// Pre-fix behavior wrote a `state=failed, body=""` entry at
+			// entry.resultPath. Strike system never saw it. This asserts
+			// we no longer write that kind of silent rejection.
+			const store = makeStore([]);
+			const rummy = makeRummy(store);
+			const entry = { attributes: {}, resultPath: "get://result" };
+
+			await plugin.handler(entry, rummy);
+
+			assert.strictEqual(
+				store.upserted.length,
+				0,
+				"no direct store.set — error channel owns the log entry now",
+			);
+		});
 	});
 
 	it("does not call get (promote) on partial read", async () => {

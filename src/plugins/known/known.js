@@ -86,8 +86,15 @@ export default class Known {
 		return entry.body;
 	}
 
-	summary() {
-		return "";
+	// Summarized knowns keep the first 500 characters so the model
+	// doesn't lose the plot when budget auto-demotion kicks in on its
+	// own work. Anything larger gets capped so a pathologically big
+	// known doesn't saturate the packet at summarized visibility
+	// either. Matches the pattern on `<prompt>` summarized view.
+	summary(entry) {
+		if (!entry.body) return "";
+		if (entry.body.length <= 500) return entry.body;
+		return `${entry.body.slice(0, 500)}\n[truncated — promote to see the full body]`;
 	}
 
 	async assembleContext(content, ctx) {

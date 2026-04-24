@@ -5,7 +5,7 @@ import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const VALID_VISIBILITY = { archived: 1, demoted: 1, promoted: 1 };
+const VALID_VISIBILITY = { archived: 1, summarized: 1, visible: 1 };
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
 
 function isSetProposal(path) {
@@ -111,6 +111,28 @@ export default class Set {
 			: null;
 		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
+
+		// Invalid visibility value on a body-less set: reject with an
+		// error instead of falling through to the write path. Without
+		// this guard, a typo like visibility="promoted" (pre-migration
+		// terminology) silently body-wiped the target — the fidelity
+		// regression that cost us multiple demo runs.
+		if (
+			!entry.body &&
+			attrs.path &&
+			attrs.visibility !== undefined &&
+			!visibilityAttr
+		) {
+			await rummy.hooks.error.log.emit({
+				store,
+				runId,
+				turn,
+				loopId,
+				message: `Invalid visibility "${attrs.visibility}" on <set path="${attrs.path}"/>. Use visibility="visible|summarized|archived".`,
+				status: 400,
+			});
+			return;
+		}
 
 		// Pure visibility/metadata change — no body content
 		if (!entry.body && visibilityAttr && attrs.path) {

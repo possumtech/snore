@@ -21,15 +21,18 @@ export default class Get {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await store.set({
+			// Route through the unified error channel so the message lands
+			// as `<error>` in <log> with a readable body AND the failure
+			// counts as a strike. The previous direct `store.set` wrote a
+			// blank-bodied failed entry whose `error` attribute was never
+			// rendered — model saw a vague 400 and repeated the mistake.
+			await rummy.hooks.error.log.emit({
+				store,
 				runId,
 				turn,
-				path: entry.resultPath,
-				body: "",
-				state: "failed",
-				outcome: "validation",
-				attributes: { error: "path is required" },
 				loopId,
+				message: 'Missing required "path" attribute on <get>. Use <get path="..."/>.',
+				status: 400,
 			});
 			return;
 		}

@@ -295,4 +295,106 @@ describe("proposal lifecycle (@resolution)", () => {
 			assert.strictEqual(state.outcome, "permission");
 		});
 	});
+
+	// The RPC response to set/accept|reject returns {run, status}. For
+	// weeks the `status` was hardcoded to 200. The nvim client's generic
+	// status-response handler treats `result.status >= 200` as terminal
+	// → closes the document on the FIRST mid-run accept, then ignores
+	// subsequent run/state status=102 updates (guarded by
+	// "don't backtrack from ≥200"). Result: client locks at 200 on
+	// turn 4, sees run/progress events keep firing, reports the run as
+	// "dead" until the actual terminal run/state arrives on turn 5.
+	// Observed in rummy_dev.db::test:demo run gemma_1776989468049.
+	//
+	// Fix: return the current run status so the client sees the real
+	// state (102 mid-run, 200 at completion).
+	describe("resolve response carries current run status (@resolution)", () => {
+		it("accept mid-run returns status=102, not hardcoded 200", async () => {
+			const { runId } = await seedProject(tdb, "resolve_status_accept");
+			// Transition run into the mid-run state the client sees during
+			// an active drain loop.
+			await tdb.db.update_run_status.run({ id: runId, status: 102 });
+
+			const proposalPath = await entries.logPath(runId, 1, "set", "x.md");
+			await entries.set({
+				runId,
+				turn: 1,
+				path: proposalPath,
+				body: "# X\n",
+				state: "proposed",
+				attributes: {
+					path: "x.md",
+					merge: "<<<<<<< SEARCH\n=======\n# X\n\n>>>>>>> REPLACE",
+				},
+			});
+
+			const result = await agent.resolve("resolve_status_accept", {
+				path: proposalPath,
+				action: "accept",
+			});
+
+			assert.strictEqual(
+				result.status,
+				102,
+				"mid-run accept response must report the actual run status (102), not a hardcoded 200",
+			);
+			assert.strictEqual(result.run, "resolve_status_accept");
+		});
+
+		it("reject mid-run returns status=102", async () => {
+			const { runId } = await seedProject(tdb, "resolve_status_reject");
+			await tdb.db.update_run_status.run({ id: runId, status: 102 });
+
+			const proposalPath = await entries.logPath(runId, 1, "set", "y.md");
+			await entries.set({
+				runId,
+				turn: 1,
+				path: proposalPath,
+				body: "nope",
+				state: "proposed",
+				attributes: { path: "y.md" },
+			});
+
+			const result = await agent.resolve("resolve_status_reject", {
+				path: proposalPath,
+				action: "reject",
+				output: "no thanks",
+			});
+
+			assert.strictEqual(
+				result.status,
+				102,
+				"mid-run reject response must report the actual run status (102)",
+			);
+		});
+
+		it("accept on a run that's already terminal returns the terminal status", async () => {
+			// Edge case: if a client accepts after the run already moved
+			// to a terminal state (rare but possible with async races),
+			// the response should report that terminal state honestly.
+			const { runId } = await seedProject(tdb, "resolve_status_done");
+			await tdb.db.update_run_status.run({ id: runId, status: 102 });
+			await tdb.db.update_run_status.run({ id: runId, status: 200 });
+
+			const proposalPath = await entries.logPath(runId, 1, "set", "z.md");
+			await entries.set({
+				runId,
+				turn: 1,
+				path: proposalPath,
+				body: "# Z\n",
+				state: "proposed",
+				attributes: {
+					path: "z.md",
+					merge: "<<<<<<< SEARCH\n=======\n# Z\n\n>>>>>>> REPLACE",
+				},
+			});
+
+			const result = await agent.resolve("resolve_status_done", {
+				path: proposalPath,
+				action: "accept",
+			});
+
+			assert.strictEqual(result.status, 200);
+		});
+	});
 });

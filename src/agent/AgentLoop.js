@@ -674,7 +674,12 @@ export default class AgentLoop {
 				db: this.#db,
 				entries: this.#entries,
 			});
-			return { run: runAlias, status: 200 };
+			// Report the CURRENT run status (typically 102 mid-run) so the
+			// client's dispatch handler doesn't mistake a successful
+			// resolve's HTTP-style 200 ack for a terminal run status and
+			// prematurely close the document. Real terminal state comes
+			// from the run/state notification at end-of-turn.
+			return { run: runAlias, status: runRow.status };
 		}
 
 		const attrs = await this.#entries.getAttributes(runId, path);
@@ -736,7 +741,10 @@ export default class AgentLoop {
 				: this.#hooks.proposal.rejected;
 		await event.emit({ ...ctx, resolvedBody });
 
-		return { run: runAlias, status: 200 };
+		// Same rationale as the reject path: return current run status
+		// (102 mid-run) rather than a hardcoded 200 so the nvim client
+		// doesn't treat the RPC ack as a terminal signal.
+		return { run: runAlias, status: runRow.status };
 	}
 
 	async inject(runAlias, message, mode) {

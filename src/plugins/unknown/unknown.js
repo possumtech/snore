@@ -52,8 +52,13 @@ export default class Unknown {
 		return entry.body;
 	}
 
-	summary() {
-		return "";
+	// Same principle as knowns: keep the first 500 characters on
+	// summarized unknowns so demotion doesn't erase the question,
+	// but cap large bodies to bound the packet cost.
+	summary(entry) {
+		if (!entry.body) return "";
+		if (entry.body.length <= 500) return entry.body;
+		return `${entry.body.slice(0, 500)}\n[truncated — promote to see the full question]`;
 	}
 
 	async assembleUnknowns(content, ctx) {

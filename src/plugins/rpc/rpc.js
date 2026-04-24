@@ -42,7 +42,7 @@ export default class Rpc {
 				path: "string — entry path (e.g. known://fact or run://abc)",
 				body: "string? — entry body",
 				state: "string? — proposed | streaming | resolved | failed | cancelled",
-				visibility: "string? — promoted | demoted | archived",
+				visibility: "string? — visible | summarized | archived",
 				outcome: "string? — reason when state ∈ {failed, cancelled}",
 				attributes: "object? — JSON attributes",
 				append: "boolean? — append body rather than overwrite",
@@ -63,7 +63,7 @@ export default class Rpc {
 				run: "string — run alias",
 				path: "string — entry path or glob pattern",
 				bodyFilter: "string? — narrow pattern matches by body content",
-				visibility: "string? — target visibility (default: promoted)",
+				visibility: "string? — target visibility (default: visible)",
 			},
 			requiresInit: true,
 		});
@@ -98,7 +98,7 @@ export default class Rpc {
 				run: "string — run alias",
 				from: "string — source path",
 				to: "string — destination path",
-				visibility: "string? — target visibility (default: promoted)",
+				visibility: "string? — target visibility (default: visible)",
 			},
 			requiresInit: true,
 		});
@@ -120,7 +120,7 @@ export default class Rpc {
 				run: "string — run alias",
 				from: "string — source path",
 				to: "string — destination path",
-				visibility: "string? — target visibility (default: promoted)",
+				visibility: "string? — target visibility (default: visible)",
 			},
 			requiresInit: true,
 		});
