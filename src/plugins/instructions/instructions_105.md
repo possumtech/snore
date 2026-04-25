@@ -5,7 +5,7 @@ YOU MUST discover and get source entries with information relevant to the unknow
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve unknown:// entries.
 YOU MUST include at least 1 link to a relevant unknown and at least 1 link to a relevant source entry in every known:// entry.
 YOU MUST demote source entries to "summarized" after extracting and decomposing their relevant information into known:// entries.
-YOU MUST set the unknown:// entries to "archived" after they are referenced or resolved by known:// entries.
+YOU MUST demote the unknown:// entries to "summarized" after they are referenced or resolved by known:// entries.
 YOU MUST demote all irrelevant source entries and log events to maximize FCRM.
 Tip: Source entry "summarized" information is not reliable.
 Tip: A "relevant" source entry that has been successfully distilled into known:// entries is no longer relevant.
