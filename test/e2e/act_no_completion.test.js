@@ -169,12 +169,12 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 			tdb.db,
 			alias,
 			[200, 413, 499, 500],
-			300_000,
+			TIMEOUT,
 		);
 
 		if (finalStatus === null) {
 			console.error(
-				`[TEST] run ${alias} did NOT reach terminal status in 150s`,
+				`[TEST] run ${alias} did NOT reach terminal status in ${TIMEOUT / 1000}s`,
 			);
 			await dumpRun(tdb.db, alias);
 			assert.fail(`run hung — last status was not terminal`);

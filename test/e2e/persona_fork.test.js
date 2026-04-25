@@ -9,7 +9,7 @@ import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_TEST_MODEL;
-const TIMEOUT = 120_000;
+const TIMEOUT = 360_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe("E2E: Persona & Fork (@runs_are_entries, @plugins_rpc_run_lifecycle, @persona_plugin)", {

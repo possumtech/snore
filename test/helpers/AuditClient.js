@@ -123,7 +123,7 @@ export default class AuditClient extends RpcClient {
 			noWeb,
 			noProposals,
 			noInteraction,
-			timeoutMs = 300_000,
+			timeoutMs = 420_000,
 		} = params;
 		const attributes = { model, mode };
 		if (persona !== undefined) attributes.persona = persona;

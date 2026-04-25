@@ -7,7 +7,7 @@ YOU MUST include at least 1 link to a relevant unknown and at least 1 link to a 
 YOU MUST demote source entries to "summarized" after extracting and decomposing their relevant information into known:// entries.
 YOU MUST demote the unknown:// entries to "summarized" after they are referenced or resolved by known:// entries.
 YOU MUST demote all irrelevant source entries and log events to maximize FCRM.
-Tip: Source entry "summarized" information is not reliable.
+Tip: Source entry "summarized" information is not reliable. Only place "visible" source entry information in known:// entries.
 Tip: A "relevant" source entry that has been successfully distilled into known:// entries is no longer relevant.
 Tip: Discover, Distill, and Demote per source entry, not globally, to maximize FCRM.
 

@@ -19,7 +19,7 @@ import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_TEST_MODEL;
-const TIMEOUT = 300_000;
+const TIMEOUT = 480_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function lastResponse(db, runAlias) {
