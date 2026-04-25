@@ -41,7 +41,7 @@ describe("Budget math", () => {
 	});
 
 	describe("turn_context token accuracy", () => {
-		it("full entry tokens match body cost", async () => {
+		it("full entry body matches what was stored", async () => {
 			const body = pad(50);
 			await store.set({
 				runId: RUN_ID,
@@ -63,9 +63,9 @@ describe("Budget math", () => {
 			const entry = rows.find((r) => r.path === "known://full_entry");
 			assert.ok(entry, "entry exists in turn_context");
 			assert.strictEqual(
-				entry.tokens,
-				countTokens(body),
-				"full entry tokens = countTokens(body)",
+				entry.body,
+				body,
+				"projected body equals stored body for visible known",
 			);
 		});
 
@@ -310,8 +310,7 @@ describe("Budget math", () => {
 				turn: 1,
 			});
 			let tc = rows.find((r) => r.path === "known://tc_test");
-			const fullTcTokens = tc?.tokens ?? 0;
-			assert.ok(fullTcTokens > 0, "full entry has tokens");
+			assert.ok(tc, "full entry present in turn_context");
 
 			// Archive — should disappear from turn_context
 			await store.set({

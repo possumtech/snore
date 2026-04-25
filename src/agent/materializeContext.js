@@ -67,7 +67,6 @@ export default async function materializeContext({
 			state: row.state,
 			outcome: row.outcome,
 			body: projectedBody,
-			tokens: countTokens(row.body),
 			attributes: row.attributes,
 			category: row.category,
 			source_turn: row.turn,

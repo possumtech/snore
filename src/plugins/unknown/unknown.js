@@ -78,7 +78,7 @@ function renderUnknownTag(entry) {
 	const visibility = entry.visibility
 		? ` visibility="${entry.visibility}"`
 		: "";
-	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
+	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`

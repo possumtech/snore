@@ -110,7 +110,7 @@ function renderContextTag(entry, demotedSet) {
 	// schemeOf() returns NULL / "" for bare file paths; translate for the tag.
 	const tag = entry.scheme ? entry.scheme : "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
+	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -121,7 +121,10 @@ function renderContextTag(entry, demotedSet) {
 			: entry.state
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
-	const status = statusValue != null ? ` status="${statusValue}"` : "";
+	const status =
+		statusValue != null && statusValue !== 200
+			? ` status="${statusValue}"`
+			: "";
 	const stateAttr =
 		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";

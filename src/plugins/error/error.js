@@ -2,8 +2,7 @@ const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
 
-const CONTRACT_REMINDER =
-	"Missing update — use 1xx to continue or 200 to conclude.";
+const CONTRACT_REMINDER = "Missing update";
 
 function fingerprint(entry) {
 	const parts = Object.keys(entry.attributes)

@@ -128,7 +128,6 @@ CREATE TABLE IF NOT EXISTS entries (
 	, body TEXT NOT NULL DEFAULT ''
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, hash TEXT
-	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -183,7 +182,6 @@ SELECT
 	, rv.visibility AS visibility
 	, e.hash AS hash
 	, e.attributes AS attributes
-	, e.tokens AS tokens
 	, rv.refs AS refs
 	, rv.write_count AS write_count
 	, e.created_at AS created_at
@@ -222,7 +220,6 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, outcome TEXT
 	, visibility TEXT NOT NULL CHECK (visibility IN ('visible', 'summarized'))
 	, body TEXT NOT NULL DEFAULT ''
-	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, category TEXT NOT NULL DEFAULT 'logging'
 	, source_turn INTEGER DEFAULT 0

@@ -4,17 +4,16 @@
 -- — so UPDATE reads :attributes directly, not excluded.attributes (which
 -- would have been coerced to '{}' by the VALUES clause).
 INSERT INTO entries (
-	scope, path, body, attributes, hash, tokens, updated_at
+	scope, path, body, attributes, hash, updated_at
 )
 VALUES (
 	:scope, :path, :body, COALESCE(:attributes, '{}'), :hash
-	, countTokens(:body), CURRENT_TIMESTAMP
+	, CURRENT_TIMESTAMP
 )
 ON CONFLICT (scope, path) DO UPDATE SET
 	body = excluded.body
 	, attributes = COALESCE(:attributes, entries.attributes)
 	, hash = COALESCE(:hash, entries.hash)
-	, tokens = countTokens(excluded.body)
 	, updated_at = CURRENT_TIMESTAMP
 RETURNING id;
 
@@ -40,23 +39,11 @@ ON CONFLICT (run_id, entry_id) DO UPDATE SET
 -- Every UPDATE/DELETE resolves its target this way so the logic is
 -- correct whether the entry lives in the run's own scope or a shared one.
 
--- PREP: recount_tokens
-UPDATE entries
-SET tokens = :tokens
-WHERE id = (
-	SELECT e.id FROM entries AS e
-	JOIN run_views AS rv ON rv.entry_id = e.id
-	WHERE rv.run_id = :run_id AND e.path = :path
-	LIMIT 1
-);
-
 -- PREP: append_entry_body
--- Streaming entry body growth. Appends a chunk to the existing body and
--- recomputes tokens. Content change, so targets entries.
+-- Streaming entry body growth. Appends a chunk to the existing body.
 UPDATE entries
 SET
 	body = body || :chunk
-	, tokens = countTokens(body || :chunk)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE id = (
 	SELECT e.id FROM entries AS e
@@ -64,12 +51,6 @@ WHERE id = (
 	WHERE rv.run_id = :run_id AND e.path = :path
 	LIMIT 1
 );
-
--- PREP: get_stale_tokens
-SELECT e.path, e.body
-FROM run_views AS rv
-JOIN entries AS e ON e.id = rv.entry_id
-WHERE rv.run_id = :run_id AND rv.turn = :turn;
 
 -- PREP: delete_known_entry
 -- Removes the view only. Entry is left for future GC; may be shared.
@@ -109,7 +90,6 @@ WHERE run_id = :run_id AND entry_id = (
 UPDATE entries
 SET
 	body = :body
-	, tokens = countTokens(:body)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE id = (
 	SELECT e.id FROM entries AS e
@@ -245,7 +225,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- PREP: get_entries_by_pattern
 SELECT
 	e.path, e.body, e.scheme, rv.state, rv.outcome, rv.visibility
-	, e.tokens, e.attributes
+	, countTokens(e.body) AS tokens, e.attributes
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE
@@ -272,7 +252,6 @@ WHERE run_id = :run_id AND entry_id IN (
 UPDATE entries
 SET
 	body = :new_body
-	, tokens = countTokens(:new_body)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE id IN (
 	SELECT e.id FROM entries AS e
@@ -306,7 +285,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- Scheme filter: skip known/unknown — these are the model's deliverables,
 -- not housekeeping. Auto-demoting just-created knowns punishes the
 -- correct Distill+Demote pattern.
-SELECT e.path, e.tokens
+SELECT e.path, countTokens(e.body) AS tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE
@@ -344,7 +323,7 @@ WHERE
 -- budget postDispatch as the fallback demotion set when this-turn
 -- demotion yields nothing but the packet still overflows (promotions
 -- from prior turns the model forgot to demote themselves).
-SELECT e.path, e.tokens, rv.turn
+SELECT e.path, countTokens(e.body) AS tokens, rv.turn
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE

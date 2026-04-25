@@ -5,7 +5,7 @@ WHERE run_id = :run_id AND turn = :turn;
 -- PREP: get_model_context
 SELECT
 	ordinal, path, scheme, visibility, state, outcome, body
-	, tokens, attributes, category, turn
+	, attributes, category, turn
 FROM v_model_context
 WHERE run_id = :run_id
 ORDER BY ordinal;
@@ -13,24 +13,24 @@ ORDER BY ordinal;
 -- PREP: insert_turn_context
 INSERT INTO turn_context (
 	run_id, loop_id, turn, ordinal, path, visibility, state, outcome
-	, body, tokens, attributes, category, source_turn
+	, body, attributes, category, source_turn
 )
 VALUES (
 	:run_id, :loop_id, :turn, :ordinal, :path, :visibility
-	, :state, :outcome, :body, :tokens
+	, :state, :outcome, :body
 	, COALESCE(:attributes, '{}'), :category, :source_turn
 );
 
 -- PREP: get_turn_context
 SELECT
 	ordinal, path, scheme, visibility, state, outcome, body
-	, tokens, attributes, category, source_turn
+	, attributes, category, source_turn
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn
 ORDER BY ordinal;
 
 -- PREP: get_turn_budget
-SELECT COALESCE(SUM(tokens), 0) AS total
+SELECT COALESCE(SUM(countTokens(body)), 0) AS total
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn;
 
@@ -43,7 +43,7 @@ SELECT
 		WHEN 'prompt' THEN 'prompt'
 		ELSE 'system'
 	END AS bucket,
-	COALESCE(SUM(tokens), 0) AS tokens,
+	COALESCE(SUM(countTokens(body)), 0) AS tokens,
 	COUNT(*) AS entries
 FROM turn_context
 WHERE run_id = :run_id AND turn = :turn

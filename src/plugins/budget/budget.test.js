@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ceiling } from "../../agent/budget.js";
+import { countTokens } from "../../agent/tokens.js";
 import Budget, { overflowBody } from "./budget.js";
 
 describe("Budget", () => {
@@ -54,7 +55,7 @@ describe("Budget", () => {
 	});
 });
 
-describe("assembleBudget — <budget> table", () => {
+describe("assembleBudget — <budget> table (@token_accounting)", () => {
 	function makePlugin() {
 		return new Budget({
 			hooks: { budget: null, tools: { onView: () => {} } },
@@ -63,36 +64,58 @@ describe("assembleBudget — <budget> table", () => {
 		});
 	}
 
-	function row({ scheme, tokens, visibility = "visible" }) {
-		return { scheme, tokens, visibility };
+	function row({ scheme, vTokens, sTokens, visibility = "visible" }) {
+		return {
+			scheme,
+			visibility,
+			vTokens,
+			sTokens,
+			aTokens: vTokens - sTokens,
+		};
 	}
 
-	it("renders <budget tokenUsage=N tokensFree=M> with attrs that reconcile to ceiling", () => {
+	it("renders <budget> with tokenUsage = floor + premium + system", () => {
 		const plugin = makePlugin();
 		const rows = [
-			row({ scheme: "log", tokens: 700 }),
-			row({ scheme: "https", tokens: 600 }),
-			row({ scheme: "known", tokens: 300 }),
+			row({ scheme: "log", vTokens: 700, sTokens: 100 }),
+			row({ scheme: "https", vTokens: 600, sTokens: 200 }),
+			row({ scheme: "known", vTokens: 300, sTokens: 50 }),
 		];
-		const out = plugin.assembleBudget("", { rows, contextSize: 10000 });
+		const systemPrompt = "x".repeat(200);
+		const out = plugin.assembleBudget("", {
+			rows,
+			contextSize: 10000,
+			systemPrompt,
+		});
 		const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
 		assert.ok(m, `<budget> carries tokenUsage and tokensFree; got: ${out}`);
 		const used = Number(m[1]);
 		const free = Number(m[2]);
-		assert.strictEqual(used, 1600, "tokenUsage = sum of visible row tokens");
+		const floor = 100 + 200 + 50;
+		const premium = 600 + 400 + 250;
+		const system = countTokens(systemPrompt);
+		assert.strictEqual(
+			used,
+			floor + premium + system,
+			"tokenUsage = floor + premium + system",
+		);
 		assert.strictEqual(used + free, ceiling(10000), "used + free = ceiling");
 	});
 
-	it("table sorted descending by tokens", () => {
+	it("table cells contain aTokens, sorted descending", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "small", tokens: 100 }),
-				row({ scheme: "large", tokens: 5000 }),
-				row({ scheme: "medium", tokens: 800 }),
+				row({ scheme: "small", vTokens: 200, sTokens: 100 }),
+				row({ scheme: "large", vTokens: 5000, sTokens: 0 }),
+				row({ scheme: "medium", vTokens: 1000, sTokens: 200 }),
 			],
 			contextSize: 10000,
+			systemPrompt: "",
 		});
+		assert.ok(out.includes("| large | 1 | 5000 |"), "large row uses aTokens");
+		assert.ok(out.includes("| medium | 1 | 800 |"), "medium row uses aTokens");
+		assert.ok(out.includes("| small | 1 | 100 |"), "small row uses aTokens");
 		const largeIdx = out.indexOf("| large |");
 		const mediumIdx = out.indexOf("| medium |");
 		const smallIdx = out.indexOf("| small |");
@@ -102,40 +125,93 @@ describe("assembleBudget — <budget> table", () => {
 		);
 	});
 
-	it("hides non-visible rows from the table breakdown", () => {
+	it("summarized aggregate line, no per-entry rows for summarized", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "visible_thing", tokens: 200 }),
-				row({ scheme: "summarized_thing", tokens: 9000, visibility: "summarized" }),
-				row({ scheme: "archived_thing", tokens: 9000, visibility: "archived" }),
+				row({ scheme: "visible_thing", vTokens: 200, sTokens: 50 }),
+				row({
+					scheme: "sum_a",
+					vTokens: 800,
+					sTokens: 80,
+					visibility: "summarized",
+				}),
+				row({
+					scheme: "sum_b",
+					vTokens: 1200,
+					sTokens: 120,
+					visibility: "summarized",
+				}),
 			],
 			contextSize: 10000,
+			systemPrompt: "",
 		});
-		assert.ok(out.includes("| visible_thing |"));
-		assert.ok(!out.includes("summarized_thing"));
-		assert.ok(!out.includes("archived_thing"));
+		assert.ok(out.includes("| visible_thing |"), "visible row in table");
+		assert.ok(!out.includes("| sum_a |"), "summarized scheme not in table");
+		assert.ok(!out.includes("| sum_b |"), "summarized scheme not in table");
+		assert.ok(/Summarized: 2 entries, 200 tokens/.test(out));
+	});
+
+	it("system overhead surfaced as its own line", () => {
+		const plugin = makePlugin();
+		const systemPrompt = "system rules ".repeat(50);
+		const out = plugin.assembleBudget("", {
+			rows: [],
+			contextSize: 10000,
+			systemPrompt,
+		});
+		const sysTokens = countTokens(systemPrompt);
+		assert.ok(
+			out.includes(`System: ${sysTokens} tokens`),
+			`system line shows token count; got: ${out}`,
+		);
+	});
+
+	it("ignores rows without aTokens (audit/system entries)", () => {
+		const plugin = makePlugin();
+		const out = plugin.assembleBudget("", {
+			rows: [
+				row({ scheme: "data", vTokens: 100, sTokens: 20 }),
+				{ scheme: "audit", visibility: "visible" }, // no token fields
+			],
+			contextSize: 10000,
+			systemPrompt: "",
+		});
+		assert.ok(out.includes("| data |"));
+		assert.ok(!out.includes("| audit |"), "rows without aTokens skipped");
 	});
 
 	it("returns content unchanged when contextSize is missing", () => {
 		const plugin = makePlugin();
-		const out = plugin.assembleBudget("preamble", { rows: [], contextSize: 0 });
+		const out = plugin.assembleBudget("preamble", {
+			rows: [],
+			contextSize: 0,
+			systemPrompt: "",
+		});
 		assert.strictEqual(out, "preamble");
 	});
 
-	it("total prose line names visible-entry count, sum, and tokensFree", () => {
+	it("total prose line names counts and tokenUsage/free", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "a", tokens: 500 }),
-				row({ scheme: "b", tokens: 300 }),
+				row({ scheme: "a", vTokens: 500, sTokens: 100 }),
+				row({
+					scheme: "b",
+					vTokens: 300,
+					sTokens: 60,
+					visibility: "summarized",
+				}),
 			],
 			contextSize: 10000,
+			systemPrompt: "",
 		});
-		assert.ok(/Total: 2 visible entries using 800 tokens/.test(out));
-		const cap = ceiling(10000);
-		assert.ok(out.includes(`context budget (${cap})`));
-		assert.ok(out.includes(`${cap - 800} tokens free`));
+		assert.ok(
+			/Total: 1 visible \+ 1 summarized entries/.test(out),
+			`total names visible + summarized counts; got: ${out}`,
+		);
+		assert.ok(/tokenUsage \d+ \/ ceiling \d+/.test(out));
+		assert.ok(/\d+ tokens free/.test(out));
 	});
 });
 

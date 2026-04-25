@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
+import { countTokens } from "../../src/agent/tokens.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -137,7 +138,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		}
 	});
 
-	it("total budget matches sum of all turn_context tokens", async () => {
+	it("total budget matches sum of countTokens(body) across rows", async () => {
 		const { total } = await tdb.db.get_turn_budget.get({
 			run_id: RUN_ID,
 			turn: TURN,
@@ -146,7 +147,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const sum = rows.reduce((s, r) => s + r.tokens, 0);
+		const sum = rows.reduce((s, r) => s + countTokens(r.body), 0);
 		assert.strictEqual(total, sum, "budget query matches row-level sum");
 		assert.ok(total > 0, "total is non-zero");
 	});

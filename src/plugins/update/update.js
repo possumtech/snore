@@ -2,8 +2,7 @@ import docs from "./updateDoc.js";
 
 const TERMINAL_STATUSES = new Set([200, 204, 422, 500]);
 
-const CONTRACT_REMINDER =
-	"Missing update — use 1xx to continue or 200 to conclude.";
+const CONTRACT_REMINDER = "Missing update";
 
 const EMPTY_RESPONSE_REMINDER =
 	"Response empty - Update with status 500 if unable to fulfill request.";

@@ -14,7 +14,6 @@ visible AS (
 		, rv.turn
 		, rv.updated_at
 		, e.attributes
-		, e.tokens
 		, COALESCE(s.category, 'logging') AS category
 		, CASE
 			WHEN rv.visibility = 'archived' THEN NULL
@@ -39,7 +38,6 @@ projected AS (
 		, attributes
 		-- Category comes from schemes table — plugins declare it via registerScheme().
 		, category
-		, tokens
 		, CASE
 			WHEN effective_visibility IN ('visible', 'summarized') THEN body
 			ELSE ''
@@ -78,5 +76,4 @@ SELECT
 			, updated_at
 			, id
 	) AS ordinal
-	, countTokens(body) AS tokens
 FROM projected;

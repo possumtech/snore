@@ -65,22 +65,22 @@ function renderLogTag(entry, rowsByPath) {
 				: null;
 	const status = statusValue != null ? ` status="${statusValue}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	// `tokens=` is the full-visibility cost of the thing this tag
-	// represents — not the log entry's own stub body. For actions that
-	// reference a separate data entry (get/set/mv/cp), resolve it via
-	// attrs.path and report the target's tokens. For actions whose log
+	// `tokens=` is the promotion premium (aTokens) of the thing this tag
+	// represents — what the model would free by demoting it. For actions
+	// that reference a separate data entry (get/set/mv/cp), resolve via
+	// attrs.path and report the target's aTokens. For actions whose log
 	// body IS the cost-bearing content (search/update/error/ask_user,
-	// plus <get> slice reads), fall back to entry.tokens. sh/env span
-	// multiple channel entries and are omitted — the channels render
-	// their own tokens in <context>.
+	// plus <get> slice reads), use the log entry's own aTokens. sh/env
+	// span multiple channel entries and are omitted — the channels
+	// render their own tokens in <context>.
 	const isSlice = attrs?.lineStart != null;
 	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
 	let tokenSource = null;
 	if (STREAM_NO_TOKENS.has(action)) tokenSource = null;
-	else if (isSlice) tokenSource = entry.tokens;
-	else if (targetEntry) tokenSource = targetEntry.tokens;
-	else tokenSource = entry.tokens;
-	const tokens = tokenSource ? ` tokens="${tokenSource}"` : "";
+	else if (isSlice) tokenSource = entry.aTokens;
+	else if (targetEntry) tokenSource = targetEntry.aTokens;
+	else tokenSource = entry.aTokens;
+	const tokens = tokenSource != null ? ` tokens="${tokenSource}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.slice(0, 80)}"`

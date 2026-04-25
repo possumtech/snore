@@ -54,47 +54,56 @@ export default class Budget {
 	}
 
 	/**
-	 * Render a per-scheme budget table between <instructions> and <prompt>
-	 * so the model has a glanceable picture of where its visible context
-	 * goes. tokenUsage / tokensFree mirror the prior <prompt> attributes;
-	 * the table decomposes them by scheme. Numbers come from measureRows
-	 * (sum of stored entry tokens) so the table sum, the row tokens, and
-	 * the attribute math all reconcile.
+	 * Render the <budget> table between <instructions> and <prompt>.
+	 * See SPEC @token_accounting for the contract: per-row tokens are
+	 * aTokens (the promotion premium = vTokens − sTokens), summarized
+	 * entries collapse into a single aggregate line, system overhead
+	 * (system prompt + tool defs) gets its own line.
 	 */
 	assembleBudget(content, ctx) {
-		const { rows, contextSize } = ctx;
+		const { rows, contextSize, systemPrompt } = ctx;
 		if (!contextSize) return content;
 
 		const cap = ceiling(contextSize);
 
-		const byScheme = new Map();
-		let totalCount = 0;
-		let totalTokens = 0;
+		const visibleByScheme = new Map();
+		let visibleCount = 0;
+		let premiumTokens = 0;
+		let summarizedCount = 0;
+		let summarizedTokens = 0;
+		let floorTokens = 0;
+
 		for (const r of rows) {
-			if (r.visibility !== "visible") continue;
+			if (r.aTokens == null) continue;
 			const s = r.scheme || "file";
-			const t = r.tokens || 0;
-			const entry = byScheme.get(s) ?? { count: 0, tokens: 0 };
-			entry.count += 1;
-			entry.tokens += t;
-			byScheme.set(s, entry);
-			totalCount += 1;
-			totalTokens += t;
+			if (r.visibility === "visible") {
+				const entry = visibleByScheme.get(s) ?? { count: 0, tokens: 0 };
+				entry.count += 1;
+				entry.tokens += r.aTokens;
+				visibleByScheme.set(s, entry);
+				visibleCount += 1;
+				premiumTokens += r.aTokens;
+				floorTokens += r.sTokens;
+			} else if (r.visibility === "summarized") {
+				summarizedCount += 1;
+				summarizedTokens += r.sTokens;
+				floorTokens += r.sTokens;
+			}
 		}
 
-		const { tokenUsage, tokensFree } = computeBudget({
-			contextSize,
-			totalTokens,
-		});
+		const systemTokens = countTokens(systemPrompt || "");
+		const tokenUsage = floorTokens + premiumTokens + systemTokens;
+		const tokensFree = Math.max(0, cap - tokenUsage);
 
-		const schemeRows = [...byScheme.entries()]
+		const schemeRows = [...visibleByScheme.entries()]
 			.toSorted((a, b) => b[1].tokens - a[1].tokens)
 			.map(([scheme, v]) => {
 				const pct = Math.round((v.tokens / cap) * 100);
 				return `| ${scheme} | ${v.count} | ${v.tokens} | ${pct}% |`;
 			});
 
-		const totalPct = Math.round((totalTokens / cap) * 100);
+		const summarizedPct = Math.round((summarizedTokens / cap) * 100);
+		const systemPct = Math.round((systemTokens / cap) * 100);
 
 		const table = [
 			"| scheme | visible | tokens | % |",
@@ -102,9 +111,11 @@ export default class Budget {
 			...schemeRows,
 		].join("\n");
 
-		const totalLine = `Total: ${totalCount} visible entries using ${totalTokens} tokens (${totalPct}%) of context budget (${cap}). ${tokensFree} tokens free.`;
+		const summarizedLine = `Summarized: ${summarizedCount} entries, ${summarizedTokens} tokens (${summarizedPct}% of budget).`;
+		const systemLine = `System: ${systemTokens} tokens (${systemPct}% of budget).`;
+		const totalLine = `Total: ${visibleCount} visible + ${summarizedCount} summarized entries; tokenUsage ${tokenUsage} / ceiling ${cap}. ${tokensFree} tokens free.`;
 
-		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}">\n${table}\n\n${totalLine}\n</budget>\n`;
+		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}">\n${table}\n\n${summarizedLine}\n${systemLine}\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
