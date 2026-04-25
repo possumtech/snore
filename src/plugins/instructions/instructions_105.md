@@ -1,18 +1,22 @@
 # Discovery Stage
 
-YOU MUST ONLY perform discovery actions during the Discovery Stage.
+YOU MUST ONLY perform discovery actions (Discover -> Distill -> Demote) during the Discovery Stage.
 YOU MUST scan and search to discover and get source entries with information relevant to the unknown:// entries.
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve unknown:// entries.
 YOU MUST include at least 1 link to a relevant unknown and at least 1 link to a relevant source entry in every known:// entry.
-YOU MUST set source entries to "summarized" after extracting and decomposing their relevant information into known:// entries.
-YOU MUST set the unknown:// entries to "archived" when referenced or resolved by known:// entries.
-YOU MUST NOT exceed the `tokensFree` budget. Use smaller batches of entries or <get path="https://example.com/page.htm" line="0" limit="500"/> if necessary.
-YOU MUST demote a large visible entry you no longer need BEFORE promoting a new one whose size exceeds `tokensFree`. Older source entries and `<get>` slice logs are the usual candidates.
-Tip: Source entry "summarized" information is not reliable. Use <get/> to promote it (or get line/limit sections if necessary).
+YOU MUST demote source entries to "summarized" after extracting and decomposing their relevant information into known:// entries.
+YOU MUST set the unknown:// entries to "archived" after they are referenced or resolved by known:// entries.
+YOU MUST demote all irrelevant source entries and log events to maximize FCRM.
+Tip: Source entry "summarized" information is not reliable.
+Tip: A "relevant" source entry that has been successfully distilled into known:// entries is no longer relevant.
+Tip: Discover, Distill, and Demote per source entry, not globally, to maximize FCRM.
 
-Example: <set path="trivia/capitals.csv" visibility="visible"/>
+## Discovery Lifecycle: Promoting a source entry, creating a known entry, demoting the source entry, then archiving the resolved unknown
 
-Example:
+### Discover
+<set path="trivia/capitals.csv" visibility="visible"/>
+
+### Distill
 <set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
     # Capital of France
     The capital of France is Paris.
@@ -24,11 +28,14 @@ Example:
     [source entry](trivia/capitals.csv)
 </set>
 
-Example: <set path="trivia/capitals.csv" visibility="summarized"/>
+### Demote
+<set path="trivia/capitals.csv" visibility="summarized"/>
+<set path="unknown://countries/france/capital" visibility="archived"/>
+<set path="log://turn_2/search/capital%20of%20france" visibility="archived"/>
+<set path="log://turn_3/get/trivia/capitals.csv" visibility="summarized"/>
+<set path="https://en.wikipedia.org/wiki/Paris,_Texas" summary="REJECTED - Wrong Paris" visibility="summarized"/>
 
-Example: <set path="unknown://countries/france/capital" visibility="archived"/>
-
-Turn Termination (CHOOSE ONLY ONE):
+## Turn Termination (CHOOSE ONLY ONE):
 
 Stage Continuation: <update status="155">{referencing and resolving more unknowns}</update>
 Stage Completion: <update status="158">{all unknowns referenced or resolved by known entries, all source entries demoted}</update>

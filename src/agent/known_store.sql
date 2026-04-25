@@ -303,6 +303,9 @@ WHERE run_id = :run_id AND entry_id IN (
 -- matches the old RETURNING (path, tokens) for caller compatibility.
 -- State filter: skip failed/cancelled entries (they're already not
 -- contributing visible context — demoting them would be misleading).
+-- Scheme filter: skip known/unknown — these are the model's deliverables,
+-- not housekeeping. Auto-demoting just-created knowns punishes the
+-- correct Distill+Demote pattern.
 SELECT e.path, e.tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
@@ -310,12 +313,15 @@ WHERE
 	rv.run_id = :run_id
 	AND rv.turn = :turn
 	AND rv.visibility = 'visible'
-	AND rv.state NOT IN ('failed', 'cancelled');
+	AND rv.state NOT IN ('failed', 'cancelled')
+	AND e.scheme NOT IN ('known', 'unknown');
 
 -- PREP: demote_turn_entries
 -- View-layer only — visibility lives on run_views. State untouched.
 -- Call get_turn_demotion_targets first if you need the list of what
 -- was demoted (used by budget plugin for the overflow error body).
+-- Scheme filter mirrors get_turn_demotion_targets — never demote the
+-- model's deliverables (known/unknown) along with housekeeping.
 UPDATE run_views
 SET
 	visibility = 'summarized'
@@ -324,7 +330,12 @@ WHERE
 	run_id = :run_id
 	AND turn = :turn
 	AND visibility = 'visible'
-	AND state NOT IN ('failed', 'cancelled');
+	AND state NOT IN ('failed', 'cancelled')
+	AND NOT EXISTS (
+		SELECT 1 FROM entries AS e
+		WHERE e.id = run_views.entry_id
+			AND e.scheme IN ('known', 'unknown')
+	);
 
 -- PREP: get_run_visible_targets
 -- All visible entries across the run, oldest promotion first. Used by

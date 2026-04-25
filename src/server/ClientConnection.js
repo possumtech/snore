@@ -149,11 +149,8 @@ export default class ClientConnection {
 
 	async #handleMessage(data) {
 		let id = null;
-		const debug = process.env.RUMMY_DEBUG === "true";
 		try {
 			const rawMessage = await this.#hooks.socket.message.raw.filter(data);
-			if (debug) console.log(`[SOCKET] IN: ${rawMessage.toString()}`);
-
 			const message = JSON.parse(rawMessage.toString());
 
 			const filteredRequest = await this.#hooks.rpc.request.filter(message);
@@ -265,10 +262,6 @@ export default class ClientConnection {
 	}
 
 	#send(payload) {
-		const debug = process.env.RUMMY_DEBUG === "true";
-		if (debug) {
-			console.log(`[SOCKET] OUT: ${JSON.stringify(payload, null, 2)}`);
-		}
 		if (this.#ws.readyState === 1) {
 			this.#ws.send(JSON.stringify(payload));
 		}

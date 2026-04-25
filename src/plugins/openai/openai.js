@@ -70,11 +70,9 @@ export default class OpenAi {
 			m.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 
-			if (process.env.RUMMY_DEBUG === "true" && m.reasoning_content) {
-				console.warn(
-					`[RUMMY] Reasoning (${m.reasoning_content.length} chars): ${m.reasoning_content.slice(0, 120)}`,
-				);
-			}
+			// Full reasoning dump is centralized in telemetry.js on every
+			// provider — keeping it out of provider plugins avoids double
+			// printing and per-provider drift.
 		}
 
 		return data;

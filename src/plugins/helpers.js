@@ -1,3 +1,22 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Read a sibling tooldoc markdown file and return its model-facing text.
+ * Strips HTML comments (rationale stays in source, never reaches the model)
+ * and collapses any blank-line runs left behind. Each plugin's Doc.js is a
+ * one-liner that defers to this so authors edit normal markdown instead of
+ * a JS array of [text, rationale] pairs.
+ */
+export function loadDoc(metaUrl, name) {
+	const dir = dirname(fileURLToPath(metaUrl));
+	return readFileSync(join(dir, name), "utf8")
+		.replace(/<!--[\s\S]*?-->/g, "")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+}
+
 /**
  * Translate a log entry path into its companion data-scheme base path.
  * `log://turn_N/{action}/{rest}` → `{action}://turn_N/{rest}`.

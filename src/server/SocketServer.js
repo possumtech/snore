@@ -12,10 +12,7 @@ export default class SocketServer {
 		this.#hooks = options.hooks;
 		this.#wss = new WebSocketServer(options);
 
-		this.#wss.on("connection", (ws, req) => {
-			if (process.env.RUMMY_DEBUG === "true") {
-				console.log(`[SOCKET] New connection from ${req.socket.remoteAddress}`);
-			}
+		this.#wss.on("connection", (ws, _req) => {
 			const conn = new ClientConnection(ws, this.#db, this.#hooks);
 			this.#connections.add(conn);
 			// Remove from the tracking set only after the connection's

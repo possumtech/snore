@@ -33,16 +33,16 @@ describe("Budget demotion", () => {
 			await store.set({
 				runId,
 				turn: 3,
-				path: "known://fact-a",
-				body: "fact content",
+				path: "https://example.com/page-a",
+				body: "page-a content",
 				state: "resolved",
 				visibility: "visible",
 			});
 			await store.set({
 				runId,
 				turn: 3,
-				path: "known://fact-b",
-				body: "more facts",
+				path: "https://example.com/page-b",
+				body: "page-b content",
 				state: "resolved",
 				visibility: "visible",
 			});
@@ -50,13 +50,13 @@ describe("Budget demotion", () => {
 			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 3 });
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
-			const a = entries.find((e) => e.path === "known://fact-a");
-			const b = entries.find((e) => e.path === "known://fact-b");
+			const a = entries.find((e) => e.path === "https://example.com/page-a");
+			const b = entries.find((e) => e.path === "https://example.com/page-b");
 
-			assert.strictEqual(a.visibility, "summarized", "fact-a demoted");
-			assert.strictEqual(a.state, "resolved", "fact-a status preserved at 200");
-			assert.strictEqual(b.visibility, "summarized", "fact-b demoted");
-			assert.strictEqual(b.state, "resolved", "fact-b status preserved at 200");
+			assert.strictEqual(a.visibility, "summarized", "page-a demoted");
+			assert.strictEqual(a.state, "resolved", "page-a status preserved at 200");
+			assert.strictEqual(b.visibility, "summarized", "page-b demoted");
+			assert.strictEqual(b.state, "resolved", "page-b status preserved at 200");
 		});
 
 		it("demotes logging entries at the same turn, status preserved", async () => {
@@ -89,16 +89,16 @@ describe("Budget demotion", () => {
 			await store.set({
 				runId,
 				turn: 2,
-				path: "known://turn2-fact",
-				body: "earlier fact",
+				path: "https://example.com/turn2",
+				body: "earlier page",
 				state: "resolved",
 				visibility: "visible",
 			});
 			await store.set({
 				runId,
 				turn: 4,
-				path: "known://turn4-fact",
-				body: "later fact",
+				path: "https://example.com/turn4",
+				body: "later page",
 				state: "resolved",
 				visibility: "visible",
 			});
@@ -106,8 +106,8 @@ describe("Budget demotion", () => {
 			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 3 });
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
-			const t2 = entries.find((e) => e.path === "known://turn2-fact");
-			const t4 = entries.find((e) => e.path === "known://turn4-fact");
+			const t2 = entries.find((e) => e.path === "https://example.com/turn2");
+			const t4 = entries.find((e) => e.path === "https://example.com/turn4");
 			assert.strictEqual(t2.visibility, "visible", "turn 2 entry untouched");
 			assert.strictEqual(t4.visibility, "visible", "turn 4 entry untouched");
 		});
@@ -118,7 +118,7 @@ describe("Budget demotion", () => {
 			await store.set({
 				runId,
 				turn: 6,
-				path: "known://errored",
+				path: "https://example.com/errored",
 				body: "body",
 				state: "failed",
 				visibility: "visible",
@@ -127,8 +127,93 @@ describe("Budget demotion", () => {
 			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 6 });
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
-			const entry = entries.find((e) => e.path === "known://errored");
+			const entry = entries.find(
+				(e) => e.path === "https://example.com/errored",
+			);
 			assert.strictEqual(entry.visibility, "visible", "4xx entry not demoted");
+		});
+
+		// Regression — observed in rummy_dev.db::test:demo turn 7. The model
+		// emitted the documented Distill+Demote pattern (created two knowns,
+		// demoted the source URL) and overflowed by ~4k tokens. Post-dispatch
+		// `demote_turn_entries` indiscriminately summarized everything from
+		// that turn — including the just-created knowns. End-of-run the model
+		// could not see its own deliverables and re-derived the same content
+		// at a parallel path. Knowns and unknowns are deliverables, never
+		// housekeeping; the budget enforcer must skip them.
+		it("does not demote known:// or unknown:// entries (deliverables)", async () => {
+			const { runId } = await tdb.seedRun({ alias: "dte_protected" });
+
+			await store.set({
+				runId,
+				turn: 7,
+				path: "known://geography/lost_river",
+				body: "Lost River flows underground through karst conduits.",
+				state: "resolved",
+				visibility: "visible",
+			});
+			await store.set({
+				runId,
+				turn: 7,
+				path: "unknown://geography/aquifers",
+				body: "Aquifer composition under Orange County",
+				state: "resolved",
+				visibility: "visible",
+			});
+			await store.set({
+				runId,
+				turn: 7,
+				path: "https://example.com/source",
+				body: "source URL the model fetched and is done with",
+				state: "resolved",
+				visibility: "visible",
+			});
+
+			const targets = await tdb.db.get_turn_demotion_targets.all({
+				run_id: runId,
+				turn: 7,
+			});
+			const targetPaths = targets.map((t) => t.path);
+			assert.ok(
+				targetPaths.includes("https://example.com/source"),
+				"source URL is a demotion target",
+			);
+			assert.ok(
+				!targetPaths.includes("known://geography/lost_river"),
+				"known:// entry not in demotion target list",
+			);
+			assert.ok(
+				!targetPaths.includes("unknown://geography/aquifers"),
+				"unknown:// entry not in demotion target list",
+			);
+
+			await tdb.db.demote_turn_entries.run({ run_id: runId, turn: 7 });
+
+			const entries = await tdb.db.get_known_entries.all({ run_id: runId });
+			const known = entries.find(
+				(e) => e.path === "known://geography/lost_river",
+			);
+			const unknown = entries.find(
+				(e) => e.path === "unknown://geography/aquifers",
+			);
+			const source = entries.find(
+				(e) => e.path === "https://example.com/source",
+			);
+			assert.strictEqual(
+				known.visibility,
+				"visible",
+				"known:// survived budget demotion",
+			);
+			assert.strictEqual(
+				unknown.visibility,
+				"visible",
+				"unknown:// survived budget demotion",
+			);
+			assert.strictEqual(
+				source.visibility,
+				"summarized",
+				"source URL was demoted as expected",
+			);
 		});
 	});
 

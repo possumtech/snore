@@ -154,6 +154,11 @@ export default class Telemetry {
 				state: "resolved",
 				...systemOpts,
 			});
+			if (process.env.RUMMY_DEBUG === "true") {
+				console.log(
+					`\n--- REASONING turn ${turn} (${responseMessage.reasoning_content.length} chars) ---\n${responseMessage.reasoning_content}\n--- END REASONING turn ${turn} ---\n`,
+				);
+			}
 		}
 
 		// content://N — unparsed text. 400 Bad Request because anything in

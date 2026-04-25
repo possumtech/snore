@@ -1,36 +1,3 @@
-// Tool doc for <set>. Each entry: [text, rationale].
-// Text goes to the model. Rationale stays in source.
-// Changing ANY line requires reading ALL rationales first.
-const LINES = [
-	[
-		'## <set path="[path/to/file]">[content or edit]</set> - Create, edit, or update a file or entry',
-	],
-	[
-		'Example: <set path="known://project/milestones" visibility="summarized" summary="milestone,deadline,2026"/>',
-		"Visibility control first — most unique capability of set.",
-	],
-	[
-		`Example: <set path="src/app.js">
-<<<<<<< SEARCH
-old text
-=======
-new text
->>>>>>> REPLACE
-</set>`,
-		"SEARCH/REPLACE block — primary edit pattern for existing files.",
-	],
-	[
-		`Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>`,
-		"Sed syntax: chained s/old/new/ patterns with semicolons.",
-	],
-	[
-		'Example: <set path="example.md">Full file content here</set>',
-		"Create: body contents are entire file.",
-	],
-	[
-		"* YOU MUST NOT use <sh></sh> or <env></env> to list, create, read, or edit files — use <get></get> and <set></set>",
-		"Reinforces at the decision point — model reading setDoc for file ops sees the prohibition here, not just buried in shDoc/envDoc which it may not be reading.",
-	],
-];
+import { loadDoc } from "../helpers.js";
 
-export default LINES.map(([text]) => text).join("\n");
+export default loadDoc(import.meta.url, "setDoc.md");
