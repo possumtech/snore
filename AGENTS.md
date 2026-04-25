@@ -114,19 +114,72 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
 
 ---
 
-## Open Items
+## E2E Failure Backlog (2026-04-25, gemma)
 
-- [x] **Unified `log://` namespace.** All action log entries now live
-  at `log://turn_N/action/slug`. TurnExecutor constructs the path via
-  `Entries.logPath(runId, turn, action, target)`. `log.js` renderer
-  parses action from the path's second segment; materializeContext
-  dispatches projections by action. Log tags render without `turn=`,
-  `visibility=`, `state=` — all redundant with path + status + the
-  filter in v_model_context. Target of the action surfaces as
-  `target=` attribute pulled from `attrs.path`. Prompts remain at
-  `prompt://N` for now (their assembly is structurally distinct from
-  log entries). Budget still writes `budget://` — folding into error
-  pending a follow-up.
+`npm run test:e2e` baseline after `noWeb` plumbing fix and
+`record_behavior.test.js` deletion: **23 / 31 pass, 6 fail, 2
+cancelled**. Work each row to root cause + fix (or deliberate test
+adapt) before the next full e2e sweep — no rerunning the whole suite
+to "see if it cleared up."
+
+- [ ] **`demo_hydrology.test.js:102` — `scenario must exercise proposals`.**
+  Run finishes 200 in ~9 turns with 0 proposals; gemma confabulates a
+  summary instead of writing the file. Same shape as
+  terminal_state_with_proposal:120 below — likely one root cause.
+
+- [ ] **`stories.test.js:338` — `autonomous unknown investigation`
+  (expected 200|202, got 499).** Run abandoned at 3 strikes during the
+  Define→Discover loop. Need to read the strike sequence and figure
+  out whether it's stage-protocol drift or a real recovery gap.
+
+- [ ] **`stories.test.js:362` — `lite mode sustained session`.**
+  Response was *"Answered the question with the remembered number."*
+  instead of `"42"`. Model returned a meta-acknowledgement, not the
+  asked-for value. Investigate whether the prompt or the post-recall
+  response shape needs sharpening.
+
+- [ ] **`stories.test.js:422` — `rejection and recovery`** (timed out
+  at 300s). I already fixed the resolver-pattern bug (`rm://` → `log://turn_N/rm/`)
+  earlier this session — the timeout is a different failure mode now.
+  Possibly the model spinning post-rejection. Read the run's reasoning
+  trace.
+
+- [ ] **`stories.test.js:462` — `model answers under tight context limit`.**
+  Got *"Answered prompt"* instead of `"phoenix"`. Same meta-response
+  shape as :362. Two-symptom one-cause candidate.
+
+- [ ] **`stories.test.js:513` — `turn demotion fires and knowns survive intact`**
+  (timed out at 300s). My adapted test from earlier this session.
+  Need to confirm gemma actually wrote the 10 knowns under the tight
+  4500-token budget before timing out, or whether the protection
+  changed run dynamics enough to deadlock.
+
+- [ ] **`stories.test.js:566` — `pre-turn overflow triggers recovery,
+  not immediate 413`** (got 499). Recovery loop not engaging when
+  pre-turn is over ceiling. Possibly related to the deliverable-protection
+  change — known/unknown excluded from `demote_turn_entries`, may
+  starve recovery in this scenario.
+
+- [ ] **`terminal_state_with_proposal.test.js:120` —
+  `after proposal accept, terminal run/state arrives`.** Same "no
+  proposals fired" assertion as demo_hydrology:102. Cluster-fix
+  candidate.
+
+**Cluster reads (work hypotheses, not commitments):**
+- :102, :120 — gemma claims completion without producing proposals
+  (no file write attempted). Likely stage 108 (Deployment) lets the
+  model 200-out without doing the work.
+- :362, :462 — meta-response instead of literal answer. May be a
+  Discovery→Deployment transition issue or model habit gemma can't
+  shake.
+- :338, :566 — strike-out on legitimate work. Recovery may have
+  regressed under the deliverable-protection change.
+- :422, :513 — timeouts. Could be process hang, infinite stage-loop,
+  or just genuinely slow gemma — read the DB to distinguish.
+
+---
+
+## Open Items
 
 - [ ] **Budget → error fold.** Subsumed by the Error paradigm
   unification (see Ongoing Development Conversation, 2026-04-22).
