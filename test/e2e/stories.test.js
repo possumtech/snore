@@ -24,19 +24,29 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function lastResponse(db, runAlias) {
 	const runRow = await db.get_run_by_alias.get({ alias: runAlias });
+	const entries = await db.get_known_entries.all({ run_id: runRow.id });
+
+	// The model's literal answer can land in two places: the prose
+	// preceding/following its <update> tag, or the <update> body itself.
+	// `<update>` is a status report capped at 80 chars, so the answer
+	// often lives in prose with the update body summarizing the act of
+	// answering ("Answered the question with the remembered number.").
+	// `assistant://N` carries the full raw response (prose + tags) so
+	// it always contains the answer wherever the model placed it.
+	const assistant = entries
+		.filter((e) => e.scheme === "assistant" && e.body)
+		.toSorted((a, b) => b.turn - a.turn);
+	if (assistant.length > 0) return assistant[0].body;
+
 	const latestLoop = await db.get_latest_completed_loop.get({
 		run_id: runRow.id,
 	});
-
-	// Terminal update (status=200) — the definitive answer
 	const summary = await db.get_latest_summary.get({
 		run_id: runRow.id,
 		loop_id: latestLoop?.id ?? null,
 	});
 	if (summary?.body) return summary.body;
 
-	// Fallback: content entry (raw model text, healed response)
-	const entries = await db.get_known_entries.all({ run_id: runRow.id });
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);

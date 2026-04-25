@@ -132,11 +132,15 @@ to "see if it cleared up."
   Define→Discover loop. Need to read the strike sequence and figure
   out whether it's stage-protocol drift or a real recovery gap.
 
-- [ ] **`stories.test.js:362` — `lite mode sustained session`.**
-  Response was *"Answered the question with the remembered number."*
-  instead of `"42"`. Model returned a meta-acknowledgement, not the
-  asked-for value. Investigate whether the prompt or the post-recall
-  response shape needs sharpening.
+- [x] **`stories.test.js:362` — `lite mode sustained session`.** Test
+  helper `lastResponse` was reading only the `<update>` body, missing
+  the literal answer that gemma put in prose preceding the update tag.
+  Gemma's reasoning showed it correctly identified the answer ("42"),
+  emitted `42\n<update status="200">Answered the question with the
+  remembered number.</update>` — the answer was in the response, the
+  test was looking in the wrong column. Updated `lastResponse` to read
+  `assistant://N` (the full raw response) which contains both prose
+  and the update tag. Verified passing 2026-04-25.
 
 - [x] **`stories.test.js:422` — `rejection and recovery`** (was 300s
   timeout). Resolver-pattern bug fixed earlier this session
@@ -146,9 +150,10 @@ to "see if it cleared up."
   "rejected rm did not delete the file," provable as soon as one
   rejection fires. Verified passing 2026-04-25.
 
-- [ ] **`stories.test.js:462` — `model answers under tight context limit`.**
-  Got *"Answered prompt"* instead of `"phoenix"`. Same meta-response
-  shape as :362. Two-symptom one-cause candidate.
+- [x] **`stories.test.js:462` — `model answers under tight context limit`.**
+  Same root cause as :362 — `lastResponse` was reading the `<update>`
+  body, missing the literal answer in prose. Same fix (read
+  `assistant://N`) resolved both. Verified passing 2026-04-25.
 
 - [x] **`stories.test.js:513` — `turn demotion fires and knowns survive intact`**
   Deleted 2026-04-25. Protection invariant
@@ -173,9 +178,6 @@ to "see if it cleared up."
 - :102, :120 — model claims completion without producing proposals
   (no file write attempted). Likely stage 108 (Deployment) lets the
   model 200-out without the work being done; protocol-side gap.
-- :362, :462 — meta-response instead of literal answer. May be a
-  Discovery→Deployment transition issue or a deeper signal about how
-  the prompt's literal-answer expectation is conveyed.
 - :338, :566 — strike-out on legitimate work. Recovery may have
   regressed under the deliverable-protection change.
 
