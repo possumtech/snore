@@ -596,12 +596,7 @@ export default class AgentLoop {
 				return out;
 			}
 
-			// Loop exhausted its turn budget without the model emitting a
-			// terminal update. Treat as 499 (abandoned) — same family as
-			// strike-abandon and signal-abort. Earlier this closed at 200,
-			// which silently masked stalled runs as clean wins and corrupted
-			// downstream test/benchmark signal (proposal-fired assertions
-			// would pass through tests on runs that never reached Deploy).
+			// MAX_TURNS exhaustion without a terminal update is abandonment.
 			console.error(
 				`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS} — abandoning at 499`,
 			);

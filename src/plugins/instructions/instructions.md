@@ -14,6 +14,7 @@ Tip: The "summarized" and "archived" entries and log events use no context memor
 Tip: You can use <get path="..." preview/> to preview the potential `tokens="N"` budget impact of bulk operations.
 Tip: You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
 Tip: Log items are demotable just like context entries. Demote their visibility to "summarized" or "archived" as needed.
+Tip: Entries and log events that have been archived are fully hidden (no memory used, no summary), but can be retrieved later by path.
 
 # Commands
 

@@ -122,6 +122,52 @@ describe("error verdict (@response_healing)", () => {
 		assert.notStrictEqual(verdict.status, 200);
 	});
 
+	it(`abandoning strike (#${MAX_STRIKES}) with same-turn summary → completion, not 499`, async () => {
+		// First MAX_STRIKES-1 strikes: model errors with no summary, gets retried.
+		for (let i = 0; i < MAX_STRIKES - 1; i++) {
+			await tdb.hooks.error.log.emit({
+				store,
+				runId: RUN_ID,
+				turn: i + 1,
+				loopId: LOOP_ID,
+				message: `strike ${i + 1}`,
+				status: 422,
+			});
+			await tdb.hooks.error.verdict({
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: i + 1,
+				recorded: [fakeGet(`src/${i}.js`)],
+				summaryText: null,
+			});
+			await bumpTurn(i + 2);
+		}
+		// Final strike turn — model also emits a terminal update.
+		await tdb.hooks.error.log.emit({
+			store,
+			runId: RUN_ID,
+			turn: MAX_STRIKES,
+			loopId: LOOP_ID,
+			message: "strike that coincides with delivery",
+			status: 413,
+		});
+		const verdict = await tdb.hooks.error.verdict({
+			store,
+			runId: RUN_ID,
+			loopId: LOOP_ID,
+			turn: MAX_STRIKES,
+			recorded: [fakeGet("src/final.js")],
+			summaryText: "delivered the report",
+		});
+		assert.strictEqual(verdict.continue, false);
+		assert.strictEqual(
+			verdict.status,
+			200,
+			"terminal-strike turn with summary completes at 200, not 499",
+		);
+	});
+
 	it(`${MAX_STRIKES} consecutive erroring turns → continue=false, status=499`, async () => {
 		let verdict;
 		for (let i = 0; i < MAX_STRIKES; i++) {
