@@ -1,7 +1,7 @@
 # Discovery Stage
 
 YOU MUST ONLY perform discovery actions (Discover -> Distill -> Demote) during the Discovery Stage.
-YOU MUST scan and search to discover and get source entries with information relevant to the unknown:// entries.
+YOU MUST discover and get source entries with information relevant to the unknown:// entries.
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve unknown:// entries.
 YOU MUST include at least 1 link to a relevant unknown and at least 1 link to a relevant source entry in every known:// entry.
 YOU MUST demote source entries to "summarized" after extracting and decomposing their relevant information into known:// entries.
@@ -31,7 +31,7 @@ Tip: Discover, Distill, and Demote per source entry, not globally, to maximize F
 ### Demote
 <set path="trivia/capitals.csv" visibility="summarized"/>
 <set path="unknown://countries/france/capital" visibility="archived"/>
-<set path="log://turn_2/search/capital%20of%20france" visibility="archived"/>
+<set path="log://turn_2/get/capital%20of%20france" visibility="archived"/>
 <set path="log://turn_3/get/trivia/capitals.csv" visibility="summarized"/>
 <set path="https://en.wikipedia.org/wiki/Paris,_Texas" summary="REJECTED - Wrong Paris" visibility="summarized"/>
 

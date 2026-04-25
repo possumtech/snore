@@ -114,7 +114,11 @@ async function askWithRetry(client, params, label = "ask") {
 	const RETRY_INTERVAL_MS = 30_000;
 	let attempts = 0;
 	while (true) {
-		const r = await client.call("ask", params);
+		// AuditClient.ask drives a `set run://` with mode=ask under the hood
+		// and polls to terminal status. The old `client.call("ask", ...)`
+		// targeted a since-removed RPC method and would hard-fail with
+		// "Method 'ask' not found."
+		const r = await client.ask(params);
 		if (r.status < 500) return r;
 		attempts++;
 		console.error(

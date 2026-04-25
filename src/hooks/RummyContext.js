@@ -102,6 +102,10 @@ export default class RummyContext {
 		return this.#context.noWeb === true;
 	}
 
+	get noProposals() {
+		return this.#context.noProposals === true;
+	}
+
 	get toolSet() {
 		return this.#context.toolSet;
 	}
