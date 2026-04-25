@@ -147,7 +147,7 @@ attributes, per-run status, and per-run visibility.
 ```sql
 entries (
     id, scope, path, scheme, body, attributes,
-    hash, tokens, created_at, updated_at,
+    hash, created_at, updated_at,
     UNIQUE (scope, path)
 )
 ```
@@ -160,7 +160,8 @@ entries (
 | `body` | Content. File text, tool output, skill docs. |
 | `attributes` | Tag attributes as JSON. `CHECK (json_valid)`. |
 | `hash` | SHA-256 for file change detection. |
-| `tokens` | Full-body token cost. Never changes on demotion/promotion. |
+
+Tokens are not stored on entries. See [token_accounting](#token_accounting) — token cost is a property of the materialized packet, computed during assembly, never persisted.
 
 **View layer** — `run_views` (per-run projection):
 
@@ -709,6 +710,77 @@ Model controls visibility via `<set>` attributes:
 attaches a description (≤ 80 chars) that persists across visibility
 changes.
 
+### Token Accounting {#token_accounting}
+
+Tokens are a property of the materialized packet, not of stored entries.
+They are computed during assembly, exposed on the materialization records,
+and consumed by the budget plugin for the model-facing `<budget>` table.
+Nothing else in the system has its own opinion of "what an entry costs."
+
+**Per-entry materialization records** carry three token measures:
+
+| Field | Meaning |
+|---|---|
+| `vTokens` | Wire cost when the entry is fully visible. The body rendered through the scheme's `visible` view, wrapped in its envelope tag, tokenized. |
+| `sTokens` | Wire cost when the entry is summarized. The body rendered through the scheme's `summarized` view (typically a projection or 500-char preview), wrapped in its envelope tag, tokenized. |
+| `aTokens` | `vTokens − sTokens`. The promotion premium — the marginal cost of the entry being visible rather than summarized. The only token measure exposed to the model on per-entry tags. |
+
+The model sees `tokens="N"` on each entry tag. That `N` is `aTokens`. It
+means: *demoting this entry frees `N` tokens; promoting this entry from
+summarized to visible costs `N` tokens.* The number is a pure lever — no
+body-vs-wire ambiguity, no envelope overhead surprise.
+
+**Floor and premium.** A run's packet decomposes into:
+
+- **Summarized floor** = sum of `sTokens` for all non-archived entries.
+  Paid regardless of any visibility decision the model can make. Includes
+  the per-entry projection cost for every entry that's either `visible`
+  (since visible entries also pay their projection-cost-equivalent within
+  vTokens) or `summarized`.
+- **Visibility premium** = sum of `aTokens` for currently-visible entries.
+  The active cost of visibility decisions. The model's lever.
+- **System overhead** = system prompt + tool definition tokens. Constant
+  per turn, not addressable by the model.
+
+`tokenUsage = floor + premium + system`. `tokensFree = ceiling − tokenUsage`.
+
+**`<budget>` rendered shape** (between `<instructions>` and `<prompt>`,
+priority 275):
+
+```
+<budget tokenUsage="N" tokensFree="M">
+| scheme | visible | tokens | % |
+|---|---|---|---|
+| <scheme> | <count> | <sum-of-aTokens> | <%-of-ceiling> |
+... rows for visible-scheme breakdown, sorted desc by tokens ...
+
+Summarized: <count> entries, <sum-of-sTokens> tokens (<%>% of budget).
+System: <token-count> tokens (<%>% of budget).
+Total: <visible-count> visible + <summarized-count> summarized entries; tokenUsage <N> / ceiling <C>. <M> tokens free.
+</budget>
+```
+
+**Why the table only contains visible scheme rows.** The `tokens` column
+in the table is `aTokens` — the action lever. Per-entry visibility of
+summarized entries is intentionally not surfaced; surgical pruning of
+individual high-signal summaries is the wrong action shape. The
+summarized aggregate line below the table is the only signal for that
+class — actionable via glob (`<set path="known://oldsession/*"
+visibility="archived"/>`), not per-entry.
+
+**Where the math is computed.** Materialization (the assembly path
+through `materializeContext.js` and `ContextAssembler.js` plus per-scheme
+view handlers) renders each entry's visible and summarized projections,
+wraps them in their envelope, and tokenizes both. The resulting per-entry
+record carries `vTokens`/`sTokens`/`aTokens` alongside the projected
+text. The budget plugin's `assembleBudget` filter consumes this; no other
+caller measures tokens.
+
+**Body-size gates** (e.g. `known.js` MAX_ENTRY_TOKENS) compute
+`countTokens(body)` inline at write time. They check intrinsic body
+size, not wire cost — the materialization record doesn't yet exist when
+an entry is being written.
+
 ### Budget Enforcement {#budget_enforcement}
 
 The model owns its context. The system enforces a hard ceiling and
@@ -752,27 +824,20 @@ are rejected at the handler with an instructive error message. Forces
 atomic entries instead of dumping transcripts into a single `known://`.
 
 **Advisory feedback.** The model reads `tokensFree` / `tokenUsage`
-attributes on `<prompt>` every turn and self-regulates. No threshold-
-based warnings. When the ceiling is actually breached the 413
-`error://` entry is the feedback.
+attributes on `<budget>` every turn and self-regulates. The full
+breakdown (per-scheme visible cost, summarized aggregate, system
+overhead) lives in the same tag — see [token_accounting](#token_accounting)
+for the rendered shape and the contract for what each number means.
+No threshold-based warnings. When the ceiling is actually breached the
+413 `error://` entry is the feedback.
 
 **Token math:** `Math.ceil(text.length / RUMMY_TOKEN_DIVISOR)`. One
 formula, one file (`src/agent/tokens.js`), env-configurable. No
-external dependencies. `contextSize` is the ceiling. Over = 413.
-Under = 200. No margins.
-
-**Three token measures — never conflate them:**
-
-| Measure | Source | Scope | Use |
-|---|---|---|---|
-| SQL entry tokens | `entries.tokens` = `ceil(chars / DIVISOR)` | Per entry | Model decision-making: "this entry costs N tokens" |
-| Assembled estimate | `measureMessages(messages)` = sum of entry projections | Full packet | First-turn budget fallback only |
-| Actual API tokens | `turns.context_tokens` = `usage.input_tokens` back-filled from LLM | Per turn | Budget enforcement on turns 2+; ground truth |
-
-`budget.enforce` uses the **actual API tokens** (`get_last_context_tokens`) when
-available (turn 2+) and falls back to the assembled estimate on turn 1. The
-estimate can be 3–7× off for XML/JSON-heavy content — do not rely on it for
-anything that matters.
+external dependencies. All costs surfaced to the model and the budget
+guard come through materialization (see [token_accounting](#token_accounting));
+the budget guard's pre-LLM check uses the actual API tokens
+(`turns.context_tokens` from the prior turn) when available, falling
+back to the materialized packet estimate on turn 1.
 
 **`context_tokens` vs `prompt_tokens` in step telemetry:**
 - `context_tokens` in the step JSON = `turns.context_tokens` for that turn =

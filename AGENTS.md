@@ -220,6 +220,12 @@ to "see if it cleared up."
 
 ## Open Items
 
+- [ ] **Token accounting refactor (2026-04-25).** End the doom loop where "tokens" sometimes means body-tokens, sometimes wire-tokens, sometimes API-tokens. One truth: tokens are a materialized cost, computed during assembly, never stored on entries. Per-entry materialization records carry `vTokens` (cost when visible), `sTokens` (cost when summarized), `aTokens = vTokens − sTokens` (the promotion premium — the only number the model sees on per-entry tags). Budget table renders visible-scheme breakdown using `aTokens`; summarized entries collapse into a single aggregate line below the table; system overhead (system prompt + tool defs) gets its own line. Total reconciles to `tokenUsage`.
+  - [ ] **SPEC.md** — new `{#token_accounting}` anchor specifying: tokens are materialized, never stored; per-entry vTokens/sTokens/aTokens contract; `<budget>` rendered shape (visible-scheme table + summarized line + system line + total). Update `{#schema}` to drop `entries.tokens`. Update `{#budget_enforcement}` to point at the new `<budget>` shape.
+  - [ ] **Failing tests** — `test/integration/materialization_token_accounting.test.js` for per-entry vTokens/sTokens/aTokens shape; update `test/integration/budget_math.test.js` for the new `<budget>` layout (visible table, summarized line, system line, total reconciles); e2e story verifying a model demote frees the demoted entry's aTokens on the next turn.
+  - [ ] **Implementation, dependency order**: (1) materialization computes vTokens/sTokens/aTokens per-entry and exposes on the materialization records; (2) budget plugin's `assembleBudget` renders the new shape using aTokens for the table and aggregates for summarized + system; (3) `known.js` MAX_ENTRY_TOKENS gate moves to inline `countTokens(body)` at write time; (4) schema migration drops `entries.tokens`.
+  - [ ] **`spec-coverage.js`** stays green throughout — every new anchor referenced by ≥1 test on landing.
+
 - [ ] **Budget → error fold.** Subsumed by the Error paradigm
   unification (see Ongoing Development Conversation, 2026-04-22).
   Budget emits `error.log.emit({status: 413})` instead of

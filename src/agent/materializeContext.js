@@ -20,6 +20,10 @@ export default async function materializeContext({
 }) {
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
+	// Per-entry token accounting (see SPEC @token_accounting): captured
+	// here while we still have the raw body, then merged onto rows after
+	// the read-back roundtrip through turn_context.
+	const tokenAccounting = new Map();
 	for (const row of viewRows) {
 		// schemeOf() yields NULL (or "") for bare file paths — translate
 		// to "file" so the view lookup finds the file scheme handler.
@@ -33,14 +37,26 @@ export default async function materializeContext({
 			const m = row.path.match(/^log:\/\/turn_\d+\/([^/]+)\//);
 			if (m) projectionKey = m[1];
 		}
-		const projectedBody = await hooks.tools.view(projectionKey, {
+		const baseEntry = {
 			path: row.path,
 			scheme,
 			body: row.body,
 			attributes: attrs,
-			visibility: row.visibility,
 			category: row.category,
+		};
+		const visibleProjection = await hooks.tools.view(projectionKey, {
+			...baseEntry,
+			visibility: "visible",
 		});
+		const summarizedProjection = await hooks.tools.view(projectionKey, {
+			...baseEntry,
+			visibility: "summarized",
+		});
+		const vTokens = countTokens(visibleProjection);
+		const sTokens = countTokens(summarizedProjection);
+		tokenAccounting.set(row.path, { vTokens, sTokens });
+		const projectedBody =
+			row.visibility === "visible" ? visibleProjection : summarizedProjection;
 		await db.insert_turn_context.run({
 			run_id: runId,
 			loop_id: loopId,
@@ -51,11 +67,6 @@ export default async function materializeContext({
 			state: row.state,
 			outcome: row.outcome,
 			body: projectedBody,
-			// Full-body token count, not projected. This is the cost to
-			// promote the entry — the number the model needs to do Token
-			// Budget math. Projecting the demoted symbol-preview (145
-			// tokens for a 2108-token file) was misleading the model into
-			// promotes that blew the Token Budget by 10-30× per entry.
 			tokens: countTokens(row.body),
 			attributes: row.attributes,
 			category: row.category,
@@ -63,6 +74,13 @@ export default async function materializeContext({
 		});
 	}
 	const rows = await db.get_turn_context.all({ run_id: runId, turn });
+	for (const row of rows) {
+		const t = tokenAccounting.get(row.path);
+		if (!t) continue;
+		row.vTokens = t.vTokens;
+		row.sTokens = t.sTokens;
+		row.aTokens = t.vTokens - t.sTokens;
+	}
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
 	// First turn of a new run has no prior context.
 	let lastContextTokens = 0;
