@@ -574,4 +574,95 @@ describe("Handler dispatch", () => {
 			assert.deepStrictEqual(order, ["first"], "chain stopped after false");
 		});
 	});
+
+	// Behaviors previously characterized via real-LLM tests in
+	// record_behavior.test.js. Each test exercises a single dispatch
+	// path with a synthetic entry — fast, deterministic, no model.
+	describe("plugin handler behaviors (@unknown_plugin, @known_plugin, @update_plugin, @upsert_semantics)", () => {
+		it("unknown handler dedupes on identical body within a run", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 10 });
+			const body = "What is the database schema?";
+			const entry = {
+				scheme: "unknown",
+				path: "unknown://result",
+				body,
+				attributes: { summary: "schema,question" },
+				state: "resolved",
+				resultPath: "unknown://result",
+			};
+
+			await hooks.tools.dispatch("unknown", entry, rummy);
+			await hooks.tools.dispatch("unknown", { ...entry }, rummy);
+
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const matches = all.filter(
+				(e) => e.scheme === "unknown" && e.body === body,
+			);
+			assert.strictEqual(
+				matches.length,
+				1,
+				`identical unknown body collapses to one entry, got ${matches.length}`,
+			);
+		});
+
+		it("known handler rejects a body over RUMMY_MAX_ENTRY_TOKENS", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 11 });
+			// Cap is 512 in .env.example; build a body well over so the
+			// test isn't sensitive to the exact tokenizer accounting.
+			const oversized = "word ".repeat(2000);
+			const entry = {
+				scheme: "known",
+				path: "known://oversized",
+				body: oversized,
+				attributes: { summary: "oversized" },
+				state: "resolved",
+				resultPath: "known://oversized",
+			};
+
+			await hooks.tools.dispatch("known", entry, rummy);
+
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const failed = all.find(
+				(e) => e.state === "failed" && e.outcome?.startsWith("overflow:"),
+			);
+			assert.ok(
+				failed,
+				"oversize known produces a failed entry with overflow:N outcome",
+			);
+			const accepted = all.find(
+				(e) => e.path === "known://oversized" && e.state === "resolved",
+			);
+			assert.strictEqual(
+				accepted,
+				undefined,
+				"oversize body never reaches resolved at the requested path",
+			);
+		});
+
+		it("update handler writes a log entry under log://turn_N/update/", async () => {
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 12 });
+			const entry = {
+				scheme: "update",
+				path: "log://turn_12/update/test_status",
+				body: "working through unknowns",
+				attributes: { status: 144 },
+				state: "resolved",
+				resultPath: "log://turn_12/update/test_status",
+			};
+
+			await hooks.tools.dispatch("update", entry, rummy);
+
+			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const updateLog = all.find(
+				(e) =>
+					e.scheme === "log" &&
+					/^log:\/\/turn_12\/update\//.test(e.path) &&
+					e.body === "working through unknowns",
+			);
+			assert.ok(
+				updateLog,
+				"update emission lands at log://turn_N/update/<slug>",
+			);
+		});
+	});
 });
