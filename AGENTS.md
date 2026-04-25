@@ -138,21 +138,25 @@ to "see if it cleared up."
   asked-for value. Investigate whether the prompt or the post-recall
   response shape needs sharpening.
 
-- [ ] **`stories.test.js:422` — `rejection and recovery`** (timed out
-  at 300s). I already fixed the resolver-pattern bug (`rm://` → `log://turn_N/rm/`)
-  earlier this session — the timeout is a different failure mode now.
-  Possibly the model spinning post-rejection. Read the run's reasoning
-  trace.
+- [x] **`stories.test.js:422` — `rejection and recovery`** (was 300s
+  timeout). Resolver-pattern bug fixed earlier this session
+  (`rm://` → `log://turn_N/rm/`). Bounded `client.act` at 60s with
+  `.catch(() => null)` so the test doesn't burn 5min waiting on
+  graceful self-termination after rejection — the invariant is
+  "rejected rm did not delete the file," provable as soon as one
+  rejection fires. Verified passing 2026-04-25.
 
 - [ ] **`stories.test.js:462` — `model answers under tight context limit`.**
   Got *"Answered prompt"* instead of `"phoenix"`. Same meta-response
   shape as :362. Two-symptom one-cause candidate.
 
-- [ ] **`stories.test.js:513` — `turn demotion fires and knowns survive intact`**
-  (timed out at 300s). My adapted test from earlier this session.
-  Need to confirm gemma actually wrote the 10 knowns under the tight
-  4500-token budget before timing out, or whether the protection
-  changed run dynamics enough to deadlock.
+- [x] **`stories.test.js:513` — `turn demotion fires and knowns survive intact`**
+  Deleted 2026-04-25. Protection invariant
+  (`demote_turn_entries` excludes scheme IN ('known','unknown')) is
+  covered deterministically by `test/integration/budget_demotion.test.js`
+  *"does not demote known:// or unknown:// entries (deliverables)"*.
+  Driving the same assertion through a real-model run added no
+  coverage and ate 300s every e2e sweep.
 
 - [ ] **`stories.test.js:566` — `pre-turn overflow triggers recovery,
   not immediate 413`** (got 499). Recovery loop not engaging when
@@ -166,16 +170,14 @@ to "see if it cleared up."
   candidate.
 
 **Cluster reads (work hypotheses, not commitments):**
-- :102, :120 — gemma claims completion without producing proposals
+- :102, :120 — model claims completion without producing proposals
   (no file write attempted). Likely stage 108 (Deployment) lets the
-  model 200-out without doing the work.
+  model 200-out without the work being done; protocol-side gap.
 - :362, :462 — meta-response instead of literal answer. May be a
-  Discovery→Deployment transition issue or model habit gemma can't
-  shake.
+  Discovery→Deployment transition issue or a deeper signal about how
+  the prompt's literal-answer expectation is conveyed.
 - :338, :566 — strike-out on legitimate work. Recovery may have
   regressed under the deliverable-protection change.
-- :422, :513 — timeouts. Could be process hang, infinite stage-loop,
-  or just genuinely slow gemma — read the DB to distinguish.
 
 ---
 

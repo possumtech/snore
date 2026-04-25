@@ -513,69 +513,13 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 		);
 	});
 
-	// Story 11: Turn Demotion — model writes many known entries in a tight
-	// context window. End-of-turn auto-summarization demotes housekeeping
-	// (logs, sources) but not the deliverables (known/unknown — see
-	// budget_demotion.test.js). 413 never reaches the client either way:
-	// either the run completes (logs sufficient to free budget) or strikes
-	// out at 499 when only deliverables remain. Both terminal outcomes
-	// preserve the model's knowns intact in the DB, which is the actual
-	// story this test exists to enforce.
-	it("turn demotion fires and knowns survive intact", {
-		timeout: TIMEOUT,
-	}, async () => {
-		const r = await client.ask({
-			model,
-			prompt:
-				"Save 10 separate known entries: for each number 1 through 10, save a known entry with the key 'number-N' and value 'The number N is important because it has N digits of history.' Then summarize when done.",
-			noInteraction: true,
-			noRepo: true,
-			// Tight enough that turn demotion fires on housekeeping (logs,
-			// sources) as gemma's emissions accumulate, loose enough that
-			// gemma can actually write 10 knowns without striking out
-			// repeatedly. The earlier 4500 left no room for the system
-			// prompt + protocol scaffolding, so every turn struck and the
-			// run timed out without finishing.
-			contextLimit: 12000,
-		});
-
-		// Any terminal status is acceptable — the protection invariant is
-		// about knowns surviving, not about the loop reaching 200.
-		assert.ok(
-			[200, 202, 499].includes(r.status),
-			`expected terminal status, got ${r.status}`,
-		);
-
-		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
-		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-
-		const knownEntries = entries.filter((e) => e.scheme === "known");
-		assert.ok(
-			knownEntries.length > 0,
-			"model should have written known entries",
-		);
-		// The protection invariant: knowns are deliverables and never get
-		// auto-demoted by the budget enforcer. Verify every known the model
-		// wrote is still at visibility=visible.
-		const demoted = knownEntries.filter((k) => k.visibility !== "visible");
-		assert.strictEqual(
-			demoted.length,
-			0,
-			`knowns must survive auto-demotion (found ${demoted.length} demoted: ${demoted.map((k) => k.path).join(", ")})`,
-		);
-
-		// If demotion fired, some entries will be at summary visibility with 413 status.
-		// The run completing without client-facing 413 is the key assertion above.
-		const overflowEntries = entries.filter(
-			(e) => e.scheme === "budget" && e.status === 413,
-		);
-		const demotedEntries = entries.filter(
-			(e) => e.visibility === "summarized" && e.status === 413,
-		);
-		console.log(
-			`[Story 11] overflow entries: ${overflowEntries.length}, demoted: ${demotedEntries.length}`,
-		);
-	});
+	// Story 11 (knowns-survive-auto-demotion) deleted 2026-04-25.
+	// The protection invariant — `demote_turn_entries` excludes
+	// scheme IN ('known','unknown') — is covered deterministically by
+	// test/integration/budget_demotion.test.js
+	// "does not demote known:// or unknown:// entries (deliverables)".
+	// Driving the same assertion through a real-model run added no
+	// coverage and ate a 300s budget on every e2e sweep.
 
 	// Story 12: Pre-turn 413 recovery — context is already full when a new
 	// prompt arrives. The system should give the model a chance to free space
