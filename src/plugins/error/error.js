@@ -114,7 +114,13 @@ export default class ErrorPlugin {
 
 		if (summaryText && !struck) {
 			state.streak = 0;
-			return { continue: false, status: 200 };
+			// Terminal status comes from the update entry itself: 200 for
+			// completion, 500 for "cannot fulfill," 422/204 for the other
+			// terminal codes. Hardcoding 200 here flattened them all into
+			// success, hiding cannot-fulfill outcomes from the run record.
+			const updateEntry = recorded?.findLast?.((e) => e.scheme === "update");
+			const terminalStatus = updateEntry?.attributes?.status ?? 200;
+			return { continue: false, status: terminalStatus };
 		}
 
 		if (struck) {

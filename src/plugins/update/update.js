@@ -1,9 +1,12 @@
 import docs from "./updateDoc.js";
 
-const TERMINAL_STATUSES = new Set([200, 204, 422]);
+const TERMINAL_STATUSES = new Set([200, 204, 422, 500]);
 
 const CONTRACT_REMINDER =
 	"Missing update — use 1xx to continue or 200 to conclude.";
+
+const EMPTY_RESPONSE_REMINDER =
+	"Response empty - Update with status 500 if unable to fulfill request.";
 
 function isValidStatus(status) {
 	if (TERMINAL_STATUSES.has(status)) return true;
@@ -45,7 +48,7 @@ export default class Update {
 	 * The "terminal + turn had errors → not actually terminal" rule
 	 * lives in the error plugin's verdict, not here.
 	 */
-	async resolve({ recorded, runId, turn, loopId, rummy }) {
+	async resolve({ recorded, content, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		const status = entry?.attributes?.status ?? 102;
 		const isTerminal = TERMINAL_STATUSES.has(status);
@@ -68,12 +71,13 @@ export default class Update {
 		}
 
 		if (!summaryText && !updateText) {
+			const empty = !content || content.trim() === "";
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
-				message: CONTRACT_REMINDER,
+				message: empty ? EMPTY_RESPONSE_REMINDER : CONTRACT_REMINDER,
 				status: 422,
 			});
 		}
