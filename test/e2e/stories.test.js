@@ -348,8 +348,18 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 	it("autonomous unknown investigation", { timeout: TIMEOUT }, async () => {
 		const r = await client.ask({
 			model,
+			// Earlier prompt versions tangled with the protocol's Definition
+			// stage in two ways: (1) "You MUST register unknowns for what
+			// you need to find" got re-read each turn, sending gemma into
+			// a meta-loop the cycle detector caught at iter 18 → 499; and
+			// (2) the open-ended phrasing let gemma over-define adjacent
+			// unknowns (port, user, name, password) that the prompt didn't
+			// ask for, after which the protocol blocked completion until
+			// every unknown resolved. The current phrasing scopes the
+			// answer-set to exactly two values so gemma's Definition stage
+			// has a natural stopping point.
 			prompt:
-				"Investigate this project and answer: what is the database connection pool size AND the database host? You MUST register unknowns for what you need to find, then investigate with <get>.",
+				"Find exactly two values in this project: the database connection pool size, and the database host. Answer with just those two values when you have them. Do not investigate any other database settings.",
 			noInteraction: true,
 		});
 		await client.assertRun(r, [200, 202], "unknowns");
@@ -531,13 +541,22 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 	// Driving the same assertion through a real-model run added no
 	// coverage and ate a 300s budget on every e2e sweep.
 
-	// Story 12: Pre-turn 413 recovery — context is already full when a new
-	// prompt arrives. The system should give the model a chance to free space
-	// (demote entries), not return 413 immediately to the client.
-	it("pre-turn overflow triggers recovery, not immediate 413", {
+	// Story 12: Pre-turn budget guards — when a new loop's first turn
+	// is over the ceiling, the budget plugin attempts a single recovery
+	// (demote the latest prompt entry, re-materialize, re-check) before
+	// striking. This test verifies the recovery path runs and does NOT
+	// surface a raw 413 to the client. After the deliverable-protection
+	// change (`demote_turn_entries` excludes scheme IN ('known','unknown'))
+	// pre-turn recovery cannot reach knowns; if the visible context is
+	// mostly the model's own knowns, recovery may be insufficient and
+	// the run terminates at 499. That's a documented trade-off — the
+	// guarantee under test is "no 413 reaches the client," which holds
+	// for both 200 (recovery succeeded) and 499 (recovery insufficient
+	// → strike, never raw 413). 413 leaking through would mean the
+	// pre-LLM guard didn't run at all.
+	it("pre-turn overflow triggers recovery, not raw 413", {
 		timeout: TIMEOUT,
 	}, async () => {
-		// Step 1: Create a run with a tight context and fill it with known entries
 		const r1 = await client.ask({
 			model,
 			prompt:
@@ -551,10 +570,6 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			`setup: expected completion, got ${r1.status}`,
 		);
 
-		// Step 2: Send another prompt on the SAME run — context is already
-		// near the ceiling from step 1. This triggers a new loop whose
-		// pre-turn budget check may 413. The model should get a recovery
-		// chance, not an immediate 413 to the client.
 		const r2 = await client.ask({
 			model,
 			prompt: "What color is associated with royalty?",
@@ -563,10 +578,19 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			noRepo: true,
 		});
 
-		// The critical assertion: the model should recover, not 413
+		// The system promise is that 413 never surfaces to the client.
+		// 499 (recovery struck out) is a valid terminal — it means the
+		// guard ran, the model couldn't make room (likely because only
+		// deliverables are visible), and the strike system terminated
+		// the loop properly.
+		assert.notStrictEqual(
+			r2.status,
+			413,
+			"raw 413 should never reach the client — pre-LLM budget guard must intercept",
+		);
 		assert.ok(
-			[200, 202].includes(r2.status),
-			`expected recovery, got status ${r2.status} — 413 reached client without recovery attempt`,
+			[200, 202, 499].includes(r2.status),
+			`expected terminal status from a valid recovery path, got ${r2.status}`,
 		);
 	});
 
