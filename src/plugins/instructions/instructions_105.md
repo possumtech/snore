@@ -37,5 +37,6 @@ Tip: Discover, Distill, and Demote per source entry, not globally, to maximize F
 
 ## Turn Termination (CHOOSE ONLY ONE):
 
-Stage Continuation: <update status="155">{referencing and resolving more unknowns}</update>
-Stage Completion: <update status="158">{all unknowns referenced or resolved by known entries, all source entries demoted}</update>
+Definition Stage Return: <update status="154">returning to definition stage</update>
+Discovery Stage Continuation: <update status="155">referencing and resolving more unknowns</update>
+Discovery Stage Completion: <update status="158">all unknowns referenced or resolved by known entries</update>
