@@ -8,6 +8,7 @@ describe("Budget", () => {
 		const budget = new Budget({
 			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
+			filter: () => {},
 		});
 		const result = await budget.enforce({
 			contextSize: 10000,
@@ -22,6 +23,7 @@ describe("Budget", () => {
 		const budget = new Budget({
 			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
+			filter: () => {},
 		});
 		const result = await budget.enforce({
 			contextSize: 10,
@@ -40,6 +42,7 @@ describe("Budget", () => {
 		const budget = new Budget({
 			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
+			filter: () => {},
 		});
 		const result = await budget.enforce({
 			contextSize: null,
@@ -48,6 +51,91 @@ describe("Budget", () => {
 		});
 		assert.strictEqual(result.ok, true);
 		assert.strictEqual(result.assembledTokens, 0);
+	});
+});
+
+describe("assembleBudget — <budget> table", () => {
+	function makePlugin() {
+		return new Budget({
+			hooks: { budget: null, tools: { onView: () => {} } },
+			registerScheme: () => {},
+			filter: () => {},
+		});
+	}
+
+	function row({ scheme, tokens, visibility = "visible" }) {
+		return { scheme, tokens, visibility };
+	}
+
+	it("renders <budget tokenUsage=N tokensFree=M> with attrs that reconcile to ceiling", () => {
+		const plugin = makePlugin();
+		const rows = [
+			row({ scheme: "log", tokens: 700 }),
+			row({ scheme: "https", tokens: 600 }),
+			row({ scheme: "known", tokens: 300 }),
+		];
+		const out = plugin.assembleBudget("", { rows, contextSize: 10000 });
+		const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
+		assert.ok(m, `<budget> carries tokenUsage and tokensFree; got: ${out}`);
+		const used = Number(m[1]);
+		const free = Number(m[2]);
+		assert.strictEqual(used, 1600, "tokenUsage = sum of visible row tokens");
+		assert.strictEqual(used + free, ceiling(10000), "used + free = ceiling");
+	});
+
+	it("table sorted descending by tokens", () => {
+		const plugin = makePlugin();
+		const out = plugin.assembleBudget("", {
+			rows: [
+				row({ scheme: "small", tokens: 100 }),
+				row({ scheme: "large", tokens: 5000 }),
+				row({ scheme: "medium", tokens: 800 }),
+			],
+			contextSize: 10000,
+		});
+		const largeIdx = out.indexOf("| large |");
+		const mediumIdx = out.indexOf("| medium |");
+		const smallIdx = out.indexOf("| small |");
+		assert.ok(
+			largeIdx < mediumIdx && mediumIdx < smallIdx,
+			`largest first; got order: ${out}`,
+		);
+	});
+
+	it("hides non-visible rows from the table breakdown", () => {
+		const plugin = makePlugin();
+		const out = plugin.assembleBudget("", {
+			rows: [
+				row({ scheme: "visible_thing", tokens: 200 }),
+				row({ scheme: "summarized_thing", tokens: 9000, visibility: "summarized" }),
+				row({ scheme: "archived_thing", tokens: 9000, visibility: "archived" }),
+			],
+			contextSize: 10000,
+		});
+		assert.ok(out.includes("| visible_thing |"));
+		assert.ok(!out.includes("summarized_thing"));
+		assert.ok(!out.includes("archived_thing"));
+	});
+
+	it("returns content unchanged when contextSize is missing", () => {
+		const plugin = makePlugin();
+		const out = plugin.assembleBudget("preamble", { rows: [], contextSize: 0 });
+		assert.strictEqual(out, "preamble");
+	});
+
+	it("total prose line names visible-entry count, sum, and tokensFree", () => {
+		const plugin = makePlugin();
+		const out = plugin.assembleBudget("", {
+			rows: [
+				row({ scheme: "a", tokens: 500 }),
+				row({ scheme: "b", tokens: 300 }),
+			],
+			contextSize: 10000,
+		});
+		assert.ok(/Total: 2 visible entries using 800 tokens/.test(out));
+		const cap = ceiling(10000);
+		assert.ok(out.includes(`context budget (${cap})`));
+		assert.ok(out.includes(`${cap - 800} tokens free`));
 	});
 });
 

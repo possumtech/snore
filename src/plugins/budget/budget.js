@@ -50,6 +50,61 @@ export default class Budget {
 			enforce: this.enforce.bind(this),
 			postDispatch: this.postDispatch.bind(this),
 		};
+		core.filter("assembly.user", this.assembleBudget.bind(this), 275);
+	}
+
+	/**
+	 * Render a per-scheme budget table between <instructions> and <prompt>
+	 * so the model has a glanceable picture of where its visible context
+	 * goes. tokenUsage / tokensFree mirror the prior <prompt> attributes;
+	 * the table decomposes them by scheme. Numbers come from measureRows
+	 * (sum of stored entry tokens) so the table sum, the row tokens, and
+	 * the attribute math all reconcile.
+	 */
+	assembleBudget(content, ctx) {
+		const { rows, contextSize } = ctx;
+		if (!contextSize) return content;
+
+		const cap = ceiling(contextSize);
+
+		const byScheme = new Map();
+		let totalCount = 0;
+		let totalTokens = 0;
+		for (const r of rows) {
+			if (r.visibility !== "visible") continue;
+			const s = r.scheme || "file";
+			const t = r.tokens || 0;
+			const entry = byScheme.get(s) ?? { count: 0, tokens: 0 };
+			entry.count += 1;
+			entry.tokens += t;
+			byScheme.set(s, entry);
+			totalCount += 1;
+			totalTokens += t;
+		}
+
+		const { tokenUsage, tokensFree } = computeBudget({
+			contextSize,
+			totalTokens,
+		});
+
+		const schemeRows = [...byScheme.entries()]
+			.toSorted((a, b) => b[1].tokens - a[1].tokens)
+			.map(([scheme, v]) => {
+				const pct = Math.round((v.tokens / cap) * 100);
+				return `| ${scheme} | ${v.count} | ${v.tokens} | ${pct}% |`;
+			});
+
+		const totalPct = Math.round((totalTokens / cap) * 100);
+
+		const table = [
+			"| scheme | visible | tokens | % |",
+			"|---|---|---|---|",
+			...schemeRows,
+		].join("\n");
+
+		const totalLine = `Total: ${totalCount} visible entries using ${totalTokens} tokens (${totalPct}%) of context budget (${cap}). ${tokensFree} tokens free.`;
+
+		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}">\n${table}\n\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {

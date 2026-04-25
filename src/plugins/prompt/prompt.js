@@ -1,5 +1,3 @@
-import { computeBudget, measureRows } from "../../agent/budget.js";
-
 export default class Prompt {
 	#core;
 
@@ -59,23 +57,6 @@ export default class Prompt {
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		let budget = "";
-		if (contextSize) {
-			// Prefer last turn's actual API token count — it's the only
-			// measurement that reflects the true packet size the model
-			// sees. measureRows is ~3-7× under for XML-heavy packets
-			// (SPEC @budget_enforcement warns about this), so on turn 2+
-			// we always use the real number. Turn 1 has no prior to
-			// reference; the row estimate is the best available.
-			const totalTokens =
-				ctx.lastContextTokens > 0 ? ctx.lastContextTokens : measureRows(rows);
-			const { tokenUsage, tokensFree } = computeBudget({
-				contextSize,
-				totalTokens,
-			});
-			budget = ` tokenUsage="${tokenUsage}" tokensFree="${tokensFree}"`;
-		}
-
 		// Surface the most recent prior-turn budget demotion as a
 		// `reverted="N"` attribute on <prompt>. Historical error
 		// entries sit in <log> but read as ambient noise; this signal
@@ -107,6 +88,6 @@ export default class Prompt {
 			? ` visibility="${promptEntry.visibility}"`
 			: "";
 		const tokens = promptEntry?.tokens ? ` tokens="${promptEntry.tokens}"` : "";
-		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${budget}${reverted}${visibility}${tokens}>${body}</prompt>`;
+		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${reverted}${visibility}${tokens}>${body}</prompt>`;
 	}
 }

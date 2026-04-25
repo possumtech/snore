@@ -379,7 +379,7 @@ describe("Budget math", () => {
 			};
 		}
 
-		it("tokenUsage uses ctx.lastContextTokens when > 0 (turn 2+)", async () => {
+		it("prompt no longer carries tokenUsage/tokensFree (moved to <budget>)", async () => {
 			const contextSize = 10000;
 			const out = await assemblePrompt("", {
 				rows: [fakePromptRow()],
@@ -388,60 +388,10 @@ describe("Budget math", () => {
 				type: "act",
 				turn: 2,
 			});
-			const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
-			assert.ok(m, "prompt carries tokenUsage/tokensFree attrs");
-			assert.strictEqual(
-				Number(m[1]),
-				8421,
-				"tokenUsage echoes lastContextTokens",
+			assert.ok(
+				!/tokenUsage=|tokensFree=/.test(out),
+				"prompt has no budget attrs",
 			);
-			assert.strictEqual(
-				Number(m[2]),
-				Math.floor(contextSize * 0.9) - 8421,
-				"tokensFree = ceiling − tokenUsage",
-			);
-		});
-
-		it("tokenUsage falls back to measureRows when lastContextTokens=0", async () => {
-			const contextSize = 10000;
-			const rows = [fakePromptRow("x".repeat(200))];
-			const expectedTokens = rows.reduce(
-				(sum, r) => sum + countTokens(r.body),
-				0,
-			);
-			const out = await assemblePrompt("", {
-				rows,
-				contextSize,
-				lastContextTokens: 0,
-				type: "act",
-				turn: 1,
-			});
-			const m = out.match(/tokenUsage="(\d+)"/);
-			assert.ok(m);
-			assert.strictEqual(
-				Number(m[1]),
-				expectedTokens,
-				"turn 1: tokenUsage is the measured row total",
-			);
-		});
-
-		it("tokenUsage + tokensFree <= ceiling, both honest", async () => {
-			// The numbers must never claim more room than the ceiling
-			// actually provides. Any caller reading them should be able
-			// to reason: "I have N bytes of room left before overflow."
-			const contextSize = 10000;
-			const ceiling = Math.floor(contextSize * 0.9);
-			const out = await assemblePrompt("", {
-				rows: [fakePromptRow()],
-				contextSize,
-				lastContextTokens: 1234,
-				type: "act",
-				turn: 2,
-			});
-			const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
-			const used = Number(m[1]);
-			const free = Number(m[2]);
-			assert.strictEqual(used + free, ceiling, "used + free = ceiling");
 		});
 
 		it("reverted='N' surfaces when prior turn had a 413 demotion", async () => {
