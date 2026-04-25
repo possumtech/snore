@@ -122,10 +122,12 @@ cancelled**. Work each row to root cause + fix (or deliberate test
 adapt) before the next full e2e sweep — no rerunning the whole suite
 to "see if it cleared up."
 
-- [ ] **`demo_hydrology.test.js:102` — `scenario must exercise proposals`.**
-  Run finishes 200 in ~9 turns with 0 proposals; gemma confabulates a
-  summary instead of writing the file. Same shape as
-  terminal_state_with_proposal:120 below — likely one root cause.
+- [x] **`demo_hydrology.test.js:102` — `scenario must exercise proposals`.**
+  Tightened prompt to "brief, ≥3 sections" + bumped MAX_TURNS=16. The
+  open-ended "comprehensive review" was eating the entire turn budget
+  on Definition over-define before reaching Deploy; concrete scope
+  gives Definition a natural stopping point. Verified passing
+  2026-04-25 in 144s.
 
 - [x] **`stories.test.js:338` — `autonomous unknown investigation`.**
   Two prompt issues ganged up: (1) explicit *"You MUST register
@@ -184,17 +186,35 @@ to "see if it cleared up."
   knowns last) so recovery has more to work with when deliverables
   dominate. Out of scope for the e2e cleanup pass.
 
-- [ ] **`terminal_state_with_proposal.test.js:120` —
-  `after proposal accept, terminal run/state arrives`.** Same "no
-  proposals fired" assertion as demo_hydrology:102. Cluster-fix
-  candidate.
+- [x] **`terminal_state_with_proposal.test.js:120` —
+  `after proposal accept, terminal run/state arrives`.** Earlier
+  prompt was a trivial direct-action ("Create FACTS.md with this
+  exact sentence") that fought the harness's research bias — gemma
+  manufactured fluffy unknowns (file system structure, formatting
+  conventions) trying to satisfy Definition's imperative to register
+  unknowns, then stranded in Discovery looking for something to
+  research. Replaced prompt with a research-shaped task ("Read
+  data.txt, write FACTS.md as a markdown list of its facts") over
+  a planted data file; Define→Discover→Deploy flows naturally,
+  proposals fire by construction. Also bumped MAX_TURNS=10.
+  Verified passing 2026-04-25 in 12.5s.
 
-**Cluster reads (work hypotheses, not commitments):**
-- :102, :120 — model claims completion without producing proposals
-  (no file write attempted). Likely stage 108 (Deployment) lets the
-  model 200-out without the work being done; protocol-side gap.
-- :338, :566 — strike-out on legitimate work. Recovery may have
-  regressed under the deliverable-protection change.
+**Cluster takeaways (durable lessons from this pass):**
+- The harness is biased toward research workflows. Trivial direct-action
+  prompts ("create FACTS.md with this exact sentence") fight the
+  Definition imperative to register unknowns and gemma manufactures
+  fluffy ones to satisfy it. That bias is a *feature* — protecting
+  against models skipping research they actually need is more valuable
+  than handling trivial prompts cheaply. Tests that exercise proposal
+  flow should be research-shaped by construction.
+- `AgentLoop.js` was silently masking MAX_TURNS exhaustion as status
+  200. Now closes at 499. Stalled runs are visible as stalled instead
+  of pretending to be wins; benchmark and test signal preserved.
+- Definition stage's MUST imperatives (line 3 of `instructions_104.md`)
+  drive over-definition when prompts have no genuine unknowns. The
+  "(if any)" parenthetical on line 1 helps but doesn't shield gemma
+  from line 3's "YOU MUST create unknown:// entries for all missing
+  information." Live with it — the asymmetry is intentional.
 
 ---
 

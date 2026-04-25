@@ -39,10 +39,24 @@ describe("E2E: terminal run/state after proposal acceptance (@notifications, @re
 	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
 
 	before(async () => {
-		process.env.RUMMY_MAX_TURNS = "5";
+		// 10 turns gives gemma room for Define→Discover→Deploy without
+		// the cap forcing a confabulated 200 mid-investigation.
+		process.env.RUMMY_MAX_TURNS = "10";
 
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
+		// Plant a research target so gemma's Define→Discover→Deploy has
+		// real material to walk through. Earlier the prompt was a trivial
+		// direct-action ("Create FACTS.md with this exact sentence") that
+		// fought the harness's research bias — gemma manufactured fluffy
+		// unknowns (file system structure, formatting conventions) trying
+		// to satisfy the protocol's imperative to register unknowns, and
+		// never reached Deploy. A research-shaped prompt over a planted
+		// data file is the workflow the harness was actually built for.
+		await fs.writeFile(
+			join(projectRoot, "data.txt"),
+			"Pi is approximately 3.14159.\nThe speed of light is 299792458 m/s.\n",
+		);
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
@@ -127,7 +141,17 @@ describe("E2E: terminal run/state after proposal acceptance (@notifications, @re
 
 		const startRes = await client.call("set", {
 			path: "run://",
-			body: "Research the number 42 briefly via search, then create FACTS.md with one interesting fact. Search first, then write.",
+			// The test's purpose is verifying the proposal-acceptance
+			// machinery — at least one proposal must fire. Earlier the
+			// prompt was a trivial direct-action ("Create FACTS.md with
+			// this exact sentence") that fought the harness's research
+			// bias and stranded gemma in self-manufactured Definition
+			// unknowns. Research-shaped prompt over a planted data file
+			// flows through the protocol naturally: Definition registers
+			// the unknown about the file's contents, Discovery `<get>`s
+			// it, Deployment `<set>`s FACTS.md — at least one proposal
+			// fires by construction.
+			body: "Read data.txt in this project, then write FACTS.md as a markdown list of the facts it contains.",
 			attributes: { model, mode: "act" },
 		});
 		assert.ok(startRes?.alias, "expected alias");

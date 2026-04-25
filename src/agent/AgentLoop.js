@@ -596,21 +596,27 @@ export default class AgentLoop {
 				return out;
 			}
 
+			// Loop exhausted its turn budget without the model emitting a
+			// terminal update. Treat as 499 (abandoned) — same family as
+			// strike-abandon and signal-abort. Earlier this closed at 200,
+			// which silently masked stalled runs as clean wins and corrupted
+			// downstream test/benchmark signal (proposal-fired assertions
+			// would pass through tests on runs that never reached Deploy).
 			console.error(
-				`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS}`,
+				`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS} — abandoning at 499`,
 			);
-			await this.#setRunStatus(currentRunId, currentAlias, 200);
+			await this.#setRunStatus(currentRunId, currentAlias, 499);
 			await this.#emitRunState({
 				projectId,
 				runId: currentRunId,
 				alias: currentAlias,
 				turn: loopIteration,
-				status: 200,
+				status: 499,
 				contextSize,
 			});
 			const out = {
 				run: currentAlias,
-				status: 200,
+				status: 499,
 				turn: loopIteration,
 			};
 			await hook.completed.emit({ projectId, ...out });

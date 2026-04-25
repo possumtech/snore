@@ -1,4 +1,4 @@
-Definition Stage: YOU MUST ONLY define all relevant information you do not know in this stage.
+Definition Stage: YOU MUST ONLY define all relevant information you do not know (if any) in this stage.
 
 YOU MUST create topical, taxonomized, and tagged unknown:// entries for all missing information you need to discover.
 Example: <set path="unknown://countries/france/capital" summary="countries,france,capital,geography,trivia">What is the capital of France?</set>

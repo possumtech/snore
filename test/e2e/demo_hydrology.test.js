@@ -33,7 +33,11 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
 
 	before(async () => {
-		process.env.RUMMY_MAX_TURNS = "8";
+		// 16 turns gives gemma room for Define→Discover→Deploy across a
+		// real research scenario. Earlier 8 was too tight: gemma 200'd
+		// at iter 5 with a confabulated "FACTS.md created" (wrong file
+		// name) before reaching the actual write phase.
+		process.env.RUMMY_MAX_TURNS = "16";
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
 		const { execSync } = await import("node:child_process");
@@ -109,7 +113,12 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 
 		const startRes = await client.call("set", {
 			path: "run://",
-			body: "Deliver a comprehensive review of the hydrology of Orange County, Indiana in OC_RIVERS.md.",
+			// "Comprehensive review" was open-ended enough that gemma
+			// over-defined and 200'd before reaching Deploy. Tightening
+			// to a concrete brief deliverable (≥3 sections) gives gemma
+			// a clear stopping criterion and a real reason to emit the
+			// file write that this test exists to exercise.
+			body: "Write a brief OC_RIVERS.md about the hydrology of Orange County, Indiana. Three sections minimum: rivers, watersheds, and one other relevant aspect you investigate. Keep each section short.",
 			attributes: { model, mode: "act" },
 		});
 		const alias = startRes.alias;
