@@ -101,9 +101,14 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 	it("tokenUsage reported at turn N+1 matches actual prompt_tokens from turn N", {
 		timeout: TIMEOUT,
 	}, async () => {
+		// Multi-turn prompt: the test verifies turn N+1's tokenUsage attr
+		// equals turn N's actual API prompt_tokens. A trivial 1-turn prompt
+		// gives no turn-pair to compare. Asking the model to define an
+		// unknown then resolve it is the cheapest way to force ≥2 turns
+		// without contaminating the budget-math signal we're checking.
 		const startRes = await client.call("set", {
 			path: "run://",
-			body: 'Briefly list three primes and emit <update status="200">done</update>.',
+			body: "Define an unknown://primes/three entry, then resolve it with a known://primes/three entry listing three primes.",
 			attributes: { model, mode: "act" },
 		});
 		const alias = startRes.alias;

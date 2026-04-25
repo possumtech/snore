@@ -332,8 +332,10 @@ WHERE
 	AND visibility = 'visible'
 	AND state NOT IN ('failed', 'cancelled')
 	AND NOT EXISTS (
-		SELECT 1 FROM entries AS e
-		WHERE e.id = run_views.entry_id
+		SELECT 1
+		FROM entries AS e
+		WHERE
+			e.id = run_views.entry_id
 			AND e.scheme IN ('known', 'unknown')
 	);
 
