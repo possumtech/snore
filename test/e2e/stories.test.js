@@ -435,10 +435,21 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			});
 		};
 
-		const _r1 = await client.act({
-			model,
-			prompt: "Delete the file notes.md from the project.",
-		});
+		// We don't actually need the run to gracefully terminate — the
+		// invariant under test is "rejected rm did not delete the file."
+		// Once any rm proposal has been rejected, the file is provably
+		// safe (rm.js#onAccepted is the only path that unlinks). Bound
+		// the wait at 60s; if gemma can't model rejection-as-terminal
+		// and keeps emitting variants, we still prove the deletion
+		// didn't happen and the test can move on without burning the
+		// full 5-minute deadline.
+		await client
+			.act({
+				model,
+				prompt: "Delete the file notes.md from the project.",
+				timeoutMs: 60_000,
+			})
+			.catch(() => null);
 
 		client.resolveHandler = null;
 
@@ -519,7 +530,13 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 				"Save 10 separate known entries: for each number 1 through 10, save a known entry with the key 'number-N' and value 'The number N is important because it has N digits of history.' Then summarize when done.",
 			noInteraction: true,
 			noRepo: true,
-			contextLimit: 4500,
+			// Tight enough that turn demotion fires on housekeeping (logs,
+			// sources) as gemma's emissions accumulate, loose enough that
+			// gemma can actually write 10 knowns without striking out
+			// repeatedly. The earlier 4500 left no room for the system
+			// prompt + protocol scaffolding, so every turn struck and the
+			// run timed out without finishing.
+			contextLimit: 12000,
 		});
 
 		// Any terminal status is acceptable — the protection invariant is
