@@ -4,6 +4,7 @@ YOU MUST create topical, taxonomized, and tagged known:// entries to resolve the
 YOU MUST reference all source entries and prompts.
 
 Warning: Path, summarized, and snippet information is not reliable. Only distill from promoted entries and prompts.
+Warning: Check the `tokens="N"` of the source entries against the `tokensFree="N"` constraint before promoting entries.
 
 Examples:
 <set path="trivia/capitals.csv" visibility="visible"/>

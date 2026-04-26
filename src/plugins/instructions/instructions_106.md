@@ -6,9 +6,11 @@ Examples:
 <set path="unknown://countries/france/capital" visibility="summarized"/>
 <set path="unknown://countries/poland/capital" summary="REJECTED: Irrelevant" visibility="summarized"/>
 <set path="https://en.wikipedia.org/wiki/Paris,_Texas" summary="REJECTED: Wrong Paris" visibility="summarized"/>
-<set path="log://turn_1/set/**" visibility="archived"/>
-<set path="log://turn_1/get/trivia/**" visibility="archived"/>
-<set path="log://turn_2/get/capital%20of%20france" visibility="archived"/>
+<set path="log://turn_1/**" visibility="archived"/>
+<set path="log://turn_2/**" visibility="archived"/>
+<set path="log://turn_3/set/**" visibility="archived"/>
+<set path="log://turn_3/get/**" visibility="archived"/>
+<set path="log://turn_3/search/**" visibility="archived"/>
 
 ## Turn Termination (CHOOSE ONLY ONE):
 
