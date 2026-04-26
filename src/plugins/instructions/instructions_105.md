@@ -3,7 +3,7 @@
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve the selected unknown:// entry.
 YOU MUST reference all source entries and prompts.
 
-Warning: Path, summarized, and snippet information is not reliable. Only distill from promoted entries.
+Warning: Path, summarized, and snippet information is not reliable. Only distill from promoted entries and prompts.
 
 Examples:
 <set path="trivia/capitals.csv" visibility="visible"/>

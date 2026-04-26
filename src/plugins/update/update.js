@@ -33,7 +33,22 @@ export default class Update {
 
 	async handler(entry, rummy) {
 		const status = entry.attributes?.status ?? 102;
-		await rummy.update(entry.body, { status });
+		const validation = await rummy.hooks.instructions.validateNavigation(
+			status,
+			rummy,
+		);
+		const attributes = validation.ok ? {} : { rejected: true };
+		await rummy.update(entry.body, { status, attributes });
+		if (!validation.ok) {
+			await rummy.hooks.error.log.emit({
+				store: rummy.entries,
+				runId: rummy.runId,
+				turn: rummy.sequence,
+				loopId: rummy.loopId,
+				message: validation.reason,
+				status: 422,
+			});
+		}
 	}
 
 	/**
@@ -50,7 +65,8 @@ export default class Update {
 	async resolve({ recorded, content, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		const status = entry?.attributes?.status ?? 102;
-		const isTerminal = TERMINAL_STATUSES.has(status);
+		const rejected = entry?.attributes?.rejected === true;
+		const isTerminal = TERMINAL_STATUSES.has(status) && !rejected;
 		let summaryText = null;
 		let updateText = null;
 		if (entry?.body) {

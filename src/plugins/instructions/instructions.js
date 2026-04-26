@@ -49,6 +49,10 @@ function latestUpdateStatusFromRows(rows) {
 				: r.attributes;
 		const status = attrs?.status;
 		if (status == null) continue;
+		// Rejected updates are written for the model's audit trail but are
+		// not navigation events — phase router skips them so the model
+		// stays in the stage it was already in.
+		if (attrs?.rejected) continue;
 		if (turn > bestTurn || (turn === bestTurn && status > bestStatus)) {
 			bestTurn = turn;
 			bestStatus = status;
@@ -66,6 +70,8 @@ export default class Instructions {
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.hooks.instructions.resolveSystemPrompt =
 			this.resolveSystemPrompt.bind(this);
+		core.hooks.instructions.validateNavigation =
+			this.validateNavigation.bind(this);
 		// Dynamic phase instructions live in the user message (above
 		// <prompt>) so the system message stays cache-stable across turns.
 		// Priority 250 puts us between <log> (100), <unknowns> (200),
@@ -100,6 +106,75 @@ export default class Instructions {
 			visibility: "visible",
 			category: "system",
 		});
+	}
+
+	/**
+	 * Reject illegal stage navigation. Two checks:
+	 *
+	 *   1. Forward skip — `nextPhase > currentPhase + 1`. Models advancing
+	 *      more than one stage at a time are jumping past required work.
+	 *      Returns and continuations (nextPhase ≤ currentPhase) always pass.
+	 *
+	 *   2. Demotion exit (status 167 only) — visible prompts must be zero.
+	 *      The protocol's contract is that Demotion Stage is what cleans
+	 *      sources; advancing while sources remain is a contract lie.
+	 *
+	 * On rejection the caller marks the update entry rejected (so the
+	 * phase router skips it) and emits a no-strike error so the model
+	 * sees the friction without being penalized for trying.
+	 */
+	async validateNavigation(status, rummy) {
+		const currentPhase = await this.#getCurrentPhase(rummy);
+		const nextPhase = phaseForStatus(status);
+		if (nextPhase > currentPhase + 1) {
+			return { ok: false, reason: "Illegal navigation attempt" };
+		}
+		if (status === 167) {
+			const visible = await this.#countVisiblePrompts(rummy);
+			if (visible > 0) {
+				return {
+					ok: false,
+					reason: `Illegal navigation attempt: ${visible} visible prompts`,
+				};
+			}
+		}
+		return { ok: true };
+	}
+
+	async #getCurrentPhase(rummy) {
+		const updates = await rummy.entries.getEntriesByPattern(
+			rummy.runId,
+			"log://*/update/*",
+			null,
+		);
+		let bestTurn = -1;
+		let bestStatus = null;
+		for (const e of updates) {
+			const m = TURN_FROM_PATH.exec(e.path);
+			if (!m) continue;
+			const turn = Number(m[1]);
+			if (turn >= rummy.sequence) continue;
+			const attrs =
+				typeof e.attributes === "string"
+					? JSON.parse(e.attributes)
+					: e.attributes;
+			if (attrs?.rejected) continue;
+			if (attrs?.status == null) continue;
+			if (turn > bestTurn) {
+				bestTurn = turn;
+				bestStatus = attrs.status;
+			}
+		}
+		return phaseForStatus(bestStatus);
+	}
+
+	async #countVisiblePrompts(rummy) {
+		const prompts = await rummy.entries.getEntriesByPattern(
+			rummy.runId,
+			"prompt://*",
+			null,
+		);
+		return prompts.filter((p) => p.visibility === "visible").length;
 	}
 
 	async onTurnStarted({ rummy }) {
