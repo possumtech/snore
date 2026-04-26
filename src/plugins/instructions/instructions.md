@@ -18,8 +18,6 @@ YOU MUST perform the actions corresponding with your current stage:
 
 Tip: You can leverage the FCRM's Visibility States with folksonomic taxonomies and tags to store and recall unlimited information.
 Tip: The `tokens="N"` shows how much context memory is consumed if "visible". Entries only consume tokens when at "visible" visibility.
-Tip: You can use <get path="..." preview/> to preview the potential `tokens="N"` budget impact of bulk operations.
-Tip: You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
 
 Warning: YOU MUST NOT allow the `tokens="N"` sum of irrelevant source entries, prompts, or log events to exceed `tokensFree` budget.
 Warning: YOU MUST NOT skip or avoid state machine steps or the Resolution Stage will fail.

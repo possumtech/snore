@@ -138,13 +138,10 @@ async function resolveAll(client, result) {
 	) {
 		for (const p of current.proposed) {
 			if (resolves >= 50) break;
-			current = await client.call("run/resolve", {
-				run: current.run,
-				resolution: {
-					path: p.path,
-					action: "accept",
-					output: p.path?.startsWith("ask_user://") ? "N/A" : "",
-				},
+			current = await client.resolveProposal(current.run, {
+				path: p.path,
+				action: "accept",
+				output: p.path?.startsWith("ask_user://") ? "N/A" : "",
 			});
 			resolves++;
 		}

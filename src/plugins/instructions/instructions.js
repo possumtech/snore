@@ -147,9 +147,14 @@ export default class Instructions {
 	}
 
 	async #getCurrentPhase(rummy) {
+		// `**` (not `*`) for the slug position — update slugs are derived
+		// from the model's update body and can contain URL-encoded `/`
+		// characters (e.g. `known%3A//foo/bar` in a "ready for deployment"
+		// summary). Single `*` doesn't cross those embedded slashes and
+		// silently misses the prior turn's update.
 		const updates = await rummy.entries.getEntriesByPattern(
 			rummy.runId,
-			"log://*/update/*",
+			"log://*/update/**",
 			null,
 		);
 		let bestTurn = -1;

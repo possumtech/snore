@@ -76,13 +76,10 @@ async function resolveAll(client, result) {
 	) {
 		for (const p of current.proposed) {
 			if (resolves >= 50) break;
-			current = await client.call("run/resolve", {
-				run: current.run,
-				resolution: {
-					path: p.path,
-					action: "accept",
-					output: p.path?.startsWith("ask_user://") ? "N/A" : "",
-				},
+			current = await client.resolveProposal(current.run, {
+				path: p.path,
+				action: "accept",
+				output: p.path?.startsWith("ask_user://") ? "N/A" : "",
 			});
 			resolves++;
 		}
@@ -98,7 +95,7 @@ async function ingest(client, db, model, run, chunks) {
 			"",
 			chunks[i],
 		].join("\n");
-		let r = await client.call("ask", {
+		let r = await client.ask({
 			model,
 			prompt,
 			run,
@@ -155,7 +152,7 @@ async function auditQuestion(
 
 	const prompt = question;
 
-	let r = await client.call("ask", {
+	let r = await client.ask({
 		model,
 		prompt,
 		run,
@@ -286,7 +283,7 @@ async function main() {
 	await fs.mkdir("/tmp/rummy-mab-audit", { recursive: true });
 
 	// Create run and ingest
-	const initR = await client.call("ask", {
+	const initR = await client.ask({
 		model: MODEL,
 		prompt:
 			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
@@ -294,12 +291,7 @@ async function main() {
 		noInteraction: true,
 		noWeb: true,
 	});
-	let run = initR.run;
-	const mabAlias = `mab_audit_${ROW_IDX}`;
-	try {
-		await client.call("run/rename", { run, name: mabAlias });
-		run = mabAlias;
-	} catch {}
+	const run = initR.run;
 
 	console.log(`\nIngesting ${row.context.length} chars...`);
 	const chunks = chunkContext(row.context, CHUNK_SIZE);

@@ -124,13 +124,10 @@ async function resolveAll(client, result) {
 	) {
 		for (const p of current.proposed) {
 			if (resolves >= 50) break;
-			current = await client.call("run/resolve", {
-				run: current.run,
-				resolution: {
-					path: p.path,
-					action: "accept",
-					output: p.path?.startsWith("ask_user://") ? "N/A" : "",
-				},
+			current = await client.resolveProposal(current.run, {
+				path: p.path,
+				action: "accept",
+				output: p.path?.startsWith("ask_user://") ? "N/A" : "",
 			});
 			resolves++;
 		}
@@ -295,15 +292,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const startTime = Date.now();
 
 	// Create a fresh run — first ingestion chunk creates it
-	const splitAbbrev = split.replace(/_/g, "").slice(0, 4).toLowerCase();
 	let run = null;
-
-	// Rename to a descriptive alias for easy DB inspection
-	const mabAlias = `mab_${splitAbbrev}_${rowIndex}`;
-	try {
-		await client.call("run/rename", { run, name: mabAlias });
-		run = mabAlias;
-	} catch {}
 
 	// Ingest context in chunks — first chunk creates the run
 	const chunks = chunkContext(row.context, CHUNK_SIZE);
