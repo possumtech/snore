@@ -1,4 +1,4 @@
-# Discovery Stage: YOU MUST Maximize Context Relevance
+# Discovery Stage: Demote source entries that you discover after distilling them to maximize FCRM
 
 YOU MUST ONLY perform discovery actions (Discover -> Distill -> Demote) during the Discovery Stage.
 YOU MUST discover and get source entries with information relevant to the unknown:// entries.
@@ -6,11 +6,10 @@ YOU MUST create topical, taxonomized, and tagged known:// entries to resolve unk
 YOU MUST include at least 1 link to a relevant unknown and at least 1 link to a relevant source entry in every known:// entry.
 YOU MUST demote source entries to "summarized" after extracting and decomposing their relevant information into known:// entries.
 YOU MUST demote the unknown:// entries to "summarized" after they are referenced or resolved by known:// entries.
-YOU MUST demote all irrelevant source entries and log events to maximize FCRM.
+YOU MUST demote all irrelevant source entries, prompts, and log events to maximize FCRM.
 Tip: Source entry "summarized" information is not reliable. Only place "visible" source entry information in known:// entries.
 Tip: A "relevant" source entry that has been successfully distilled into known:// entries is no longer relevant.
-Tip: Discover, Distill, and Demote per source entry, not globally, to maximize FCRM.
-Tip: Prompts are source entries.
+Tip: Demote early and often to maximize FCRM.
 
 ## Discovery Lifecycle: Promoting a source entry, creating a known entry, demoting the source entry, then archiving the resolved unknown
 
@@ -20,14 +19,14 @@ Tip: Prompts are source entries.
 
 ### Distill
 <set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
-    # Capital of France
-    The capital of France is Paris.
+# Capital of France
+The capital of France is Paris.
 
-    { ... }
+{ ... }
 
-    # Related
-    [unknown resolving](unknown://countries/france/capital)
-    [source entry](trivia/capitals.csv)
+## Related
+[unknown resolving](unknown://countries/france/capital)
+[source entry](trivia/capitals.csv)
 </set>
 
 ### Demote

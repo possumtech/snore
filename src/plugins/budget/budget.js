@@ -72,6 +72,8 @@ export default class Budget {
 		let summarizedCount = 0;
 		let summarizedTokens = 0;
 		let floorTokens = 0;
+		let knownVTokens = 0;
+		let sourceVTokens = 0;
 
 		for (const r of rows) {
 			if (r.aTokens == null) continue;
@@ -84,12 +86,20 @@ export default class Budget {
 				visibleCount += 1;
 				premiumTokens += r.aTokens;
 				floorTokens += r.sTokens;
+				const v = r.vTokens || 0;
+				if (s === "known") knownVTokens += v;
+				else if (s === "prompt") sourceVTokens += v;
+				else if (r.category === "data") sourceVTokens += v;
 			} else if (r.visibility === "summarized") {
 				summarizedCount += 1;
 				summarizedTokens += r.sTokens;
 				floorTokens += r.sTokens;
 			}
 		}
+
+		const fcrmDenom = knownVTokens + sourceVTokens;
+		const fcrmScore =
+			fcrmDenom > 0 ? (knownVTokens / fcrmDenom).toFixed(2) : "1.00";
 
 		const systemTokens = countTokens(systemPrompt || "");
 		const tokenUsage = floorTokens + premiumTokens + systemTokens;
@@ -115,7 +125,7 @@ export default class Budget {
 		const systemLine = `System: ${systemTokens} tokens (${systemPct}% of budget).`;
 		const totalLine = `Total: ${visibleCount} visible + ${summarizedCount} summarized entries; tokenUsage ${tokenUsage} / ceiling ${cap}. ${tokensFree} tokens free.`;
 
-		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}">\n${table}\n\n${summarizedLine}\n${systemLine}\n${totalLine}\n</budget>\n`;
+		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}" fcrmScore="${fcrmScore}">\n${table}\n\n${summarizedLine}\n${systemLine}\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
