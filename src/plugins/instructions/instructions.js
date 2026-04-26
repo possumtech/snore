@@ -115,13 +115,14 @@ export default class Instructions {
 	 *      more than one stage at a time are jumping past required work.
 	 *      Returns and continuations (nextPhase ≤ currentPhase) always pass.
 	 *
-	 *   2. Demotion exit (status 167 only) — visible prompts must be zero.
-	 *      The protocol's contract is that Demotion Stage is what cleans
-	 *      sources; advancing while sources remain is a contract lie.
+	 *   2. Deployment-entry — advancing into Deployment (phase 7) from any
+	 *      lower phase requires zero visible prompts. State-property rule,
+	 *      not status-keyed: the model can't sidestep by picking a different
+	 *      code (167 vs 177 vs 200) — they all hit this check.
 	 *
 	 * On rejection the caller marks the update entry rejected (so the
-	 * phase router skips it) and emits a no-strike error so the model
-	 * sees the friction without being penalized for trying.
+	 * phase router skips it) and emits an error log; navigation rejections
+	 * count as normal strikes.
 	 */
 	async validateNavigation(status, rummy) {
 		const currentPhase = await this.#getCurrentPhase(rummy);
@@ -129,7 +130,7 @@ export default class Instructions {
 		if (nextPhase > currentPhase + 1) {
 			return { ok: false, reason: "Illegal navigation attempt" };
 		}
-		if (status === 167) {
+		if (nextPhase === 7 && currentPhase < 7) {
 			const visible = await this.#countVisiblePrompts(rummy);
 			if (visible > 0) {
 				return {
