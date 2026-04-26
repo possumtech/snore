@@ -751,7 +751,7 @@ export default class AgentLoop {
 		return { run: runAlias, status: runRow.status };
 	}
 
-	async inject(runAlias, message, mode) {
+	async inject(runAlias, message, mode, options = {}) {
 		if (mode !== "ask" && mode !== "act") {
 			throw new Error(
 				`inject: mode is required and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
@@ -760,6 +760,11 @@ export default class AgentLoop {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
+
+		const noRepo = options?.noRepo === true;
+		const noInteraction = options?.noInteraction === true;
+		const noWeb = options?.noWeb === true;
+		const noProposals = options?.noProposals === true;
 
 		const nextTurn = runRow.next_turn;
 
@@ -784,7 +789,13 @@ export default class AgentLoop {
 			mode,
 			model: runRow.model,
 			prompt: message,
-			config: "{}",
+			config: JSON.stringify({
+				noRepo,
+				noInteraction,
+				noWeb,
+				noProposals,
+				temperature: options?.temperature,
+			}),
 		});
 
 		const projectId = runRow.project_id;

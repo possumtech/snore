@@ -673,7 +673,14 @@ export default class Rpc {
 					`set run://: attributes.mode is required on inject and must be "ask" or "act" (got ${JSON.stringify(mode)})`,
 				);
 			}
-			await ctx.projectAgent.inject(alias, params.body, mode);
+			const options = {
+				temperature: attrs.temperature,
+				noRepo: attrs.noRepo,
+				noInteraction: attrs.noInteraction,
+				noWeb: attrs.noWeb,
+				noProposals: attrs.noProposals,
+			};
+			await ctx.projectAgent.inject(alias, params.body, mode, options);
 			return { ok: true, alias };
 		}
 

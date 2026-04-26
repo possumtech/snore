@@ -311,7 +311,6 @@ async function runRow(client, db, model, split, rowIndex, row) {
 
 	const startTime = Date.now();
 
-	const splitAbbrev = split.replace(/longmemeval_|_cleaned/g, "").slice(0, 4);
 	let run = null;
 
 	run = await ingestSessions(
@@ -324,12 +323,6 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		CONTEXT_LIMIT,
 	);
 	if (!run) throw new Error("Ingestion failed to create run");
-
-	const lmeAlias = `lme_${splitAbbrev}_${rowIndex}`;
-	try {
-		await client.call("run/rename", { run, name: lmeAlias });
-		run = lmeAlias;
-	} catch {}
 
 	const answer =
 		typeof row.answer === "string" ? row.answer : String(row.answer);

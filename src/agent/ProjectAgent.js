@@ -83,8 +83,8 @@ export default class ProjectAgent {
 		return this.#agentLoop.resolve(run, resolution);
 	}
 
-	async inject(run, message, mode) {
-		return this.#agentLoop.inject(run, message, mode);
+	async inject(run, message, mode, options = {}) {
+		return this.#agentLoop.inject(run, message, mode, options);
 	}
 
 	// Synchronously create (or fork) a run row and return the alias.
