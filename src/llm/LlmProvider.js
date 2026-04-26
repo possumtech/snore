@@ -4,8 +4,12 @@ import {
 	isContextExceededMessage,
 	isTransientMessage,
 } from "./errors.js";
+import { retryWithBackoff } from "./retry.js";
 
-const MAX_TRANSIENT_RETRIES = 3;
+const DEADLINE_MS = Number(process.env.RUMMY_LLM_DEADLINE_MS);
+const MAX_BACKOFF_MS = Number(process.env.RUMMY_LLM_MAX_BACKOFF_MS);
+if (!DEADLINE_MS) throw new Error("RUMMY_LLM_DEADLINE_MS must be set");
+if (!MAX_BACKOFF_MS) throw new Error("RUMMY_LLM_MAX_BACKOFF_MS must be set");
 
 /**
  * Thin dispatcher over the LLM provider registry (`hooks.llm.providers`).
@@ -55,27 +59,26 @@ export default class LlmProvider {
 			);
 		}
 
-		for (let attempt = 0; ; attempt++) {
-			try {
-				return await provider.completion(
-					messages,
-					resolvedModel,
-					resolvedOptions,
-				);
-			} catch (err) {
-				if (isContextExceededMessage(err.message)) {
-					throw new ContextExceededError(err.message, { cause: err });
-				}
-				if (
-					isTransientMessage(err.message) &&
-					attempt < MAX_TRANSIENT_RETRIES
-				) {
-					const delay = 1000 * 2 ** attempt;
-					await new Promise((r) => setTimeout(r, delay));
-					continue;
-				}
-				throw err;
+		try {
+			return await retryWithBackoff(
+				() => provider.completion(messages, resolvedModel, resolvedOptions),
+				{
+					signal: options.signal,
+					deadlineMs: DEADLINE_MS,
+					maxDelayMs: MAX_BACKOFF_MS,
+					isRetryable: (err) => isTransientMessage(err.message),
+					onRetry: (err, attempt, delayMs, remainingMs) => {
+						console.error(
+							`[LLM] transient failure on ${provider.name} attempt ${attempt}: ${err.message}; retrying in ${delayMs}ms (${Math.round(remainingMs / 1000)}s deadline remaining)`,
+						);
+					},
+				},
+			);
+		} catch (err) {
+			if (isContextExceededMessage(err.message)) {
+				throw new ContextExceededError(err.message, { cause: err });
 			}
+			throw err;
 		}
 	}
 

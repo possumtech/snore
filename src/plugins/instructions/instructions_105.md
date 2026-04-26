@@ -1,4 +1,4 @@
-# Discovery Stage
+# Discovery Stage: YOU MUST Maximize Context Relevance
 
 YOU MUST ONLY perform discovery actions (Discover -> Distill -> Demote) during the Discovery Stage.
 YOU MUST discover and get source entries with information relevant to the unknown:// entries.
@@ -10,6 +10,7 @@ YOU MUST demote all irrelevant source entries and log events to maximize FCRM.
 Tip: Source entry "summarized" information is not reliable. Only place "visible" source entry information in known:// entries.
 Tip: A "relevant" source entry that has been successfully distilled into known:// entries is no longer relevant.
 Tip: Discover, Distill, and Demote per source entry, not globally, to maximize FCRM.
+Tip: Prompts are source entries.
 
 ## Discovery Lifecycle: Promoting a source entry, creating a known entry, demoting the source entry, then archiving the resolved unknown
 
@@ -35,7 +36,7 @@ Tip: Discover, Distill, and Demote per source entry, not globally, to maximize F
 <set path="unknown://countries/france/capital" visibility="summarized"/>
 <set path="unknown://countries/poland/capital" summary="REJECTED: Irrelevant" visibility="summarized"/>
 <set path="https://en.wikipedia.org/wiki/Paris,_Texas" summary="REJECTED: Wrong Paris" visibility="summarized"/>
-<set path="prompt://1" summary="All information distilled into knowns" visibility="archived"/>
+<set path="prompt://1" summary="All information distilled into knowns" visibility="summarized"/>
 <set path="log://turn_1/set/*" visibility="archived"/>
 <set path="log://turn_1/get/trivia/*" visibility="archived"/>
 <set path="log://turn_2/get/capital%20of%20france" visibility="archived"/>

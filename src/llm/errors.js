@@ -14,7 +14,7 @@ export function isContextExceededMessage(message) {
 }
 
 const TRANSIENT_PATTERN =
-	/\b(503|429|timeout|ECONNREFUSED|ECONNRESET|unavailable)\b/i;
+	/\b(500|502|503|504|429|timeout|TimeoutError|aborted|unavailable|ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|EPIPE|ECONNABORTED|fetch failed)\b/i;
 
 export function isTransientMessage(message) {
 	return TRANSIENT_PATTERN.test(String(message));
