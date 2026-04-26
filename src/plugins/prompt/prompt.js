@@ -91,6 +91,8 @@ export default class Prompt {
 			promptEntry?.aTokens != null
 				? ` tokens="${promptEntry.aTokens}"`
 				: "";
-		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${reverted}${visibility}${tokens}>${body}</prompt>`;
+		const lines =
+			promptEntry?.vLines != null ? ` lines="${promptEntry.vLines}"` : "";
+		return `${content}<prompt mode="${mode}"${path} commands="${commands}"${warn}${reverted}${visibility}${tokens}${lines}>${body}</prompt>`;
 	}
 }

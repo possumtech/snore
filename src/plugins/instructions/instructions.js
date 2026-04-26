@@ -131,11 +131,11 @@ export default class Instructions {
 			return { ok: false, reason: "Illegal navigation attempt" };
 		}
 		if (nextPhase === 7 && currentPhase < 7) {
-			const visible = await this.#countVisiblePrompts(rummy);
+			const visible = await this.#countVisiblePriorPrompts(rummy);
 			if (visible > 0) {
 				return {
 					ok: false,
-					reason: `Illegal navigation attempt: ${visible} visible prompts`,
+					reason: `Illegal navigation attempt: ${visible} visible prior prompts`,
 				};
 			}
 		}
@@ -169,13 +169,26 @@ export default class Instructions {
 		return phaseForStatus(bestStatus);
 	}
 
-	async #countVisiblePrompts(rummy) {
+	async #countVisiblePriorPrompts(rummy) {
 		const prompts = await rummy.entries.getEntriesByPattern(
 			rummy.runId,
 			"prompt://*",
 			null,
 		);
-		return prompts.filter((p) => p.visibility === "visible").length;
+		const visible = prompts.filter((p) => p.visibility === "visible");
+		if (visible.length === 0) return 0;
+		// Exclude the current (latest) prompt — that's what Deployment acts on.
+		// Demoting it would force the model to deliver on content it hid from
+		// itself. Only PRIOR prompts are subject to demote-before-Deployment.
+		let maxNum = -1;
+		for (const p of visible) {
+			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
+			if (m && Number(m[1]) > maxNum) maxNum = Number(m[1]);
+		}
+		return visible.filter((p) => {
+			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
+			return !m || Number(m[1]) !== maxNum;
+		}).length;
 	}
 
 	async onTurnStarted({ rummy }) {

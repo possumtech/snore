@@ -1,5 +1,5 @@
 import ContextAssembler from "./ContextAssembler.js";
-import { countTokens } from "./tokens.js";
+import { countLines, countTokens } from "./tokens.js";
 
 /**
  * Rebuild turn_context from v_model_context, then assemble messages.
@@ -54,7 +54,8 @@ export default async function materializeContext({
 		});
 		const vTokens = countTokens(visibleProjection);
 		const sTokens = countTokens(summarizedProjection);
-		tokenAccounting.set(row.path, { vTokens, sTokens });
+		const vLines = countLines(visibleProjection);
+		tokenAccounting.set(row.path, { vTokens, sTokens, vLines });
 		const projectedBody =
 			row.visibility === "visible" ? visibleProjection : summarizedProjection;
 		await db.insert_turn_context.run({
@@ -79,6 +80,7 @@ export default async function materializeContext({
 		row.vTokens = t.vTokens;
 		row.sTokens = t.sTokens;
 		row.aTokens = t.vTokens - t.sTokens;
+		row.vLines = t.vLines;
 	}
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
 	// First turn of a new run has no prior context.

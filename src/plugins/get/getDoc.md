@@ -1,7 +1,7 @@
-## <get>[path/to/file]</get> - Promote an entry
+## <get path="[path/to/file]"/> - Promote an entry
 
-Example: <get>src/app.js</get>
-<!-- Simplest form. Body = path. -->
+Example: <get path="src/app.js"/>
+<!-- Simplest form. Path attribute. Body is reserved for content filter. -->
 
 Example: <get path="known://*">auth</get>
 <!-- Keyword recall: glob in path, search term in body. -->

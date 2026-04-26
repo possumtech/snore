@@ -111,6 +111,7 @@ function renderContextTag(entry, demotedSet) {
 	const tag = entry.scheme ? entry.scheme : "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
+	const lines = entry.vLines != null ? ` lines="${entry.vLines}"` : "";
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -140,7 +141,7 @@ function renderContextTag(entry, demotedSet) {
 			: "";
 	const summary = ` summary="${summaryText}"`;
 
-	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${flag}`;
+	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${lines}${flag}`;
 	if (entry.body) {
 		return `<${tag} path="${entry.path}"${attrStr}>${entry.body}</${tag}>`;
 	}

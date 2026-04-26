@@ -12,3 +12,9 @@ export function countTokens(text) {
 	if (!text) return 0;
 	return Math.ceil(text.length / DIVISOR);
 }
+
+export function countLines(text) {
+	if (!text) return 0;
+	const newlines = (text.match(/\n/g) || []).length;
+	return text.endsWith("\n") ? newlines : newlines + 1;
+}

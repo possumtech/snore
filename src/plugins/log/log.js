@@ -83,10 +83,20 @@ function renderLogTag(entry, rowsByPath) {
 	const isSlice = attrs?.lineStart != null;
 	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
 	let tokenSource = null;
-	if (STREAM_NO_TOKENS.has(action)) tokenSource = null;
-	else if (isSlice) tokenSource = entry.aTokens;
-	else if (targetEntry) tokenSource = targetEntry.aTokens;
-	else tokenSource = entry.aTokens;
+	let lineSource = null;
+	if (STREAM_NO_TOKENS.has(action)) {
+		tokenSource = null;
+		lineSource = null;
+	} else if (isSlice) {
+		tokenSource = entry.aTokens;
+		lineSource = entry.vLines;
+	} else if (targetEntry) {
+		tokenSource = targetEntry.aTokens;
+		lineSource = targetEntry.vLines;
+	} else {
+		tokenSource = entry.aTokens;
+		lineSource = entry.vLines;
+	}
 	const tokens = tokenSource != null ? ` tokens="${tokenSource}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"
@@ -102,10 +112,13 @@ function renderLogTag(entry, rowsByPath) {
 	const target = attrs?.path ? ` target="${attrs.path}"` : "";
 	// Slice reads tag the log entry with lineStart/lineEnd/totalLines so
 	// the <get> tag surfaces `lines="a-b/total"` — a concrete handle for
-	// the model to re-issue or compare against another slice.
+	// the model to re-issue or compare against another slice. Non-slice
+	// entries surface the simple `lines="N"` from the projected body.
 	const lines = isSlice
 		? ` lines="${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}"`
-		: "";
+		: lineSource != null
+			? ` lines="${lineSource}"`
+			: "";
 
 	const attrStr = `${target}${status}${outcomeAttr}${query}${command}${summary}${lines}${tokens}`;
 
