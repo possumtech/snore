@@ -63,7 +63,14 @@ function renderLogTag(entry, rowsByPath) {
 			: entry.state
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
-	const status = statusValue != null ? ` status="${statusValue}"` : "";
+	// Prompts are uniformly status=200 — uniform value carries no signal
+	// and read as "settled, no action needed." Suppress so cultivation
+	// vocabulary (vary, demote, archive) applies to prompts the same
+	// way it applies to other log entries.
+	const status =
+		statusValue != null && action !== "prompt"
+			? ` status="${statusValue}"`
+			: "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
 	// `tokens=` is the promotion premium (aTokens) of the thing this tag
 	// represents — what the model would free by demoting it. For actions

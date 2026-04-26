@@ -108,12 +108,15 @@ export default class Budget {
 		const schemeRows = [...visibleByScheme.entries()]
 			.toSorted((a, b) => b[1].tokens - a[1].tokens)
 			.map(([scheme, v]) => {
-				const pct = Math.round((v.tokens / cap) * 100);
+				const pct =
+					tokenUsage > 0 ? Math.round((v.tokens / tokenUsage) * 100) : 0;
 				return `| ${scheme} | ${v.count} | ${v.tokens} | ${pct}% |`;
 			});
 
-		const summarizedPct = Math.round((summarizedTokens / cap) * 100);
-		const systemPct = Math.round((systemTokens / cap) * 100);
+		const summarizedPct =
+			tokenUsage > 0 ? Math.round((summarizedTokens / tokenUsage) * 100) : 0;
+		const systemPct =
+			tokenUsage > 0 ? Math.round((systemTokens / tokenUsage) * 100) : 0;
 
 		const table = [
 			"| scheme | visible | tokens | % |",
