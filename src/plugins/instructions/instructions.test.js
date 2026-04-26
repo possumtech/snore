@@ -90,7 +90,7 @@ describe("instructions phase transition contract", () => {
 	it("every advertised status routes to the phase it declares (full round-trip)", async () => {
 		for (const currentPhase of ROUTABLE_PHASES) {
 			for (const status of loadAdvertisedStatuses(currentPhase)) {
-				const nextPhase = status === 200 ? 8 : status % 10;
+				const nextPhase = status === 200 ? 7 : status % 10;
 				const out = await renderFor([updateRow(1, status)]);
 				if (!phaseFileExists(nextPhase)) {
 					assert.ok(
@@ -107,24 +107,24 @@ describe("instructions phase transition contract", () => {
 		}
 	});
 
-	it("158 regression: Discover → Deploy routes to phase 8, not phase 5", async () => {
-		// The original bug: 158 was silently dropped by a VALID_STATUSES
-		// whitelist, so the scanner returned the prior 155 and the model
-		// got Discovery instructions again. Runs cycled in Discovery
-		// until abandoned.
-		const out = await renderFor([
-			updateRow(1, 145),
-			updateRow(2, 155),
-			updateRow(3, 158),
-		]);
-		assert.ok(
-			out.includes(phaseFirstLine(8)),
-			"158 must route to phase 8 (Deploy)",
-		);
-		assert.ok(
-			!out.includes(phaseFirstLine(5)),
-			"must NOT re-emit Discovery instructions after 158",
-		);
+	it("forward chain: 145 → Discovery, 156 → Demotion, 167 → Deployment, 200 → Deployment", async () => {
+		// The forward-progression chain through the four stages. Catches
+		// any silent-drop regression in the routing scanner: dropping
+		// any status would strand the loop in the prior phase regardless
+		// of what the model emitted.
+		const cases = [
+			{ status: 145, nextPhase: 5 },
+			{ status: 156, nextPhase: 6 },
+			{ status: 167, nextPhase: 7 },
+			{ status: 200, nextPhase: 7 },
+		];
+		for (const { status, nextPhase } of cases) {
+			const out = await renderFor([updateRow(1, status)]);
+			assert.ok(
+				out.includes(phaseFirstLine(nextPhase)),
+				`status=${status} must route to phase ${nextPhase}`,
+			);
+		}
 	});
 
 	it("routes to a phase that has no file yet → no <instructions> block, no crash", async () => {

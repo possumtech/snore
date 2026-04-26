@@ -23,7 +23,7 @@ const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\/update\//;
 
 function phaseForStatus(status) {
 	if (status == null) return 4;
-	if (status === 200) return 8;
+	if (status === 200) return 7;
 	const last = status % 10;
 	return PHASES.includes(last) ? last : 4;
 }
