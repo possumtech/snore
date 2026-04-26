@@ -1,4 +1,4 @@
-# Discovery Stage: YOU MUST select a single unknown:// entry, discover and get source entries relevant to it, then distill them into known:// entries.
+# Discovery Stage: YOU MUST select a single unknown:// entry to fully resolve this cycle: discover its source entries, distill them into known:// entries, then advance to Demotion Stage. Other unknowns wait for their own cycle.
 
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve the selected unknown:// entry.
 YOU MUST reference all source entries and prompts.
@@ -24,4 +24,4 @@ The capital of France is Paris.
 
 Definition Stage Return: <update status="154">returning to Definition Stage</update>
 Discovery Stage Continuation: <update status="155">discovering and distilling more for the selected unknown</update>
-Discovery Stage Completion: <update status="156">selected unknown resolved into known entries; ready to demote sources</update>
+Discovery Stage Completion: <update status="156">this unknown's known entries written; advancing to Demotion to clean up its sources</update>
