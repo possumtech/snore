@@ -81,19 +81,7 @@ export default class AgentLoop {
 		const runUsage = await this.#db.get_run_usage.get({ run_id: runId });
 		const history = await this.#entries.getLog(runId);
 		const unknowns = await this.#entries.getUnknowns(runId);
-		const latestSummary = history
-			.filter((e) => {
-				// Updates are under the unified log namespace at
-				// log://turn_N/update/<slug>. Match by path pattern rather
-				// than scheme (scheme is now "log" for all log entries).
-				if (!/^log:\/\/turn_\d+\/update\//.test(e.path)) return false;
-				const attrs =
-					typeof e.attributes === "string"
-						? JSON.parse(e.attributes)
-						: e.attributes;
-				return attrs?.status === 200;
-			})
-			.at(-1);
+		const latestSummary = this.#hooks.instructions.findLatestSummary(history);
 
 		// Always emit complete telemetry. When we don't have a fresh turn
 		// result (abort/max-turns/crash), read the last turn's context

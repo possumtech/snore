@@ -72,6 +72,8 @@ export default class Instructions {
 			this.resolveSystemPrompt.bind(this);
 		core.hooks.instructions.validateNavigation =
 			this.validateNavigation.bind(this);
+		core.hooks.instructions.findLatestSummary =
+			this.findLatestSummary.bind(this);
 		// Dynamic phase instructions live in the user message (above
 		// <prompt>) so the system message stays cache-stable across turns.
 		// Priority 250 puts us between <log> (100), <unknowns> (200),
@@ -115,10 +117,12 @@ export default class Instructions {
 	 *      more than one stage at a time are jumping past required work.
 	 *      Returns and continuations (nextPhase ≤ currentPhase) always pass.
 	 *
-	 *   2. Deployment-entry — advancing into Deployment (phase 7) from any
-	 *      lower phase requires zero visible prompts. State-property rule,
-	 *      not status-keyed: the model can't sidestep by picking a different
-	 *      code (167 vs 177 vs 200) — they all hit this check.
+	 *   2. Deployment with prior prompts — any status landing the model in
+	 *      Deployment (phase 7) requires zero visible PRIOR prompts. State-
+	 *      property rule covering both entry (167) and continuation (177,
+	 *      200) — once in Deployment, the model still can't claim it with
+	 *      undemoted prior prompts. The current (latest) prompt always
+	 *      stays visible since Deployment must act on it.
 	 *
 	 * On rejection the caller marks the update entry rejected (so the
 	 * phase router skips it) and emits an error log; navigation rejections
@@ -130,7 +134,7 @@ export default class Instructions {
 		if (nextPhase > currentPhase + 1) {
 			return { ok: false, reason: "Illegal navigation attempt" };
 		}
-		if (nextPhase === 7 && currentPhase < 7) {
+		if (nextPhase === 7) {
 			const visible = await this.#countVisiblePriorPrompts(rummy);
 			if (visible > 0) {
 				return {
@@ -167,6 +171,29 @@ export default class Instructions {
 			}
 		}
 		return phaseForStatus(bestStatus);
+	}
+
+	/**
+	 * Find the latest successful Deployment summary from a log-entry list.
+	 * Matches `log://turn_N/update/...` entries with status=200 (successful
+	 * Deployment completion) and returns the most recent. Used by
+	 * AgentLoop telemetry to surface the model's latest delivery.
+	 *
+	 * Lives here, not in AgentLoop, because "what counts as a summary" is
+	 * state-machine knowledge — phase 7's success status (200) is the
+	 * definition. AgentLoop just consumes the result.
+	 */
+	findLatestSummary(logEntries) {
+		return logEntries
+			.filter((e) => {
+				if (!TURN_FROM_PATH.test(e.path)) return false;
+				const attrs =
+					typeof e.attributes === "string"
+						? JSON.parse(e.attributes)
+						: e.attributes;
+				return attrs?.status === 200;
+			})
+			.at(-1);
 	}
 
 	async #countVisiblePriorPrompts(rummy) {
