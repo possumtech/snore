@@ -22,6 +22,12 @@ export default class Prompt {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
+			// Each new prompt is the start of an independent state-machine
+			// cycle. Archive prior cycles' prompts and per-turn logs so they
+			// don't pollute Deployment-landing validation. Knowns, unknowns,
+			// and file entries persist (cross-cycle knowledge survives).
+			await store.archivePriorPromptArtifacts(runId, turn);
+
 			// prompt:// writable_by: ["plugin"] — explicit for clarity.
 			await store.set({
 				runId,

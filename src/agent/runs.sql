@@ -92,6 +92,25 @@ SELECT
 FROM run_views
 WHERE run_id = :parent_run_id;
 
+-- PREP: archive_prior_prompt_artifacts
+-- Multi-prompt sessions accumulate artifacts from prior prompt cycles
+-- (consumed prompts, their per-turn logs). These pollute the validator's
+-- prior-prompts check on subsequent Deployment landings. Archive all
+-- prior prompt:// entries and prior-turn log:// entries when a new
+-- prompt arrives. Knowns/unknowns/file entries are untouched — they
+-- carry persistent knowledge across cycles. The loop_id IS NULL clause
+-- catches forked-in views from a parent run (per fork_known_entries),
+-- which represent prior cycles' artifacts inherited into a clean child.
+UPDATE run_views
+SET visibility = 'archived'
+WHERE run_id = :run_id
+	AND visibility != 'archived'
+	AND (turn < :current_turn OR loop_id IS NULL)
+	AND entry_id IN (
+		SELECT id FROM entries
+		WHERE scheme IN ('prompt', 'log')
+	);
+
 -- PREP: get_active_runs
 SELECT r.id
 FROM runs AS r

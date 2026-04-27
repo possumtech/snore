@@ -560,6 +560,13 @@ export default class Entries {
 		});
 	}
 
+	async archivePriorPromptArtifacts(runId, currentTurn) {
+		await this.#db.archive_prior_prompt_artifacts.run({
+			run_id: runId,
+			current_turn: currentTurn,
+		});
+	}
+
 	/**
 	 * Demote all promoted entries for a run on a given turn. Returns the
 	 * affected rows (path, tokens) so callers can summarize.

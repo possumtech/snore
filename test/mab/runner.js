@@ -170,16 +170,16 @@ async function ingestContext(client, model, run, chunks, contextLimit) {
 }
 
 async function askQuestion(client, db, model, run, question) {
-	// Snapshot turn count before asking
-	const preRun = await db.get_run_by_alias.get({ alias: run });
-	const turnBefore = preRun.next_turn;
-
+	// Fork per question: each question runs in a fresh sub-run that
+	// inherits the ingested run's view (knowns/unknowns/files) but has
+	// a clean state machine and no inter-question prompt accumulation.
 	let r = await askWithRetry(
 		client,
 		{
 			model,
 			prompt: question,
 			run,
+			fork: true,
 			noRepo: true,
 			noInteraction: true,
 			noProposals: true,
@@ -192,10 +192,12 @@ async function askQuestion(client, db, model, run, question) {
 	if (r.status === 413)
 		throw new Error("Context overflow — panic failed. Benchmark aborted.");
 
-	// Extract answer from entries created after turnBefore
+	// Filter to child's own writes (loop_id non-null). Forked rows from
+	// the parent have loop_id NULL — those are the inherited views, not
+	// this question's work.
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
-	const newEntries = entries.filter((e) => e.turn >= turnBefore);
+	const newEntries = entries.filter((e) => e.loop_id != null);
 
 	// 1. Terminal update (status=200) from the question's turns
 	const summary = newEntries.find(
