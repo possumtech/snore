@@ -171,6 +171,13 @@ Verified Mini) are scaffolded and run on demand.
   archived → summarized → visible bulk-promote-skim-demote idiom on
   a real multi-file project.
 
+- [ ] **Unit test failures in `src/plugins/budget/budget.test.js`.**
+  At least one suite ("summarized aggregate line, no per-entry rows
+  for summarized") fails on `assert(table.includes("summarized"))`.
+  Pre-existing; not caused by tbench-CLI work. High priority but
+  intentionally deferred to keep the in-flight CLI/tbench thread
+  unblocked. Sweep all `src/**/*.test.js` failures, root-cause, fix.
+
 ## Scope Discipline
 
 - No legacy protocol accommodation. 2.0 is 2.0.
@@ -228,10 +235,87 @@ Verified Mini) are scaffolded and run on demand.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
-*Empty. Append entries here only when there's an actually-ongoing
+*Append entries here only when there's an actually-ongoing
 conversation worth tracking across sessions (an in-flight refactor
 mid-stream, a deferred decision with a real follow-up, a debugging
 thread that hasn't resolved). Landed work belongs in git history;
 durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
+
+### terminal-bench 2.0 / Harbor wiring (2026-04-27, in flight)
+
+**Goal.** Land rummy on the terminal-bench 2.0 leaderboard
+(https://www.tbench.ai/leaderboard/terminal-bench/2.0). Submission
+runs via Harbor (`harbor run --dataset terminal-bench@2.0 ...`),
+not the legacy `terminal-bench` repo's `installed_agents/`.
+Comparison: **rummy+grok vs codex+grok**, same model both sides,
+harness-only delta. Cost-bound to ~$30–90 by avoiding the GPT-5.5
+re-run (cite the public leaderboard number for that). User is fine
+publishing negative results.
+
+**Locked decisions.**
+- Model alias: `xfast` = `openrouter/x-ai/grok-4.1-fast` via
+  OpenRouter BYOK (`OPENROUTER_API_KEY`).
+- Comparison harness: Codex (Harbor's `codex` adapter).
+- Adapter approach: fork `laude-institute/harbor`, add
+  `src/harbor/agents/installed/rummy.py` (BaseInstalledAgent subclass).
+- CLI client: in-process, `src/plugins/cli/` plugin + bin
+  (faster/simpler than subprocess+WebSocket, uses ProjectAgent
+  directly via boot.completed hook).
+- Env-var-everywhere: all config uses `RUMMY_*` prefix; CLI flags
+  are 1:1 with env names (`--RUMMY_YOLO=1`, `--RUMMY_PROMPT="..."`).
+  No second naming surface. Profile cascade via Node's
+  `--env-file-if-exists=.env.tbench`.
+- Test scaffolding lives in `test/tbench/`, mirrors `test/swe/`.
+
+**Landed (this session):**
+- AgentLoop boundary normalization: `RUMMY_NO_REPO`,
+  `RUMMY_NO_WEB`, `RUMMY_NO_INTERACTION`, `RUMMY_NO_PROPOSALS`,
+  `RUMMY_YOLO` env defaults trump-only-if-unset (`options ??
+  process.env.X === "1"`). Both `ask`/`act` start path AND `inject`
+  continuation path patched.
+- `.env.example` documents the new run-attribute defaults
+  (commented out, with profile-cascade note).
+- `hooks.boot.completed` event — fires after DB open + plugin init
+  + model bootstrap + hygiene, before SocketServer attaches. Plugin
+  extension point per the standing rule.
+- `src/plugins/cli/`: `cli.js` (subscribes to boot.completed,
+  programmatic ProjectAgent kickoff, exit-on-terminal),
+  `bin.js` (executable, env-shape arg parser, mirrors bin/rummy.js
+  prelude), `README.md`. `package.json` registers `rummy-cli` bin.
+- Smoke verified: invalid-arg → exit 2, missing required env → exit
+  2, server-mode boot path clean. Integration: 228/228 green.
+
+**Next steps (in order):**
+1. Real LLM smoke — `rummy-cli --RUMMY_PROMPT="..." --RUMMY_MODEL=xfast`
+   trivial prompt (~$0.01) to verify the kickoff/terminal/exit path
+   end-to-end.
+2. `test/tbench/` scaffolding: `setup.sh` (clones harbor fork,
+   installs CLI, links rummy adapter), `runner.js` (orchestration),
+   `agent/rummy.py` + `rummy-setup.sh.j2` (harbor adapter source
+   we'll PR upstream once stable), `.env.tbench` template.
+3. `package.json` `test:tbench:*` scripts.
+4. Pre-flight: `harbor run --task hello-world --agent rummy
+   --model openrouter/x-ai/grok-4.1-fast` (~$0.10).
+5. Pre-flight: same for `--agent codex` to verify Codex+grok via
+   OpenRouter works at all. Fall back to Goose / Aider if Codex+grok
+   has friction.
+6. Full eval: 89-task × 3-seed × both adapters (~$30–90).
+7. Tabulate + writeup.
+
+**Risks / open questions:**
+- Codex's Harbor adapter may not accept `openrouter/x-ai/grok-*`
+  cleanly (Codex is OpenAI-tuned). Pre-flight resolves.
+- Inside Harbor's docker sandbox, rummy's `<sh>`+YOLO flow needs
+  to work robustly. YOLO landed but unproven at tbench scale.
+- `RUMMY_MAX_TURNS=15` default likely too low for compile-heavy
+  tbench tasks; bump in `.env.tbench`.
+
+**Story angles for the writeup:**
+- "Same model, different harness — rummy beat / lost to Codex by X
+  points." Cleanest harness-contribution claim.
+- Caveat: Codex is OpenAI's harness, sandbagged off-distribution
+  on grok. Document, don't hide.
+- Cite leaderboard's published 82.0% Codex+GPT-5.5 number for
+  context, no re-run on our side.

@@ -164,6 +164,13 @@ async function main() {
 		console.log(`[RUMMY] Recovered ${aborted.changes} stuck run(s)`);
 	}
 
+	// 6c. Boot complete — DB open, plugins inited, models loaded,
+	// hygiene done. Plugins that need a one-shot post-boot action
+	// (e.g. the cli plugin firing a programmatic run) subscribe to
+	// this event. Fires BEFORE SocketServer so RPC clients can't
+	// race a one-shot run still being set up.
+	await hooks.boot.completed.emit({ db, hooks });
+
 	// 7. Start RPC Server
 	const port = Number.parseInt(process.env.PORT);
 	const server = new SocketServer(db, { port, hooks });

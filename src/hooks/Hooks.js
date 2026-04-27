@@ -28,6 +28,14 @@ export default function createHooks(debug = false) {
 		processTurn: registry.processTurn.bind(registry),
 
 		// Explicit Hook Schema
+		boot: {
+			// Fires once after the service finishes booting (DB open,
+			// plugins inited, models bootstrapped, hygiene done) and
+			// before SocketServer accepts connections. Plugins that
+			// need a one-shot post-init action (e.g. cli plugin firing
+			// a programmatic run) subscribe here.
+			completed: createEvent("boot.completed"),
+		},
 		project: {
 			init: {
 				started: createEvent("project.init.started"),

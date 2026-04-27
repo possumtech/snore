@@ -6,7 +6,8 @@
 		"llm"
 	],
 	"bin": {
-		"rummy": "./bin/rummy.js"
+		"rummy": "./bin/rummy.js",
+		"rummy-cli": "./src/plugins/cli/bin.js"
 	},
 	"publishConfig": {
 		"access": "public"
