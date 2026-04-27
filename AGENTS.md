@@ -278,31 +278,20 @@ before they were caught:
   - Partial fix: removed status 144 (Definition continuation) from `instructions_104.md` so Definition is single-shot. Should eliminate the "(Already exists)" reasoning loop. Pending fresh run to confirm.
 - ~~Gemma skips source-reading and fabricates from training.~~ **False positive (2026-04-27).** The "fabrication" was caused by a malformed test prompt that told gemma to use `<sh>ls</sh>` against the documented rule (`<sh>` is for side-effects; navigation/listing should be `<env>`). With a clean story-oriented prompt ("Update FACTS.md so it lists the developer details from this project's data file. Then complete."), gemma reliably reads data.txt and writes FACTS.md across 3/3 consecutive runs. Lesson: when a small model misbehaves, audit the prompt against the documented protocol rules first.
 
-### YOLO mode (2026-04-27, ACTIVE FOCUS)
+### YOLO mode (2026-04-27, landed)
 
-The benchmark work surfaced two missing harness capabilities. **Benchmarking is paused until both are properly settled.** Per user direction: "the first and only goal of benchmarking is surfacing these sorts of concerns. The benchmarking did its job, which is showing how our agent harness is missing important features and functionality."
+`yolo: true` is a run attribute (parallel to `noRepo`/`noWeb`/`noInteraction`/`noProposals`) plumbed via rpc.js → AgentLoop loop config → RummyContext. `src/plugins/yolo/yolo.js` listens to `proposal.pending` and replicates AgentLoop.resolve()'s accept path inline, plus spawns sh/env commands and streams output to the existing data-channel entries. Race fix in `Entries.waitForResolution` (early-return if already terminal) so in-process resolvers don't deadlock. SPEC `{#yolo_mode}`. 5 e2e tests refactored to use `yolo: true` (~165 lines of client-side proposal hacks deleted). 224/224 integration + e2e green.
 
-**The gap YOLO closes:** AuditClient implements ~30% of headless-client behavior (file edit + rm). Shell execution is missing entirely — sh/env plugins create empty streaming entries and rely on a connected client to actually run the command. There's no path for a run to be fully autonomous without a human at a terminal.
+### `rummy.repo` overview entry (2026-04-27, landed)
 
-**Design (parallel to existing `noFoo` flags):** `yolo: true` is a run attribute. When set, a YOLO plugin auto-resolves every proposal server-side AND spawns sh/env commands streaming output to the data channels.
+Files default to `archived` instead of `summarized`; rummy.repo writes a single `repo://overview` entry per scan with project header, root files, top-level dir counts, constraints, and a five-line navigate legend. Constant-ish in size regardless of repo: rummy/main (254 files) overview is 334 tokens vs the previous ~50K of file enumeration. Budget table extended with `vis | sum | cost | if-all-sum | premium` columns + legend (so the model can decide what to bulk-demote). instructions.md surgical fix on summarized-cost line ("very small context budget penalty" instead of "no penalty"). SPEC `{#repo_overview}`. 228/228 integration green.
 
-**Active checklist:**
-- [x] Plumb `yolo` attribute through rpc.js (3 sites: dispatchRunSet, fork path, inject) + AgentLoop loop config (#run, #drainQueue, #executeLoop, inject)
-- [x] Write initial `src/plugins/yolo/yolo.js` (NOT verified — `core.db` and `core.hooks.projectAgent` access patterns assumed, untested)
-- [ ] Verify plugin hook-access patterns by reading sibling plugins (error.js, set.js); fix where wrong
-- [ ] **Refactor existing e2e tests to use `yolo: true`** instead of the AuditClient-side `#applySetToDisk`/`#applyRmToDisk` hacks. The hacks become unnecessary once YOLO handles this server-side. Audit `test/e2e/`, `test/integration/`, `test/live/` for proposal-handling workarounds.
-- [ ] Confirm streaming integration: shell stdout/stderr append to `{path}_1`/`{path}_2` channels; finalize transitions channels to terminal status. Mirrors the existing `stream`/`stream/completed` RPC contract — just done in-process.
-- [ ] SPEC.md `{#yolo_mode}` anchor documenting the contract: when set, server emulates a connected headless client; sh/env execute in `projectRoot`; proposals auto-accept; output streams to channel entries; non-YOLO runs are unaffected.
-- [ ] Integration test `test/integration/yolo.test.js` referencing `@yolo_mode` — covers proposal auto-accept, sh execution + streaming, env execution, file-edit auto-accept, rm/mv/cp auto-accept.
-- [ ] E2E test (test/e2e/) covering a YOLO run that edits a file, runs a shell command, and lands status 200 without any client-side proposal handling.
-- [ ] Confirm AuditClient's `#applySetToDisk`/`#applyRmToDisk` become defunct for YOLO runs and remove them (or scope them to non-YOLO only) once the e2e refactor is done.
+### Benchmarks (deferred)
 
-### `rummy.repo` lazy/hierarchical mode (next, after YOLO lands)
+MAB ditched (intelligence test, not recall — misfit for the harness). LME oracle row 0 working (1/1 pass). SWE-bench Verified Mini scaffolded (`test/swe/`, smoke test passed end-to-end on row 0 grok). Full benchmark runs deferred — the harness gaps that surfaced (YOLO, repo overview) are closed; benchmarks can resume on demand.
 
-The benchmark also surfaced this. Current `rummy.repo` enumerates every tracked file at scan time. Even at "summarized" visibility (symbol-only projection), 5000 file entries blow gemma's 32K window before turn 1.
+### Followups
 
-The harness needs a way to gracefully handle "repo too big for the context window" — by giving a hierarchical/symbolic overview at first scan, with individual file entries materialized lazily as the model `<get>`s them. This is the next focus once YOLO is settled.
-
-### Benchmarks (revisit after YOLO + rummy.repo lazy mode)
-
-MAB ditched (intelligence test, not recall — misfit for the harness). LME oracle row 0 working (1/1 pass). SWE-bench Verified Mini scaffolded (`test/swe/`, smoke test passed end-to-end on row 0 grok). Full benchmark runs deferred until the harness gaps are closed.
+- **Gemma "empty response" deaths (still open).** Removed status 144 (Definition continuation) earlier as a partial fix; pending fresh run on the new architecture to confirm it's resolved. May need re-investigation now that files are archived-by-default.
+- **Audit `AuditClient` for now-defunct paths.** With YOLO server-side, `AuditClient.#applySetToDisk` / `#applyRmToDisk` are redundant for YOLO runs. The non-YOLO path (rummy.nvim style) still uses them. Decide: keep for non-YOLO compatibility, scope explicitly, or deprecate as nvim moves to YOLO-by-default.
+- **Larger e2e exercising the three-tier ladder** (archived → summarized → visible) on a real repo. Current e2e tests verify YOLO and basic dispatch; none specifically validate the bulk-promote-skim-demote idiom on a multi-file project.
