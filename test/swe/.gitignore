@@ -1,0 +1,7 @@
+data/*.parquet
+data/*.ndjson
+results/
+repos/
+.venv/
+__pycache__/
+*.pyc
