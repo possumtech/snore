@@ -78,15 +78,8 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 			projectRoot,
 			clientVersion: "2.0.0",
 		});
-
-		// Auto-accept proposals so the run can progress.
-		client.on("run/proposal", async ({ run, proposed }) => {
-			for (const p of proposed || []) {
-				try {
-					await client.call("set", { run, path: p.path, state: "resolved" });
-				} catch {}
-			}
-		});
+		// Run started below uses `yolo: true` — server-side auto-resolves
+		// proposals and self-executes sh/env. No client-side handler.
 	}, TIMEOUT);
 
 	after(async () => {
@@ -109,7 +102,7 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 		const startRes = await client.call("set", {
 			path: "run://",
 			body: "Define an unknown://primes/three entry, then resolve it with a known://primes/three entry listing three primes.",
-			attributes: { model, mode: "act" },
+			attributes: { model, mode: "act", yolo: true },
 		});
 		const alias = startRes.alias;
 		const finalStatus = await waitForRunStatus(

@@ -54,44 +54,8 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 			projectRoot,
 			clientVersion: "2.0.0",
 		});
-		client.on("run/proposal", async ({ run, proposed }) => {
-			for (const p of proposed || []) {
-				try {
-					if (p.path?.startsWith("set://")) {
-						const runRow = await tdb.db.get_run_by_alias.get({ alias: run });
-						const entries = await tdb.db.get_known_entries.all({
-							run_id: runRow.id,
-						});
-						const setEntry = entries.find((e) => e.path === p.path);
-						if (setEntry) {
-							const attrs =
-								typeof setEntry.attributes === "string"
-									? JSON.parse(setEntry.attributes)
-									: setEntry.attributes;
-							if (attrs?.path && attrs?.merge) {
-								const filePath = join(projectRoot, attrs.path);
-								const content = await fs
-									.readFile(filePath, "utf8")
-									.catch(() => "");
-								const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
-								let patched = content;
-								for (const b of blocks) {
-									const m = b.match(
-										/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
-									);
-									if (!m) continue;
-									patched = m[1] === "" ? m[2] : patched.replace(m[1], m[2]);
-								}
-								if (patched !== content) await fs.writeFile(filePath, patched);
-							}
-						}
-					}
-					await client.call("set", { run, path: p.path, state: "resolved" });
-				} catch (err) {
-					console.error(`[TEST] auto-accept error: ${err.message}`);
-				}
-			}
-		});
+		// Run started below uses `yolo: true` — server-side auto-resolves
+		// proposals and materializes file edits. No client-side handler.
 	}, TIMEOUT);
 
 	after(async () => {
@@ -119,7 +83,7 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 			// a clear stopping criterion and a real reason to emit the
 			// file write that this test exists to exercise.
 			body: "Write a brief OC_RIVERS.md about the hydrology of Orange County, Indiana. Three sections minimum: rivers, watersheds, and one other relevant aspect you investigate. Keep each section short.",
-			attributes: { model, mode: "act" },
+			attributes: { model, mode: "act", yolo: true },
 		});
 		const alias = startRes.alias;
 		console.log(`[TEST] started run: ${alias}`);

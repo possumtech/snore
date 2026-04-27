@@ -89,55 +89,9 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 			projectRoot,
 			clientVersion: "2.0.0",
 		});
-
-		// Auto-accept every proposal via the 2.0.0 wire: set state=resolved.
-		// This is what a yolo nvim client does.
-		client.on("run/proposal", async ({ run, proposed }) => {
-			for (const p of proposed || []) {
-				try {
-					// Apply file writes to disk before accepting — matches what
-					// the nvim client does in diff.apply_to_file + yolo path.
-					if (p.path?.startsWith("set://")) {
-						const runRow = await tdb.db.get_run_by_alias.get({ alias: run });
-						const entries = await tdb.db.get_known_entries.all({
-							run_id: runRow.id,
-						});
-						const setEntry = entries.find((e) => e.path === p.path);
-						if (setEntry) {
-							const attrs =
-								typeof setEntry.attributes === "string"
-									? JSON.parse(setEntry.attributes)
-									: setEntry.attributes;
-							if (attrs?.path && attrs?.merge) {
-								const filePath = join(projectRoot, attrs.path);
-								const content = await fs
-									.readFile(filePath, "utf8")
-									.catch(() => "");
-								const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
-								let patched = content;
-								for (const b of blocks) {
-									const m = b.match(
-										/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
-									);
-									if (!m) continue;
-									patched = m[1] === "" ? m[2] : patched.replace(m[1], m[2]);
-								}
-								if (patched !== content) await fs.writeFile(filePath, patched);
-							}
-						}
-					}
-					await client.call("set", {
-						run,
-						path: p.path,
-						state: "resolved",
-					});
-				} catch (err) {
-					console.error(
-						`[TEST] auto-accept error on ${p.path}: ${err.message}`,
-					);
-				}
-			}
-		});
+		// Run started below uses `yolo: true` — server-side auto-resolves
+		// proposals, materializes file edits to disk, self-executes
+		// sh/env. Replaces the prior 50-line client-side reimplementation.
 	}, TIMEOUT);
 
 	after(async () => {
@@ -157,7 +111,7 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 		const startRes = await client.call("set", {
 			path: "run://",
 			body: "Create a file called FACTS.md with one interesting fact about the number 42. One short sentence.",
-			attributes: { model, mode: "act" },
+			attributes: { model, mode: "act", yolo: true },
 		});
 
 		assert.ok(startRes?.alias, "expected { alias } from anonymous set run://");

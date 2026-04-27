@@ -74,52 +74,8 @@ describe("E2E: terminal run/state after proposal acceptance (@notifications, @re
 			clientVersion: "2.0.0",
 		});
 
-		// Auto-accept: apply file writes to disk before resolving,
-		// matching what the nvim yolo client does in diff.apply_to_file.
-		client.on("run/proposal", async ({ run, proposed }) => {
-			for (const p of proposed || []) {
-				try {
-					if (p.path?.startsWith("set://")) {
-						const runRow = await tdb.db.get_run_by_alias.get({ alias: run });
-						const entries = await tdb.db.get_known_entries.all({
-							run_id: runRow.id,
-						});
-						const setEntry = entries.find((e) => e.path === p.path);
-						if (setEntry) {
-							const attrs =
-								typeof setEntry.attributes === "string"
-									? JSON.parse(setEntry.attributes)
-									: setEntry.attributes;
-							if (attrs?.path && attrs?.merge) {
-								const filePath = join(projectRoot, attrs.path);
-								const content = await fs
-									.readFile(filePath, "utf8")
-									.catch(() => "");
-								const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
-								let patched = content;
-								for (const b of blocks) {
-									const m = b.match(
-										/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
-									);
-									if (!m) continue;
-									patched = m[1] === "" ? m[2] : patched.replace(m[1], m[2]);
-								}
-								if (patched !== content) await fs.writeFile(filePath, patched);
-							}
-						}
-					}
-					await client.call("set", {
-						run,
-						path: p.path,
-						state: "resolved",
-					});
-				} catch (err) {
-					console.error(
-						`[TEST] auto-accept error on ${p.path}: ${err.message}`,
-					);
-				}
-			}
-		});
+		// Run started below uses `yolo: true` — server-side auto-resolves
+		// proposals, materializes file edits to disk. No client handler.
 	}, TIMEOUT);
 
 	after(async () => {
@@ -152,7 +108,7 @@ describe("E2E: terminal run/state after proposal acceptance (@notifications, @re
 			// it, Deployment `<set>`s FACTS.md — at least one proposal
 			// fires by construction.
 			body: "Read data.txt in this project, then write FACTS.md as a markdown list of the facts it contains.",
-			attributes: { model, mode: "act" },
+			attributes: { model, mode: "act", yolo: true },
 		});
 		assert.ok(startRes?.alias, "expected alias");
 		const alias = startRes.alias;

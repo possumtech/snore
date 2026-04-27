@@ -230,6 +230,15 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
   machine then has to grind every one through Discovery+Demotion
   before reaching Deployment. Front-loaded over-definition is a
   documented failure mode, not a baseline to accept.
+- **When a model misbehaves, audit the test prompt against the
+  documented protocol first.** Don't theorize about model
+  non-determinism or harness bugs until you've verified the prompt
+  isn't asking the model to violate a documented rule. A prompt that
+  says "run `ls` via `<sh>`" violates `shDoc.md`'s "use `<env>` for
+  read-only commands" rule, and a small model that obeys the docs
+  will struggle. Ran a 3-run consistency check on the corrected
+  prompt: 3/3 reliable. The "gemma is flaky" interpretation is
+  almost always a prompt smell.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
@@ -267,7 +276,7 @@ before they were caught:
 **Post-LME backlog:**
 - [ ] **Gemma "empty response" deaths.** New failure pattern (since ~2026-04-26): gemma emits zero actionable tags on alternate turns mid-Definition, hits 3-strike abandonment at turn 4-6 before completing ingest. Was not the pattern weeks ago. Investigate: context-window pressure, instruction overload, or harness regression. **Gemma surviving is a higher priority than grok winning** — this is a regression, not a baseline.
   - Partial fix: removed status 144 (Definition continuation) from `instructions_104.md` so Definition is single-shot. Should eliminate the "(Already exists)" reasoning loop. Pending fresh run to confirm.
-- [ ] **Gemma skips source-reading and fabricates from training.** Observed 2026-04-27 in YOLO e2e. Gemma's reasoning explicitly stated "I should `get` data.txt", "I will start by getting data.txt" — but the actual emission was `<set unknown://...>` in Definition Stage. Then in subsequent turns she emitted `<update status="200">Fact 1, Fact 2, Fact 3</update>` — fabricated placeholder text, never `<get>`-ing the source. The state machine's Definition imperative ("YOU MUST ONLY create unknown://") is fighting the natural read-then-act flow. Even with `instructions_105.md`'s "ONLY from promoted information" rule, the model bypasses source-reading and uses training. System-side bug to investigate: state-machine ergonomics for small models on simple research tasks; possibly the file-summary projection (which shows symbols-only and reads as "complete" to the model) is hiding the need to promote.
+- ~~Gemma skips source-reading and fabricates from training.~~ **False positive (2026-04-27).** The "fabrication" was caused by a malformed test prompt that told gemma to use `<sh>ls</sh>` against the documented rule (`<sh>` is for side-effects; navigation/listing should be `<env>`). With a clean story-oriented prompt ("Update FACTS.md so it lists the developer details from this project's data file. Then complete."), gemma reliably reads data.txt and writes FACTS.md across 3/3 consecutive runs. Lesson: when a small model misbehaves, audit the prompt against the documented protocol rules first.
 
 ### YOLO mode (2026-04-27, ACTIVE FOCUS)
 

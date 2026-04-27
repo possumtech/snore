@@ -55,20 +55,7 @@ describe("E2E: terminal run/state notification (@notifications, @run_state_machi
 			clientVersion: "2.0.0",
 		});
 
-		// Auto-accept proposals (yolo)
-		client.on("run/proposal", async ({ run, proposed }) => {
-			for (const p of proposed || []) {
-				try {
-					await client.call("set", {
-						run,
-						path: p.path,
-						state: "resolved",
-					});
-				} catch {
-					/* ignore */
-				}
-			}
-		});
+		// Run started below uses `yolo: true` for server-side auto-accept.
 	}, TIMEOUT);
 
 	after(async () => {
@@ -89,7 +76,7 @@ describe("E2E: terminal run/state notification (@notifications, @run_state_machi
 		const startRes = await client.call("set", {
 			path: "run://",
 			body: 'What is 2 + 2? Answer with <update status="200">4</update>.',
-			attributes: { model, mode: "ask" },
+			attributes: { model, mode: "ask", yolo: true },
 		});
 
 		const alias = startRes.alias;
