@@ -123,9 +123,7 @@ describe("token accounting (@token_accounting)", () => {
 				contextSize: 50000,
 				demoted: [],
 			});
-			const row = result.rows.find(
-				(r) => r.path === "known://summarized_now",
-			);
+			const row = result.rows.find((r) => r.path === "known://summarized_now");
 			assert.ok(row, "summarized entry materialized");
 			// Render manually for comparison: the visible projection of a known
 			// is its full body.
@@ -137,7 +135,10 @@ describe("token accounting (@token_accounting)", () => {
 			);
 			// sTokens: known summarized projection is first 500 chars (per
 			// known.js summary handler).
-			const summarized = body.length <= 500 ? body : `${body.slice(0, 500)}\n[truncated — promote to see the full body]`;
+			const summarized =
+				body.length <= 500
+					? body
+					: `${body.slice(0, 500)}\n[truncated — promote to see the full body]`;
 			assert.strictEqual(
 				row.sTokens,
 				countTokens(summarized),

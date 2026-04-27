@@ -75,10 +75,7 @@ export default class Yolo {
 			return;
 		}
 
-		const resolvedBody = await this.core.hooks.proposal.content.filter(
-			"",
-			ctx,
-		);
+		const resolvedBody = await this.core.hooks.proposal.content.filter("", ctx);
 		const existing = await entries.getState(runId, path);
 		const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
 		await entries.set({
@@ -180,8 +177,7 @@ export default class Yolo {
 					const summary = channels
 						.map((c) => `${c.path} (${c.tokens || 0} tokens)`)
 						.join(", ");
-					const exitLabel =
-						exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
+					const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
 					await entries.set({
 						runId,
 						path: logPath,

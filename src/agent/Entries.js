@@ -502,7 +502,11 @@ export default class Entries {
 		// the state change has already happened and no future drain will
 		// fire. Without this guard, in-process resolvers would deadlock.
 		const current = await this.getState(runId, path);
-		if (current && current.state !== "proposed" && current.state !== "streaming") {
+		if (
+			current &&
+			current.state !== "proposed" &&
+			current.state !== "streaming"
+		) {
 			return;
 		}
 		const normalized = Entries.normalizePath(path);

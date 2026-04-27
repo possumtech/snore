@@ -150,11 +150,7 @@ describe("yolo mode (@yolo_mode)", () => {
 			"non-yolo run leaves proposal in proposed state",
 		);
 		const fileBody = await rummy.entries.getBody(runId, "untouched.md");
-		assert.strictEqual(
-			fileBody,
-			null,
-			"no file materialized for non-yolo run",
-		);
+		assert.strictEqual(fileBody, null, "no file materialized for non-yolo run");
 	});
 
 	it("sh proposal spawns command server-side and streams output", async () => {
@@ -184,7 +180,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const stdoutPath = `${dataBase}_1`;
 		const stdoutBody = await rummy.entries.getBody(runId, stdoutPath);
 		assert.ok(
-			stdoutBody && stdoutBody.includes("hello yolo"),
+			stdoutBody?.includes("hello yolo"),
 			`stdout streamed to ${stdoutPath}; got: ${JSON.stringify(stdoutBody)}`,
 		);
 
@@ -230,7 +226,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const stderrPath = `${dataBase}_2`;
 		const stderrBody = await rummy.entries.getBody(runId, stderrPath);
 		assert.ok(
-			stderrBody && stderrBody.includes("to stderr"),
+			stderrBody?.includes("to stderr"),
 			`stderr captured at ${stderrPath}; got: ${JSON.stringify(stderrBody)}`,
 		);
 

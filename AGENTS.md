@@ -116,12 +116,6 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
 
 ## Open Items
 
-- [ ] **Token accounting refactor (2026-04-25).** End the doom loop where "tokens" sometimes means body-tokens, sometimes wire-tokens, sometimes API-tokens. One truth: tokens are a materialized cost, computed during assembly, never stored on entries. Per-entry materialization records carry `vTokens` (cost when visible), `sTokens` (cost when summarized), `aTokens = vTokens − sTokens` (the promotion premium — the only number the model sees on per-entry tags). Budget table renders visible-scheme breakdown using `aTokens`; summarized entries collapse into a single aggregate line below the table; system overhead (system prompt + tool defs) gets its own line. Total reconciles to `tokenUsage`.
-  - [ ] **SPEC.md** — new `{#token_accounting}` anchor specifying: tokens are materialized, never stored; per-entry vTokens/sTokens/aTokens contract; `<budget>` rendered shape (visible-scheme table + summarized line + system line + total). Update `{#schema}` to drop `entries.tokens`. Update `{#budget_enforcement}` to point at the new `<budget>` shape.
-  - [ ] **Failing tests** — `test/integration/materialization_token_accounting.test.js` for per-entry vTokens/sTokens/aTokens shape; update `test/integration/budget_math.test.js` for the new `<budget>` layout (visible table, summarized line, system line, total reconciles); e2e story verifying a model demote frees the demoted entry's aTokens on the next turn.
-  - [ ] **Implementation, dependency order**: (1) materialization computes vTokens/sTokens/aTokens per-entry and exposes on the materialization records; (2) budget plugin's `assembleBudget` renders the new shape using aTokens for the table and aggregates for summarized + system; (3) `known.js` MAX_ENTRY_TOKENS gate moves to inline `countTokens(body)` at write time; (4) schema migration drops `entries.tokens`.
-  - [ ] **`spec-coverage.js`** stays green throughout — every new anchor referenced by ≥1 test on landing.
-
 - [ ] **Budget → error fold.** Subsumed by the Error paradigm
   unification (see Ongoing Development Conversation, 2026-04-22).
   Budget emits `error.log.emit({status: 413})` instead of
@@ -148,10 +142,6 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
   `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
   requiring model intervention.
 
-- [ ] **Gemma/MAB benchmark run.** Published baselines are in this
-  doc below (60%/5% GPT-4o; 60%/6% best). With the instructions
-  system stable now, we have a meaningful number to measure against.
-  Needed *before* any more instruction-shape experiments.
 - [ ] **`notification_log` table.** `rpc_log` captures
   request/response; `run/state` / `run/progress` / `run/proposal`
   fly out untracked. Mirroring the shape would let us replay
@@ -179,17 +169,6 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
 - External plugins are rewritten or cut. No side-maintenance tracks.
 - Everything the contract names has a concrete realization in code.
   Everything the contract doesn't name, isn't there.
-
-## Published Baselines (MemoryAgentBench, ICLR 2026)
-
-Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
-
-| Model | CR-SH (single-hop) | CR-MH (multi-hop) |
-|---|---|---|
-| GPT-4o | 60% | **5%** |
-| Claude 3.7 Sonnet | 43% | 2% |
-| Gemini 2.0 Flash | 30% | 3% |
-| Best published | 60% | **6%** |
 
 ## Lessons (keep these pinned; don't let future sessions forget)
 

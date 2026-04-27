@@ -117,11 +117,11 @@ describe("retryWithBackoff", () => {
 
 	it("delay never exceeds maxDelayMs even at high attempt counts", async () => {
 		const observedDelays = [];
-		let attempts = 0;
+		let _attempts = 0;
 		try {
 			await retryWithBackoff(
 				() => {
-					attempts++;
+					_attempts++;
 					throw new Error("503");
 				},
 				{

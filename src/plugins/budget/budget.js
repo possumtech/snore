@@ -75,7 +75,7 @@ export default class Budget {
 		let visibleCount = 0;
 		let premiumTokens = 0;
 		let summarizedCount = 0;
-		let summarizedTokens = 0;
+		let _summarizedTokens = 0;
 		let floorTokens = 0;
 		let knownVTokens = 0;
 		let sourceVTokens = 0;
@@ -116,7 +116,7 @@ export default class Budget {
 				entry.sum += 1;
 				entry.sumTokens += r.sTokens || 0;
 				summarizedCount += 1;
-				summarizedTokens += r.sTokens;
+				_summarizedTokens += r.sTokens;
 				floorTokens += r.sTokens;
 			}
 		}

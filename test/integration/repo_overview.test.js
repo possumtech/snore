@@ -80,10 +80,7 @@ describe("repo overview (@repo_overview)", () => {
 			projectRoot: root,
 		});
 
-		const matches = await entries.getEntriesByPattern(
-			runId,
-			"repo://overview",
-		);
+		const matches = await entries.getEntriesByPattern(runId, "repo://overview");
 		assert.strictEqual(matches.length, 1, "one repo://overview registered");
 		assert.strictEqual(
 			matches[0].visibility,
