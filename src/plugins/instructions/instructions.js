@@ -93,6 +93,7 @@ export default class Instructions {
 			runId,
 			"instructions://system",
 			null,
+			{ includeAuditSchemes: true },
 		);
 		// The entry is always written by onTurnStarted before this runs.
 		const entry = entries[0];

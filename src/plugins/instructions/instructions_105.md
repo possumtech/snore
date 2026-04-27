@@ -2,6 +2,7 @@
 
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve the selected unknown:// entry.
 YOU MUST reference all related source entries and prompts.
+YOU MUST ONLY populate known entries with promoted information, NOT from your own training data or opinion.
 YOU MUST immediately demote unknowns, source entries, prompts, and log events after they are distilled, irrelevant, or resolved.
 
 Tip: Check the `tokens="N"` of the source entries against the `tokensFree="N"` constraint before promoting entries.
@@ -9,6 +10,9 @@ Tip: You can use <get path="..." preview/> to preview the potential `tokens="N"`
 Tip: You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
 
 ## Example:
+	<get path="**" preview>capital</get>
+	<get path="prompt://3" line="1" limit="100"/>
+
 	<set path="trivia/capitals.csv" visibility="visible"/>
 
 	<set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">

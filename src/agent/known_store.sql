@@ -223,15 +223,20 @@ WHERE run_id = :run_id AND entry_id IN (
 );
 
 -- PREP: get_entries_by_pattern
+-- Default excludes audit schemes (system://, reasoning://, model://, user://,
+-- assistant://, content://, instructions://) so model-facing tools never leak
+-- internal entries. Internal callers that need them pass include_audit_schemes=1.
 SELECT
 	e.path, e.body, e.scheme, rv.state, rv.outcome, rv.visibility
 	, countTokens(e.body) AS tokens, e.attributes
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
+JOIN schemes AS s ON s.name = COALESCE(e.scheme, 'file')
 WHERE
 	rv.run_id = :run_id
 	AND hedmatch(:path, e.path)
 	AND (:body IS NULL OR hedsearch(:body, e.body))
+	AND (:include_audit_schemes IS NOT NULL OR s.model_visible = 1)
 ORDER BY e.path
 LIMIT
 	COALESCE(:limit, -1)

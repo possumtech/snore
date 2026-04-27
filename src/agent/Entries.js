@@ -475,7 +475,7 @@ export default class Entries {
 		runId,
 		path,
 		body = null,
-		{ limit = null, offset = null } = {},
+		{ limit = null, offset = null, includeAuditSchemes = false } = {},
 	) {
 		return this.#db.get_entries_by_pattern.all({
 			run_id: runId,
@@ -483,6 +483,7 @@ export default class Entries {
 			body: body ? body : null,
 			limit,
 			offset,
+			include_audit_schemes: includeAuditSchemes ? 1 : null,
 		});
 	}
 
