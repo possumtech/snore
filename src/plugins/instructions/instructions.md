@@ -13,7 +13,7 @@ YOU MUST perform the actions corresponding with your current stage:
 
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance
 * visible: Fully visible, but uses `tokens="N"` context budget
-* summarized: Approximate, summary information, no context budget penalty
+* summarized: Approximate, summary information, very small context budget penalty
 * archived: Hidden from Context, but can be retrieved later with <get path="..."/>
 
 Tip: You can leverage the FCRM's Visibility States with folksonomic taxonomies and tags to store and recall unlimited information.

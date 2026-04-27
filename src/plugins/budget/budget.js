@@ -66,7 +66,12 @@ export default class Budget {
 
 		const cap = ceiling(contextSize);
 
-		const visibleByScheme = new Map();
+		// Per-scheme aggregation: counts and costs at each visibility tier
+		// plus the savings (premium) the model would unlock by demoting
+		// visible → summarized. All math derives from per-row vTokens
+		// (cost as visible) / sTokens (cost as summarized) / aTokens
+		// (= vTokens − sTokens, the promotion premium).
+		const byScheme = new Map();
 		let visibleCount = 0;
 		let premiumTokens = 0;
 		let summarizedCount = 0;
@@ -75,14 +80,31 @@ export default class Budget {
 		let knownVTokens = 0;
 		let sourceVTokens = 0;
 
+		const schemeEntry = (s) => {
+			let e = byScheme.get(s);
+			if (!e) {
+				e = {
+					vis: 0,
+					sum: 0,
+					visTokens: 0, // current cost of visible entries
+					visIfSumTokens: 0, // sTokens of visible (what they'd cost demoted)
+					sumTokens: 0, // current cost of summarized entries
+					premium: 0, // savings from demoting visible → summarized
+				};
+				byScheme.set(s, e);
+			}
+			return e;
+		};
+
 		for (const r of rows) {
 			if (r.aTokens == null) continue;
 			const s = r.scheme || "file";
+			const entry = schemeEntry(s);
 			if (r.visibility === "visible") {
-				const entry = visibleByScheme.get(s) ?? { count: 0, tokens: 0 };
-				entry.count += 1;
-				entry.tokens += r.aTokens;
-				visibleByScheme.set(s, entry);
+				entry.vis += 1;
+				entry.visTokens += r.vTokens || 0;
+				entry.visIfSumTokens += r.sTokens || 0;
+				entry.premium += r.aTokens || 0;
 				visibleCount += 1;
 				premiumTokens += r.aTokens;
 				floorTokens += r.sTokens;
@@ -91,6 +113,8 @@ export default class Budget {
 				else if (s === "prompt") sourceVTokens += v;
 				else if (r.category === "data") sourceVTokens += v;
 			} else if (r.visibility === "summarized") {
+				entry.sum += 1;
+				entry.sumTokens += r.sTokens || 0;
 				summarizedCount += 1;
 				summarizedTokens += r.sTokens;
 				floorTokens += r.sTokens;
@@ -105,30 +129,39 @@ export default class Budget {
 		const tokenUsage = floorTokens + premiumTokens + systemTokens;
 		const tokensFree = Math.max(0, cap - tokenUsage);
 
-		const schemeRows = [...visibleByScheme.entries()]
-			.toSorted((a, b) => b[1].tokens - a[1].tokens)
-			.map(([scheme, v]) => {
-				const pct =
-					tokenUsage > 0 ? Math.round((v.tokens / tokenUsage) * 100) : 0;
-				return `| ${scheme} | ${v.count} | ${v.tokens} | ${pct}% |`;
+		// Sort schemes by current cost descending — biggest-impact rows
+		// land at the top, so "what should I demote first?" reads
+		// straight off the table.
+		const schemeRows = [...byScheme.entries()]
+			.toSorted(
+				([, a], [, b]) =>
+					b.visTokens + b.sumTokens - (a.visTokens + a.sumTokens),
+			)
+			.map(([scheme, e]) => {
+				const cost = e.visTokens + e.sumTokens;
+				const ifAllSum = e.visIfSumTokens + e.sumTokens;
+				return `| ${scheme} | ${e.vis} | ${e.sum} | ${cost} | ${ifAllSum} | ${e.premium} |`;
 			});
 
-		const summarizedPct =
-			tokenUsage > 0 ? Math.round((summarizedTokens / tokenUsage) * 100) : 0;
 		const systemPct =
 			tokenUsage > 0 ? Math.round((systemTokens / tokenUsage) * 100) : 0;
 
 		const table = [
-			"| scheme | visible | tokens | % |",
-			"|---|---|---|---|",
+			"| scheme | vis | sum | cost | if-all-sum | premium |",
+			"|---|---|---|---|---|---|",
 			...schemeRows,
 		].join("\n");
 
-		const summarizedLine = `Summarized: ${summarizedCount} entries, ${summarizedTokens} tokens (${summarizedPct}% of budget).`;
 		const systemLine = `System: ${systemTokens} tokens (${systemPct}% of budget).`;
 		const totalLine = `Total: ${visibleCount} visible + ${summarizedCount} summarized entries; tokenUsage ${tokenUsage} / ceiling ${cap}. ${tokensFree} tokens free.`;
+		const legend = [
+			"Columns:",
+			"- cost: current cost of this scheme (vTokens for visible + sTokens for summarized)",
+			"- if-all-sum: cost if every entry of this scheme were demoted to summarized",
+			"- premium: savings from demoting visible → summarized (cost − if-all-sum)",
+		].join("\n");
 
-		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}" fcrmScore="${fcrmScore}">\n${table}\n\n${summarizedLine}\n${systemLine}\n${totalLine}\n</budget>\n`;
+		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}" fcrmScore="${fcrmScore}">\n${table}\n\n${legend}\n${systemLine}\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
