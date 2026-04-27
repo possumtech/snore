@@ -10,7 +10,6 @@
  *   node test/lme/runner.js --split longmemeval_s_cleaned      # specific split
  *   node test/lme/runner.js --row 0                            # single row
  *   node test/lme/runner.js --row 0-4                          # row range
- *   node test/lme/runner.js --chunk-size 4000                  # chars per chunk
  *   node test/lme/runner.js --type knowledge-update            # filter by question type
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -34,7 +33,6 @@ const { values: args } = parseArgs({
 	options: {
 		split: { type: "string" },
 		row: { type: "string" },
-		"chunk-size": { type: "string", default: "4000" },
 		model: { type: "string" },
 		"context-limit": { type: "string" },
 		type: { type: "string" },
@@ -43,7 +41,6 @@ const { values: args } = parseArgs({
 	strict: false,
 });
 
-const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
 const CONTEXT_LIMIT = args["context-limit"]
 	? Number.parseInt(args["context-limit"], 10)
@@ -88,26 +85,6 @@ function formatSession(session, date, sessionId) {
 		})
 		.join("\n");
 	return `${header}\n${turns}\n\n`;
-}
-
-/**
- * Chunk sessions into text blocks, respecting session boundaries.
- * Sessions are never split mid-conversation.
- */
-function _chunkSessions(sessions, dates, sessionIds, maxSize) {
-	const chunks = [];
-	let current = "";
-
-	for (let i = 0; i < sessions.length; i++) {
-		const text = formatSession(sessions[i], dates?.[i], sessionIds?.[i]);
-		if (current.length + text.length > maxSize && current.length > 0) {
-			chunks.push(current);
-			current = "";
-		}
-		current += text;
-	}
-	if (current) chunks.push(current);
-	return chunks;
 }
 
 async function askWithRetry(client, params, label = "ask") {
@@ -194,20 +171,21 @@ async function ingestSessions(
 }
 
 async function askQuestion(client, db, model, run, question, questionDate) {
-	const preRun = await db.get_run_by_alias.get({ alias: run });
-	const turnBefore = preRun.next_turn;
-
 	const dateLine = questionDate ? `(Current date: ${questionDate})` : "";
 	const prompt = ["Answer this question from memory.", dateLine, "", question]
 		.filter(Boolean)
 		.join("\n");
 
+	// Fork per question: question runs in a fresh sub-run that inherits
+	// the ingest run's view (knowns/unknowns/files) but has a clean state
+	// machine and no per-session ingest pollution.
 	let r = await askWithRetry(
 		client,
 		{
 			model,
 			prompt,
 			run,
+			fork: true,
 			noRepo: true,
 			noInteraction: true,
 			noProposals: true,
@@ -217,9 +195,12 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 	);
 	if (r.status === 202) r = await resolveAll(client, r);
 
+	// Filter to child's own writes (loop_id non-null). Forked rows from the
+	// parent inherit with loop_id NULL — those are inherited views, not this
+	// question's work.
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
-	const newEntries = entries.filter((e) => e.turn >= turnBefore);
+	const newEntries = entries.filter((e) => e.loop_id != null);
 
 	const summary = newEntries.find(
 		(e) =>
@@ -257,6 +238,8 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 			prompt,
 			noRepo: true,
 			noInteraction: true,
+			noProposals: true,
+			noWeb: true,
 		},
 		"judge",
 	);
@@ -408,7 +391,6 @@ async function main() {
 
 	console.log(`LongMemEval Runner`);
 	console.log(`Model: ${MODEL}`);
-	console.log(`Chunk size: ${CHUNK_SIZE} chars`);
 	console.log(`Splits: ${splits.join(", ")}`);
 	if (rowRange) console.log(`Rows: ${rowRange.start}-${rowRange.end}`);
 	if (TYPE_FILTER) console.log(`Type filter: ${TYPE_FILTER}`);

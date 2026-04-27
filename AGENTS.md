@@ -114,110 +114,6 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
 
 ---
 
-## E2E Failure Backlog (2026-04-25, gemma)
-
-`npm run test:e2e` baseline after `noWeb` plumbing fix and
-`record_behavior.test.js` deletion: **23 / 31 pass, 6 fail, 2
-cancelled**. Work each row to root cause + fix (or deliberate test
-adapt) before the next full e2e sweep — no rerunning the whole suite
-to "see if it cleared up."
-
-- [x] **`demo_hydrology.test.js:102` — `scenario must exercise proposals`.**
-  Tightened prompt to "brief, ≥3 sections" + bumped MAX_TURNS=16. The
-  open-ended "comprehensive review" was eating the entire turn budget
-  on Definition over-define before reaching Deploy; concrete scope
-  gives Definition a natural stopping point. Verified passing
-  2026-04-25 in 144s.
-
-- [x] **`stories.test.js:338` — `autonomous unknown investigation`.**
-  Two prompt issues ganged up: (1) explicit *"You MUST register
-  unknowns…"* got re-read each turn and meta-looped gemma into the
-  cycle detector at iter 18 → 499; (2) open scope let gemma over-define
-  adjacent unknowns (port, user, name, password) the prompt didn't
-  need, after which the protocol blocked completion until every
-  unknown resolved. Tightened the prompt to "exactly two values…
-  do not investigate other database settings" — gives Definition a
-  natural stopping point. Verified passing 2026-04-25 in 16s.
-
-- [x] **`stories.test.js:362` — `lite mode sustained session`.** Test
-  helper `lastResponse` was reading only the `<update>` body, missing
-  the literal answer that gemma put in prose preceding the update tag.
-  Gemma's reasoning showed it correctly identified the answer ("42"),
-  emitted `42\n<update status="200">Answered the question with the
-  remembered number.</update>` — the answer was in the response, the
-  test was looking in the wrong column. Updated `lastResponse` to read
-  `assistant://N` (the full raw response) which contains both prose
-  and the update tag. Verified passing 2026-04-25.
-
-- [x] **`stories.test.js:422` — `rejection and recovery`** (was 300s
-  timeout). Resolver-pattern bug fixed earlier this session
-  (`rm://` → `log://turn_N/rm/`). Bounded `client.act` at 60s with
-  `.catch(() => null)` so the test doesn't burn 5min waiting on
-  graceful self-termination after rejection — the invariant is
-  "rejected rm did not delete the file," provable as soon as one
-  rejection fires. Verified passing 2026-04-25.
-
-- [x] **`stories.test.js:462` — `model answers under tight context limit`.**
-  Same root cause as :362 — `lastResponse` was reading the `<update>`
-  body, missing the literal answer in prose. Same fix (read
-  `assistant://N`) resolved both. Verified passing 2026-04-25.
-
-- [x] **`stories.test.js:513` — `turn demotion fires and knowns survive intact`**
-  Deleted 2026-04-25. Protection invariant
-  (`demote_turn_entries` excludes scheme IN ('known','unknown')) is
-  covered deterministically by `test/integration/budget_demotion.test.js`
-  *"does not demote known:// or unknown:// entries (deliverables)"*.
-  Driving the same assertion through a real-model run added no
-  coverage and ate 300s every e2e sweep.
-
-- [x] **`stories.test.js:566` — `pre-turn overflow triggers recovery,
-  not raw 413`.** Test expectation was aspirational ("recovery
-  succeeds and reaches 200/202") but pre-LLM enforce only demotes the
-  latest prompt — when visible context is mostly the model's own
-  knowns (post-deliverable-protection), demoting the prompt isn't
-  enough and the run terminates at 499 by strike. The system
-  guarantee under test is "no raw 413 reaches the client" — that
-  holds for both 200 (recovery succeeded) and 499 (recovery
-  insufficient, strike system terminated cleanly). Test now asserts
-  `r.status !== 413` and accepts `[200, 202, 499]`. Verified passing
-  2026-04-25.
-
-  *Future work:* tier the demotion (prompt → logs → sources → maybe
-  knowns last) so recovery has more to work with when deliverables
-  dominate. Out of scope for the e2e cleanup pass.
-
-- [x] **`terminal_state_with_proposal.test.js:120` —
-  `after proposal accept, terminal run/state arrives`.** Earlier
-  prompt was a trivial direct-action ("Create FACTS.md with this
-  exact sentence") that fought the harness's research bias — gemma
-  manufactured fluffy unknowns (file system structure, formatting
-  conventions) trying to satisfy Definition's imperative to register
-  unknowns, then stranded in Discovery looking for something to
-  research. Replaced prompt with a research-shaped task ("Read
-  data.txt, write FACTS.md as a markdown list of its facts") over
-  a planted data file; Define→Discover→Deploy flows naturally,
-  proposals fire by construction. Also bumped MAX_TURNS=10.
-  Verified passing 2026-04-25 in 12.5s.
-
-**Cluster takeaways (durable lessons from this pass):**
-- The harness is biased toward research workflows. Trivial direct-action
-  prompts ("create FACTS.md with this exact sentence") fight the
-  Definition imperative to register unknowns and gemma manufactures
-  fluffy ones to satisfy it. That bias is a *feature* — protecting
-  against models skipping research they actually need is more valuable
-  than handling trivial prompts cheaply. Tests that exercise proposal
-  flow should be research-shaped by construction.
-- `AgentLoop.js` was silently masking MAX_TURNS exhaustion as status
-  200. Now closes at 499. Stalled runs are visible as stalled instead
-  of pretending to be wins; benchmark and test signal preserved.
-- Definition stage's MUST imperatives (line 3 of `instructions_104.md`)
-  drive over-definition when prompts have no genuine unknowns. The
-  "(if any)" parenthetical on line 1 helps but doesn't shield gemma
-  from line 3's "YOU MUST create unknown:// entries for all missing
-  information." Live with it — the asymmetry is intentional.
-
----
-
 ## Open Items
 
 - [ ] **Token accounting refactor (2026-04-25).** End the doom loop where "tokens" sometimes means body-tokens, sometimes wire-tokens, sometimes API-tokens. One truth: tokens are a materialized cost, computed during assembly, never stored on entries. Per-entry materialization records carry `vTokens` (cost when visible), `sTokens` (cost when summarized), `aTokens = vTokens − sTokens` (the promotion premium — the only number the model sees on per-entry tags). Budget table renders visible-scheme breakdown using `aTokens`; summarized entries collapse into a single aggregate line below the table; system overhead (system prompt + tool defs) gets its own line. Total reconciles to `tokenUsage`.
@@ -321,6 +217,19 @@ Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
   unknowns) are topic-indexed — path encodes identity, turn is
   metadata. The rule: if the entry's identity is WHEN, turn goes in
   the path. If identity is WHAT, turn is an attribute.
+- **When the model emits malformed XML or "wrong" syntax, scan
+  `instructions.md`, `instructions_10N.md`, and `*Doc.md` for that
+  exact pattern first.** Models reproduce what they see modeled.
+  "Unclosed `<set>`" or "wrong attribute name" has been our fault
+  more than once — an example with a typo, an inconsistent attribute
+  spelling, an unbalanced tag in a code block. Treat the model's
+  syntax mistake as an audit trigger before treating it as a model
+  capability problem.
+- **Unknown spamming is real.** Gemma can emit 90+ visible unknowns
+  in a single Definition pass on a fact-heavy ingest. The state
+  machine then has to grind every one through Discovery+Demotion
+  before reaching Deployment. Front-loaded over-definition is a
+  documented failure mode, not a baseline to accept.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
@@ -332,63 +241,28 @@ git history; durable rules belong in the standing rules block above;
 durable observations belong in the Lessons section. Don't chronicle
 what the diff already records.*
 
-### Stale test/runner cleanup (2026-04-26, complete)
+### Benchmark architecture cleanup (2026-04-26, in flight)
 
-User directive: "Repair, resolve, and remove as necessary to get us
-to a clean, sane, and stable state."
+MAB runner had three structural issues that chronically lowered scores
+before they were caught:
+1. Default chunk-size of 4000 chars regardless of model context window
+2. Multi-question runs accumulated prior prompts on a single run, polluting validator state and producing the "prior-prompts wall"
+3. No fork-per-question — questions ran on ingest-saturated state
 
-Discovered surface: many test files calling RPC methods that were
-removed when the wire protocol consolidated to `set`-with-attributes
-(`run/rename`, `run/resolve`, `run/abort`, `run/inject`, `run/config`,
-`ask`, `act`, `store` are all gone from `rpc.js` registry).
+**MAB done:**
+- ✅ `--chunk-size` opt-in (default = single chunk; full-context-window models inhale the whole row)
+- ✅ Fork-per-question — `askQuestion` uses `fork: true`; child filters via `loop_id != null`
+- ✅ Auto-archive prior prompts/logs on new prompt arrival (server-side, defense-in-depth for any multi-prompt flow)
+- ✅ TypeError fix: `Entries.scheme(null)` returns null instead of throwing
+- ✅ `RUMMY_TEST_RUN_TIMEOUT` env var (1hr) replaces hardcoded 420s in AuditClient
+- ✅ Audit-scheme leak fix — `getEntriesByPattern` defaults to filtering audit schemes; only `instructions.resolveSystemPrompt` opts in via `{ includeAuditSchemes: true }`
+- ✅ Instruction additions: 105.md "ONLY from promoted information" + worked `<get path="**" preview>` example; 107.md direct-answer guidance
 
-**Done:**
-1. ✅ Active runners (`mab/runner.js`, `mab/audit.js`, `lme/runner.js`) —
-   replaced dead `client.call("run/resolve"|"run/rename"|"ask")` with
-   AuditClient methods (`.resolveProposal()`, `.ask()`); removed dead
-   `run/rename` blocks (one was renaming a `null` run alias — never
-   worked).
-2. ✅ DELETED `test/live/rpc_methods.test.js` — 244 lines testing dead
-   wire surface. Coverage already through integration tests on the
-   unified `set` surface.
-3. ✅ DELETED `test/live/run_state.test.js` — 141 lines, asserted
-   outdated `run/state.history` shape and used dead `client.call("ask"/"act")`.
-4. ✅ KEPT `test/live/plugin_registration.test.js` — healthy, tests
-   custom plugin registration mechanism (self-registered methods).
-5. ✅ Cleaned `/tmp/rummy_test_diag/` (was 895MB, 4102 files),
-   `test/lme/results/*`, `test/mab/results/*` via `npm run test:clean`.
+**LME punch list (apply same lessons):**
+- [x] Add fork-per-question (mirror MAB pattern; child filters by `loop_id != null`)
+- [x] Lock down `judgeAnswer` call — add `noRepo`, `noWeb`, `noProposals` to match ingest/question call shape
+- [x] Delete dead `--chunk-size` arg + `_chunkSessions` function (read but never used)
+- [x] Replace `e.turn >= turnBefore` filter with `loop_id != null` after fork lands
 
-**Verification:** 281/281 unit + 220/220 integration tests green.
-
-**Minor follow-up:** `test:lme:clean`/`test:mab:clean` scripts assume
-the result dirs exist and error if `test:clean` already nuked them.
-Not blocking — runners recreate dirs on next run. If you want them
-idempotent, add `mkdir -p test/lme/results test/mab/results` to the
-clean targets.
-
-### Lessons earned this session (2026-04-26)
-
-- **`run/rename` was a cosmetic alias swap that had no replacement** —
-  not worth resurrecting. The bench DBs are in per-row results dirs
-  already; the alias being `grok_<timestamp>` instead of `mab_clea_0`
-  doesn't actually impede forensics.
-- **AuditClient is the convenience layer.** When tests use `client.call("ask", ...)`
-  via wire RPC, they're bypassing the `.ask()` method that already exists.
-  Always prefer the helper method when the test imports AuditClient.
-- **`.env.example` is core defaults; `.env.test` is bench-experiment overrides.**
-  Don't dicker with `.env.example` to tune for grok-specific timing.
-- **Read failure messages literally before paraphrasing.** "The operation
-  was aborted due to timeout" is a self-imposed abort, not API flakiness.
-  Calling external APIs "flaky" without grepping the actual error message
-  is a sign of guessing instead of looking. (Specific case today:
-  `RUMMY_FETCH_TIMEOUT=120000` was too tight for grok reasoning model
-  with 100k+ token contexts. Reverted to 300000 in `.env.example`,
-  600000 override in `.env.test`.)
-- **When fixing a stale call, grep for all callers in one pass.** The
-  `run/rename` fix in `lme/runner.js` should have triggered a sweep
-  for the same dead call elsewhere. It didn't, and bit again two
-  hours later in `mab/runner.js`. Generalize fixes when the pattern
-  is identifiable.
-- **Don't bundle parameter changes into approved features.** Approval
-  for "the retry pattern" was not approval for "and lower the timeout
-  by 60%." Each parameter change deserves its own explicit ask.
+**Post-LME backlog:**
+- [ ] **Gemma "empty response" deaths.** New failure pattern (since ~2026-04-26): gemma emits zero actionable tags on alternate turns mid-Definition, hits 3-strike abandonment at turn 4-6 before completing ingest. Was not the pattern weeks ago. Investigate: context-window pressure, instruction overload, or harness regression. **Gemma surviving is a higher priority than grok winning** — this is a regression, not a baseline.
