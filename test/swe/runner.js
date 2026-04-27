@@ -91,27 +91,6 @@ async function prepareRepo(task) {
 	return dest;
 }
 
-async function resolveAll(client, result) {
-	let current = result;
-	let resolves = 0;
-	while (
-		current.status === 202 &&
-		current.proposed?.length > 0 &&
-		resolves < 200
-	) {
-		for (const p of current.proposed) {
-			if (resolves >= 200) break;
-			current = await client.resolveProposal(current.run, {
-				path: p.path,
-				action: "accept",
-				output: p.path?.startsWith("ask_user://") ? "N/A" : "",
-			});
-			resolves++;
-		}
-	}
-	return current;
-}
-
 function buildPrompt(task) {
 	const lines = [
 		"You are working in a git repository to fix a real issue.",
@@ -153,25 +132,26 @@ async function runTask(client, model, task) {
 
 	const repoPath = await prepareRepo(task);
 
-	// Re-handshake project root for this task
+	// Re-handshake project root for this task. AuditClient also needs
+	// projectRoot for client-side disk apply (defense in depth — server's
+	// set plugin writes via #materializeFile too, but having both means
+	// either path delivers).
 	await client.call("rummy/hello", {
 		name: "SWE",
 		projectRoot: repoPath,
 	});
+	client.projectRoot = repoPath;
 
 	const prompt = buildPrompt(task);
 
-	let r = await client.act({
+	// AuditClient auto-resolves proposals (run/proposal notifications) so
+	// client.act() runs to terminal without manual proposal draining.
+	const r = await client.act({
 		model,
 		prompt,
 		noInteraction: true,
 		noWeb: true,
 	});
-
-	// Drain any pending proposals
-	while (r.status === 202) {
-		r = await resolveAll(client, r);
-	}
 
 	const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
 	const diff = captureDiff(repoPath);
