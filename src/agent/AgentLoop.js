@@ -275,11 +275,13 @@ export default class AgentLoop {
 		if (!project)
 			throw new Error(msg("error.project_not_found", { projectId }));
 
-		const noRepo = options?.noRepo === true;
-		const noInteraction = options?.noInteraction === true;
-		const noWeb = options?.noWeb === true;
-		const noProposals = options?.noProposals === true;
-		const yolo = options?.yolo === true;
+		const noRepo = options?.noRepo ?? process.env.RUMMY_NO_REPO === "1";
+		const noInteraction =
+			options?.noInteraction ?? process.env.RUMMY_NO_INTERACTION === "1";
+		const noWeb = options?.noWeb ?? process.env.RUMMY_NO_WEB === "1";
+		const noProposals =
+			options?.noProposals ?? process.env.RUMMY_NO_PROPOSALS === "1";
+		const yolo = options?.yolo ?? process.env.RUMMY_YOLO === "1";
 		const requestedModel = model;
 
 		const runInfo = await this.ensureRun(
@@ -755,11 +757,13 @@ export default class AgentLoop {
 		if (!runRow)
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
-		const noRepo = options?.noRepo === true;
-		const noInteraction = options?.noInteraction === true;
-		const noWeb = options?.noWeb === true;
-		const noProposals = options?.noProposals === true;
-		const yolo = options?.yolo === true;
+		const noRepo = options?.noRepo ?? process.env.RUMMY_NO_REPO === "1";
+		const noInteraction =
+			options?.noInteraction ?? process.env.RUMMY_NO_INTERACTION === "1";
+		const noWeb = options?.noWeb ?? process.env.RUMMY_NO_WEB === "1";
+		const noProposals =
+			options?.noProposals ?? process.env.RUMMY_NO_PROPOSALS === "1";
+		const yolo = options?.yolo ?? process.env.RUMMY_YOLO === "1";
 
 		const nextTurn = runRow.next_turn;
 
