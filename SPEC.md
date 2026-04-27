@@ -569,6 +569,45 @@ plumbing for the attribute and the rummy-context payload enrichment
 on `proposal.pending`. Feature logic stays in
 `src/plugins/yolo/yolo.js`.
 
+### Repo Overview {#repo_overview}
+
+The `rummy.repo` plugin maintains a single `repo://overview` entry per
+run, regenerated on every scan, that gives the model a navigable map
+of the project. It is the entry-point for code-aware runs — files
+themselves default to `archived` so a 5000-file repo doesn't dump
+hundreds of thousands of tokens into context before any work happens.
+
+**Entry contract.**
+
+- Path: `repo://overview` (scheme `repo`, category `data`,
+  `model_visible: 1`)
+- Visibility: `visible` (the navigation map is always in context)
+- Body: a markdown structure containing the project root, file count,
+  root-level files, top-level directories with file counts,
+  active/readonly constraints, and a navigation legend showing the
+  promote/demote idioms.
+- Visible projection: full body.
+- Summarized projection: first ~12 lines + a truncation marker, so a
+  model can demote it once it has the layout memorized.
+
+**File default visibility flip.**
+
+`FileScanner` registers each tracked file at `archived` by default
+(was `summarized`). Files with `constraint=active` still register at
+`visible`. The model uses `repo://overview` to discover paths, then
+promotes individual files via `<get path=...>` (visible, full body)
+or whole subtrees via `<set path=".../**" visibility="summarized"/>`
+(skim mode, symbols only).
+
+**Bounded cost.** The overview body is constant-ish in size regardless
+of repo size: root files capped, directory counts aggregated, no per-
+file symbol enumeration. The token cost in context stays roughly
+flat from a 30-file project to a 50,000-file monorepo.
+
+**Disabled when noRepo.** Setting `noRepo: true` on a run skips the
+scan entirely; no `repo://overview` is created and no file entries
+are registered. Behaviour identical to pre-plugin runs.
+
 ### Streaming Entries {#streaming_entries}
 
 Producers that generate output over time (shell commands, web fetches,
