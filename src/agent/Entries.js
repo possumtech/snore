@@ -38,6 +38,7 @@ export default class Entries {
 	}
 
 	static scheme(path) {
+		if (!path) return null;
 		const idx = path.indexOf("://");
 		return idx > 0 ? path.slice(0, idx) : null;
 	}

@@ -10,7 +10,7 @@
  *   node test/mab/runner.js --split Accurate_Retrieval              # one split
  *   node test/mab/runner.js --split Accurate_Retrieval --row 0      # one row
  *   node test/mab/runner.js --row 0-4                               # row range
- *   node test/mab/runner.js --chunk-size 4000                       # chars per chunk
+ *   node test/mab/runner.js --chunk-size 4000                       # opt-in: split into 4K-char chunks (default: single chunk)
  *   node test/mab/runner.js --split Conflict_Resolution --row 0 --no-questions  # taxonomy check
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -39,7 +39,7 @@ const { values: args } = parseArgs({
 	options: {
 		split: { type: "string" },
 		row: { type: "string" },
-		"chunk-size": { type: "string", default: "4000" },
+		"chunk-size": { type: "string" },
 		model: { type: "string" },
 		"context-limit": { type: "string" },
 		"no-questions": { type: "boolean", default: false },
@@ -48,7 +48,9 @@ const { values: args } = parseArgs({
 	strict: false,
 });
 
-const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
+const CHUNK_SIZE = args["chunk-size"]
+	? Number.parseInt(args["chunk-size"], 10)
+	: null;
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
 const CONTEXT_LIMIT = args["context-limit"]
 	? Number.parseInt(args["context-limit"], 10)
@@ -294,8 +296,8 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	// Create a fresh run — first ingestion chunk creates it
 	let run = null;
 
-	// Ingest context in chunks — first chunk creates the run
-	const chunks = chunkContext(row.context, CHUNK_SIZE);
+	// Ingest context — single chunk by default; --chunk-size N opts into splitting
+	const chunks = CHUNK_SIZE ? chunkContext(row.context, CHUNK_SIZE) : [row.context];
 	run = await ingestContext(client, model, run, chunks, CONTEXT_LIMIT);
 	if (!run) throw new Error("Ingestion failed to create run");
 
@@ -368,7 +370,7 @@ async function main() {
 		`MemoryAgentBench Runner${TAXONOMY_ONLY ? " [taxonomy check]" : ""}`,
 	);
 	console.log(`Model: ${MODEL}`);
-	console.log(`Chunk size: ${CHUNK_SIZE} chars`);
+	console.log(`Chunk size: ${CHUNK_SIZE ? `${CHUNK_SIZE} chars` : "single chunk"}`);
 	console.log(`Splits: ${splits.join(", ")}`);
 	if (rowRange) console.log(`Rows: ${rowRange.start}-${rowRange.end}`);
 

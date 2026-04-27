@@ -123,7 +123,7 @@ export default class AuditClient extends RpcClient {
 			noWeb,
 			noProposals,
 			noInteraction,
-			timeoutMs = 420_000,
+			timeoutMs = Number.parseInt(process.env.RUMMY_TEST_RUN_TIMEOUT, 10),
 		} = params;
 		const attributes = { model, mode };
 		if (persona !== undefined) attributes.persona = persona;

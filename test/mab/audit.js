@@ -5,9 +5,10 @@
  * captures full diagnostics, and appends to MAB.md.
  *
  * Usage:
- *   node test/mab/audit.js                    # ingest + all questions
+ *   node test/mab/audit.js                    # ingest + all questions (single chunk)
  *   node test/mab/audit.js --question 0       # single question (after ingest)
  *   node test/mab/audit.js --question 0-4     # range
+ *   node test/mab/audit.js --chunk-size 4000  # opt-in: split into 4K-char chunks
  *   node test/mab/audit.js --ingest-only      # just ingest, no questions
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -28,14 +29,16 @@ const { values: args } = parseArgs({
 		split: { type: "string", default: "Conflict_Resolution" },
 		row: { type: "string", default: "0" },
 		question: { type: "string" },
-		"chunk-size": { type: "string", default: "4000" },
+		"chunk-size": { type: "string" },
 		"ingest-only": { type: "boolean", default: false },
 		model: { type: "string" },
 	},
 	strict: false,
 });
 
-const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
+const CHUNK_SIZE = args["chunk-size"]
+	? Number.parseInt(args["chunk-size"], 10)
+	: null;
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
 const SPLIT = args.split;
 const ROW_IDX = Number.parseInt(args.row, 10);
@@ -294,7 +297,7 @@ async function main() {
 	const run = initR.run;
 
 	console.log(`\nIngesting ${row.context.length} chars...`);
-	const chunks = chunkContext(row.context, CHUNK_SIZE);
+	const chunks = CHUNK_SIZE ? chunkContext(row.context, CHUNK_SIZE) : [row.context];
 	await ingest(client, tdb.db, MODEL, run, chunks);
 
 	if (args["ingest-only"]) {
