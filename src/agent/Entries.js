@@ -496,7 +496,15 @@ export default class Entries {
 		}
 	}
 
-	waitForResolution(runId, path) {
+	async waitForResolution(runId, path) {
+		// Check current state first — if a synchronous in-process resolver
+		// (yolo) flipped the entry to terminal during proposal.pending,
+		// the state change has already happened and no future drain will
+		// fire. Without this guard, in-process resolvers would deadlock.
+		const current = await this.getState(runId, path);
+		if (current && current.state !== "proposed" && current.state !== "streaming") {
+			return;
+		}
 		const normalized = Entries.normalizePath(path);
 		const key = `${runId}:${normalized}`;
 		return new Promise((resolve) => {

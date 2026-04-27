@@ -30,6 +30,7 @@ export default class TurnExecutor {
 		noWeb,
 		noInteraction,
 		noProposals,
+		yolo,
 		toolSet,
 		contextSize,
 		options,
@@ -70,6 +71,7 @@ export default class TurnExecutor {
 				noWeb,
 				noInteraction,
 				noProposals,
+				yolo,
 				toolSet,
 				contextSize,
 				systemPrompt: null,
@@ -332,6 +334,7 @@ export default class TurnExecutor {
 					projectId,
 					run: currentAlias,
 					proposed: [p],
+					rummy,
 				});
 				await this.#entries.waitForResolution(currentRunId, p.path);
 				const resolved = await this.#entries.getState(currentRunId, p.path);

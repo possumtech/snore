@@ -266,3 +266,34 @@ before they were caught:
 
 **Post-LME backlog:**
 - [ ] **Gemma "empty response" deaths.** New failure pattern (since ~2026-04-26): gemma emits zero actionable tags on alternate turns mid-Definition, hits 3-strike abandonment at turn 4-6 before completing ingest. Was not the pattern weeks ago. Investigate: context-window pressure, instruction overload, or harness regression. **Gemma surviving is a higher priority than grok winning** — this is a regression, not a baseline.
+  - Partial fix: removed status 144 (Definition continuation) from `instructions_104.md` so Definition is single-shot. Should eliminate the "(Already exists)" reasoning loop. Pending fresh run to confirm.
+- [ ] **Gemma skips source-reading and fabricates from training.** Observed 2026-04-27 in YOLO e2e. Gemma's reasoning explicitly stated "I should `get` data.txt", "I will start by getting data.txt" — but the actual emission was `<set unknown://...>` in Definition Stage. Then in subsequent turns she emitted `<update status="200">Fact 1, Fact 2, Fact 3</update>` — fabricated placeholder text, never `<get>`-ing the source. The state machine's Definition imperative ("YOU MUST ONLY create unknown://") is fighting the natural read-then-act flow. Even with `instructions_105.md`'s "ONLY from promoted information" rule, the model bypasses source-reading and uses training. System-side bug to investigate: state-machine ergonomics for small models on simple research tasks; possibly the file-summary projection (which shows symbols-only and reads as "complete" to the model) is hiding the need to promote.
+
+### YOLO mode (2026-04-27, ACTIVE FOCUS)
+
+The benchmark work surfaced two missing harness capabilities. **Benchmarking is paused until both are properly settled.** Per user direction: "the first and only goal of benchmarking is surfacing these sorts of concerns. The benchmarking did its job, which is showing how our agent harness is missing important features and functionality."
+
+**The gap YOLO closes:** AuditClient implements ~30% of headless-client behavior (file edit + rm). Shell execution is missing entirely — sh/env plugins create empty streaming entries and rely on a connected client to actually run the command. There's no path for a run to be fully autonomous without a human at a terminal.
+
+**Design (parallel to existing `noFoo` flags):** `yolo: true` is a run attribute. When set, a YOLO plugin auto-resolves every proposal server-side AND spawns sh/env commands streaming output to the data channels.
+
+**Active checklist:**
+- [x] Plumb `yolo` attribute through rpc.js (3 sites: dispatchRunSet, fork path, inject) + AgentLoop loop config (#run, #drainQueue, #executeLoop, inject)
+- [x] Write initial `src/plugins/yolo/yolo.js` (NOT verified — `core.db` and `core.hooks.projectAgent` access patterns assumed, untested)
+- [ ] Verify plugin hook-access patterns by reading sibling plugins (error.js, set.js); fix where wrong
+- [ ] **Refactor existing e2e tests to use `yolo: true`** instead of the AuditClient-side `#applySetToDisk`/`#applyRmToDisk` hacks. The hacks become unnecessary once YOLO handles this server-side. Audit `test/e2e/`, `test/integration/`, `test/live/` for proposal-handling workarounds.
+- [ ] Confirm streaming integration: shell stdout/stderr append to `{path}_1`/`{path}_2` channels; finalize transitions channels to terminal status. Mirrors the existing `stream`/`stream/completed` RPC contract — just done in-process.
+- [ ] SPEC.md `{#yolo_mode}` anchor documenting the contract: when set, server emulates a connected headless client; sh/env execute in `projectRoot`; proposals auto-accept; output streams to channel entries; non-YOLO runs are unaffected.
+- [ ] Integration test `test/integration/yolo.test.js` referencing `@yolo_mode` — covers proposal auto-accept, sh execution + streaming, env execution, file-edit auto-accept, rm/mv/cp auto-accept.
+- [ ] E2E test (test/e2e/) covering a YOLO run that edits a file, runs a shell command, and lands status 200 without any client-side proposal handling.
+- [ ] Confirm AuditClient's `#applySetToDisk`/`#applyRmToDisk` become defunct for YOLO runs and remove them (or scope them to non-YOLO only) once the e2e refactor is done.
+
+### `rummy.repo` lazy/hierarchical mode (next, after YOLO lands)
+
+The benchmark also surfaced this. Current `rummy.repo` enumerates every tracked file at scan time. Even at "summarized" visibility (symbol-only projection), 5000 file entries blow gemma's 32K window before turn 1.
+
+The harness needs a way to gracefully handle "repo too big for the context window" — by giving a hierarchical/symbolic overview at first scan, with individual file entries materialized lazily as the model `<get>`s them. This is the next focus once YOLO is settled.
+
+### Benchmarks (revisit after YOLO + rummy.repo lazy mode)
+
+MAB ditched (intelligence test, not recall — misfit for the harness). LME oracle row 0 working (1/1 pass). SWE-bench Verified Mini scaffolded (`test/swe/`, smoke test passed end-to-end on row 0 grok). Full benchmark runs deferred until the harness gaps are closed.

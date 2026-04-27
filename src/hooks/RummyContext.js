@@ -106,6 +106,10 @@ export default class RummyContext {
 		return this.#context.noProposals === true;
 	}
 
+	get yolo() {
+		return this.#context.yolo === true;
+	}
+
 	get toolSet() {
 		return this.#context.toolSet;
 	}

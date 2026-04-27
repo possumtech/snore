@@ -279,6 +279,7 @@ export default class AgentLoop {
 		const noInteraction = options?.noInteraction === true;
 		const noWeb = options?.noWeb === true;
 		const noProposals = options?.noProposals === true;
+		const yolo = options?.yolo === true;
 		const requestedModel = model;
 
 		const runInfo = await this.ensureRun(
@@ -302,6 +303,7 @@ export default class AgentLoop {
 				noInteraction,
 				noWeb,
 				noProposals,
+				yolo,
 				temperature: options?.temperature,
 			}),
 		});
@@ -355,6 +357,7 @@ export default class AgentLoop {
 					noInteraction = false,
 					noWeb = false,
 					noProposals = false,
+					yolo = false,
 				} = loopConfig;
 
 				let result;
@@ -372,6 +375,7 @@ export default class AgentLoop {
 						noInteraction,
 						noWeb,
 						noProposals,
+						yolo,
 						options: { ...options, temperature: loopConfig.temperature },
 						hook,
 						signal: controller.signal,
@@ -436,6 +440,7 @@ export default class AgentLoop {
 		noInteraction,
 		noWeb,
 		noProposals,
+		yolo,
 		options,
 		hook,
 		signal,
@@ -522,6 +527,7 @@ export default class AgentLoop {
 					noWeb,
 					noInteraction,
 					noProposals,
+					yolo,
 					toolSet,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
@@ -753,6 +759,7 @@ export default class AgentLoop {
 		const noInteraction = options?.noInteraction === true;
 		const noWeb = options?.noWeb === true;
 		const noProposals = options?.noProposals === true;
+		const yolo = options?.yolo === true;
 
 		const nextTurn = runRow.next_turn;
 
@@ -782,6 +789,7 @@ export default class AgentLoop {
 				noInteraction,
 				noWeb,
 				noProposals,
+				yolo,
 				temperature: options?.temperature,
 			}),
 		});

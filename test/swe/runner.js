@@ -66,29 +66,35 @@ function sh(cmd, opts = {}) {
 }
 
 async function prepareRepo(task) {
-	// Cache one shared mirror per repo (treeless partial clone — fast,
-	// small, full history). Per-task working dirs are local clones from
-	// that mirror, checked out at the task's base_commit.
+	// One full bare mirror per repo (~250–750MB each). One reusable
+	// working dir per repo (~250MB each). Per task: reset + checkout
+	// the base_commit. Trades 1–5 GB of total disk for instant task
+	// switches and no re-cloning.
 	const [owner, repo] = task.repo.split("/");
 	const url = `https://github.com/${owner}/${repo}.git`;
-	const mirrorDir = join(REPOS_DIR, ".mirrors", `${owner}__${repo}.git`);
-	const slug = task.instance_id.replace(/[^a-zA-Z0-9_-]/g, "_");
-	const dest = join(REPOS_DIR, slug);
+	const repoSlug = `${owner}__${repo}`;
+	const mirrorDir = join(REPOS_DIR, ".mirrors", `${repoSlug}.git`);
+	const workDir = join(REPOS_DIR, repoSlug);
 
 	await fs.mkdir(join(REPOS_DIR, ".mirrors"), { recursive: true });
 
 	if (!existsSync(mirrorDir)) {
-		console.log(`    fetching mirror ${task.repo} (treeless)`);
-		sh(
-			`git clone --bare --filter=tree:0 --quiet ${url} ${mirrorDir}`,
-		);
+		console.log(`    fetching mirror ${task.repo} (full bare)`);
+		sh(`git clone --bare --quiet ${url} ${mirrorDir}`);
 	}
 
-	await fs.rm(dest, { recursive: true, force: true });
-	console.log(`    checkout ${task.repo} @ ${task.base_commit.slice(0, 8)}`);
-	sh(`git clone --quiet ${mirrorDir} ${dest}`);
-	sh(`git checkout --quiet ${task.base_commit}`, { cwd: dest });
-	return dest;
+	if (!existsSync(workDir)) {
+		console.log(`    creating work dir ${repoSlug}`);
+		sh(`git clone --quiet ${mirrorDir} ${workDir}`);
+	}
+
+	console.log(`    reset ${task.repo} @ ${task.base_commit.slice(0, 8)}`);
+	// Wipe any prior task's edits and untracked files, then check out
+	// the new base commit. -dxff: also remove ignored + untracked.
+	sh("git reset --quiet --hard HEAD", { cwd: workDir });
+	sh("git clean -dxff --quiet", { cwd: workDir });
+	sh(`git checkout --quiet ${task.base_commit}`, { cwd: workDir });
+	return workDir;
 }
 
 function buildPrompt(task) {
@@ -104,7 +110,8 @@ function buildPrompt(task) {
 	lines.push(
 		"",
 		"## Approach",
-		"- Read the relevant source files with <get>.",
+		"- Use <sh>ls / find / grep</sh> to navigate the repo and locate relevant files.",
+		"- Read the relevant source files with <get path=\"...\"/>.",
 		"- Use <sh> to run failing tests and observe behavior before and after edits.",
 		"- Write the fix using <set> with patch or search/replace blocks.",
 		"- Re-run the failing tests with <sh> to confirm the fix.",
@@ -146,11 +153,15 @@ async function runTask(client, model, task) {
 
 	// AuditClient auto-resolves proposals (run/proposal notifications) so
 	// client.act() runs to terminal without manual proposal draining.
+	// noRepo: matches mini-swe-agent baseline — no preloaded file map.
+	// Model discovers structure via <sh ls/find/grep> and reads files with
+	// <get>. Defensible apples-to-apples comparison.
 	const r = await client.act({
 		model,
 		prompt,
 		noInteraction: true,
 		noWeb: true,
+		noRepo: true,
 	});
 
 	const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);

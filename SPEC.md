@@ -524,6 +524,51 @@ Two mechanisms, operating at different layers:
    status 403 and emits `error://`. The tool remains advertised; the
    specific invocation is blocked.
 
+### YOLO Mode {#yolo_mode}
+
+When a run is started with the `yolo: true` attribute (parallel to
+`noRepo`/`noWeb`/`noInteraction`/`noProposals`), the server fully
+emulates a connected headless client: every proposal auto-accepts and
+every sh/env command spawns server-side, streaming output to the
+existing data-channel entries. No client involvement; no human
+approval required.
+
+**Plumbing.** The `yolo` attribute flows through the same path as
+`noProposals`: `set run://` → `attributes.yolo` → AgentLoop loop config
+JSON → RummyContext.yolo getter. The yolo plugin reads `rummy.yolo`
+off the proposal-pending event payload and engages only when set.
+
+**Behavior on yolo runs:**
+
+1. **Auto-accept every proposal.** The yolo plugin listens to
+   `proposal.pending`, replicates AgentLoop.resolve()'s accept path
+   inline (`proposal.accepting` filter for veto, `proposal.content`
+   filter for body, `entries.set state="resolved"`,
+   `proposal.accepted` event for plugin side effects). The
+   `entries.waitForResolution` blocking call wakes immediately; the
+   loop continues without RPC roundtrip.
+2. **Server-side sh/env execution.** For proposals on
+   `log://turn_N/sh/...` or `log://turn_N/env/...`, the yolo plugin
+   spawns the command in `projectRoot`, streams stdout/stderr to
+   `{dataBase}_1`/`{dataBase}_2` via `entries.set append=true`, and
+   transitions channels to terminal state on exit (200 / 500 mirror
+   of the existing `stream/completed` RPC contract). Done in-process,
+   no RPC roundtrip.
+3. **Non-yolo runs unaffected.** Without `yolo: true`, the plugin's
+   `proposal.pending` listener returns early. Existing client-driven
+   resolution (rummy.nvim, AuditClient's file-edit auto-accept) works
+   exactly as before.
+
+**Use cases.** E2E tests, benchmarks, CI, headless usage. The pattern
+is opt-in per run; rummy.nvim does not set `yolo: true` because
+human-in-the-loop control is the user-facing flow.
+
+**Architectural placement.** The yolo plugin owns its flag handling
+end-to-end — backbone files (TurnExecutor, AgentLoop) carry only the
+plumbing for the attribute and the rummy-context payload enrichment
+on `proposal.pending`. Feature logic stays in
+`src/plugins/yolo/yolo.js`.
+
 ### Streaming Entries {#streaming_entries}
 
 Producers that generate output over time (shell commands, web fetches,

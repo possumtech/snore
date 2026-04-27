@@ -576,6 +576,7 @@ export default class Rpc {
 				noInteraction: attrs.noInteraction,
 				noWeb: attrs.noWeb,
 				noProposals: attrs.noProposals,
+				yolo: attrs.yolo,
 				fork: attrs.fork,
 			};
 			const { body = "" } = params;
@@ -638,6 +639,7 @@ export default class Rpc {
 				noInteraction: attrs.noInteraction,
 				noWeb: attrs.noWeb,
 				noProposals: attrs.noProposals,
+				yolo: attrs.yolo,
 				// fork already applied — pass false to reuse the child row.
 				fork: false,
 			};
@@ -679,6 +681,7 @@ export default class Rpc {
 				noInteraction: attrs.noInteraction,
 				noWeb: attrs.noWeb,
 				noProposals: attrs.noProposals,
+				yolo: attrs.yolo,
 			};
 			await ctx.projectAgent.inject(alias, params.body, mode, options);
 			return { ok: true, alias };
