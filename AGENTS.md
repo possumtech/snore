@@ -85,14 +85,15 @@
 
 ## Where We Are
 
-The contract (SPEC the_contract) is fully delivered. Schema,
-primitives, entry grammar, client RPC surface, plugin hygiene, and
-external repo rewrites (`rummy.repo`, `rummy.web`, `rummy.nvim`) are
-all landed. The system instructions were split into a stable base
+The contract (SPEC [entries](SPEC.md#entries)) is fully delivered.
+Schema, primitives, entry grammar, client RPC surface, plugin hygiene,
+and external repo rewrites (`rummy.repo`, `rummy.web`, `rummy.nvim`)
+are landed. System instructions are split into a stable base
 (identity + tools + tooldocs) plus a dynamic `<instructions>` block
 that rides the user message to keep prompt caching intact. Lifecycle
-handshake, budget math, and fallback hygiene are all clean. Phase 7
-(verification + benchmark) is the remaining work.
+handshake, budget math, and fallback hygiene are clean. Phase 7
+(verification) is the remaining work; benchmarks (LME, SWE-bench
+Verified Mini) are scaffolded and run on demand.
 
 ## The Plan
 
@@ -109,23 +110,15 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
   writer plumbed via Proxy.
 - **Phase 6 — External projects** ✓ `rummy.repo`, `rummy.web`,
   `rummy.nvim` all rewritten to the 2.0 wire and green.
-- **Phase 7 — Verification** ⌛ Doc walk, benchmark baseline, demo
-  handoff. See Open Items.
+- **Phase 7 — Verification** ⌛ Doc walk, demo handoff. See Open Items.
 
 ---
 
 ## Open Items
 
-- [ ] **Budget → error fold.** Subsumed by the Error paradigm
-  unification (see Ongoing Development Conversation, 2026-04-22).
-  Budget emits `error.log.emit({status: 413})` instead of
-  `budget://`. Drop `budget://` scheme. Hard-exit 413 path at
-  `TurnExecutor.js:131-141` deleted.
-
-- [ ] **Post-unification audit: bespoke error paths.** Once the
-  Error paradigm unification (2026-04-22) lands, sweep the entire
-  codebase for model-facing error handling that bypasses
-  `hooks.error.log.emit`. Covers:
+- [ ] **Bespoke error path audit.** Sweep the codebase for
+  model-facing error handling that bypasses `hooks.error.log.emit`.
+  Covers:
   - Plugins: any `entries.set({state:"failed"})`, ad-hoc failure
     entries, custom "something went wrong" tags or schemes.
   - Core: `src/agent/*` — any direct failure-entry writes,
@@ -146,22 +139,37 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
   request/response; `run/state` / `run/progress` / `run/proposal`
   fly out untracked. Mirroring the shape would let us replay
   notification streams for diagnosis.
+
 - [ ] **Plugin filter priority magic numbers.** 100 / 150 / 200 /
   300 appear throughout with no documented meaning. Either name
   the stages explicitly or document the ranges so third-party
   plugins can slot between phases without reading source.
+
 - [ ] **Headless nvim e2e test.** Every new `run.state` telemetry
   field must be manually re-synced in `dispatch.lua` / `state.lua` /
   `statusline.lua`. A test that spins up a headless nvim against
   the server and asserts the statusline renders correctly for a
   known run would catch drift at contract time.
+
 - [ ] **Stress test for `SocketServer.close()` drain.** Kick off N
   concurrent runs, call `close()` mid-flight, assert (a) the close
   awaits, (b) all run entries land terminal, (c) no Promises pin
   the event loop. Locks in the `abortAll` work.
+
 - [ ] **Glossary in SPEC.** Pin exact meaning of *turn*, *loop*,
   *run*, *verdict*, *strike*, *phase*, *proposal*. Audit code for
   misuses.
+
+- [ ] **AuditClient YOLO-redundancy audit.** With YOLO server-side,
+  `AuditClient.#applySetToDisk` / `#applyRmToDisk` are redundant for
+  YOLO runs. The non-YOLO path (rummy.nvim style) still uses them.
+  Decide: keep for non-YOLO compatibility, scope explicitly, or
+  deprecate as nvim moves to YOLO-by-default.
+
+- [ ] **Three-tier ladder e2e.** Current e2e tests verify YOLO and
+  basic dispatch; none specifically validate the
+  archived → summarized → visible bulk-promote-skim-demote idiom on
+  a real multi-file project.
 
 ## Scope Discipline
 
@@ -215,62 +223,15 @@ handshake, budget math, and fallback hygiene are all clean. Phase 7
   isn't asking the model to violate a documented rule. A prompt that
   says "run `ls` via `<sh>`" violates `shDoc.md`'s "use `<env>` for
   read-only commands" rule, and a small model that obeys the docs
-  will struggle. Ran a 3-run consistency check on the corrected
-  prompt: 3/3 reliable. The "gemma is flaky" interpretation is
-  almost always a prompt smell.
+  will struggle. The "small model is flaky" interpretation is almost
+  always a prompt smell.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
-*Empty — reset 2026-04-25. Append entries here only when there's an
-actually-ongoing conversation worth tracking across sessions (an
-in-flight refactor mid-stream, a deferred decision with a real follow-up,
-a debugging thread that hasn't resolved). Landed work belongs in
-git history; durable rules belong in the standing rules block above;
-durable observations belong in the Lessons section. Don't chronicle
-what the diff already records.*
-
-### Benchmark architecture cleanup (2026-04-26, in flight)
-
-MAB runner had three structural issues that chronically lowered scores
-before they were caught:
-1. Default chunk-size of 4000 chars regardless of model context window
-2. Multi-question runs accumulated prior prompts on a single run, polluting validator state and producing the "prior-prompts wall"
-3. No fork-per-question — questions ran on ingest-saturated state
-
-**MAB done:**
-- ✅ `--chunk-size` opt-in (default = single chunk; full-context-window models inhale the whole row)
-- ✅ Fork-per-question — `askQuestion` uses `fork: true`; child filters via `loop_id != null`
-- ✅ Auto-archive prior prompts/logs on new prompt arrival (server-side, defense-in-depth for any multi-prompt flow)
-- ✅ TypeError fix: `Entries.scheme(null)` returns null instead of throwing
-- ✅ `RUMMY_TEST_RUN_TIMEOUT` env var (1hr) replaces hardcoded 420s in AuditClient
-- ✅ Audit-scheme leak fix — `getEntriesByPattern` defaults to filtering audit schemes; only `instructions.resolveSystemPrompt` opts in via `{ includeAuditSchemes: true }`
-- ✅ Instruction additions: 105.md "ONLY from promoted information" + worked `<get path="**" preview>` example; 107.md direct-answer guidance
-
-**LME punch list (apply same lessons):**
-- [x] Add fork-per-question (mirror MAB pattern; child filters by `loop_id != null`)
-- [x] Lock down `judgeAnswer` call — add `noRepo`, `noWeb`, `noProposals` to match ingest/question call shape
-- [x] Delete dead `--chunk-size` arg + `_chunkSessions` function (read but never used)
-- [x] Replace `e.turn >= turnBefore` filter with `loop_id != null` after fork lands
-
-**Post-LME backlog:**
-- [ ] **Gemma "empty response" deaths.** New failure pattern (since ~2026-04-26): gemma emits zero actionable tags on alternate turns mid-Definition, hits 3-strike abandonment at turn 4-6 before completing ingest. Was not the pattern weeks ago. Investigate: context-window pressure, instruction overload, or harness regression. **Gemma surviving is a higher priority than grok winning** — this is a regression, not a baseline.
-  - Partial fix: removed status 144 (Definition continuation) from `instructions_104.md` so Definition is single-shot. Should eliminate the "(Already exists)" reasoning loop. Pending fresh run to confirm.
-- ~~Gemma skips source-reading and fabricates from training.~~ **False positive (2026-04-27).** The "fabrication" was caused by a malformed test prompt that told gemma to use `<sh>ls</sh>` against the documented rule (`<sh>` is for side-effects; navigation/listing should be `<env>`). With a clean story-oriented prompt ("Update FACTS.md so it lists the developer details from this project's data file. Then complete."), gemma reliably reads data.txt and writes FACTS.md across 3/3 consecutive runs. Lesson: when a small model misbehaves, audit the prompt against the documented protocol rules first.
-
-### YOLO mode (2026-04-27, landed)
-
-`yolo: true` is a run attribute (parallel to `noRepo`/`noWeb`/`noInteraction`/`noProposals`) plumbed via rpc.js → AgentLoop loop config → RummyContext. `src/plugins/yolo/yolo.js` listens to `proposal.pending` and replicates AgentLoop.resolve()'s accept path inline, plus spawns sh/env commands and streams output to the existing data-channel entries. Race fix in `Entries.waitForResolution` (early-return if already terminal) so in-process resolvers don't deadlock. SPEC `{#yolo_mode}`. 5 e2e tests refactored to use `yolo: true` (~165 lines of client-side proposal hacks deleted). 224/224 integration + e2e green.
-
-### `rummy.repo` overview entry (2026-04-27, landed)
-
-Files default to `archived` instead of `summarized`; rummy.repo writes a single `repo://overview` entry per scan with project header, root files, top-level dir counts, constraints, and a five-line navigate legend. Constant-ish in size regardless of repo: rummy/main (254 files) overview is 334 tokens vs the previous ~50K of file enumeration. Budget table extended with `vis | sum | cost | if-all-sum | premium` columns + legend (so the model can decide what to bulk-demote). instructions.md surgical fix on summarized-cost line ("very small context budget penalty" instead of "no penalty"). SPEC `{#repo_overview}`. 228/228 integration green.
-
-### Benchmarks (deferred)
-
-MAB ditched (intelligence test, not recall — misfit for the harness). LME oracle row 0 working (1/1 pass). SWE-bench Verified Mini scaffolded (`test/swe/`, smoke test passed end-to-end on row 0 grok). Full benchmark runs deferred — the harness gaps that surfaced (YOLO, repo overview) are closed; benchmarks can resume on demand.
-
-### Followups
-
-- **Gemma "empty response" deaths (still open).** Removed status 144 (Definition continuation) earlier as a partial fix; pending fresh run on the new architecture to confirm it's resolved. May need re-investigation now that files are archived-by-default.
-- **Audit `AuditClient` for now-defunct paths.** With YOLO server-side, `AuditClient.#applySetToDisk` / `#applyRmToDisk` are redundant for YOLO runs. The non-YOLO path (rummy.nvim style) still uses them. Decide: keep for non-YOLO compatibility, scope explicitly, or deprecate as nvim moves to YOLO-by-default.
-- **Larger e2e exercising the three-tier ladder** (archived → summarized → visible) on a real repo. Current e2e tests verify YOLO and basic dispatch; none specifically validate the bulk-promote-skim-demote idiom on a multi-file project.
+*Empty. Append entries here only when there's an actually-ongoing
+conversation worth tracking across sessions (an in-flight refactor
+mid-stream, a deferred decision with a real follow-up, a debugging
+thread that hasn't resolved). Landed work belongs in git history;
+durable rules belong in the standing rules block above; durable
+observations belong in the Lessons section. Don't chronicle what
+the diff already records.*
