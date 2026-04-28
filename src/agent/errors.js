@@ -1,14 +1,4 @@
-/**
- * Typed errors for the agent/Entries layer. Callers catch by type,
- * not by regex.
- */
-
-/**
- * Thrown when a writer tier isn't permitted to write to a scheme.
- * See SPEC writer_tiers: schemes declare writable_by = subset of
- * {system, plugin, client, model}. A write from an excluded tier
- * rejects with this error.
- */
+// Writer tier excluded from scheme.writable_by; see SPEC writer_tiers.
 export class PermissionError extends Error {
 	constructor(scheme, writer, allowed) {
 		super(

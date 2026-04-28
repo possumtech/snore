@@ -5,9 +5,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Args are env-var-shape: --RUMMY_KEY=value, --RUMMY_KEY value, or
-// --RUMMY_KEY (boolean shorthand → "1"). Boundary parser is strict:
-// any non-conforming arg crashes with a clear error.
+// Env-var-shape args: --KEY=value, --KEY value, or --KEY (→ "1").
 const ENV_FLAG = /^--([A-Z][A-Z0-9_]*)(?:=([\s\S]*))?$/;
 
 function parseEnvArgs(argv) {
@@ -41,11 +39,7 @@ function parseEnvArgs(argv) {
 
 parseEnvArgs(process.argv);
 
-// Mirror bin/rummy.js env-loading prelude. Same cascade:
-// cwd/.env.example wins if present (npm scripts already loaded it via
-// --env-file-if-exists; this is the standalone fallback); else
-// RUMMY_HOME/.env.example → RUMMY_HOME/.env. CLI flags set above
-// trump every env file (Node's loadEnvFile preserves existing vars).
+// Same env cascade as bin/rummy.js; CLI flags trump because loadEnvFile preserves existing vars.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(__dirname, "../../..");
 const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");

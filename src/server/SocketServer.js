@@ -15,18 +15,13 @@ export default class SocketServer {
 		this.#wss.on("connection", (ws, _req) => {
 			const conn = new ClientConnection(ws, this.#db, this.#hooks);
 			this.#connections.add(conn);
-			// Remove from the tracking set only after the connection's
-			// shutdown drain has fully settled — not on raw ws-close —
-			// so server close() can still find and await an in-progress
-			// shutdown kicked off by a client-initiated disconnect.
+			// Delete after drain settles so server.close() can await client-initiated shutdowns.
 			ws.on("close", () => {
 				conn.shutdown().finally(() => this.#connections.delete(conn));
 			});
 		});
 
-		this.#wss.on("error", (_err) => {
-			// Proxy to registry or handle locally
-		});
+		this.#wss.on("error", (_err) => {});
 	}
 
 	address() {
@@ -38,9 +33,7 @@ export default class SocketServer {
 	}
 
 	async close() {
-		// Drain in-flight runs on each connection before closing the
-		// socket — otherwise detached kickoff Promises keep the Node
-		// event loop alive past server shutdown.
+		// Drain in-flight runs first; otherwise detached kickoffs pin the event loop.
 		const shutdowns = [];
 		for (const conn of this.#connections) {
 			shutdowns.push(conn.shutdown().catch(() => {}));

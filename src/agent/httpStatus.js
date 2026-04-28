@@ -1,22 +1,4 @@
-/**
- * Map the entry-layer (state, outcome) tuple to an HTTP status number for
- * model-facing tag rendering.
- *
- * Model-facing tags still carry `status="NNN"` because the model's
- * vocabulary (instructions + tooldocs + training) is HTTP-shaped. The DB
- * stores categorical state + textual outcome (see SPEC entries); this helper
- * is the one-way translation for rendering.
- *
- * Outcome strings prefixed with a 3-digit HTTP code (e.g.
- * `"overflow:413:..."` or `"permission:403:..."`) extract the code
- * verbatim. Otherwise state maps to a canonical HTTP:
- *
- *   resolved   → 200
- *   proposed   → 202
- *   streaming  → 102
- *   cancelled  → 499
- *   failed     → 500 (unless outcome carries a code)
- */
+// (state, outcome) → HTTP status for model-facing tags; outcome's 3-digit prefix wins.
 export function stateToStatus(state, outcome = null) {
 	if (outcome) {
 		const match = /(\d{3})/.exec(outcome);

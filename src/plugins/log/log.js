@@ -1,11 +1,6 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 
-// Schemes whose log body is an action summary, not the cost-bearing
-// content. For these, the action's cost lives on a separate data entry
-// (sh/env: streaming channels; set/mv/cp: the target entry). Report
-// tokens from the target when we can resolve it (set/mv/cp via
-// attrs.path); omit entirely for sh/env (multiple channels, no single
-// target to point at).
+// sh/env span multiple channels; channels render their own tokens in <context>.
 const STREAM_NO_TOKENS = new Set(["sh", "env"]);
 
 export default class Log {
@@ -17,10 +12,7 @@ export default class Log {
 	}
 
 	async assembleLog(content, ctx) {
-		// Log includes action entries (scheme=log) AND prior prompts. The
-		// most recent prompt is rendered separately by the prompt plugin
-		// as `<prompt>`; everything older lives in the log so the model
-		// can see the full question history across a sustained run.
+		// Includes prior prompts; the latest prompt is rendered separately as <prompt>.
 		const latestPrompt = ctx.rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
@@ -39,10 +31,7 @@ export default class Log {
 	}
 }
 
-// Log paths are log://turn_N/action/slug. The second segment is the
-// action — the plugin/tool that produced this log entry (set, get,
-// search, update, error, etc.). Used as the XML tag name. Prompt
-// entries live at prompt://N; they render as <prompt> in history.
+// Action segment of log://turn_N/action/slug → XML tag.
 function actionFromPath(path) {
 	if (path?.startsWith("prompt://")) return "prompt";
 	const match = path?.match(/^log:\/\/turn_\d+\/([^/]+)\//);
@@ -63,23 +52,13 @@ function renderLogTag(entry, rowsByPath) {
 			: entry.state
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
-	// Prompts are uniformly status=200 — uniform value carries no signal
-	// and read as "settled, no action needed." Suppress so cultivation
-	// vocabulary (vary, demote, archive) applies to prompts the same
-	// way it applies to other log entries.
+	// Suppress status on prompts; uniform 200 carries no signal.
 	const status =
 		statusValue != null && action !== "prompt"
 			? ` status="${statusValue}"`
 			: "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	// `tokens=` is the promotion premium (aTokens) of the thing this tag
-	// represents — what the model would free by demoting it. For actions
-	// that reference a separate data entry (get/set/mv/cp), resolve via
-	// attrs.path and report the target's aTokens. For actions whose log
-	// body IS the cost-bearing content (search/update/error/ask_user,
-	// plus <get> slice reads), use the log entry's own aTokens. sh/env
-	// span multiple channel entries and are omitted — the channels
-	// render their own tokens in <context>.
+	// tokens = aTokens of the thing this tag represents (target via attrs.path, else self).
 	const isSlice = attrs?.lineStart != null;
 	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
 	let tokenSource = null;
@@ -106,14 +85,8 @@ function renderLogTag(entry, rowsByPath) {
 		typeof attrs?.query === "string" ? ` query="${attrs.query}"` : "";
 	const command =
 		typeof attrs?.command === "string" ? ` command="${attrs.command}"` : "";
-	// target= is the path the action touched (e.g. the file/known that was
-	// set, the URL that was fetched). Plugins store it in attrs.path when
-	// they write the log entry.
 	const target = attrs?.path ? ` target="${attrs.path}"` : "";
-	// Slice reads tag the log entry with lineStart/lineEnd/totalLines so
-	// the <get> tag surfaces `lines="a-b/total"` — a concrete handle for
-	// the model to re-issue or compare against another slice. Non-slice
-	// entries surface the simple `lines="N"` from the projected body.
+	// Slice reads emit lines="a-b/total"; others emit simple lines="N".
 	const lines = isSlice
 		? ` lines="${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}"`
 		: lineSource != null

@@ -51,17 +51,7 @@ export default class Update {
 		}
 	}
 
-	/**
-	 * Classify this turn's update state.
-	 *
-	 * Returns { summaryText, updateText }:
-	 *   - summaryText: non-null → model claimed terminal (200/204/422)
-	 *   - updateText:  non-null → model is continuing (1xx)
-	 *
-	 * Errors (invalid status, missing update) emit via hooks.error.log.
-	 * The "terminal + turn had errors → not actually terminal" rule
-	 * lives in the error plugin's verdict, not here.
-	 */
+	// summaryText (terminal 200/204/422) | updateText (continuation 1xx); errors → hooks.error.log.
 	async resolve({ recorded, content, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		const status = entry?.attributes?.status ?? 102;

@@ -218,10 +218,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
 	)
 	, outcome TEXT
-	-- 'archived' is permitted for one entry-type only: prompt://. Every
-	-- other archived entry is filtered out by v_model_context. The
-	-- prompt is run identity — even when archived, the model needs to
-	-- see its path (without body) to recover. See prompt plugin README.
+	-- 'archived' permitted; see prompt plugin README for the exception.
 	, visibility TEXT NOT NULL CHECK (visibility IN ('visible', 'summarized', 'archived'))
 	, body TEXT NOT NULL DEFAULT ''
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))

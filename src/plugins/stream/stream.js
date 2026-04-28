@@ -1,22 +1,6 @@
 import { logPathToDataBase } from "../helpers.js";
 
-/**
- * Stream plugin — generic streaming entry infrastructure.
- *
- * Receives chunks from the client (or any producer) and appends them to
- * existing data entries. Producers (sh/env handlers) create the data
- * entries at status=102 on proposal acceptance; this plugin handles the
- * subsequent append + terminal-status transition via two RPC methods.
- *
- * RPC `path` param is the **log-entry path** (log://turn_N/{action}/{slug}
- * — that's what the client sees on `run/proposal`). Channels live under
- * the producer scheme ({action}://turn_N/{slug}_N) for a clean
- * data-vs-logging namespace split; this plugin derives the data base from
- * the log path on every RPC call.
- *
- * Not a model-facing tool. No scheme, no tooldoc, no dispatch handler.
- * Pure RPC plumbing that any streaming-producer plugin can leverage.
- */
+// RPC plumbing that appends/terminates streaming data entries; see plugin README.
 export default class Stream {
 	#core;
 
@@ -25,9 +9,7 @@ export default class Stream {
 		const hooks = core.hooks;
 		const r = hooks.rpc.registry;
 
-		// stream: append a chunk to a streaming entry.
-		// Entry path is constructed as `${path}_${channel}` per the Unix FD
-		// convention (1=stdout, 2=stderr, higher=other producer channels).
+		// stream: append chunk; channel = Unix FD (1=stdout, 2=stderr).
 		r.register("stream", {
 			handler: async (params, ctx) => {
 				if (!params.run) throw new Error("run is required");
@@ -67,8 +49,7 @@ export default class Stream {
 			requiresInit: true,
 		});
 
-		// stream/completed: transition all data channels for this producer
-		// to their terminal status and finalize the log entry body.
+		// stream/completed: terminal status on all channels + finalize log body.
 		r.register("stream/completed", {
 			handler: async (params, ctx) => {
 				if (!params.run) throw new Error("run is required");
@@ -107,8 +88,7 @@ export default class Stream {
 					});
 				}
 
-				// Update the log entry body with final stats. Keep it terse —
-				// one line summarizing exit code, duration, and channel sizes.
+				// One-line final stats for the log entry body.
 				const logEntry = await store.getAttributes(runId, params.path);
 				let command = "";
 				if (logEntry?.command) command = logEntry.command;
@@ -138,11 +118,7 @@ export default class Stream {
 			requiresInit: true,
 		});
 
-		// stream/aborted: client-initiated cancellation. Transitions all data
-		// channels to status 499 (Client Closed Request — the de-facto HTTP
-		// status for client-terminated requests) and rewrites the log entry
-		// body to note the abort. Shape mirrors stream/completed for client
-		// symmetry: same run/path addressing, same channel sweep.
+		// stream/aborted: client cancellation; channels → 499; mirrors stream/completed.
 		r.register("stream/aborted", {
 			handler: async (params, ctx) => {
 				if (!params.run) throw new Error("run is required");
@@ -211,12 +187,7 @@ export default class Stream {
 			requiresInit: true,
 		});
 
-		// stream/cancel: server-initiated cancellation. Any client (or
-		// internal server code) can cancel a streaming producer — the server
-		// transitions channels to 499 immediately and pushes a
-		// stream/cancelled notification so connected clients can kill their
-		// local processes. Also serves as stale 102 cleanup: if the client
-		// died mid-stream, call stream/cancel to mark orphaned entries terminal.
+		// stream/cancel: server-initiated; pushes stream/cancelled notification; cleans stale 102s.
 		r.register("stream/cancel", {
 			handler: async (params, ctx) => {
 				if (!params.run) throw new Error("run is required");

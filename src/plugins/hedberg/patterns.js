@@ -313,10 +313,7 @@ function collectDescendants(node, out) {
 
 // --- Public API ---
 
-/**
- * hedmatch — does the pattern match the ENTIRE string?
- * For path matching, WHERE clauses, full-string comparison.
- */
+// hedmatch — full-string match (path, WHERE clause).
 export function hedmatch(pattern, string) {
 	if (string === null) return false;
 
@@ -345,11 +342,7 @@ export function hedmatch(pattern, string) {
 	return false;
 }
 
-/**
- * hedsearch — find the pattern anywhere IN the string.
- * For substring search, content filtering, "does this text contain...".
- * Returns { found, match, index } or { found: false }.
- */
+// hedsearch — substring match → { found, match, index }.
 export function hedsearch(pattern, string) {
 	if (string === null) return { found: false };
 
@@ -400,10 +393,7 @@ export function hedsearch(pattern, string) {
 	return { found: false };
 }
 
-/**
- * hedreplace — find pattern in string, replace with replacement.
- * Returns the new string, or null if pattern not found.
- */
+// hedreplace — substitute; null when pattern not found.
 export function hedreplace(pattern, replacement, string) {
 	if (string === null) return null;
 
@@ -446,5 +436,4 @@ export function hedreplace(pattern, replacement, string) {
 	return null;
 }
 
-// SQL functions are in separate files (hedmatch.js, hedsearch.js)
-// that import from this library. Filename = SQL function name.
+// SQL functions live in sibling files; filename = SQL function name.

@@ -3,21 +3,7 @@ import { logPathToDataBase } from "../helpers.js";
 
 const SH_PATH_RE = /^log:\/\/turn_\d+\/(sh|env)\//;
 
-/**
- * YOLO plugin — for runs started with `yolo: true`, auto-resolves every
- * proposal server-side and spawns sh/env commands locally, streaming
- * output to the same data-channel entries the existing `stream`/
- * `stream/completed` RPC contract uses.
- *
- * Pattern parallel to `noRepo`/`noWeb`/`noInteraction`/`noProposals`:
- * `yolo` is a run attribute plumbed via rpc.js → AgentLoop loop config →
- * RummyContext.yolo. This plugin reads `rummy.yolo` off the proposal
- * payload and engages only when set; non-yolo runs are unaffected.
- *
- * The plugin replicates AgentLoop.resolve()'s accept path inline rather
- * than calling an exposed projectAgent — keeps yolo logic contained in
- * the yolo plugin and out of backbone files.
- */
+// Auto-resolves proposals + spawns sh/env locally for runs started with yolo:true. SPEC #yolo_mode.
 export default class Yolo {
 	constructor(core) {
 		this.core = core;
@@ -27,11 +13,7 @@ export default class Yolo {
 	async #onPending({ run, proposed, rummy }) {
 		if (!rummy?.yolo) return;
 		for (const p of proposed) {
-			// Resolve first — that fires proposal.accepted, which lets the
-			// sh/env plugin seed the streaming channel entries. Then spawn
-			// into those existing channels. If we spawned first, sh.js's
-			// post-accept channel creation would clobber the body we just
-			// streamed (sets state=streaming, body="").
+			// Resolve first so sh/env's post-accept seeds channels before we stream into them.
 			await this.#serverResolve(rummy, p.path);
 			if (SH_PATH_RE.test(p.path)) {
 				await this.#executeShellProposal(rummy, p.path);
@@ -39,11 +21,7 @@ export default class Yolo {
 		}
 	}
 
-	/**
-	 * Replicate AgentLoop.resolve()'s accept path: accepting filter
-	 * (veto check), content filter (resolved body), set state="resolved",
-	 * emit proposal.accepted for plugin side effects.
-	 */
+	// Inline mirror of AgentLoop.resolve()'s accept path.
 	async #serverResolve(rummy, path) {
 		const runId = rummy.runId;
 		const entries = rummy.entries;
@@ -88,13 +66,7 @@ export default class Yolo {
 		await this.core.hooks.proposal.accepted.emit({ ...ctx, resolvedBody });
 	}
 
-	/**
-	 * Spawn the sh/env command locally and stream stdout/stderr into
-	 * `{dataBase}_1` and `{dataBase}_2` data entries. Mirrors the
-	 * stream/stream-completed RPC contract — same channel layout, same
-	 * terminal-state transitions on exit. Done inline (no RPC roundtrip)
-	 * so the run is fully autonomous.
-	 */
+	// Spawn locally and stream into {dataBase}_{1,2}; mirrors stream/stream-completed RPC.
 	async #executeShellProposal(rummy, logPath) {
 		const runId = rummy.runId;
 		const entries = rummy.entries;
@@ -118,9 +90,7 @@ export default class Yolo {
 			cwd: projectRoot,
 			env: process.env,
 		});
-		// Buffer chunks synchronously and write once after exit. Avoids
-		// the race where multiple async appends interleave with the
-		// terminal-state transition fired on 'close'.
+		// Buffer + write-once-on-exit; async appends would race the terminal-state transition.
 		const stdoutChunks = [];
 		const stderrChunks = [];
 		child.stdout.on("data", (data) => stdoutChunks.push(data.toString()));
@@ -154,10 +124,7 @@ export default class Yolo {
 				const duration = `${Math.round((Date.now() - start) / 1000)}s`;
 				const terminalState = exitCode === 0 ? "resolved" : "failed";
 				const outcome = exitCode === 0 ? null : `exit:${exitCode}`;
-				// Transition state without touching body — getState doesn't
-				// return body, and entries.set with body=undefined preserves
-				// the streamed content already in place. (`body: ""` would
-				// wipe everything we just streamed.)
+				// body=undefined preserves streamed content; body="" would wipe it.
 				for (const path of [stdoutPath, stderrPath]) {
 					try {
 						await entries.set({

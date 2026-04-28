@@ -1,14 +1,4 @@
-/**
- * Edit format detection. Identifies the edit syntax the model used
- * and normalizes it into { search, replace } blocks.
- *
- * Supported formats:
- * 1. SEARCH/REPLACE merge conflict blocks
- * 2. Replace-only blocks (no search)
- * 3. Unified diff
- * 4. Claude XML (<old_text>/<new_text>)
- */
-
+// Detects merge-conflict / replace-only / udiff / Claude XML edits → {search,replace}; SPEC #hedberg.
 export function parseEditContent(content) {
 	const blocks = [];
 

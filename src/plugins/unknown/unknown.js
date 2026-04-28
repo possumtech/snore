@@ -17,7 +17,6 @@ export default class Unknown {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
-		// Deduplicate — if this exact body already exists, skip
 		const existingValues = await store.getUnknownValues(runId);
 		if (existingValues.has(entry.body)) {
 			await this.#core.hooks.error.log.emit({
@@ -30,8 +29,7 @@ export default class Unknown {
 			return;
 		}
 
-		// Generate slug path and upsert. Summary (if provided) becomes the
-		// path so the model can round-trip it via <get>; body is the fallback.
+		// summary > body for slug; lets the model round-trip via <get>.
 		const unknownPath = await store.slugPath(
 			runId,
 			"unknown",
@@ -52,9 +50,7 @@ export default class Unknown {
 		return entry.body;
 	}
 
-	// Same principle as knowns: keep the first 500 characters on
-	// summarized unknowns so demotion doesn't erase the question,
-	// but cap large bodies to bound the packet cost.
+	// First 500 chars; matches knowns/prompt summarized.
 	summary(entry) {
 		if (!entry.body) return "";
 		if (entry.body.length <= 500) return entry.body;

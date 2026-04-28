@@ -1,19 +1,9 @@
+import config from "../../agent/config.js";
 import ProjectAgent from "../../agent/ProjectAgent.js";
 
 const TERMINAL_STATUSES = new Set([200, 204, 413, 422, 499, 500]);
 
-/**
- * One-shot CLI client. When RUMMY_PROMPT is present in the
- * environment, boots the service, runs a single ask/act against the
- * configured model, prints turn-by-turn progress to stderr, prints
- * the final summary to stdout, and exits with code 0 on terminal
- * status 200 (non-zero otherwise).
- *
- * If RUMMY_PROMPT is unset, the plugin is inert — server mode is
- * unaffected. All config comes through RUMMY_* env vars; per-run
- * defaults (RUMMY_YOLO, RUMMY_NO_REPO, …) cascade through AgentLoop's
- * boundary normalization.
- */
+// Inert unless RUMMY_PROMPT is set; see plugin README.
 export default class Cli {
 	#core;
 
@@ -47,20 +37,15 @@ export default class Cli {
 		const projectAgent = new ProjectAgent(db, hooks);
 		const { projectId } = await projectAgent.init(alias, projectRoot);
 
-		// Watchdog. RUMMY_RUN_TIMEOUT_MS is the total wall-clock budget
-		// for this invocation; default 1h matches the test-harness floor.
-		const timeoutMs = Number.parseInt(
-			process.env.RUMMY_RUN_TIMEOUT_MS ?? "3600000",
-			10,
-		);
+		// Watchdog; overridable via --RUMMY_RUN_TIMEOUT_MS=<ms>.
+		const timeoutMs = config.RUN_TIMEOUT_MS;
 		const timer = setTimeout(() => {
 			console.error(`rummy-cli: timed out after ${timeoutMs}ms`);
 			process.exit(124);
 		}, timeoutMs);
 		timer.unref();
 
-		// Per-turn progress to stderr (so an external harness's stdout
-		// capture stays clean for the final summary).
+		// stderr for progress; stdout reserved for the final summary.
 		hooks.run.state.on(async (state) => {
 			if (state.run !== alias) return;
 			const { status, turn, summary } = state;

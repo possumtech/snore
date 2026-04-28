@@ -28,7 +28,10 @@ preserves existing vars).
 | Var | Default | Effect |
 |---|---|---|
 | `RUMMY_MODE` | `act` | `ask` or `act`. |
-| `RUMMY_RUN_TIMEOUT_MS` | `3600000` (1h) | Watchdog — exits `124` on overflow. |
+
+`RUMMY_RUN_TIMEOUT_MS` is required at boot via `src/agent/config.js`;
+default lives in `.env.example`. Watchdog exits with code `124` on
+overflow.
 
 Per-run defaults (`RUMMY_YOLO`, `RUMMY_NO_REPO`, `RUMMY_NO_WEB`,
 `RUMMY_NO_INTERACTION`, `RUMMY_NO_PROPOSALS`) cascade through

@@ -21,11 +21,6 @@ export default class Get {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			// Route through the unified error channel so the message lands
-			// as `<error>` in <log> with a readable body AND the failure
-			// counts as a strike. The previous direct `store.set` wrote a
-			// blank-bodied failed entry whose `error` attribute was never
-			// rendered — model saw a vague 400 and repeated the mistake.
 			await rummy.hooks.error.log.emit({
 				store,
 				runId,
@@ -38,15 +33,11 @@ export default class Get {
 			return;
 		}
 		const normalized = Entries.normalizePath(target);
-		// XmlParser passes attributes through; `body` attr is optional.
 		const bodyFilter = entry.attributes.body;
 		const preview = entry.attributes.preview !== undefined;
 		const isPattern = bodyFilter || normalized.includes("*");
 
-		// Negative `line` is idiomatic tail-from-end: `line="-50"` means
-		// "start 50 lines from the end," enabling `tail -n N` behavior.
-		// Positive `line` is 1-indexed from start (classic). `limit` is
-		// always a positive count.
+		// Negative line = tail-from-end (line=-50 starts 50 from end).
 		const lineRaw = entry.attributes.line;
 		const line = lineRaw != null ? parseInt(lineRaw, 10) : null;
 		const limit =
@@ -60,11 +51,7 @@ export default class Get {
 			bodyFilter,
 		);
 
-		// Preview — list matches with their full-body token costs. No promotion,
-		// no visibility change, no Token Budget spent. Model uses this to plan
-		// which entries to actually promote. getDoc promises this behavior; the
-		// prior implementation silently promoted anyway, burning the Token Budget
-		// on entries the model thought it was only inspecting.
+		// Preview: list matches + full-body token costs; no promotion.
 		if (preview) {
 			await storePatternResult(
 				store,
@@ -79,7 +66,7 @@ export default class Get {
 			return;
 		}
 
-		// Partial read — no visibility promotion, returns a line slice as the log item.
+		// Partial read: line slice in the log entry; no promotion.
 		if (line !== null || limit !== null) {
 			if (isPattern) {
 				await store.set({
@@ -108,8 +95,6 @@ export default class Get {
 			}
 			const allLines = matches[0].body.split("\n");
 			const total = allLines.length;
-			// Negative line offsets from the end: line=-50 starts 50 lines
-			// before the end. Clamped to 1 if the offset exceeds total.
 			const startLine =
 				line == null
 					? 1
@@ -120,10 +105,6 @@ export default class Get {
 			const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
 			const slice = allLines.slice(startIdx, endIdx).join("\n");
 			const endLine = endIdx;
-			// Body leads with the source path so the model can re-issue
-			// a full or different-range read without guessing the URL.
-			// lineStart/lineEnd/totalLines ride attrs so renderLogTag can
-			// surface `lines="a-b/total"` without parsing the body.
 			const header = `${target}\n[lines ${startLine}–${endLine} / ${total} total]`;
 			await store.set({
 				runId,
@@ -188,10 +169,7 @@ export default class Get {
 				attributes: { path: target },
 			});
 		} else {
-			// Log a concise record of the promotion. The promoted entry
-			// itself is visible in <context>; this log line is the model's
-			// proof in <log> that the get has already been done so it
-			// doesn't re-issue the same fetch on a later turn.
+			// Log line in <log> proves the promotion happened so the model doesn't re-fetch.
 			await store.set({
 				runId,
 				turn,

@@ -31,3 +31,7 @@ the merge conflict block when a SEARCH/REPLACE was performed.
 - **Heuristic fallback**: On literal failure, fuzzy matching with warnings.
 - **Patch generation**: `generatePatch` produces unified diff for client display.
 - File writes are always status 202 (proposed); scheme writes resolve immediately.
+- **`proposal.content` filter** — when the client accepts a proposed
+  set, this plugin overrides the resolved body to the body it
+  already staged on the audit entry (rather than whatever literal
+  body the client passed through `resolve`).

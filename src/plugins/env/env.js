@@ -8,9 +8,7 @@ export default class Env {
 
 	constructor(core) {
 		this.#core = core;
-		// `env` scheme holds the streamed stdout/stderr payload. See sh.js
-		// for the scheme/category split rationale. env differs from sh only
-		// in ask-mode policy (env is safe/read-only; sh has side effects).
+		// env vs sh: env is read-only (allowed in ask-mode); see plugin README.
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));

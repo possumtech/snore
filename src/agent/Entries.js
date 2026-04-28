@@ -14,10 +14,7 @@ export default class Entries {
 		this.#onChanged = onChanged;
 	}
 
-	/**
-	 * Populate the scheme cache. Can be called explicitly (e.g. at boot
-	 * after initPlugins finishes) or runs lazily on first need. Idempotent.
-	 */
+	// Populate the scheme cache; idempotent, lazy on first need.
 	async loadSchemes(db) {
 		const rows = await (db || this.#db).get_all_schemes.all();
 		this.#schemes.clear();
@@ -74,10 +71,7 @@ export default class Entries {
 		return `${candidate}_${++this.#seq}`;
 	}
 
-	// Log entries share a single namespace at log://turn_N/action/slug.
-	// The action segment is the tool/plugin name (set, get, search, update,
-	// error, etc.). Target is URL-encoded so slashes and scheme separators
-	// survive round-trips.
+	// Single namespace log://turn_N/action/slug; target URL-encoded for round-trip safety.
 	async logPath(runId, turn, action, target) {
 		const encodedTarget = encodeURIComponent(target);
 		const candidate = `log://turn_${turn}/${action}/${encodedTarget}`;
@@ -90,9 +84,7 @@ export default class Entries {
 	}
 
 	async slugPath(runId, scheme, content, summary) {
-		// Prefer summary, fall back to body content, then empty — slugify
-		// handles empty explicitly by returning "" and the caller generates
-		// a sequence-only path.
+		// summary > content > empty; slugify("") yields "" and we sequence-only.
 		let source = "";
 		if (summary) source = summary;
 		else if (content) source = content;
@@ -111,12 +103,7 @@ export default class Entries {
 		return `${prefix}${base}_${++this.#seq}`;
 	}
 
-	/**
-	 * Resolve a scheme's declared scope kind + writer list + category.
-	 * Unregistered or declaration-less schemes default to run-level +
-	 * model/plugin writers so ad-hoc paths (e.g. bare filenames) still
-	 * work.
-	 */
+	// Scheme's scope/writers/category; bare paths default to run + model/plugin.
 	async #schemeRules(scheme) {
 		await this.#ensureSchemes();
 		const row = scheme ? this.#schemes.get(scheme) : null;
@@ -154,17 +141,7 @@ export default class Entries {
 		return `run:${runId}`;
 	}
 
-	/**
-	 * set — create or update an entry. The semantically wide primitive.
-	 *
-	 * Modes (selected by which options are present):
-	 *   — write content:         body given, state ∈ {proposed,streaming,resolved,failed,cancelled}
-	 *   — change visibility only:  visibility given, body omitted
-	 *   — change state only:     state given, body omitted (resolve a proposal)
-	 *   — merge attributes:      attributes given, body omitted
-	 *   — append to body:        append:true (streaming)
-	 *   — pattern match:         path contains wildcards or bodyFilter set
-	 */
+	// set — create or update an entry; see PLUGINS.md primitives.
 	async set({
 		runId,
 		projectId = null,
@@ -185,14 +162,9 @@ export default class Entries {
 		if (!runId) throw new Error("set: runId is required");
 		if (!path) throw new Error("set: path is required");
 
-		// Pattern mode is explicit (pattern: true) or implicit when a
-		// body filter is supplied. The literal `*` character can appear
-		// inside legitimate exact paths (e.g. rm://foo%2F* as a result
-		// path for an rm against a pattern); we don't infer pattern mode
-		// from the path alone.
+		// Pattern mode is explicit; never inferred from `*` in path.
 		const isPattern = pattern === true || bodyFilter !== null;
 
-		// Pattern mode: update matching entries (visibility / body / both).
 		if (isPattern) {
 			if (body != null && !append) {
 				await this.#db.update_body_by_pattern.run({
@@ -279,14 +251,7 @@ export default class Entries {
 			throw new PermissionError(scheme, writer, writers);
 		}
 		const scope = this.#resolveScope(kind, runId, projectId);
-		// Log entries self-describe via `action` so consumers (renderer,
-		// client UIs, tests) can read the action without parsing the
-		// path. Only inject `action` when the caller passes attributes
-		// — a null `attributes` means "don't touch existing" and the
-		// SQL's COALESCE handles preservation on UPDATE. If we generated
-		// `{action: m[1]}` for every null-attributes log write, every
-		// body-only update to a log entry would clobber existing attrs
-		// (command, summary, demotedCount, ...).
+		// Inject `action` only when caller passes attributes; null means COALESCE preserves existing.
 		const effectiveAttributes = attributes ? { ...attributes } : null;
 		if (scheme === "log" && effectiveAttributes) {
 			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
@@ -321,11 +286,7 @@ export default class Entries {
 		}
 	}
 
-	/**
-	 * get — promote entry(ies) to visible visibility. Default visibility is
-	 * "visible"; pass visibility explicitly for a read-with-side-effect at
-	 * a different visibility (rare).
-	 */
+	// get — promote entry(ies); see PLUGINS.md primitives.
 	async get({
 		runId,
 		turn = 0,
@@ -352,11 +313,7 @@ export default class Entries {
 		this.#emitChanged(runId, path, "promote");
 	}
 
-	/**
-	 * rm — remove entry view(s). Matches single path or pattern; optional
-	 * bodyFilter narrows pattern matches. `filesOnly` restricts to bare
-	 * file-scheme entries (scheme IS NULL).
-	 */
+	// rm — remove entry view(s); see PLUGINS.md primitives.
 	async rm({ runId, path, bodyFilter = null, filesOnly = false }) {
 		if (!runId) throw new Error("rm: runId is required");
 		if (!path) throw new Error("rm: path is required");
@@ -381,10 +338,7 @@ export default class Entries {
 		this.#emitChanged(runId, path, "remove");
 	}
 
-	/**
-	 * cp — copy an entry to a new path. Source body becomes new body;
-	 * source view unchanged.
-	 */
+	// cp — copy an entry to a new path; see PLUGINS.md primitives.
 	async cp({
 		runId,
 		turn = 0,
@@ -411,9 +365,7 @@ export default class Entries {
 		});
 	}
 
-	/**
-	 * mv — rename an entry. Equivalent to cp + rm on source.
-	 */
+	// mv — rename (cp + rm).
 	async mv({
 		runId,
 		turn = 0,
@@ -439,13 +391,7 @@ export default class Entries {
 		await this.rm({ runId, path: from });
 	}
 
-	/**
-	 * update — once-per-turn lifecycle signal from the model (or plugin
-	 * speaking on its behalf). Writes to update://<slug> with body as the
-	 * content and attributes.status carrying the model's continuation code
-	 * (102 continue, 200/204 terminal, 422 can't-answer). Returns the
-	 * slug path.
-	 */
+	// update — once-per-turn lifecycle signal; see PLUGINS.md.
 	async update({
 		runId,
 		turn = 0,
@@ -497,10 +443,7 @@ export default class Entries {
 	}
 
 	async waitForResolution(runId, path) {
-		// Check current state first — if a synchronous in-process resolver
-		// (yolo) flipped the entry to terminal during proposal.pending,
-		// the state change has already happened and no future drain will
-		// fire. Without this guard, in-process resolvers would deadlock.
+		// Pre-check: yolo's synchronous resolver may have already flipped state, no drain will fire.
 		const current = await this.getState(runId, path);
 		if (
 			current &&
@@ -559,9 +502,7 @@ export default class Entries {
 		return new Set(rows.map((r) => r.body));
 	}
 
-	/**
-	 * Unknown entries for a run, in DB order. Rows include path + body.
-	 */
+	// Unknown entries in DB order; rows include path + body.
 	async getUnknowns(runId) {
 		return this.#db.get_unknowns.all({ run_id: runId });
 	}
@@ -580,14 +521,7 @@ export default class Entries {
 		});
 	}
 
-	/**
-	 * Demote all promoted entries for a run on a given turn. Returns the
-	 * affected rows (path, tokens) so callers can summarize.
-	 *
-	 * Implemented as SELECT-then-UPDATE because SQLite's RETURNING doesn't
-	 * support the cross-table lookup needed to report content paths/tokens
-	 * from the view-layer update.
-	 */
+	// SELECT-then-UPDATE: SQLite RETURNING can't cross to the view layer.
 	async demoteTurnEntries(runId, turn) {
 		const targets = await this.#db.get_turn_demotion_targets.all({
 			run_id: runId,
@@ -597,14 +531,7 @@ export default class Entries {
 		return targets;
 	}
 
-	/**
-	 * Demote every currently-visible entry in a run. Used by budget
-	 * postDispatch as the fallback when this-turn demotion finds nothing
-	 * and the packet still overflows — left-over promotions from prior
-	 * turns the model didn't demote themselves. Returns the affected
-	 * rows (path, tokens, turn) ordered oldest promotion first so the
-	 * error body can name them.
-	 */
+	// Budget postDispatch fallback: demote every visible entry in the run.
 	async demoteRunVisibleEntries(runId) {
 		const targets = await this.#db.get_run_visible_targets.all({
 			run_id: runId,
@@ -613,17 +540,12 @@ export default class Entries {
 		return targets;
 	}
 
-	/**
-	 * Run metadata lookup. Exposed here so plugins don't reach into
-	 * core.db for run-scoped lookups.
-	 */
+	// Plugin-facing run lookup; avoids reaching into core.db.
 	async getRun(runId) {
 		return this.#db.get_run_by_id.get({ id: runId });
 	}
 
-	/**
-	 * Turn-level usage stats write (telemetry). Same rationale as getRun.
-	 */
+	// Plugin-facing turn-stats write.
 	async updateTurnStats(stats) {
 		return this.#db.update_turn_stats.run(stats);
 	}

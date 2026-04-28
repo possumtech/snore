@@ -24,10 +24,7 @@ export default class Rpc {
 			description: "Returns { methods, notifications } catalog.",
 		});
 
-		// --- Primitives (SPEC primitives) ---
-		// The client surface is a thin projection of the plugin API.
-		// Six verbs, each takes an object of entry-grammar params.
-		// Writer is fixed to "client"; permissions enforced per scheme.
+		// Primitives (SPEC #primitives); writer fixed to "client".
 
 		r.register("set", {
 			handler: async (params, ctx) => {
@@ -151,9 +148,7 @@ export default class Rpc {
 			requiresInit: true,
 		});
 
-		// Connection handshake. First call a client makes. Establishes
-		// the project identity for this connection and announces the
-		// server's protocol version.
+		// Connection handshake; project identity + protocol version.
 		r.register("rummy/hello", {
 			handler: async (params, ctx) => {
 				const { RUMMY_PROTOCOL_VERSION } = await import(
@@ -446,8 +441,7 @@ export default class Rpc {
 		r.registerNotification("ui/render", "Streaming output.");
 		r.registerNotification("ui/notify", "Toast notification.");
 
-		// Auto-dispatch: any registered tool is callable via RPC.
-		// Checked at request time — no timing dependency on plugin load order.
+		// Any registered tool is callable via RPC; resolved at request time.
 		r.setToolFallback(hooks, buildRunContext, dispatchTool);
 	}
 
@@ -464,18 +458,14 @@ export default class Rpc {
 	async #dispatchSet(params, ctx) {
 		if (!params.path) throw new Error("set: path is required");
 
-		// run:// is the lifecycle surface. A set to a brand-new run://
-		// alias starts a run loop; a state transition cancels or resolves.
+		// run:// = lifecycle surface (start run, cancel, resolve).
 		if (params.path.startsWith("run://")) {
 			return await this.#dispatchRunSet(params, ctx);
 		}
 
 		const runRow = await this.#resolveRun(params.run, ctx);
 
-		// State transition on an existing proposed entry → route through
-		// AgentLoop.resolve, which applies scheme-specific side effects
-		// (patch application for set://, file removal for rm://, stream
-		// setup for sh:// / env://, etc.).
+		// State transitions on proposed entries → AgentLoop.resolve for scheme-specific effects.
 		if (params.state && !params.append && !params.pattern) {
 			const current = await ctx.projectAgent.entries.getState(
 				runRow.id,
@@ -521,10 +511,7 @@ export default class Rpc {
 	async #dispatchRunSet(params, ctx) {
 		let alias = params.path.slice("run://".length);
 
-		// Empty alias on a new-run set → synthesize ${model}_${epoch}.
-		// Matches AgentLoop.#generateAlias so server- and client-initiated
-		// runs share one naming scheme. Clients that want a specific name
-		// pass it in the path; anonymous starts get the synthesized one.
+		// Empty alias → ${model}_${epoch}; mirrors AgentLoop.#generateAlias.
 		if (!alias) {
 			const { attributes: attrs = {} } = params;
 			if (!attrs.model) {
@@ -580,9 +567,7 @@ export default class Rpc {
 				fork: attrs.fork,
 			};
 			const { body = "" } = params;
-			// Fire-and-forget: client watches state via entry notifications.
-			// ProjectAgent exposes .ask/.act wrappers over AgentLoop#run; route
-			// by mode rather than calling the private loop directly.
+			// Fire-and-forget; client watches state via entry notifications.
 			const kickoff =
 				mode === "act"
 					? ctx.projectAgent.act(
@@ -605,10 +590,7 @@ export default class Rpc {
 			return { ok: true, alias };
 		}
 
-		// Existing run + fork=true: create a child run synchronously so we
-		// can return the child alias, then kick off the loop against it.
-		// fork needs a brand-new run row with parent_run_id set; inject()
-		// would just add another prompt to the parent.
+		// fork=true → new child run with parent_run_id; inject() would only add a prompt to parent.
 		const attrs = params.attributes ? params.attributes : {};
 		if (attrs.fork === true) {
 			const { mode } = attrs;

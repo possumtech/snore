@@ -1,8 +1,4 @@
-/**
- * Thin orchestrator. Computes loopStartTurn from the rows,
- * then invokes assembly.system and assembly.user filter chains.
- * All rendering logic lives in plugins.
- */
+// Orchestrates assembly.system / assembly.user filter chains; plugins do all rendering.
 export default class ContextAssembler {
 	static async assembleFromTurnContext(
 		rows,
@@ -17,8 +13,7 @@ export default class ContextAssembler {
 		} = {},
 		hooks,
 	) {
-		// Find loop boundary from active prompt. Absent on turn 1 before
-		// the prompt plugin's turn.started handler has run.
+		// Loop boundary from active prompt; absent on turn 1 before prompt plugin's turn.started.
 		const promptEntry = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);

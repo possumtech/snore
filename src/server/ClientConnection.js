@@ -23,8 +23,7 @@ export default class ClientConnection {
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
 		this.#ws.on("close", () => {
-			// Fire-and-forget: the Promise is cached by `shutdown()` so
-			// server-initiated close can await the same work.
+			// Fire-and-forget; shutdown() caches the Promise for server-initiated close to await.
 			this.shutdown().catch((err) => {
 				console.warn(`[RUMMY] shutdown on ws close failed: ${err.message}`);
 			});
@@ -112,12 +111,7 @@ export default class ClientConnection {
 		this.#hooks.stream.cancelled.off(this.#onStreamCancelled);
 	}
 
-	/**
-	 * Abort in-flight runs on this connection and wait for them to
-	 * settle. Idempotent: `ws.on("close")` and server-initiated close
-	 * both call this; the cached Promise guarantees the work happens
-	 * exactly once and both callers observe the same completion.
-	 */
+	// Idempotent abort+drain; cached Promise lets ws.close and server.close share completion.
 	shutdown() {
 		if (!this.#shutdownPromise) {
 			this.#shutdownPromise = (async () => {
@@ -241,8 +235,7 @@ export default class ClientConnection {
 		} catch (error) {
 			console.error(`[RUMMY] RPC Error: ${error.message}`);
 			console.error(`[RUMMY] Stack: ${error.stack}`);
-			// JSON-RPC: error responses for malformed requests with no id
-			// MUST carry null per the spec.
+			// JSON-RPC requires null id for malformed requests with no id.
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },

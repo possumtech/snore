@@ -87,10 +87,7 @@ export default class ProjectAgent {
 		return this.#agentLoop.inject(run, message, mode, options);
 	}
 
-	// Synchronously create (or fork) a run row and return the alias.
-	// Caller is expected to follow up with a kickoff (ask/act) that
-	// operates on the returned alias. Lets RPC respond with the real
-	// alias before the long-running loop starts.
+	// Create/fork the run row synchronously; caller follows up with ask/act.
 	async ensureRun(projectId, model, run, prompt, options = {}) {
 		return this.#agentLoop.ensureRun(projectId, model, run, prompt, options);
 	}
@@ -103,11 +100,7 @@ export default class ProjectAgent {
 		this.#agentLoop.abort(runId);
 	}
 
-	/**
-	 * Abort every in-flight run and wait for them to settle. Called
-	 * from the server's close path so the Node event loop isn't held
-	 * open by detached kickoff Promises after shutdown.
-	 */
+	// Abort all in-flight runs and drain so the event loop can exit.
 	async shutdown() {
 		await this.#agentLoop.abortAll();
 	}

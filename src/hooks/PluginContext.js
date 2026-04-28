@@ -1,12 +1,4 @@
-/**
- * PluginContext is the plugin-only interface to the rummy system.
- * Available as `rummy.core` on the per-turn RummyContext, and as the
- * direct object passed to plugin constructors at startup.
- *
- * Carries plugin identity, hook registration, and infrastructure access.
- * The unified API (tool verbs, queries) lives on RummyContext.
- * This is the tier boundary: clients can't reach core.
- */
+// Plugin-only registration interface; tool verbs live on RummyContext. PLUGINS.md.
 export default class PluginContext {
 	#name;
 	#hooks;
@@ -77,19 +69,12 @@ export default class PluginContext {
 		this.#hooks.tools.ensureTool(this.#name);
 	}
 
-	// Mark this plugin's tool as hidden from model-facing tool lists.
-	// Handler still dispatches if the model emits the tag.
+	// Hide from tool lists; handler still dispatches if the model emits the tag.
 	markHidden() {
 		this.#hooks.tools.markHidden(this.#name);
 	}
 
-	/**
-	 * Register a named callback for this plugin.
-	 * "handler" registers the tool handler.
-	 * "visible"/"summarized" register visibility projections.
-	 * "docs" sets tool documentation.
-	 * Everything else resolves to a hook event.
-	 */
+	// "handler" / "visible" / "summarized" are special; everything else is a hook event name.
 	on(event, callback, priority = 10) {
 		if (event === "handler") {
 			this.#hooks.tools.ensureTool(this.#name);
@@ -104,9 +89,6 @@ export default class PluginContext {
 		if (hook) hook.on(callback, priority);
 	}
 
-	/**
-	 * Register a filter callback.
-	 */
 	filter(name, callback, priority = 10) {
 		const hook = this.#resolveFilter(name);
 		if (hook) hook.addFilter(callback, priority);

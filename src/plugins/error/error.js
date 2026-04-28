@@ -1,6 +1,6 @@
-const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
-const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
-const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
+import config from "../../agent/config.js";
+
+const { MAX_STRIKES, MIN_CYCLES, MAX_CYCLE_PERIOD } = config;
 
 const CONTRACT_REMINDER = "Missing update";
 
@@ -92,12 +92,7 @@ export default class ErrorPlugin {
 		const state = this.#loopState.get(loopId);
 
 		let cycleReason = null;
-		// Track every turn's fingerprint, including empty turns (model
-		// emitted no parseable commands). Empty turns share a blank
-		// fingerprint, so MIN_CYCLES of them in a row trip the same
-		// period-1 detector as a literal command repeat — covering the
-		// "model loops on raw prose / pure reasoning_content" failure
-		// mode that previously escaped detection.
+		// Empty turns share a blank fingerprint; intentional.
 		const fp = recorded.map(fingerprint).toSorted().join("|");
 		state.history.push(fp);
 		const cycle = detectCycle(state.history);
@@ -125,8 +120,7 @@ export default class ErrorPlugin {
 		if (struck) {
 			state.streak++;
 			if (state.streak >= MAX_STRIKES) {
-				// On the abandoning strike, a same-turn terminal update
-				// is honored as completion rather than overridden by 499.
+				// Abandoning-strike turn: same-turn terminal update wins over 499.
 				if (summaryText) {
 					state.streak = 0;
 					const updateEntry = recorded?.findLast?.(

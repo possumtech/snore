@@ -191,6 +191,30 @@ Verified Mini) are scaffolded and run on demand.
   intentionally deferred to keep the in-flight CLI/tbench thread
   unblocked. Sweep all `src/**/*.test.js` failures, root-cause, fix.
 
+- [ ] **Core → plugin extraction conversation.** Audit what still
+  lives in `src/agent/*` that could plausibly be a plugin. Top
+  candidates: `XmlParser` (syntax-layer; would need a `parser.parse`
+  hook in `TurnExecutor`), the cycle-detection / strike machinery
+  in `src/plugins/error/error.js` (already a plugin but the verdict
+  hook is core-coupled), telemetry side of `AgentLoop.#emitRunState`,
+  the YOLO-style "report current run status on resolve ack" RPC
+  shaping. The Rummy Way: everything is entries+hooks+plugins; a
+  conversation needed to decide which extractions are principled vs.
+  ceremony. Discuss before refactor.
+
+- [ ] **Silent cycle-detection strikes.** Currently `error.js#verdict`
+  emits a model-facing error entry with `message: "Loop detected"`
+  (status 429) and overrides `CONTRACT_REMINDER` with `cycleReason`
+  in the continue-reason. Two problems: (1) it tips off the watchdog
+  mechanism — a model trying to obey can defeat fingerprinting with
+  superficial variation, (2) any verbose "reconsider / use ask_user
+  / etc." coaching gives the model a recipe to trick the harness into
+  an infinite loop (e.g. ask_user may not even be wired in this run).
+  Fix: cycle detection strikes silently. Telemetry-side 429 stays for
+  the dev-facing log/run-state; the model gets no special message —
+  just the strike, accumulating toward `MAX_STRIKES` abandonment.
+  Watchdog enforces by *abandoning*, never by *telling*.
+
 ## Scope Discipline
 
 - No legacy protocol accommodation. 2.0 is 2.0.
@@ -255,6 +279,87 @@ thread that hasn't resolved). Landed work belongs in git history;
 durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
+
+### Comment hygiene sweep (landed)
+
+Every multi-line comment in `src/` cut to one line, moved to docs, or
+deleted. Final sweep across `src/agent/*`, `src/plugins/*/`,
+`src/server/*`, `src/llm/*`, `src/sql/*`, and `src/hooks/*` found
+zero remaining `/* */` blocks and zero ≥2-line `//` runs in
+production code. The earlier targeted edits (`config.js`,
+`telemetry.js`, `prompt.js`, `cli.js`, `error.js`, `instructions.js`,
+`v_model_context.sql`, `001_initial_schema.sql`) had already drained
+the surface. 509/509 unit + integration green post-sweep.
+
+### E2E packet audit + system fixes (landed)
+
+Comprehensive packet-level audit of every e2e test surfaced 13+
+cross-cutting findings. Multiple system bugs identified and fixed.
+See `E2E_ANALYSIS.md` for the full audit document.
+
+**System fixes landed this session**:
+
+- **Cycle detection empty-turn gate** (`error.js`) — fingerprint now
+  always pushed (even for empty turns), so 3+ consecutive
+  no-emission turns trip period-1 cycle detection.
+- **Status 200 navigation check** (`instructions.js`) — `validateNavigation`
+  rejects status 200 from non-Deployment phases.
+- **Active prompt archive exception** (`v_model_context.sql`,
+  `prompt/README.md`) — archived prompts (singular exception)
+  flow through to packet with `visibility="archived"` and empty
+  body, so the model can `<get>` to promote back. Resolved
+  recurring "No prompt provided" failures.
+- **`turn_context.visibility` CHECK constraint** relaxed to permit
+  `'archived'` (was hardcoded to visible/summarized).
+- **Telemetry `#turnLog` reset** moved from RPC-method-name check
+  (legacy 1.x) to alias-change detection in `#logMessages` —
+  multi-test dump pollution resolved.
+- **Per-turn dump slicing** (`telemetry.js`) — `turn_NNN.txt` now
+  contains only that turn's content (was cumulative).
+- **`TestDb.create({ home })` option** — sets `RUMMY_HOME` BEFORE
+  plugin construction so telemetry's `#turnsDir` initializes.
+  Restored turn-dump capture for stories and hydrology tests.
+- **SQL view sort** changed to `(category, scheme, turn,
+  updated_at, path)` — entries within a scheme stay in turn-order;
+  promote/demote no longer shifts position; cache-friendly on
+  real-cache providers.
+- **Config consolidation** (`src/agent/config.js`) — 9 required
+  env-driven scalars (BUDGET_CEILING, LLM_DEADLINE_MS,
+  LLM_MAX_BACKOFF_MS, FETCH_TIMEOUT, MAX_STRIKES, MIN_CYCLES,
+  MAX_CYCLE_PERIOD, RUN_TIMEOUT_MS, THINK) consolidated. 11
+  scattered `if (!X) throw...` removed across 8 consumer files.
+  Single error message listing every missing/invalid var at boot.
+- **Hydrology 16-turn cap removed** — state machine gets room to
+  bounce per the user's principle.
+- **`fcrmScore` removal** (`budget.js`) — opaque-to-model metric
+  with no telemetry consumer eliminated.
+- **`RUMMY_MAX_STALLS` and `RUMMY_MAX_UPDATE_REPEATS`** retired
+  from `.env.example` and SPEC. Cycle detection (gate-fixed) is
+  the unified mechanism.
+
+**Test status**: 509/509 unit + integration green throughout. E2E
+went from 26/31 (pre-session) to demonstrably-improved post-fix:
+`factual answer from context` now passes (was the canonical "No
+prompt provided" failure). Two more tests changed shape from
+"system bug → fast assertion fail" to "test calibration tight →
+timeout while engine works correctly" (`prompt coherence`,
+`accepted edits visible on next turn`).
+
+**Remaining work surfaced by audit, not yet fixed**:
+
+- Reasoning-vs-emission gap (CC-8a) — model plans actions in
+  `reasoning_content`, doesn't emit them. Cross-test pattern.
+  Fix is explanation-side, requires instruction edits (sacred).
+- `sh`/`env` MUST-clause repetition (CC-12a) — 6 negatives for 2
+  binary distinctions. Instruction-side cleanup.
+- Test calibration: hydrology inner timeout 300s vs TIMEOUT 360s;
+  stories TIMEOUT 480s tight for multi-run sub-tests on local
+  gemma. Tweak per-test or move to `test/live/`.
+- Persona_fork PF-2: Definition stage doesn't recognize
+  fork-inherited knowns; gemma confabulates new unknowns.
+  Instruction edit territory.
+- `<summarized>` / `<visible>` packet split (parked above) —
+  parked; potentially powerful but invasive refactor.
 
 ### terminal-bench 2.0 / Harbor wiring (2026-04-27, in flight)
 

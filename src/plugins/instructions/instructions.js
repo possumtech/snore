@@ -6,12 +6,7 @@ const baseInstructions = readFileSync(
 	"utf8",
 );
 
-// 1XY status encoding: X=current phase, Y=next phase. Y routes through
-// phaseForStatus to select next turn's <instructions>. Phases 4–9 are
-// reserved (status codes 1X4..1X9); add new phases by dropping in
-// `instructions_10N.md`. Absent files render no <instructions> block —
-// the model runs on base instructions only. This lets you route ahead
-// of writing the prose (e.g. an upcoming "ask lite" phase 9).
+// 1XY phase routing; see plugin README.
 const PHASES = [4, 5, 6, 7, 8, 9];
 const phaseInstructions = Object.fromEntries(
 	PHASES.flatMap((p) => {
@@ -28,14 +23,7 @@ function phaseForStatus(status) {
 	return PHASES.includes(last) ? last : 4;
 }
 
-// Scan an already-materialized row set for the most recent update
-// emission's status. Used by the assembly.user filter so the phase
-// instructions ride with the user message (dynamic, expected to
-// change every turn) instead of the system prompt (stable, cached).
-// Validation is upstream (update.js isValidStatus + 422 error log) so
-// we trust the status and route on it directly — a whitelist here
-// silently drops advertised completion codes whose contracts drift,
-// which is worse than a noisy fallback.
+// Latest non-rejected update status from materialized rows.
 function latestUpdateStatusFromRows(rows) {
 	let bestTurn = -1;
 	let bestStatus = null;
@@ -49,9 +37,6 @@ function latestUpdateStatusFromRows(rows) {
 				: r.attributes;
 		const status = attrs?.status;
 		if (status == null) continue;
-		// Rejected updates are written for the model's audit trail but are
-		// not navigation events — phase router skips them so the model
-		// stays in the stage it was already in.
 		if (attrs?.rejected) continue;
 		if (turn > bestTurn || (turn === bestTurn && status > bestStatus)) {
 			bestTurn = turn;
@@ -74,19 +59,11 @@ export default class Instructions {
 			this.validateNavigation.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
-		// Dynamic phase instructions live in the user message (above
-		// <prompt>) so the system message stays cache-stable across turns.
-		// Priority 250 puts us between <log> (100), <unknowns> (200),
-		// and <prompt> (300).
 		core.filter("assembly.user", this.assembleInstructions.bind(this), 250);
 		new Protocol(core);
 	}
 
-	/**
-	 * Materialize the system prompt for a run: look up the
-	 * instructions://system entry, project it through the promoted view.
-	 * TurnExecutor calls this once per turn before context assembly.
-	 */
+	// Project instructions://system through the visible view; called once per turn.
 	async resolveSystemPrompt(rummy) {
 		const { entries: store, runId, hooks } = rummy;
 		const entries = await store.getEntriesByPattern(
@@ -111,27 +88,7 @@ export default class Instructions {
 		});
 	}
 
-	/**
-	 * Reject illegal stage navigation. Three checks:
-	 *
-	 *   1. Forward skip — `nextPhase > currentPhase + 1`. Models advancing
-	 *      more than one stage at a time are jumping past required work.
-	 *      Returns and continuations (nextPhase ≤ currentPhase) always pass.
-	 *
-	 *   2. Status 200 outside Deployment — 200 is Deployment Completion;
-	 *      emitting it from earlier phases skips the actual Deployment work.
-	 *
-	 *   3. Deployment with prior prompts — any status landing the model in
-	 *      Deployment (phase 7) requires zero visible PRIOR prompts. State-
-	 *      property rule covering both entry (167) and continuation (177,
-	 *      200) — once in Deployment, the model still can't claim it with
-	 *      undemoted prior prompts. The current (latest) prompt always
-	 *      stays visible since Deployment must act on it.
-	 *
-	 * On rejection the caller marks the update entry rejected (so the
-	 * phase router skips it) and emits an error log; navigation rejections
-	 * count as normal strikes.
-	 */
+	// Reject illegal stage navigation; see plugin README.
 	async validateNavigation(status, rummy) {
 		const currentPhase = await this.#getCurrentPhase(rummy);
 		const nextPhase = phaseForStatus(status);
@@ -154,11 +111,7 @@ export default class Instructions {
 	}
 
 	async #getCurrentPhase(rummy) {
-		// `**` (not `*`) for the slug position — update slugs are derived
-		// from the model's update body and can contain URL-encoded `/`
-		// characters (e.g. `known%3A//foo/bar` in a "ready for deployment"
-		// summary). Single `*` doesn't cross those embedded slashes and
-		// silently misses the prior turn's update.
+		// `**` not `*`: update slugs may contain URL-encoded `/`.
 		const updates = await rummy.entries.getEntriesByPattern(
 			rummy.runId,
 			"log://*/update/**",
@@ -185,16 +138,7 @@ export default class Instructions {
 		return phaseForStatus(bestStatus);
 	}
 
-	/**
-	 * Find the latest successful Deployment summary from a log-entry list.
-	 * Matches `log://turn_N/update/...` entries with status=200 (successful
-	 * Deployment completion) and returns the most recent. Used by
-	 * AgentLoop telemetry to surface the model's latest delivery.
-	 *
-	 * Lives here, not in AgentLoop, because "what counts as a summary" is
-	 * state-machine knowledge — phase 7's success status (200) is the
-	 * definition. AgentLoop just consumes the result.
-	 */
+	// Latest phase-7 success (status=200); state-machine knowledge lives here, not AgentLoop.
 	findLatestSummary(logEntries) {
 		return logEntries
 			.filter((e) => {
@@ -216,9 +160,7 @@ export default class Instructions {
 		);
 		const visible = prompts.filter((p) => p.visibility === "visible");
 		if (visible.length === 0) return 0;
-		// Exclude the current (latest) prompt — that's what Deployment acts on.
-		// Demoting it would force the model to deliver on content it hid from
-		// itself. Only PRIOR prompts are subject to demote-before-Deployment.
+		// Exclude the latest prompt; only PRIOR prompts trigger demote-before-Deployment.
 		let maxNum = -1;
 		for (const p of visible) {
 			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
@@ -236,10 +178,7 @@ export default class Instructions {
 		const toolSet = rummy.toolSet
 			? [...rummy.toolSet]
 			: this.#core.hooks.tools.names;
-		// instructions:// is an audit scheme (writable_by: ["system"]).
-		// No per-turn phase state on this entry — keeps the system
-		// prompt cache-stable across turns. Phase selection happens at
-		// assembly.user time from the current row set.
+		// instructions://system stays cache-stable; phase selection at assembly.user.
 		await store.set({
 			runId,
 			turn,
@@ -248,8 +187,6 @@ export default class Instructions {
 			state: "resolved",
 			writer: "system",
 			attributes: {
-				// runRow.persona is a nullable TEXT column; absent row is
-				// a system bug — let the null propagate if runRow exists.
 				persona: runRow.persona,
 				toolSet,
 			},
@@ -265,7 +202,6 @@ export default class Instructions {
 			{},
 			{ toolSet: activeTools },
 		);
-		// Hidden tools are excluded at the registry level (see ToolRegistry).
 		const sorted = this.#core.hooks.tools.advertisedNames.filter((n) =>
 			activeTools.has(n),
 		);
@@ -281,12 +217,7 @@ export default class Instructions {
 		return prompt;
 	}
 
-	// Renders the current phase's instructions as an <instructions>
-	// block in the user message. Runs at priority 250 — after <log>
-	// and <unknowns>, immediately before <prompt>. System prompt stays
-	// static so prompt caching keeps its prefix intact across turns.
-	// A routed phase without an instructions_10N.md file emits nothing —
-	// the model proceeds on base instructions alone.
+	// Render <instructions> for current phase; absent phase file → no block.
 	assembleInstructions(content, ctx) {
 		const status = latestUpdateStatusFromRows(ctx.rows);
 		const step = phaseInstructions[phaseForStatus(status)];

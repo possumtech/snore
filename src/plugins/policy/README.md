@@ -6,8 +6,14 @@ was started in `ask` mode.
 
 ## Registration
 
-- **Filter**: `entry.recording` (priority 1) — runs before a command
-  becomes an entry.
+- **Filter**: `entry.recording` (priority 1) — the validation /
+  transform hook in TurnExecutor's RECORD phase. Runs after the
+  command is parsed but before the audit row is committed. Returning
+  an object with `state: "failed"` (or `"cancelled"`) short-circuits
+  recording and skips DISPATCH for that command. Plugins may also
+  return a transformed entry (modified body, attributes, path) for
+  the recorder to commit. Filter signature:
+  `(entry, { store, runId, turn, loopId, mode })`.
 
 ## Rejections (ask mode only)
 

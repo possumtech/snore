@@ -2,10 +2,7 @@ import HookRegistry from "./HookRegistry.js";
 import RpcRegistry from "./RpcRegistry.js";
 import ToolRegistry from "./ToolRegistry.js";
 
-/**
- * createHooks returns a structured, strictly-typed API for registering
- * and emitting hooks, removing the dynamic stringly-typed Proxy magic.
- */
+// Strictly-typed hook surface; replaces the previous Proxy magic.
 export default function createHooks(debug = false) {
 	const registry = new HookRegistry(debug);
 	const tools = new ToolRegistry();
@@ -29,11 +26,7 @@ export default function createHooks(debug = false) {
 
 		// Explicit Hook Schema
 		boot: {
-			// Fires once after the service finishes booting (DB open,
-			// plugins inited, models bootstrapped, hygiene done) and
-			// before SocketServer accepts connections. Plugins that
-			// need a one-shot post-init action (e.g. cli plugin firing
-			// a programmatic run) subscribe here.
+			// Post-init, pre-accept-connections; one-shot post-init actions subscribe here.
 			completed: createEvent("boot.completed"),
 		},
 		project: {
@@ -67,21 +60,13 @@ export default function createHooks(debug = false) {
 			response: createEvent("turn.response"),
 			completed: createEvent("turn.completed"),
 		},
+		// SPEC #resolution covers the proposal hook chain.
 		proposal: {
 			prepare: createEvent("proposal.prepare"),
 			pending: createEvent("proposal.pending"),
-			// Plugins veto acceptance by returning {allow:false, outcome, body}.
-			// Used e.g. by set plugin's readonly constraint check.
 			accepting: createFilter("proposal.accepting"),
-			// Plugins compose the resolved body based on path/action. Default
-			// is output || "". Used e.g. by set plugin to preserve the
-			// model's proposed content as the resolved body.
 			content: createFilter("proposal.content"),
-			// Fires after a proposal resolves with action="accept". Plugins
-			// perform their side effects (file materialize, unlink, stream
-			// setup, etc.) here — NOT in AgentLoop.resolve.
 			accepted: createEvent("proposal.accepted"),
-			// Fires after a proposal resolves with action="error" or "reject".
 			rejected: createEvent("proposal.rejected"),
 		},
 		assembly: {
@@ -106,24 +91,9 @@ export default function createHooks(debug = false) {
 			},
 			messages: createFilter("llm.messages"),
 			response: createFilter("llm.response"),
-			// Reasoning merge filter. Subscribers contribute per-tag
-			// reasoning text (e.g. the think plugin's <think>…</think>)
-			// to the model's reasoning_content field. Fires between parse
-			// and turn.response.
+			// Plugins contribute reasoning text into reasoning_content; fires between parse and turn.response.
 			reasoning: createFilter("llm.reasoning"),
-			// LLM provider registry. Plugins contribute entries shaped:
-			//   {
-			//     name: string,
-			//     matches: (modelAlias) => boolean,
-			//     completion: (messages, modelAlias, options) => Promise<response>,
-			//     getContextSize: (modelAlias) => Promise<number>,
-			//   }
-			// Each provider owns a prefix namespace (e.g. "openai/", "ollama/",
-			// "openrouter/"). LlmProvider picks the first provider whose
-			// matches() returns true. No catchall — if a model alias doesn't
-			// match any registered provider, the request fails with a clear
-			// "no provider registered" error. External plugins add new
-			// prefixes without namespace collision.
+			// Provider entries: { name, matches, completion, getContextSize }.
 			providers: [],
 		},
 		file: {},
@@ -171,7 +141,6 @@ export default function createHooks(debug = false) {
 		agent: {},
 		tools,
 
-		// Utility to add raw filters/events directly if needed for tests
 		addFilter: registry.addFilter.bind(registry),
 		applyFilters: registry.applyFilters.bind(registry),
 		addEvent: registry.addEvent.bind(registry),

@@ -2,15 +2,7 @@ import { ceiling, computeBudget, measureMessages } from "../../agent/budget.js";
 import materializeContext from "../../agent/materializeContext.js";
 import { countTokens } from "../../agent/tokens.js";
 
-/**
- * Delta-from-actual baseline. The pre-call <prompt tokenUsage> reports
- * the prior turn's actual API prompt_tokens; post-dispatch predicts
- * next turn's packet = this turn's actual tokens + tokens of new rows
- * written this turn. Keeps the 413 body on the same scale as the
- * model's <prompt> arithmetic — a 60% divergence between pre-call
- * (actual) and post-check (conservative estimator) makes the model
- * dismiss the system as janky and stop following rules.
- */
+// Delta-from-actual; same scale as <prompt tokenUsage>. SPEC #budget_enforcement.
 function predictNextPacket(rows, currentTurn, baseline) {
 	let delta = 0;
 	for (const r of rows) {
@@ -19,13 +11,7 @@ function predictNextPacket(rows, currentTurn, baseline) {
 	return baseline + delta;
 }
 
-/**
- * Format the 413 error body. Names each demoted path with its turn
- * and token count so the model can avoid re-promoting them next turn.
- * Exported (not private) so unit tests can assert the exact wire
- * format — the model reads this string, so its shape is part of the
- * contract.
- */
+// 413 error body; wire format is part of the model contract.
 export function overflowBody(overflow, contextSize, demoted) {
 	const cap = ceiling(contextSize);
 	const size = cap + overflow;
@@ -53,24 +39,13 @@ export default class Budget {
 		core.filter("assembly.user", this.assembleBudget.bind(this), 275);
 	}
 
-	/**
-	 * Render the <budget> table between <instructions> and <prompt>.
-	 * See SPEC @token_accounting for the contract: per-row tokens are
-	 * aTokens (the promotion premium = vTokens − sTokens), summarized
-	 * entries collapse into a single aggregate line, system overhead
-	 * (system prompt + tool defs) gets its own line.
-	 */
+	// Renders <budget> at priority 275; see SPEC #token_accounting.
 	assembleBudget(content, ctx) {
 		const { rows, contextSize, systemPrompt } = ctx;
 		if (!contextSize) return content;
 
 		const cap = ceiling(contextSize);
 
-		// Per-scheme aggregation: counts and costs at each visibility tier
-		// plus the savings (premium) the model would unlock by demoting
-		// visible → summarized. All math derives from per-row vTokens
-		// (cost as visible) / sTokens (cost as summarized) / aTokens
-		// (= vTokens − sTokens, the promotion premium).
 		const byScheme = new Map();
 		let visibleCount = 0;
 		let premiumTokens = 0;
@@ -119,9 +94,7 @@ export default class Budget {
 		const tokenUsage = floorTokens + premiumTokens + systemTokens;
 		const tokensFree = Math.max(0, cap - tokenUsage);
 
-		// Sort schemes by current cost descending — biggest-impact rows
-		// land at the top, so "what should I demote first?" reads
-		// straight off the table.
+		// Sort by current cost desc so biggest-impact rows are top.
 		const schemeRows = [...byScheme.entries()]
 			.toSorted(
 				([, a], [, b]) =>
@@ -187,16 +160,7 @@ export default class Budget {
 		});
 	}
 
-	/**
-	 * Pre-LLM budget enforcement. On first-turn overflow, demotes the
-	 * incoming prompt and re-materializes; re-checks and returns the
-	 * post-demotion result. If overflow persists after demotion (or on
-	 * later iterations), emits a 413 error (strike) and returns !ok so
-	 * TurnExecutor can skip the LLM call this turn.
-	 *
-	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted,
-	 *         loopIteration }
-	 */
+	// Pre-LLM enforce: SPEC #budget_enforcement.
 	async enforce({
 		contextSize,
 		messages,
@@ -270,14 +234,7 @@ export default class Budget {
 		return rechecked;
 	}
 
-	/**
-	 * Post-dispatch Turn Demotion. Re-materializes end-of-turn context and
-	 * checks against the ceiling. On overflow, demotes this turn's promoted
-	 * entries and emits a 413 error (strike) with the descriptive body so
-	 * the model sees it next turn via the unified error channel.
-	 *
-	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted }
-	 */
+	// Post-dispatch Turn Demotion: SPEC #budget_enforcement.
 	async postDispatch({ contextSize, ctx, rummy }) {
 		if (!contextSize) return { failed: false };
 		const postMat = await materializeContext({
@@ -292,11 +249,6 @@ export default class Budget {
 			contextSize,
 			demoted: ctx.demoted,
 		});
-		// Baseline from this turn's actual API tokens (telemetry wrote it
-		// before post-dispatch runs). Delta from rows added this turn.
-		// Predicted next-turn packet stays on the tokenUsage scale the
-		// model can verify against its own arithmetic. materializeContext
-		// guarantees a number (0 when no prior API call exists).
 		const baseline = postMat.lastContextTokens;
 		const predicted = predictNextPacket(postMat.rows, ctx.turn, baseline);
 		const cap = ceiling(contextSize);
@@ -305,14 +257,7 @@ export default class Budget {
 
 		const store = rummy.entries;
 		let demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
-		// Fallback: if this turn had nothing to demote but the packet still
-		// overflows, the pressure is coming from prior-turn promotions the
-		// model never demoted itself. Widen to all currently-visible
-		// entries in the run. Without this fallback, overflow-with-nothing
-		// strikes out runs where the base context has drifted over ceiling
-		// through no fault of the current turn (observed: runs where 3
-		// stale promotions from turns 12–14 saturate every subsequent
-		// turn's budget).
+		// Prior-turn-pressure fallback; SPEC #budget_enforcement.
 		if (demotedEntries.length === 0) {
 			demotedEntries = await store.demoteRunVisibleEntries(ctx.runId);
 		}

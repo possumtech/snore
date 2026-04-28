@@ -434,6 +434,32 @@ policy filtering, abort cascade). Plugin-tier convenience verbs
 don't invoke the handler chain. Plugin code that wants full handler
 semantics calls `hooks.tools.dispatch` directly.
 
+**Two-phase turn execution.** Model output flows through
+`TurnExecutor.execute` in strict order:
+
+1. **RECORD** — every parsed command is materialized as a
+   `log://turn_N/action/slug` audit entry via `#record()`. Each
+   tool's parser shape surfaces exactly one of `path` / `command` /
+   `question` as its addressable target; absent fields are treated
+   as empty so the validation gate catches bad shapes rather than
+   letting `undefined` propagate. Targets longer than 512 chars or
+   containing control characters are rejected as likely reasoning
+   bleed (the model's chain-of-thought leaking into a tool path).
+   Plugins can validate or transform via the `entry.recording`
+   filter before the row is committed.
+2. **DISPATCH** — recorded entries fire sequentially via
+   `hooks.tools.dispatch`. Each tool runs to completion before the
+   next starts. A failed entry sets `abortAfter`; subsequent
+   entries record as `outcome="aborted"`. Crashes inside dispatch
+   route through `hooks.error.log` at status 500 and trigger the
+   same abort cascade. After each entry, `proposal.prepare` lets
+   plugins materialize pending 202 proposals (e.g. `set`'s
+   search/replace revisions) from the just-recorded entry.
+
+Narration outside tags is fine when the turn also emitted at least
+one command — "OK", "Let me check:", reasoning prefixes are natural
+and don't trigger the no-actionable-tags error path.
+
 **Tool dispatch:** Commands are dispatched sequentially in the order
 the model emitted them. Each tool either succeeds (200), fails (400+),
 or proposes (202). On failure, all remaining tools are aborted. On
@@ -896,6 +922,22 @@ and emits a 413 error via `hooks.error.log.emit` with the descriptive
 body (what was demoted, the 50% rule for the next turn). The model
 sees the `error://` entry next turn and adjusts.
 
+**Delta-from-actual prediction.** Post-dispatch uses
+`predictNextPacket = lastContextTokens + Σ countTokens(body) for rows added this turn`,
+not the conservative measureMessages estimator. Reason: a 60%+
+divergence between the pre-call `<prompt tokenUsage>` (real API
+prompt_tokens) and the post-check estimator made the model dismiss
+the budget as janky and stop following demote rules. The two numbers
+must live on the same scale.
+
+**Prior-turn-pressure fallback.** If post-dispatch finds nothing to
+demote in the current turn but the packet still overflows, the
+pressure is coming from prior-turn promotions the model never demoted
+itself. Demotion widens to all currently-visible entries in the run
+and the prompt is also demoted. Without this fallback, observed
+behavior was strikes accumulating on runs whose base context had
+drifted over ceiling through no fault of the current turn.
+
 **LLM-reported context exceeded.** If the LLM rejects the request
 with a "context too long" error (detected via the regex in
 `src/llm/errors.js`), the LlmProvider raises `ContextExceededError`
@@ -1075,6 +1117,16 @@ is raw JSON; parse client-side. Mid-turn emissions have `telemetry:
 null`; the final emission of each turn includes the full telemetry
 block (token usage, context distribution, cost).
 
+**Telemetry completeness guarantee.** Every `run/state` emission
+computes a real budget from real numbers — never undefined, never
+synthesized. When no fresh turn result is available
+(abort/max-turns/crash paths fire before any turn executed, or after
+a turn that produced no tokens), `AgentLoop.#emitRunState` reads the
+last turn's `context_tokens` from the DB. Absent means no turn ran
+yet; zero is the truth, not a fallback. The shape and the math are
+the same on every code path so the client's renderer never needs to
+discriminate by emission cause.
+
 `stream/cancelled` payload: `{ run, path, reason }`. Server has
 already transitioned the entries to 499 (`Client Closed Request`);
 client should stop sending `stream` chunks for that path.
@@ -1088,6 +1140,30 @@ client should stop sending `stream` chunks for that path.
 | accept | `<update status="200|204|422">` | `completed` — terminal |
 | accept | neither | `running` — healer decides |
 | error | any | `running` — error state, model retries |
+
+**RPC ack vs run terminal status.** `resolve` and `inject` return the
+*current* run status (typically 102 mid-run), not 200. The client's
+dispatch handler must distinguish the synchronous RPC ack from the
+asynchronous `run/state` notification that carries real terminal
+state at end-of-turn — otherwise an HTTP-style 200 ack on a
+successful resolve would prematurely close the document.
+
+**Proposal hook chain.** Resolution flows through three filter/event
+hooks plugins can subscribe to:
+
+- `proposal.accepting` (filter) — first plugin to return
+  `{ allow: false, outcome, body }` vetoes acceptance. The entry
+  resolves to `state="failed"` with the plugin-supplied outcome and
+  body. Used by `policy` for read-only enforcement and similar
+  guards. First veto wins; later filters don't run.
+- `proposal.content` (filter) — when acceptance proceeds, plugins
+  override the resolved body. Default is `output ?? ""`. The `set`
+  plugin uses this to prefer the proposed body it already staged
+  on the audit entry over whatever literal body the client passed
+  through `resolve`.
+- `proposal.accepted` / `proposal.rejected` (events) — fired after
+  the resolution is committed; plugins side-effect on either
+  outcome.
 
 ---
 
@@ -1219,6 +1295,78 @@ Format normalization:
 - OpenAI function_call JSON → normalized to XML
 - Mistral `[TOOL_CALLS]` → normalized to XML
 - Sed alternate delimiters (`s|old|new|`) → parsed like `s/old/new/`
+
+### XML Parser {#xml_parser}
+
+`src/agent/XmlParser.js` is the syntax layer between raw model output
+and the dispatch pipeline. Models routinely emit malformed XML —
+unclosed tags, missing slashes, mismatched closes, unterminated
+attribute values, embedded code-fences, training-format tool calls.
+The parser's contract is: never throw, never silently drop a tool
+call, surface every recovery as a warning so error.log can route it.
+
+**Pre-flight repair pipeline** (order is load-bearing):
+
+1. `#normalizeToolCalls` — translate native training formats (gemma
+   `\`\`\`tool_code\n<xml>\n\`\`\``, Qwen `<|tool_call>call:NAME{...}`,
+   OpenAI `{"name":"...","arguments":{...}}`, Anthropic
+   `<tool_use><name>...</name><input>{...}</input></tool_use>`,
+   Mistral `[TOOL_CALLS] [{...}]`, harmony role/channel pseudo-tags
+   `<|channel>` / `<channel|>`). Catch-all malformed `<|tool_call>`
+   tokens become `<error>` blocks (in prose — never with literal
+   `<get>`/`<set>`/etc. tags, which would re-enter the parser as
+   phantom tool calls).
+2. `#neutralizeCodeSpans` — entity-encode tag brackets inside
+   backtick spans (`` `<get/>` `` → `` `&lt;get/&gt;` ``). Models
+   quote instructions; quoted tool names must not parse.
+3. `#correctMismatchedCloses` — at outer tool depth (stack=1),
+   rewrite `</WRONG>` to `</RIGHT>`. htmlparser2 silently drops
+   unmatched closes, which would make the explicit recovery path
+   unreachable and absorb every sibling command as body text.
+   Conservative: only outermost depth; nested mismatches inside
+   tool bodies are left alone (bodies are opaque, see below).
+4. `#balanceAttrQuotes` — close `ATTR="..."` values that never
+   quote-close before the next tag. Without this repair,
+   htmlparser2 consumes the rest of input as one giant attribute
+   value and silently drops every subsequent tool call. Triggers
+   only when the value contains no quote, no `>`, and is followed
+   by another tag opening or close.
+
+**Body opacity.** Tool bodies are opaque text, not nested XML. The
+model writing a plan with `<get/>` examples in it, SEARCH/REPLACE
+markers in `<set>`, or XML samples in `<known>` all need to survive
+intact. Nested tag opens push onto a per-tool stack; matching closes
+pop. Orphan closes that don't match the stack but match a known tool
+name are treated as recovery (likely typo); unknown orphan closes
+are kept as body text.
+
+**Empty-body recovery.** A new tool tag opens while the current tool
+has no body content yet — the model meant the current tag to
+self-close but typed it paired, or emitted a mismatched close that
+htmlparser2 dropped. Close current, open new, emit recovery warning.
+
+**Per-tool attr-vs-body resolution** (`resolveCommand`). Tools accept
+attributes on the open tag *and* body text inside the tag. If the
+canonical attribute is missing, the body silently fills it. The
+shape per tool:
+- `set` — structured edit detection (merge-conflict markers, udiff,
+  Claude `<old_text>` XML, JSON `{search,replace}`, sed `s/.../.../`,
+  attribute-mode `search=`/`replace=`, body-as-search-when-`body=`
+  attr-set, plain write).
+- `update` — body fills `body`, status defaults to 102 if absent.
+- `get` / `rm` — attr `path` or body fills target. Spread `a` so
+  `line` / `limit` / `visibility` / future attrs reach the handler.
+- `search` — attr `path` or body fills target; `results` numeric.
+- `mv` / `cp` — attr `path` (source); attr `to` or body fills dest.
+  Spread `a` so `visibility` reaches the handler for batch
+  visibility changes.
+- `sh` / `env` — attr `command` or body fills the command.
+- `ask_user` — attr `question`; attr `options` or body for options.
+
+**Tool-call cap.** `RUMMY_MAX_COMMANDS` caps the number of tool
+calls per turn. When hit, remaining commands drop with a warning;
+the model sees one structured error so it can adjust on the next
+turn rather than rediscovering silent truncation.
 
 ---
 

@@ -1,7 +1,4 @@
-/**
- * HookRegistry manages a simple, priority-ordered pipeline of processors.
- * It also supports basic event emitters for side-effects.
- */
+// Priority-ordered processors + filters + events.
 export default class HookRegistry {
 	#processors = [];
 	#events = new Map();
@@ -12,17 +9,11 @@ export default class HookRegistry {
 		this.#debug = debug;
 	}
 
-	/**
-	 * Register a processor for the Turn XML Document.
-	 */
 	onTurn(callback, priority = 10) {
 		this.#processors.push({ callback, priority });
 		this.#processors.sort((a, b) => a.priority - b.priority);
 	}
 
-	/**
-	 * Run all registered Turn processors.
-	 */
 	async processTurn(rummy) {
 		for (const p of this.#processors) {
 			const start = performance.now();
@@ -35,9 +26,6 @@ export default class HookRegistry {
 		}
 	}
 
-	/**
-	 * Standard WordPress-style Filters for non-DOM data.
-	 */
 	addFilter(tag, callback, priority = 10) {
 		if (!this.#filters.has(tag)) this.#filters.set(tag, []);
 		this.#filters.get(tag).push({ callback, priority });
@@ -54,9 +42,6 @@ export default class HookRegistry {
 		return result;
 	}
 
-	/**
-	 * Standard WordPress-style Events for side-effects.
-	 */
 	addEvent(tag, callback, priority = 10) {
 		if (!this.#events.has(tag)) this.#events.set(tag, []);
 		this.#events.get(tag).push({ callback, priority });

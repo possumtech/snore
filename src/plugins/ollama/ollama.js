@@ -1,17 +1,11 @@
+import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 
-const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
-if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
+const { FETCH_TIMEOUT } = config;
 
 const PROVIDER = "ollama";
 
-/**
- * Ollama LLM provider plugin. Registers with hooks.llm.providers if
- * OLLAMA_BASE_URL is set; inert otherwise. Handles model aliases of the
- * form `ollama/{modelName}` — e.g. `ollama/llama3.1:8b` or
- * `ollama/library/qwen:7b` (Ollama accepts both bare and
- * registry-qualified model names).
- */
+// Inert unless OLLAMA_BASE_URL is set; ollama/{model[/registry]} aliases.
 export default class Ollama {
 	#baseUrl;
 

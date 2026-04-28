@@ -11,20 +11,7 @@ function getGlobalPrefix() {
 	return globalPrefix;
 }
 
-/**
- * Plugin loader:
- *   1. Walk filesystem + env vars to collect plugin descriptors.
- *   2. Import each and instantiate with a fresh PluginContext.
- *
- * Returns a Map of name → PluginContext for the caller to pass to
- * initPlugins. No module-global state — each caller owns its set.
- *
- * Plugin constructors must be declarative (SPEC surfaces): they
- * register schemes, hooks, filters, RPC methods — but don't dereference
- * infrastructure that might not be ready yet. Because the plugin
- * contract makes constructors side-effect-free on each other, load
- * order doesn't matter and there is no dependency system.
- */
+// Walk filesystem + env vars, import, instantiate; constructors must stay declarative.
 export async function registerPlugins(dirs = [], hooks) {
 	const uniqueDirs = [...new Set(dirs.map((d) => join(d)))];
 
@@ -89,26 +76,14 @@ const AUDIT_SCHEMES = [
 
 const PROMPT_SCHEMES = ["prompt"];
 
-// Lifecycle schemes: client-addressable entries that reflect server
-// state. Writable by system (internal bookkeeping), plugin (extensions),
-// and client (RPC in Phase 4).
+// Lifecycle entries mirror server state; writable by system/plugin/client.
 const LIFECYCLE_SCHEMES = ["run"];
 
-// Unified log namespace for action history entries under
-// log://turn_N/scheme/slug.
 const LOG_SCHEMES = ["log"];
 
-/**
- * After DB is ready, upsert declared schemes and bootstrap audit/prompt
- * schemes. Takes the plugin collection returned by registerPlugins.
- * Per-plugin store/db access is provided per-turn via RummyContext;
- * PluginContext itself holds only name + hooks.
- */
+// Bootstraps audit/prompt/log/lifecycle schemes; called after DB is ready.
 export async function initPlugins(db, hooks, instances) {
 	for (const name of AUDIT_SCHEMES) {
-		// Audit schemes are written only by system-level code (reasoning,
-		// user/assistant/model messages, etc.). Closing the door on model
-		// writes and plugin writes here.
 		await db.upsert_scheme.run({
 			name,
 			model_visible: 0,
@@ -118,8 +93,6 @@ export async function initPlugins(db, hooks, instances) {
 		});
 	}
 	for (const name of PROMPT_SCHEMES) {
-		// Prompt entries are created by the prompt plugin on user input;
-		// model doesn't emit <set path="prompt://...">.
 		await db.upsert_scheme.run({
 			name,
 			model_visible: 1,
@@ -138,9 +111,6 @@ export async function initPlugins(db, hooks, instances) {
 		});
 	}
 	for (const name of LIFECYCLE_SCHEMES) {
-		// Lifecycle entries are client-addressable mirrors of server state.
-		// Not model-visible. System writes internally; plugins and clients
-		// write via the 6 primitives.
 		await db.upsert_scheme.run({
 			name,
 			model_visible: 0,
@@ -156,7 +126,7 @@ export async function initPlugins(db, hooks, instances) {
 		}
 	}
 
-	// Register default schemes for tools that plugins ensured but didn't registerScheme for
+	// Default scheme for tools that ensureTool'd but didn't registerScheme.
 	const registered = new Set();
 	for (const ctx of instances.values()) {
 		for (const s of ctx.schemes) registered.add(s.name);
@@ -177,7 +147,6 @@ export async function initPlugins(db, hooks, instances) {
 }
 
 function resolvePlugin(packageName) {
-	// Check local node_modules first, then global
 	const localDir = join(process.cwd(), "node_modules", packageName);
 	if (existsSync(join(localDir, "package.json"))) return localDir;
 	const globalDir = join(getGlobalPrefix(), "lib", "node_modules", packageName);

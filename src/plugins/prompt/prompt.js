@@ -1,3 +1,5 @@
+const SUMMARIZED_PROMPT_CHAR_CAP = 500;
+
 export default class Prompt {
 	#core;
 
@@ -7,10 +9,9 @@ export default class Prompt {
 		core.hooks.tools.onView(
 			"prompt",
 			(entry) => {
-				const limit = 500;
 				const full = entry.body;
-				if (full.length <= limit) return full;
-				return `${full.slice(0, limit)}\n[truncated — promote to see the complete prompt]`;
+				if (full.length <= SUMMARIZED_PROMPT_CHAR_CAP) return full;
+				return `${full.slice(0, SUMMARIZED_PROMPT_CHAR_CAP)}\n[truncated — promote to see the complete prompt]`;
 			},
 			"summarized",
 		);
@@ -22,13 +23,9 @@ export default class Prompt {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
-			// Each new prompt is the start of an independent state-machine
-			// cycle. Archive prior cycles' prompts and per-turn logs so they
-			// don't pollute Deployment-landing validation. Knowns, unknowns,
-			// and file entries persist (cross-cycle knowledge survives).
+			// New prompt = new cycle; archive prior cycle's prompts/logs (knowns/unknowns persist).
 			await store.archivePriorPromptArtifacts(runId, turn);
 
-			// prompt:// writable_by: ["plugin"] — explicit for clarity.
 			await store.set({
 				runId,
 				turn,
@@ -63,12 +60,7 @@ export default class Prompt {
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		// Surface the most recent prior-turn budget demotion as a
-		// `reverted="N"` attribute on <prompt>. Historical error
-		// entries sit in <log> but read as ambient noise; this signal
-		// is dynamic and always fresh — the model sees that its
-		// promotions last turn were reverted, in the same spot where
-		// it reads budget numbers.
+		// reverted="N" surfaces last turn's 413 demotion count next to budget numbers.
 		let reverted = "";
 		const priorTurn = ctx.turn - 1;
 		if (priorTurn >= 1) {

@@ -28,6 +28,6 @@ Warning: YOU MUST NOT use shell commands for project file operations. Project fi
 Example: <set path="src/file.txt">new file content</set>
 Example: <get path="src/*.txt" preview/>
 
-Tip: Project files, entries, prompts, and log events are all accessible with the XML Commands.
+Tip: Project files, entries, prompts, and log events are all accessible with the XML Commands. If there's no `{scheme}://` prefix, it's a repo file path.
 
 [%TOOLDOCS%]

@@ -26,10 +26,7 @@ export default class RpcRegistry {
 
 	#toolFallback = null;
 
-	/**
-	 * Set a fallback that auto-dispatches any registered tool via RPC.
-	 * Checked at request time — tools registered after this call still work.
-	 */
+	// Late-binding tool dispatcher; resolved per request.
 	setToolFallback(hooks, buildRunContext, dispatchTool) {
 		this.#toolFallback = { hooks, buildRunContext, dispatchTool };
 	}

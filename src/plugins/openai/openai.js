@@ -1,16 +1,11 @@
+import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 
-const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
-if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
+const { FETCH_TIMEOUT } = config;
 
 const PROVIDER = "openai";
 
-/**
- * OpenAI-compatible LLM provider plugin. Registers with hooks.llm.providers
- * if OPENAI_BASE_URL is set in env; silently inert otherwise. Handles
- * model aliases of the form `openai/{modelName}` — the first path
- * segment picks the provider, the rest is whatever the API expects.
- */
+// Inert unless OPENAI_BASE_URL is set; openai/{model} aliases.
 export default class OpenAi {
 	#baseUrl;
 	#apiKey;
@@ -69,10 +64,6 @@ export default class OpenAi {
 			);
 			m.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
-
-			// Full reasoning dump is centralized in telemetry.js on every
-			// provider — keeping it out of provider plugins avoids double
-			// printing and per-provider drift.
 		}
 
 		return data;
@@ -82,7 +73,7 @@ export default class OpenAi {
 		const headers = { "Content-Type": "application/json" };
 		if (this.#apiKey) headers.Authorization = `Bearer ${this.#apiKey}`;
 
-		// Try /props first — llama.cpp exposes runtime n_ctx here.
+		// llama.cpp /props returns runtime n_ctx; absent on vanilla OpenAI.
 		try {
 			const propsResponse = await fetch(`${this.#baseUrl}/props`, {
 				headers,
@@ -93,10 +84,7 @@ export default class OpenAi {
 				const runtimeCtx = props?.default_generation_settings?.n_ctx;
 				if (runtimeCtx) return runtimeCtx;
 			}
-		} catch (_err) {
-			// /props is a llama.cpp extension; absent on vanilla OpenAI.
-			// Fall through to /v1/models for the training-context-size hint.
-		}
+		} catch (_err) {}
 
 		// Fall back to /v1/models for training context.
 		const response = await fetch(`${this.#baseUrl}/v1/models`, {

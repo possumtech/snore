@@ -1,18 +1,4 @@
-/**
- * Exponential backoff with full jitter, time-bounded.
- *
- * Calls `fn` until it returns a value, the deadline elapses, or a
- * non-retryable error is thrown. Between attempts, sleeps for a
- * random duration in [0, min(maxDelayMs, baseDelayMs * 2^attempt)).
- * Full jitter (AWS / Google Cloud pattern) prevents thundering-herd
- * synchronization across concurrent clients hitting the same API.
- *
- * Time-bounded, not count-bounded: a connect-level outage that
- * recovers in 4 minutes is invisible to the caller, but a persistent
- * outage fails after deadlineMs with a clear cause chain.
- *
- * Aborts immediately if the supplied AbortSignal fires — even mid-sleep.
- */
+// Time-bounded exponential backoff with full jitter; mid-sleep AbortSignal-aware.
 export async function retryWithBackoff(
 	fn,
 	{

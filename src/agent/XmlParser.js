@@ -13,15 +13,11 @@ export const ALL_TOOLS = new Set([
 	"think",
 ]);
 
-/**
- * Resolve the competing attr-vs-body philosophies per tool.
- * If the canonical attribute is missing, the body fills it. Silent.
- */
+// Per-tool resolution: missing canonical attribute is filled silently from the body.
 function resolveCommand(name, a, rawBody) {
 	const trimmed = rawBody.trim();
 
 	if (name === "set") {
-		// Structured edit detection — merge conflict, udiff, Claude XML
 		const hasEdit =
 			/<{3,12} SEARCH/.test(trimmed) ||
 			/>{3,12} REPLACE/.test(trimmed) ||
@@ -40,12 +36,10 @@ function resolveCommand(name, a, rawBody) {
 				};
 			}
 		}
-		// JSON-style { search, replace }
 		const jsonEdit = parseJsonEdit(trimmed);
 		if (jsonEdit) {
 			return { name, path: a.path, ...jsonEdit };
 		}
-		// Sed syntax: s/search/replace/flags — supports chained commands
 		if (trimmed.startsWith("s/")) {
 			const blocks = parseSed(trimmed);
 			if (blocks?.length === 1) {
@@ -62,7 +56,6 @@ function resolveCommand(name, a, rawBody) {
 				return { name, path: a.path, blocks };
 			}
 		}
-		// search+replace attrs → attribute edit mode
 		if (a.search) {
 			const replace = a.replace ?? trimmed;
 			return {
@@ -74,7 +67,6 @@ function resolveCommand(name, a, rawBody) {
 				replace,
 			};
 		}
-		// Body attr + body content → search/replace (attr is search, body is replace)
 		if (trimmed && a.body) {
 			return {
 				name,
@@ -84,7 +76,6 @@ function resolveCommand(name, a, rawBody) {
 				preview: a.preview,
 			};
 		}
-		// Plain write or visibility change
 		const body = trimmed || a.body || "";
 		return { name, ...a, body };
 	}
@@ -96,10 +87,6 @@ function resolveCommand(name, a, rawBody) {
 	}
 
 	if (name === "get" || name === "rm") {
-		// Spread `a` so `line`, `limit`, `visibility`, and future attrs
-		// reach the handler. Earlier narrow extraction silently dropped
-		// `line=/limit=` and stranded the partial-read path advertised
-		// in getDoc.
 		return { name, ...a, path: a.path || trimmed || null };
 	}
 
@@ -110,10 +97,6 @@ function resolveCommand(name, a, rawBody) {
 	}
 
 	if (name === "mv" || name === "cp") {
-		// Spread `a` so `visibility` reaches the handler. mvDoc
-		// advertises `<mv path="known://..." visibility="summarized"/>`
-		// for batch visibility changes and was silently stripping that
-		// attr before.
 		return { name, ...a, path: a.path, to: a.to || trimmed || null };
 	}
 
@@ -132,43 +115,23 @@ function resolveCommand(name, a, rawBody) {
 }
 
 export default class XmlParser {
-	/**
-	 * Parse tool commands from model content using htmlparser2.
-	 * Handles malformed XML gracefully — unclosed tags, missing slashes, etc.
-	 * Every tool can appear as self-closing (attrs only) or with body content.
-	 * Competing attr-vs-body philosophies are resolved silently.
-	 * @param {string} content - Raw model response text
-	 * @returns {{ commands: Array, warnings: string[], unparsed: string }}
-	 */
 	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS);
 
 	static parse(content) {
 		if (!content) return { commands: [], warnings: [], unparsed: "" };
 
-		// Normalize native tool call formats to rummy XML
 		const normalized = XmlParser.#normalizeToolCalls(content);
 
 		const commands = [];
 		const warnings = [];
 		const textChunks = [];
 
-		// Pre-flight: neutralize tool tags inside markdown code spans.
-		// Models quote instructions containing `<get/>` etc. — the parser
-		// would treat them as real tool calls. Replace the angle brackets
-		// inside backtick spans so htmlparser2 ignores them.
 		const codeNeutralized = XmlParser.#neutralizeCodeSpans(normalized);
-
-		// Pre-flight: fix mismatched close tags that htmlparser2 silently
-		// drops (making our onclosetag recovery code unreachable). Must run
-		// before balanceAttrQuotes since the mismatch scan needs clean tags.
+		// Mismatch fix must precede attr-quote balance (needs clean tags).
 		const mismatchFixed = XmlParser.#correctMismatchedCloses(
 			codeNeutralized,
 			warnings,
 		);
-
-		// Pre-flight: balance unclosed attribute quotes that would otherwise
-		// cause htmlparser2 to consume the rest of input as a single attribute
-		// value, silently dropping every subsequent tool call.
 		const balanced = XmlParser.#balanceAttrQuotes(mismatchFixed, warnings);
 		let current = null;
 		let ended = false;
@@ -180,11 +143,7 @@ export default class XmlParser {
 					if (capped) return;
 
 					if (current) {
-						// Empty-body case: current tool opened but got no text
-						// content before a new tag. The model likely meant current
-						// to self-close but typed it in paired form, or emitted a
-						// mismatched close tag that htmlparser2 silently dropped.
-						// Close current, open new.
+						// Empty-body before new open: treat as unclosed prior tool.
 						const hasBody = current.rawBody.trim() !== "";
 						const hasNestedOpens = (current.nested || []).length > 0;
 						if (!hasBody && !hasNestedOpens && ALL_TOOLS.has(name)) {
@@ -196,12 +155,7 @@ export default class XmlParser {
 							);
 							current = null;
 						} else {
-							// Nested tag inside a body with content — treat as body
-							// text. Tool bodies are opaque: the model writing a plan
-							// with <get/> in it, SEARCH/REPLACE in <set>, or XML
-							// examples in <known> all need to survive intact. Track
-							// nested opens on a stack so matching closes pop off and
-							// orphan closes (typos) still trigger recovery.
+							// Body opacity: stack the nested open; see SPEC #xml_parser.
 							const attrStr = Object.entries(attrs)
 								.map(([k, v]) => (v === "" ? k : `${k}="${v}"`))
 								.join(" ");
@@ -235,7 +189,6 @@ export default class XmlParser {
 					if (capped) return;
 
 					if (current) {
-						// Matching nested close — pop stack, keep as text.
 						const nested = current.nested;
 						if (nested.length > 0 && nested[nested.length - 1] === name) {
 							nested.pop();
@@ -243,7 +196,6 @@ export default class XmlParser {
 							return;
 						}
 
-						// Matching close for outer tool — finalize.
 						if (name === current.name && nested.length === 0) {
 							if (ended) {
 								warnings.push(
@@ -257,7 +209,7 @@ export default class XmlParser {
 							return;
 						}
 
-						// Orphan close for a known tool (likely typo) — recover.
+						// Orphan close of a known tool — likely typo; recover.
 						if (ALL_TOOLS.has(name)) {
 							warnings.push(
 								`Mismatched </${name}> closing <${current.name}> — recovered`,
@@ -269,13 +221,12 @@ export default class XmlParser {
 							return;
 						}
 
-						// Unknown orphan close — text.
 						current.rawBody += `</${name}>`;
 						return;
 					}
 
 					if (isImplied && ALL_TOOLS.has(name)) {
-						// Self-closing tag that htmlparser2 auto-closed at top level
+						// no-op: htmlparser2 auto-closed a top-level self-closer
 					}
 				},
 
@@ -313,19 +264,7 @@ export default class XmlParser {
 		return { commands, warnings, unparsed };
 	}
 
-	/**
-	 * Repair a specific malformed-tag pattern: an attribute value opened with
-	 * `="` that never closes before the next tag. Without repair, htmlparser2
-	 * consumes the rest of input as one giant attribute value and silently
-	 * drops every subsequent tool call.
-	 *
-	 * Pattern matched:  <TAG ... ATTR="text-with-no-quote</NEXT>
-	 * Repair:           <TAG ... ATTR="text-with-no-quote"></NEXT>
-	 *
-	 * Conservative — only triggers when the value contains no quote, no `>`,
-	 * and is followed by another tag opening or close. Well-formed input is
-	 * untouched.
-	 */
+	// Close ATTR=" values that never quote-close before the next tag.
 	static #balanceAttrQuotes(content, warnings) {
 		let fixes = 0;
 		const repaired = content.replace(
@@ -343,23 +282,7 @@ export default class XmlParser {
 		return repaired;
 	}
 
-	/**
-	 * Correct mismatched close tags before htmlparser2 sees them.
-	 *
-	 * htmlparser2 silently drops close tags that don't match the currently
-	 * open element (e.g. `<set>body</known>` — `</known>` vanishes). This
-	 * makes the explicit mismatch recovery in onclosetag unreachable and
-	 * causes all subsequent sibling commands to be absorbed as body text.
-	 *
-	 * Conservative: only corrects when the mismatch is at the outermost
-	 * tool depth (stack.length === 1). Nested mismatches inside body text
-	 * are left for htmlparser2 + body opacity to handle normally.
-	 */
-	/**
-	 * Neutralize XML tags inside markdown code spans so the parser
-	 * doesn't treat quoted tool names as real commands.
-	 * `<get/>` → `&lt;get/&gt;`  (htmlparser2 ignores entities)
-	 */
+	// Entity-encode tag brackets inside backtick spans so quoted tool names don't parse.
 	static #neutralizeCodeSpans(content) {
 		return content.replace(/`([^`]*)`/g, (match, inner) => {
 			if (!/<\/?[\w]/.test(inner)) return match;
@@ -367,6 +290,7 @@ export default class XmlParser {
 		});
 	}
 
+	// Rewrite outer-depth mismatched close tags before htmlparser2 silently drops them.
 	static #correctMismatchedCloses(content, warnings) {
 		const stack = [];
 		return content.replace(
@@ -395,23 +319,15 @@ export default class XmlParser {
 		);
 	}
 
-	/**
-	 * Normalize native tool call formats to rummy XML.
-	 * Models sometimes emit their training-format tool calls instead of
-	 * our XML tags. The intent is unambiguous — translate silently.
-	 */
+	// Translate native training-format tool calls into rummy XML silently.
 	static #normalizeToolCalls(content) {
-		// Gemma: ```tool_code\n<xml>...\n``` — strip code fences around valid XML
+		// Gemma code-fenced XML.
 		let result = content.replace(
 			/```(?:tool_code|tool_command|xml)\n([\s\S]*?)```/g,
 			(_, inner) => inner.trim(),
 		);
 
-		// Qwen/gemma: <|tool_call>call:NAME{key:"value"}<tool_call|>
-		// NAME may be namespaced with any of /, :, or . separators
-		// (e.g. `rummy.nvim/get`, `rummy:get`) — extract the trailing word
-		// sequence as the tool name. Value forms observed in the wild:
-		//   key="v" / key:"v" / key:v (unquoted) / key:<|"|>v<|"|> (gemma chat-quotes)
+		// Qwen/gemma <|tool_call>call:NAME{...}<tool_call|>; NAME may be namespaced.
 		result = result.replace(
 			/<\|tool_call>call:([\w.:/-]+)\{([^}]*)\}<(?:tool_call\||\|tool_call)>/g,
 			(match, qualifiedName, params) => {
@@ -469,28 +385,16 @@ export default class XmlParser {
 			},
 		);
 
-		// Catch-all: any remaining <|tool_call> tokens are malformed native
-		// attempts (no {} block, missing close, wrong shape entirely). Replace
-		// each with an <error> so the model gets feedback on its next turn and
-		// learns to switch to XML. Lazy-match up to the next native close, the
-		// next XML close tag, or end of input — preserves any trailing valid XML.
-		// Error body must NOT contain literal <get>/<set>/etc. — those would
-		// re-enter the parser as phantom tool calls. Describe the format in
-		// prose instead and point at the tool docs above.
+		// Catch-all malformed <|tool_call> → <error> in prose (no literal tags or they'd re-parse).
 		result = result.replace(
 			/<\|tool_call>[\s\S]*?(?:<\|?tool_call\|?>|<\/\w+>|$)/g,
 			() =>
 				"<error>Native tool call format not supported. Use the XML commands listed above (e.g. a get tag with a path attribute, or a set tag with path and body).</error>",
 		);
 
-		// Strip any orphan chat-format quote tokens left after replacement.
 		result = result.replace(/<\|"\|>/g, '"');
 
-		// Gemma sometimes leaks OpenAI-harmony channel markers around its
-		// real XML output: `<|channel>thought\n<channel|>…<set path=…/>`.
-		// These aren't tool calls (handled above), they're role/channel
-		// tokens. Strip any remaining `<|name>` / `<name|>` pseudo-tags
-		// before the XML parser sees them.
+		// Strip OpenAI-harmony role/channel pseudo-tags (gemma leaks these).
 		result = result.replace(/<\|[\w:/-]+>/g, "");
 		result = result.replace(/<[\w:/-]+\|>/g, "");
 

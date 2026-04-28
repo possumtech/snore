@@ -1,8 +1,4 @@
-/**
- * Parse JSON-style edit from body content.
- * Accepts: {"search":"old","replace":"new"} and {search="old",replace="new"}
- * Returns { search, replace } or null.
- */
+// {"search":"old","replace":"new"} or {search="old",replace="new"} → {search,replace}|null.
 export function parseJsonEdit(text) {
 	const trimmed = text.trim();
 	if (!trimmed.startsWith("{") || !/search/.test(trimmed)) return null;

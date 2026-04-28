@@ -31,20 +31,13 @@ export default class AgentLoop {
 		if (active) active.controller.abort();
 	}
 
-	/**
-	 * Abort every in-flight run and wait for each drain to settle.
-	 * Called from server close / client teardown so the process can
-	 * exit cleanly instead of leaving detached kickoff Promises
-	 * pinning the event loop.
-	 */
+	// Abort all in-flight runs and drain; rejections were already surfaced to original awaiters.
 	async abortAll() {
 		const promises = [];
 		for (const { controller, promise } of this.#activeRuns.values()) {
 			controller.abort();
 			promises.push(promise);
 		}
-		// allSettled: drain waits for every run to finish; rejections are
-		// already surfaced to whoever awaited the original run() call.
 		await Promise.allSettled(promises);
 	}
 
@@ -83,10 +76,6 @@ export default class AgentLoop {
 		const unknowns = await this.#entries.getUnknowns(runId);
 		const latestSummary = this.#hooks.instructions.findLatestSummary(history);
 
-		// Always emit complete telemetry. When we don't have a fresh turn
-		// result (abort/max-turns/crash), read the last turn's context
-		// tokens from the DB instead. Both code paths compute a real
-		// budget from real data — never undefined, never invented.
 		const rows = await this.#db.get_turn_context.all({
 			run_id: runId,
 			turn,
@@ -95,11 +84,7 @@ export default class AgentLoop {
 		if (result) {
 			totalTokens = result.assembledTokens;
 		} else {
-			// No fresh turn result — this happens on abort/max-turns/crash
-			// emits that fire before any turn executed, or after a turn
-			// that never produced tokens. Read the last turn's assembled
-			// context_tokens from the DB; absent means no turn ran yet
-			// (zero is the truth, not a fallback).
+			// No fresh turn result (abort/max-turns/crash); zero means no turn ran yet.
 			const lastCtx = await this.#db.get_last_context_tokens.get({
 				run_id: runId,
 			});
@@ -215,7 +200,6 @@ export default class AgentLoop {
 				const existing = this.#activeRuns.get(existingRun.id);
 				if (existing) existing.controller.abort();
 
-				// Clean up stale proposals from interrupted runs
 				const unresolved = await this.#entries.getUnresolved(existingRun.id);
 				for (const u of unresolved) {
 					await this.#entries.set({
@@ -228,7 +212,6 @@ export default class AgentLoop {
 				}
 				return { runId: existingRun.id, alias: existingRun.alias };
 			}
-			// Client-specified alias for a brand-new run — accept it verbatim.
 		}
 
 		const alias = run ? run : await this.#generateAlias(requestedModel);
@@ -314,8 +297,7 @@ export default class AgentLoop {
 			return { run: currentAlias, status: 100 };
 		}
 
-		// Allocate the controller + Promise pair here so `abortAll` can
-		// reach both — abort the controller, await the Promise's drain.
+		// Pair controller + Promise so abortAll can both signal and await drain.
 		const controller = new AbortController();
 		const promise = this.#drainQueue(
 			currentRunId,
@@ -592,7 +574,6 @@ export default class AgentLoop {
 				return out;
 			}
 
-			// MAX_TURNS exhaustion without a terminal update is abandonment.
 			console.error(
 				`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS} — abandoning at 499`,
 			);
@@ -674,11 +655,7 @@ export default class AgentLoop {
 				db: this.#db,
 				entries: this.#entries,
 			});
-			// Report the CURRENT run status (typically 102 mid-run) so the
-			// client's dispatch handler doesn't mistake a successful
-			// resolve's HTTP-style 200 ack for a terminal run status and
-			// prematurely close the document. Real terminal state comes
-			// from the run/state notification at end-of-turn.
+			// Return current run status (not 200) so client doesn't close on resolve ack.
 			return { run: runAlias, status: runRow.status };
 		}
 
@@ -698,8 +675,7 @@ export default class AgentLoop {
 			entries: this.#entries,
 		};
 
-		// Plugins veto acceptance (e.g. readonly) via proposal.accepting.
-		// First veto wins: state=failed with plugin-supplied outcome + body.
+		// First plugin veto wins via proposal.accepting (e.g. readonly).
 		if (action === "accept") {
 			const veto = await this.#hooks.proposal.accepting.filter(null, ctx);
 			if (veto?.allow === false) {
@@ -714,9 +690,7 @@ export default class AgentLoop {
 			}
 		}
 
-		// Compose the resolved body. Default is output || "". Plugins may
-		// override via proposal.content (e.g. set prefers the existing
-		// proposed body from the log entry).
+		// proposal.content override lets plugins prefer the proposed body (e.g. set).
 		const defaultBody = output ? output : "";
 		const resolvedBody = await this.#hooks.proposal.content.filter(
 			defaultBody,
@@ -741,9 +715,7 @@ export default class AgentLoop {
 				: this.#hooks.proposal.rejected;
 		await event.emit({ ...ctx, resolvedBody });
 
-		// Same rationale as the reject path: return current run status
-		// (102 mid-run) rather than a hardcoded 200 so the nvim client
-		// doesn't treat the RPC ack as a terminal signal.
+		// Return current run status (not 200) so client doesn't close on resolve ack.
 		return { run: runAlias, status: runRow.status };
 	}
 

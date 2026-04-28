@@ -1,20 +1,11 @@
 import { isAbsolute, relative } from "node:path";
 
-/**
- * File plugin: projections and constraints for filesystem entries.
- *
- * Bare file paths (src/app.js) have scheme=NULL in the DB because
- * schemeOf() only recognizes "://" patterns. The schemes table has
- * a "file" entry so v_model_context can JOIN via COALESCE(scheme, 'file').
- * This is the one exception to "every scheme has a plugin owner" —
- * the file plugin owns the NULL scheme through the "file" registry entry.
- */
+// Owns NULL scheme (bare paths) via the "file" registry entry; see plugin README.
 export default class File {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
-		// "file" scheme covers bare paths (scheme IS NULL in DB)
 		core.registerScheme({ category: "data" });
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
@@ -28,10 +19,6 @@ export default class File {
 		return "";
 	}
 
-	/**
-	 * Set a project-level file constraint. Backbone operation —
-	 * constraints are project config, not tool dispatch.
-	 */
 	static async setConstraint(db, projectId, pattern, visibility = "active") {
 		const path = await normalizePath(db, projectId, pattern);
 		if (!path) return null;
@@ -45,9 +32,6 @@ export default class File {
 		return path;
 	}
 
-	/**
-	 * Remove a project-level file constraint.
-	 */
 	static async dropConstraint(db, projectId, pattern) {
 		const path = await normalizePath(db, projectId, pattern);
 		if (!path) return null;
@@ -60,11 +44,7 @@ export default class File {
 		return path;
 	}
 
-	/**
-	 * True if `path` is covered by any readonly constraint for the project.
-	 * Constraints can be globs; hedberg.match provides the pattern engine.
-	 * Called from AgentLoop set-accept to refuse writes to protected paths.
-	 */
+	// True if any readonly constraint matches; called from set-accept gate.
 	static async isReadonly(db, projectId, path) {
 		const rows = await db.get_file_constraints.all({ project_id: projectId });
 		const { hedmatch } = await import("./../hedberg/patterns.js");

@@ -1,6 +1,4 @@
-// Tool display order: gather → reason → act → communicate.
-// Position in the list implies priority to the model.
-// `update` is pinned last — it's the turn-closer, not an action.
+// gather → reason → act → communicate; update pinned last (turn-closer).
 const TOOL_ORDER = [
 	"think",
 	"unknown",
@@ -40,9 +38,7 @@ export default class ToolRegistry {
 		this.#tools.set(scheme, Object.freeze({}));
 	}
 
-	// Hidden tools dispatch on direct emission but don't appear in any
-	// model-facing tool list. Internal schemes (e.g. <known>, <unknown>)
-	// the model writes via <set path="scheme://..."> instead.
+	// Hidden tools dispatch on direct emission but never appear in tool lists.
 	markHidden(scheme) {
 		this.#hidden.add(scheme);
 	}
@@ -82,9 +78,7 @@ export default class ToolRegistry {
 		if (!fn) return "";
 
 		const body = await fn(entry);
-		// View handlers MAY return undefined or null to mean "no projected
-		// body at this visibility" — normalize at this boundary so callers
-		// get a predictable string.
+		// undefined/null = "no projected body at this visibility"; normalize to "".
 		return body == null ? "" : body;
 	}
 
@@ -106,18 +100,14 @@ export default class ToolRegistry {
 		return sortByPriority([...this.#tools.keys()]);
 	}
 
-	// Names advertised to the model — registered tools minus hidden ones.
-	// Use this anywhere a tool list is shown to the model.
+	// Registered tools minus hidden; use anywhere a list reaches the model.
 	get advertisedNames() {
 		return sortByPriority(
 			[...this.#tools.keys()].filter((n) => !this.#hidden.has(n)),
 		);
 	}
 
-	/**
-	 * Compute the active tool set for a loop.
-	 * All exclusions — mode, flags, hidden — handled here. One mechanism.
-	 */
+	// Single source of truth for active-tool exclusions; SPEC #mode_enforcement.
 	resolveForLoop(
 		mode,
 		{ noInteraction = false, noWeb = false, noProposals = false } = {},

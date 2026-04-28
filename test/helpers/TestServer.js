@@ -11,7 +11,7 @@ export default class TestServer {
 	 * Start a SocketServer wired to an existing TestDb's hooks + plugins.
 	 * One plugin graph per test, shared between DB-direct and server paths.
 	 */
-	static async start(tdb, options = {}) {
+	static async start(tdb, _options = {}) {
 		// Bootstrap models from env vars (same as service.js).
 		for (const key of Object.keys(process.env)) {
 			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_TEST_MODEL")

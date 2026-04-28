@@ -1,6 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+// model://N is a diagnostic slice; full content is in assistant://N.
+const MODEL_SNAPSHOT_BYTES = 4096;
+
 export default class Telemetry {
 	#core;
 	#starts = new Map();
@@ -133,7 +136,7 @@ export default class Telemetry {
 				reasoning_content: responseMessage?.reasoning_content
 					? responseMessage.reasoning_content
 					: null,
-				content: content.slice(0, 4096),
+				content: content.slice(0, MODEL_SNAPSHOT_BYTES),
 				usage: result.usage ? result.usage : null,
 				model: result.model ? result.model : null,
 			}),
@@ -158,10 +161,7 @@ export default class Telemetry {
 			}
 		}
 
-		// content://N — unparsed text. 400 Bad Request because anything in
-		// unparsed is text the parser couldn't dispatch (malformed XML, native
-		// tool call attempts, reasoning bleed). Visible to the model so it
-		// sees the rejection on its next turn and can correct.
+		// content://N — visible-rejected unparsed text so the model can correct next turn.
 		if (unparsed) {
 			await store.set({
 				runId,
@@ -176,9 +176,7 @@ export default class Telemetry {
 			});
 		}
 
-		// Commit usage stats. Providers surface token counts under
-		// incompatible keys; walk them in priority order and fall back
-		// to 0 only as the definitional "not reported" value.
+		// Per-provider key drift; walk in priority order, 0 = not reported.
 		const usage = result.usage ? result.usage : {};
 		const cachedSources = [
 			usage.cached_tokens,
@@ -203,8 +201,7 @@ export default class Telemetry {
 				reasoningTokens = v;
 				break;
 			}
-		// Use LLM's actual prompt_tokens as the ground-truth context size
-		// when available; falls back to our pre-call estimate.
+		// LLM's prompt_tokens is ground truth; estimator is pre-call fallback.
 		let actualContextTokens = 0;
 		if (usage.prompt_tokens) actualContextTokens = usage.prompt_tokens;
 		else if (assembledTokens) actualContextTokens = assembledTokens;
@@ -228,20 +225,13 @@ export default class Telemetry {
 		const newAlias = context.runAlias
 			? context.runAlias
 			: `run_${context.runId}`;
-		// Reset the buffer when we switch to a new run. Prior approach
-		// keyed reset on RPC method name ("ask"/"act"), which broke when
-		// protocol 2.0 unified run starts under `set { path: "run://" }`.
-		// Alias-change is the semantic boundary: a new run gets a fresh
-		// turn log, regardless of how it was started.
+		// Reset on alias change (the semantic run boundary).
 		if (newAlias !== this.#currentRunAlias) {
 			this.#turnLog = [];
 		}
 		this.#currentRunAlias = newAlias;
 		this.#currentTurn = context.turn === undefined ? null : context.turn;
-		// Mark the start of this turn's content within the cumulative
-		// run-log. `#writeTurnFile` writes from this index forward, so
-		// `turn_NNN.txt` contains only that turn (not turns 1..N).
-		// `#flush` still writes the full cumulative log to last_run.txt.
+		// Per-turn slice index; turn_NNN.txt = this turn only, last_run.txt = cumulative.
 		this.#turnStartIdx = this.#turnLog.length;
 		const turnLabel = this.#currentTurn === null ? "?" : this.#currentTurn;
 		this.#turnLog.push(
@@ -283,8 +273,6 @@ export default class Telemetry {
 		const runDir = join(this.#turnsDir, this.#currentRunAlias);
 		await mkdir(runDir, { recursive: true });
 		const fileName = `turn_${String(this.#currentTurn).padStart(3, "0")}.txt`;
-		// Slice from the current turn's start index — per-turn file
-		// contains only this turn's content, not the cumulative log.
 		const turnSlice = this.#turnLog.slice(this.#turnStartIdx);
 		await writeFile(join(runDir, fileName), `${turnSlice.join("\n")}\n`);
 	}

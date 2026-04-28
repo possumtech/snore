@@ -29,6 +29,24 @@ phase directive so prompt caching holds across turns within a run.
 - `protocol.js` — placeholder module reserved for deterministic
   protocol rule enforcement. Currently pass-through.
 
+## Navigation validation
+
+`validateNavigation(status, rummy)` rejects illegal stage transitions
+emitted via `<update status="N">`:
+
+- **Forward skip** — `nextPhase > currentPhase + 1`. Models advancing
+  more than one stage at once are jumping past required work. Returns
+  and continuations (`nextPhase ≤ currentPhase`) always pass.
+- **Status 200 outside Deployment** — 200 is Deployment Completion.
+  Emitting it from earlier phases skips the actual Deployment work.
+- **Deployment with prior prompts** — entering or remaining in
+  Deployment (phase 7) requires zero visible PRIOR prompts. Covers
+  167 (entry), 177 / 200 (continuation, completion).
+
+On rejection the update entry is marked `rejected` (the phase router
+skips it) and an error log is emitted; rejections count as normal
+strikes.
+
 ## Cache shape
 
 - System message includes the base template + tool docs + persona.

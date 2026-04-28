@@ -8,11 +8,7 @@ export default class Sh {
 
 	constructor(core) {
 		this.#core = core;
-		// `sh` scheme holds the streamed stdout/stderr payload — that's
-		// data the model reads, not an audit record. The log entry at
-		// log://turn_N/sh/{slug} (scheme=log, category=logging) is the
-		// audit record; it lives in a separate namespace by design.
-		// See SPEC §streaming_entries and the scheme/category invariant.
+		// data scheme = streamed stdout/stderr; audit lives in log://. SPEC #streaming_entries.
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
@@ -53,9 +49,7 @@ export default class Sh {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		// Proposal at 202 with the command as summary and empty body — the
-		// body fills in on accept (log message about the action). Data
-		// entries with stdout/stderr are created on accept in resolve().
+		// 202 with command summary, empty body; stdout/stderr entries created on accept.
 		await store.set({
 			runId,
 			turn,

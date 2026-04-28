@@ -1,3 +1,4 @@
+import config from "../agent/config.js";
 import msg from "../agent/messages.js";
 import {
 	ContextExceededError,
@@ -6,22 +7,10 @@ import {
 } from "./errors.js";
 import { retryWithBackoff } from "./retry.js";
 
-const DEADLINE_MS = Number(process.env.RUMMY_LLM_DEADLINE_MS);
-const MAX_BACKOFF_MS = Number(process.env.RUMMY_LLM_MAX_BACKOFF_MS);
-if (!DEADLINE_MS) throw new Error("RUMMY_LLM_DEADLINE_MS must be set");
-if (!MAX_BACKOFF_MS) throw new Error("RUMMY_LLM_MAX_BACKOFF_MS must be set");
+const { LLM_DEADLINE_MS: DEADLINE_MS, LLM_MAX_BACKOFF_MS: MAX_BACKOFF_MS } =
+	config;
 
-/**
- * Thin dispatcher over the LLM provider registry (`hooks.llm.providers`).
- * Resolves the model alias via the DB, finds the highest-priority provider
- * whose `matches()` returns true, and delegates. Wraps the call with
- * transient-error retry and surfaces context-exceeded as a typed
- * ContextExceededError.
- *
- * Vendor-specific HTTP is owned by per-vendor plugins under
- * `src/plugins/{openai,ollama,xai,openrouter,...}/`. Adding a new vendor
- * is a matter of adding a plugin — no changes here.
- */
+// Dispatches to hooks.llm.providers; transient retry; ContextExceededError surface.
 export default class LlmProvider {
 	#db;
 	#hooks;

@@ -92,9 +92,7 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		assert.ok(finalStatus, "DB reached terminal status");
 		await new Promise((r) => setTimeout(r, 1000));
 
-		console.log(
-			`[TEST] finalStatus=${finalStatus}  states=${states.length}`,
-		);
+		console.log(`[TEST] finalStatus=${finalStatus}  states=${states.length}`);
 		for (const s of states) {
 			console.log(
 				`  turn=${s.turn} status=${s.status} ceiling=${s.telemetry?.ceiling} free=${s.telemetry?.tokens_free} used=${s.telemetry?.token_usage}`,

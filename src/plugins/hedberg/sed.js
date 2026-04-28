@@ -1,10 +1,4 @@
-/**
- * Sed syntax parsing. Handles s/search/replace/flags with:
- * - Escaped delimiters (\\/)
- * - Chained commands (s/a/b/ s/c/d/)
- * - Flag extraction (g, i, m, s, v)
- */
-
+// Parses s/search/replace/flags with escaped delimiters, chains, and g/i/m/s/v flags.
 function splitSed(str, delim) {
 	const parts = [];
 	let current = "";

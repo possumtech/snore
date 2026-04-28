@@ -79,12 +79,7 @@ export default class Set {
 			}
 		}
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
-		// Preserve the file entry's current visibility — a <get>
-		// earlier in the run may have promoted it. Updating the
-		// body without specifying visibility falls through to
-		// the data-category default ("summarized") and wipes
-		// the promotion, making the model re-get the file next
-		// turn (then cycle-strike out).
+		// Preserve current visibility; default would wipe an earlier <get>'s promotion.
 		const existingState = await entries.getState(runId, attrs.path);
 		await entries.set({
 			runId,
@@ -112,11 +107,7 @@ export default class Set {
 		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 
-		// Invalid visibility value on a body-less set: reject with an
-		// error instead of falling through to the write path. Without
-		// this guard, a typo like visibility="promoted" (pre-migration
-		// terminology) silently body-wiped the target — the fidelity
-		// regression that cost us multiple demo runs.
+		// Reject invalid visibility on body-less set; otherwise a typo silently wipes the body.
 		if (
 			!entry.body &&
 			attrs.path &&
@@ -262,8 +253,7 @@ export default class Set {
 					{ loopId },
 				);
 			} else {
-				// Direct scheme write (known://, unknown://, etc.)
-				// Same result shape as file writes — diff against existing.
+				// Direct scheme write; same diff-against-existing shape as file writes.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing === null ? "" : existing;
 				const newContent = entry.body;
@@ -280,8 +270,7 @@ export default class Set {
 					path: target,
 					body: newContent,
 					state: "resolved",
-					// Scheme writes default to promoted — the model wrote it, so
-					// it's material unless they explicitly demote/archive.
+					// Scheme writes default visible; the model wrote it.
 					visibility: visibilityAttr ? visibilityAttr : "visible",
 					attributes: summaryText ? { summary: summaryText } : null,
 					loopId,
@@ -340,8 +329,7 @@ export default class Set {
 
 	summary(entry) {
 		if (!entry.body) return "";
-		// Preserve SEARCH/REPLACE merge blocks intact — truncating them
-		// drops the before/after the model needs to recognize its edit.
+		// Preserve SEARCH/REPLACE blocks intact; truncation strips before/after the model needs.
 		if (/<<<<<<< SEARCH[\s\S]*>>>>>>> REPLACE/.test(entry.body)) {
 			return entry.body;
 		}
@@ -370,10 +358,7 @@ export default class Set {
 
 		for (const match of matches) {
 			if (match.scheme === null) {
-				// Bare file path — apply the edit immediately against the
-				// match body so the log carries a concrete before/after
-				// merge. #materializeRevisions still runs at turn-end to
-				// consolidate the set:// proposal for client acceptance.
+				// Bare file: apply edit immediately so log carries before/after merge.
 				const canonicalPath = `set://${match.path}`;
 				const revision = Set.#buildRevision(attrs);
 				const existingAttrs = await rummy.getAttributes(canonicalPath);
@@ -533,8 +518,7 @@ export default class Set {
 		}
 	}
 
-	// `replace` attr is optional in search/replace form — absence means
-	// "delete the match"; normalize to empty string at this boundary.
+	// Missing `replace` = delete the match; normalize to empty string.
 	static #resolveReplace(attrs) {
 		return attrs.replace === undefined ? "" : attrs.replace;
 	}

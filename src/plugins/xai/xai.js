@@ -1,16 +1,11 @@
+import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 
-const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
-if (!FETCH_TIMEOUT) throw new Error("RUMMY_FETCH_TIMEOUT must be set");
+const { FETCH_TIMEOUT } = config;
 
 const PROVIDER = "xai";
 
-/**
- * xAI (Grok) LLM provider plugin. Registers with hooks.llm.providers if
- * XAI_BASE_URL is set; inert otherwise. Handles model aliases of the
- * form `xai/{modelName}`. Normalizes xAI's distinct response shape
- * into the common OpenAI-shaped envelope.
- */
+// Inert unless XAI_BASE_URL set; xai/{model} aliases; normalizes to OpenAI envelope.
 export default class Xai {
 	#baseUrl;
 	#apiKey;
@@ -137,8 +132,7 @@ export default class Xai {
 		});
 		if (res.ok) {
 			const data = await res.json();
-			// xAI's /models returns either { data: [...] } or { models: [...] }
-			// depending on the API version; accept either and crash otherwise.
+			// xAI /models response shape varies by API version.
 			let models;
 			if (data.data) models = data.data;
 			else if (data.models) models = data.models;
@@ -156,9 +150,7 @@ export default class Xai {
 			/\/responses$/,
 			`/language-models/${model}`,
 		);
-		// Optional endpoint probe. If the network call fails (404 on older
-		// API versions, timeout, etc.) we fall through to the next strategy
-		// below; a terminal throw fires if no strategy resolves.
+		// Optional probe; failure falls through to terminal throw below.
 		const langRes = await fetch(langUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(5000),

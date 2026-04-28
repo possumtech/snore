@@ -1,11 +1,7 @@
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
-/**
- * Rebuild turn_context from v_model_context, then assemble messages.
- * Called at turn start and again by the budget plugin when it needs a
- * fresh measurement after mutating visibility.
- */
+// Rebuild turn_context from v_model_context and assemble messages.
 export default async function materializeContext({
 	db,
 	hooks,
@@ -20,18 +16,12 @@ export default async function materializeContext({
 }) {
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
-	// Per-entry token accounting (see SPEC @token_accounting): captured
-	// here while we still have the raw body, then merged onto rows after
-	// the read-back roundtrip through turn_context.
+	// Per-entry token accounting; merged back after the turn_context roundtrip.
 	const tokenAccounting = new Map();
 	for (const row of viewRows) {
-		// schemeOf() yields NULL (or "") for bare file paths — translate
-		// to "file" so the view lookup finds the file scheme handler.
 		const scheme = row.scheme ? row.scheme : "file";
 		const attrs = row.attributes ? JSON.parse(row.attributes) : null;
-		// Log entries live at log://turn_N/action/slug. Dispatch projection
-		// to the action plugin's view (set, update, search, etc.) by
-		// extracting the action segment from the path.
+		// Dispatch log entries to their action plugin's view via path segment.
 		let projectionKey = scheme;
 		if (scheme === "log") {
 			const m = row.path.match(/^log:\/\/turn_\d+\/([^/]+)\//);
@@ -83,7 +73,6 @@ export default async function materializeContext({
 		row.vLines = t.vLines;
 	}
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
-	// First turn of a new run has no prior context.
 	let lastContextTokens = 0;
 	if (lastCtx) lastContextTokens = lastCtx.context_tokens;
 

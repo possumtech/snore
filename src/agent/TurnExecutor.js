@@ -44,7 +44,6 @@ export default class TurnExecutor {
 			sequence: turn,
 		});
 
-		// Build RummyContext before turn.started so plugins can write entries
 		const rummy = new RummyContext(
 			{
 				tag: "turn",
@@ -78,7 +77,6 @@ export default class TurnExecutor {
 				loopPrompt,
 			},
 		);
-		// Plugins write prompt/instructions entries
 		await this.#hooks.turn.started.emit({
 			rummy,
 			mode,
@@ -89,11 +87,9 @@ export default class TurnExecutor {
 
 		await this.#hooks.processTurn(rummy);
 
-		// Project instructions://system through the instructions tool's projection
 		const systemPrompt =
 			await this.#hooks.instructions.resolveSystemPrompt(rummy);
 
-		// Materialize turn_context: VIEW rows projected through tools
 		const demoted = [];
 		const budgetCtx = {
 			runId: currentRunId,
@@ -158,8 +154,6 @@ export default class TurnExecutor {
 			turn,
 		});
 
-		// Call LLM. Transient-error retry + context-exceeded detection live
-		// in LlmProvider; context-exceeded surfaces as ContextExceededError.
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
 		let rawResult;
 		try {
@@ -201,9 +195,6 @@ export default class TurnExecutor {
 			usage: result.usage,
 		});
 		const responseMessage = result.choices?.[0]?.message;
-		// A valid completion response always carries content (possibly
-		// empty) on the message; protect against that specific case so
-		// downstream parsers see a string.
 		const content = responseMessage?.content ? responseMessage.content : "";
 
 		await this.#hooks.run.progress.emit({
@@ -213,7 +204,6 @@ export default class TurnExecutor {
 			status: "processing",
 		});
 
-		// Parse and emit — plugins handle audit storage
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
 		for (const w of warnings) {
 			await this.#hooks.error.log.emit({
@@ -236,10 +226,7 @@ export default class TurnExecutor {
 			});
 		}
 
-		// Merge reasoning contributions from subscribers (think plugin's
-		// <think> tag, other plugin reasoning sources). Filter starts with
-		// the API-provided reasoning_content and layers on each plugin's
-		// contribution.
+		// Layer plugin reasoning contributions onto the API-provided seed.
 		if (responseMessage) {
 			const seed = responseMessage.reasoning_content
 				? responseMessage.reasoning_content
@@ -264,7 +251,7 @@ export default class TurnExecutor {
 			userMsg: userMsg?.content,
 		});
 
-		// --- PHASE 1: RECORD ---
+		// PHASE 1: RECORD
 		const recorded = [];
 		for (const cmd of commands) {
 			const entry = await this.#record(
@@ -277,14 +264,7 @@ export default class TurnExecutor {
 			if (entry) recorded.push(entry);
 		}
 
-		// --- PHASE 2: DISPATCH ---
-		// Sequential queue. Each tool completes before the next starts.
-		// On failure: abort remaining. On proposal: notify client, await
-		// resolution, continue.
-		// Narration text outside tags is fine when the turn also emitted
-		// at least one command — "OK", "Let me check:", reasoning prefixes
-		// are natural. Parse warnings and no-tags responses already emitted
-		// errors above; dispatch crashes and failed entries emit below.
+		// PHASE 2: DISPATCH — sequential; abort-after-failure; proposals notify-and-await.
 		let abortAfter = null;
 
 		for (const entry of recorded) {
@@ -323,11 +303,9 @@ export default class TurnExecutor {
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 
-			// Plugins (e.g. set) materialize pending proposals from the
-			// recorded entry — e.g. search/replace revisions → set:// 202.
+			// Plugins materialize pending proposals (e.g. set search/replace → 202).
 			await this.#hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
-			// Check for any proposals created by this entry's dispatch
 			const proposed = await this.#entries.getUnresolved(currentRunId);
 			for (const p of proposed) {
 				await this.#hooks.proposal.pending.emit({
@@ -368,9 +346,6 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Turn Demotion: budget plugin re-materializes end-of-turn context
-		// and demotes this turn's promoted entries on overflow. Overflow
-		// emits an error (status 413) via the unified error channel.
 		await this.#hooks.budget.postDispatch({
 			contextSize,
 			ctx: budgetCtx,
@@ -409,21 +384,14 @@ export default class TurnExecutor {
 		return turnResult;
 	}
 
-	/**
-	 * Record a parsed command as a known_entries row.
-	 * Returns the recorded entry descriptor, or null if rejected/skipped.
-	 */
+	// Record a parsed command; returns the entry descriptor or rejects on bad shapes.
 	async #record(runId, loopId, turn, mode, cmd) {
 		const scheme = cmd.name;
-		// Each tool's XmlParser shape surfaces exactly one of these
-		// three fields as its addressable target. Treat absent as empty
-		// so the length/control-char validation below catches bad shapes
-		// rather than letting an undefined slip through.
 		let rawTarget = "";
 		if (cmd.path) rawTarget = cmd.path;
 		else if (cmd.command) rawTarget = cmd.command;
 		else if (cmd.question) rawTarget = cmd.question;
-		// Reject paths that are likely reasoning bleed — too long or contain non-printing chars
+		// Reject likely reasoning bleed: oversize or control chars in target.
 		if (rawTarget.length > 512 || /\p{Cc}/u.test(rawTarget)) {
 			const rejectPath = await this.#entries.logPath(
 				runId,
@@ -454,18 +422,14 @@ export default class TurnExecutor {
 		const target = rawTarget;
 		const resultPath = await this.#entries.logPath(runId, turn, scheme, target);
 
-		// Pass parsed command fields through as attributes
 		const { name: _, ...attributes } = cmd;
 		if (cmd.path) attributes.path = target;
 
-		// Same per-shape resolution as rawTarget; the three sources are
-		// mutually exclusive per tool. Empty string when none set.
 		let body = "";
 		if (cmd.body) body = cmd.body;
 		else if (cmd.command) body = cmd.command;
 		else if (cmd.question) body = cmd.question;
 
-		// Filter: plugins can validate/transform before recording
 		const filtered = await this.#hooks.entry.recording.filter(
 			{
 				scheme,
