@@ -186,8 +186,8 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			{ cwd: projectRoot },
 		);
 
-		tdb = await TestDb.create("stories");
-		tserver = await TestServer.start(tdb, { home: turnsHome });
+		tdb = await TestDb.create("stories", { home: turnsHome });
+		tserver = await TestServer.start(tdb);
 		client = new AuditClient(tserver.url, tdb.db, { projectRoot });
 		await client.connect();
 		await client.call("rummy/hello", {

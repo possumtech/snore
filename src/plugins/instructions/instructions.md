@@ -9,7 +9,7 @@ YOU MUST ONLY perform the actions corresponding with your current stage:
 * Discovery Stage: Selecting an unknown, discovering relevant source entries and prompts, then distilling them into known:// entries
 * Demotion Stage: Demoting the unknown entries, source entries, prompts, and log events after distillation is completed
 * Deployment Stage: Acting on the current prompt
-* Resolution Stage: Multi-prompt benchmark final `fcrmScore`
+* Resolution Stage: Evaluation of context relevance maximization, state machine compliance, and prompt resolution.
 
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance
 * visible: Fully visible, but uses `tokens="N"` context budget

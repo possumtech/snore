@@ -40,20 +40,27 @@ export default class TestDb {
 		this.suiteName = suiteName;
 	}
 
-	static async create(suiteName = "test") {
+	static async create(suiteName = "test", options = {}) {
 		await cleanOldTestDbs();
 		const dbPath = join(
 			tmpdir(),
 			`rummy_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
 		);
-		return TestDb.#open(dbPath, suiteName);
+		return TestDb.#open(dbPath, suiteName, options);
 	}
 
-	static async createAt(dbPath, suiteName = "test") {
-		return TestDb.#open(dbPath, suiteName);
+	static async createAt(dbPath, suiteName = "test", options = {}) {
+		return TestDb.#open(dbPath, suiteName, options);
 	}
 
-	static async #open(dbPath, suiteName) {
+	static async #open(dbPath, suiteName, options = {}) {
+		// Set RUMMY_HOME BEFORE registerPlugins so telemetry's constructor
+		// reads it. Setting it after plugin construction (e.g. in
+		// TestServer.start) is too late — telemetry locks in its turnsDir
+		// at construction and silently never writes turn dumps.
+		if (options.home) {
+			process.env.RUMMY_HOME = options.home;
+		}
 		const db = await SqlRite.open({
 			path: dbPath,
 			dir: ["migrations", "src"],

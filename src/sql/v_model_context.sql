@@ -67,13 +67,9 @@ SELECT
 				WHEN 'prompt' THEN 5
 				ELSE 5
 			END
-			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
-			, CASE visibility
-				WHEN 'summarized' THEN 0
-				ELSE 1
-			END
+			, scheme
 			, turn
 			, updated_at
-			, id
+			, path
 	) AS ordinal
 FROM projected;

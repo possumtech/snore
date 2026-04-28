@@ -1,11 +1,14 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 360_000;
@@ -29,23 +32,24 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		return;
 	}
 	let tdb, tserver, client;
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-hydro-${Date.now()}`);
-	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
+	const turnsHome = join(__dirname, "turns", `hydro_${stamp}`);
 
 	before(async () => {
-		// 16 turns gives gemma room for Define→Discover→Deploy across a
-		// real research scenario. Earlier 8 was too tight: gemma 200'd
-		// at iter 5 with a confabulated "FACTS.md created" (wrong file
-		// name) before reaching the actual write phase.
-		process.env.RUMMY_MAX_TURNS = "16";
+		// Use the default RUMMY_MAX_TURNS (99). Capping low short-circuits
+		// the guardrail-bouncing the state machine is designed for: weak
+		// models succeed by repeatedly hitting the protocol's edges until
+		// they converge.
 		await fs.mkdir(projectRoot, { recursive: true });
+		await fs.mkdir(turnsHome, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
 			{ cwd: projectRoot },
 		);
-		tdb = await TestDb.create("hydro");
+		tdb = await TestDb.create("hydro", { home: turnsHome });
 		tserver = await TestServer.start(tdb);
 		client = new RpcClient(tserver.url);
 		await client.connect();
@@ -63,8 +67,6 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
-		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
-		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
 	it("demo scenario: terminal run/state fires after multi-turn flow with deliverable on disk", {

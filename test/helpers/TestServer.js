@@ -12,12 +12,6 @@ export default class TestServer {
 	 * One plugin graph per test, shared between DB-direct and server paths.
 	 */
 	static async start(tdb, options = {}) {
-		// Set RUMMY_HOME before plugin registration (in TestDb) so telemetry
-		// picks it up. Caller must set this before TestDb.create() if needed.
-		if (options.home) {
-			process.env.RUMMY_HOME = options.home;
-		}
-
 		// Bootstrap models from env vars (same as service.js).
 		for (const key of Object.keys(process.env)) {
 			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_TEST_MODEL")

@@ -77,8 +77,6 @@ export default class Budget {
 		let summarizedCount = 0;
 		let _summarizedTokens = 0;
 		let floorTokens = 0;
-		let knownVTokens = 0;
-		let sourceVTokens = 0;
 
 		const schemeEntry = (s) => {
 			let e = byScheme.get(s);
@@ -108,10 +106,6 @@ export default class Budget {
 				visibleCount += 1;
 				premiumTokens += r.aTokens;
 				floorTokens += r.sTokens;
-				const v = r.vTokens || 0;
-				if (s === "known") knownVTokens += v;
-				else if (s === "prompt") sourceVTokens += v;
-				else if (r.category === "data") sourceVTokens += v;
 			} else if (r.visibility === "summarized") {
 				entry.sum += 1;
 				entry.sumTokens += r.sTokens || 0;
@@ -120,10 +114,6 @@ export default class Budget {
 				floorTokens += r.sTokens;
 			}
 		}
-
-		const fcrmDenom = knownVTokens + sourceVTokens;
-		const fcrmScore =
-			fcrmDenom > 0 ? (knownVTokens / fcrmDenom).toFixed(2) : "1.00";
 
 		const systemTokens = countTokens(systemPrompt || "");
 		const tokenUsage = floorTokens + premiumTokens + systemTokens;
@@ -161,7 +151,7 @@ export default class Budget {
 			"- premium: savings from demoting visible → summarized (cost − if-all-sum)",
 		].join("\n");
 
-		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}" fcrmScore="${fcrmScore}">\n${table}\n\n${legend}\n${systemLine}\n${totalLine}\n</budget>\n`;
+		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}">\n${table}\n\n${legend}\n${systemLine}\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
