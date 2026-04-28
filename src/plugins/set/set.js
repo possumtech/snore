@@ -180,8 +180,8 @@ export default class Set {
 		// Edit: sed patterns or SEARCH/REPLACE blocks
 		if (attrs.blocks || attrs.search != null) {
 			await this.#processEdit(rummy, entry, attrs);
-		} else if (attrs.preview && attrs.path) {
-			// Preview
+		} else if (attrs.manifest && attrs.path) {
+			// Manifest: list paths and token costs without performing the operation.
 			const matches = await store.getEntriesByPattern(
 				runId,
 				attrs.path,
@@ -195,7 +195,7 @@ export default class Set {
 				attrs.path,
 				attrs.body,
 				matches,
-				{ preview: true, loopId },
+				{ manifest: true, loopId },
 			);
 			return;
 		} else {

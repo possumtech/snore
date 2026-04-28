@@ -149,17 +149,17 @@ describe("Message assembly", () => {
 		assert.ok(user.content.includes("src/app.js"), "should list matched paths");
 	});
 
-	it("preview result shows PREVIEW prefix", async () => {
+	it("manifest result shows MANIFEST prefix", async () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
-			path: "log://turn_1/get/preview_test",
-			body: 'PREVIEW get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
+			path: "log://turn_1/get/manifest_test",
+			body: 'MANIFEST get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			state: "resolved",
 		});
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("PREVIEW"), "should show PREVIEW prefix");
+		assert.ok(user.content.includes("MANIFEST"), "should show MANIFEST prefix");
 	});
 
 	it("tool result content is visible (not blank)", async () => {

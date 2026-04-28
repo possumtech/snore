@@ -31,7 +31,7 @@ function resolveCommand(name, a, rawBody) {
 					name,
 					path: a.path,
 					body: a.body,
-					preview: a.preview,
+					manifest: a.manifest,
 					blocks,
 				};
 			}
@@ -62,7 +62,7 @@ function resolveCommand(name, a, rawBody) {
 				name,
 				path: a.path,
 				body: a.body,
-				preview: a.preview,
+				manifest: a.manifest,
 				search: a.search,
 				replace,
 			};
@@ -73,7 +73,7 @@ function resolveCommand(name, a, rawBody) {
 				path: a.path,
 				search: a.body,
 				replace: trimmed,
-				preview: a.preview,
+				manifest: a.manifest,
 			};
 		}
 		const body = trimmed || a.body || "";

@@ -27,13 +27,13 @@ export async function storePatternResult(
 	path,
 	bodyFilter,
 	matches,
-	{ preview = false, loopId = null, attributes = null } = {},
+	{ manifest = false, loopId = null, attributes = null } = {},
 ) {
 	const logSlug = await store.logPath(runId, turn, scheme, path);
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
 	const total = matches.reduce((s, m) => s + m.tokens, 0);
 	const listing = matches.map((m) => `${m.path} (${m.tokens})`).join("\n");
-	const prefix = preview ? "PREVIEW " : "";
+	const prefix = manifest ? "MANIFEST " : "";
 	const body = `${prefix}${scheme} path="${path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
 	await store.set({
 		runId,

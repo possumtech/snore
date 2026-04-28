@@ -34,7 +34,7 @@ export default class Get {
 		}
 		const normalized = Entries.normalizePath(target);
 		const bodyFilter = entry.attributes.body;
-		const preview = entry.attributes.preview !== undefined;
+		const manifest = entry.attributes.manifest !== undefined;
 		const isPattern = bodyFilter || normalized.includes("*");
 
 		// Negative line = tail-from-end (line=-50 starts 50 from end).
@@ -51,8 +51,8 @@ export default class Get {
 			bodyFilter,
 		);
 
-		// Preview: list matches + full-body token costs; no promotion.
-		if (preview) {
+		// Manifest: list matches + full-body token costs; no promotion.
+		if (manifest) {
 			await storePatternResult(
 				store,
 				runId,
@@ -61,7 +61,7 @@ export default class Get {
 				target,
 				bodyFilter,
 				matches,
-				{ preview: true, loopId, attributes: { path: target } },
+				{ manifest: true, loopId, attributes: { path: target } },
 			);
 			return;
 		}

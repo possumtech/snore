@@ -1368,12 +1368,12 @@ one unified mechanism.
 
 ### Pattern Distribution
 
-Hedbergian pattern matching (globs, body filters, preview) is taught
+Hedbergian pattern matching (globs, body filters, manifest) is taught
 across multiple tools, not concentrated in one. `get` shows content
-filtering. `cp` shows glob batch operations. `rm` shows preview safety.
+filtering. `cp` shows glob batch operations. `rm` shows manifest safety.
 Each tool reinforces the pattern vocabulary from a different angle.
 A model that sees `path="known://*"` in get, `path="known://plan_*"` in
-cp, and `path="known://temp_*" preview` in rm learns that patterns
+cp, and `path="known://temp_*" manifest` in rm learns that patterns
 are universal — not a feature of any single tool.
 
 ---

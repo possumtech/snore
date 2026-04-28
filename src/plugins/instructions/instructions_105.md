@@ -6,11 +6,11 @@ YOU MUST ONLY populate known entries with promoted information, NOT from your ow
 YOU MUST immediately demote unknowns, source entries, prompts, and log events after they are distilled, irrelevant, or resolved.
 
 Tip: Check the `tokens="N"` of the source entries against the `tokensFree="N"` constraint before promoting entries.
-Tip: You can use <get path="..." preview/> to preview the potential `tokens="N"` budget impact of bulk operations.
+Tip: You can use <get path="..." manifest/> to list paths and their token amounts for bulk operations without performing them.
 Tip: You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
 
 ## Example:
-	<get path="**" preview>capital</get>
+	<get path="**" manifest>capital</get>
 	<get path="prompt://3" line="1" limit="100"/>
 
 	<set path="trivia/capitals.csv" visibility="visible"/>

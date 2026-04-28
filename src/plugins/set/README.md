@@ -15,7 +15,7 @@ SEARCH/REPLACE edits, and pattern updates.
 - **Category**: `logging`
 - **Handler**: Routes based on attributes:
   - `blocks` or `search` — SEARCH/REPLACE edit via `processEdit`.
-  - `preview` — pattern preview (dry run).
+  - `manifest` — pattern manifest (lists matches without performing the set).
   - Scheme path — direct upsert at status 200.
   - File path — produces status 202 (proposed) with unified diff patch.
   - Glob/filter — bulk update via `updateBodyByPattern`.

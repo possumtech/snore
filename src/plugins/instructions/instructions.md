@@ -26,7 +26,7 @@ Warning: YOU MUST NOT skip or avoid state machine steps or the Resolution Stage 
 
 Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require XML Commands.
 Example: <set path="src/file.txt">new file content</set>
-Example: <get path="src/*.txt" preview/>
+Example: <get path="src/*.txt" manifest/>
 
 Tip: Project files, entries, prompts, and log events are all accessible with the XML Commands. If there's no `{scheme}://` prefix, it's a repo file path.
 

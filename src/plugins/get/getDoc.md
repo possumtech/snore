@@ -9,7 +9,7 @@ Example: <get path="known://*">auth</get>
 Example: <get path="src/**/*.js">authentication</get>
 <!-- Full pattern: recursive glob + content filter. -->
 
-Example: <get path="src/**/*.js" preview>authentication</get>
+Example: <get path="src/**/*.js" manifest>authentication</get>
 <!-- Full pattern: recursive glob + content filter. -->
 
 Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
@@ -30,7 +30,7 @@ Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200
 * `line` and `limit` read a slice without promoting the entry, which costs as many tokens as the slice contains. Negative `line` reads from the end (tail).
 <!-- Partial read is safe: context budget unaffected. Tail idiom enables watching growing entries. -->
 
-* `preview` lists the paths and token budget impact of an operation without performing it.
-<!-- Partial read is safe: context budget unaffected. Tail idiom enables watching growing entries. -->
+* `manifest` lists the paths and their token amounts instead of performing the operation; useful for bulk and pattern matching tasks.
+<!-- manifest = listing, not snippet. The natural-language reading of "preview" pulled small models toward content-sampling; for body samples use line/limit. -->
 
 * Remember to <set path="..." visibility="summarize"/> when entries or log events are no longer relevant.

@@ -140,15 +140,15 @@ export default {};
 			assert.strictEqual(commands[0].body, "TODO");
 		});
 
-		it("parses get with preview flag", () => {
-			const { commands } = XmlParser.parse('<get path="src/*.js" preview/>');
+		it("parses get with manifest flag", () => {
+			const { commands } = XmlParser.parse('<get path="src/*.js" manifest/>');
 			assert.strictEqual(commands[0].path, "src/*.js");
-			assert.notStrictEqual(commands[0].preview, undefined);
+			assert.notStrictEqual(commands[0].manifest, undefined);
 		});
 
 		it("ignores unknown keys attribute (no backward compat)", () => {
 			const { commands } = XmlParser.parse('<get path="src/*.js" keys/>');
-			assert.strictEqual(commands[0].preview, undefined);
+			assert.strictEqual(commands[0].manifest, undefined);
 		});
 
 		// Observed in rummy_dev.db::test:demo (gemma): model correctly
