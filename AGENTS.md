@@ -190,6 +190,17 @@ Verified Mini) are scaffolded and run on demand.
   see if the example density is earning its cost. Benchmark, not a
   fix — frame as a measurement task.
 
+- [ ] **`act_no_completion` test name vs assertion mismatch.**
+  (CC-8b in the E2E audit.) Test titled *"act run producing a file
+  edit reaches completion"* asserts only terminal status in
+  `[200, 499]` — never checks that the file edit actually landed
+  on disk. A model that takes the strike path to abandonment
+  passes the test even though no file was produced. Fix: either
+  rename the test to reflect what it checks
+  (`engine reaches terminal under MAX_TURNS bound`) or add a
+  file-on-disk assertion analogous to the hydrology test's
+  deliverable check.
+
 ## Scope Discipline
 
 - No legacy protocol accommodation. 2.0 is 2.0.
@@ -244,6 +255,42 @@ Verified Mini) are scaffolded and run on demand.
   read-only commands" rule, and a small model that obeys the docs
   will struggle. The "small model is flaky" interpretation is almost
   always a prompt smell.
+- **Reasoning-runaway is a model pathology, not an instruction
+  failure.** Small models can spiral inside `reasoning_content` —
+  planning the same action over and over, never emitting it,
+  burning completion tokens until the response truncates. The
+  model isn't forgetting that XML tags execute; it's stuck. No
+  instruction edit reaches a model in this state. The framework's
+  answer is the strike-streak watchdog: a single empty-emission
+  turn fires a strike, the next productive turn resets, and
+  sustained runaways accumulate to abandon. Observed and recovered
+  cleanly in the 2026-04-28 demo run (turn 7 = 34K reasoning, 0
+  emissions; turn 8 productive; run completed at 200). Don't add
+  forward-looking coaching for the runaway state — analyze upstream
+  instead (what was the model facing on the turn *before* it
+  spiraled?).
+- **Stochastic agentic tests should accept the engine's terminal
+  set, not just success.** Identical prompts on identical models
+  can land 200 or 499 depending on the decision tree the model
+  walks. A test asserting strict 200 on an agentic run is flaky by
+  construction. Either widen the assertion to `[200, 499]` (or
+  whichever set is legitimate for the test's intent) or move the
+  test to `test/live/` where stricter outcome verification is the
+  whole point. The protocol-as-state-machine guarantees terminal
+  reachability, not deterministic success. (Source: CC-8c in the
+  E2E audit; seen in `persona_fork` 3rd subtest pre-session.)
+- **Block ordering matters for prefix caching.** Within the user
+  message, blocks are ordered slowest-mutating-first (top) to
+  fastest-mutating-last (bottom). This isn't aesthetic — KV cache
+  reuse extends through the longest prefix that matches the prior
+  turn, so a block that mutates frequently kills cache for
+  everything below it. Current order: `<summarized>` (slow) →
+  `<visible>` (per-turn unchanged unless promote/demote) → `<log>`
+  (appends per turn) → `<unknowns>` → `<instructions>` (per phase)
+  → `<budget>` (recomputed) → `<prompt>` (run-stable, conventionally
+  last). The system message stays fully stable post-bifurcation.
+  Don't reorder blocks without considering the cache impact at the
+  bottom of the order.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
