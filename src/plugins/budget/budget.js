@@ -213,7 +213,6 @@ export default class Budget {
 			mode: ctx.mode,
 			toolSet: ctx.toolSet,
 			contextSize,
-			demoted: ctx.demoted,
 		});
 		const rechecked = this.#check({
 			contextSize,
@@ -247,7 +246,6 @@ export default class Budget {
 			mode: ctx.mode,
 			toolSet: ctx.toolSet,
 			contextSize,
-			demoted: ctx.demoted,
 		});
 		const baseline = postMat.lastContextTokens;
 		const predicted = predictNextPacket(postMat.rows, ctx.turn, baseline);

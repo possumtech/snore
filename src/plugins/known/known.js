@@ -99,24 +99,27 @@ export default class Known {
 					(r.visibility === "archived" && r.scheme === "prompt")),
 		);
 		if (entries.length === 0) return content;
-		const lines = entries.map(renderSummaryLine);
+		const lines = entries.map((e) =>
+			renderContextTag(e, e.sBody != null ? e.sBody : e.body),
+		);
 		return `${content}<summarized>\n${lines.join("\n")}\n</summarized>\n`;
 	}
 
-	// Working-set bodies: only entries currently promoted to visible.
 	async assembleVisible(content, ctx) {
 		const entries = ctx.rows.filter(
 			(r) => r.category === "data" && r.visibility === "visible",
 		);
 		if (entries.length === 0) return content;
-		const lines = entries.map(renderVisibleBody);
+		const lines = entries.map((e) =>
+			renderContextTag(e, e.vBody != null ? e.vBody : e.body),
+		);
 		return `${content}<visible>\n${lines.join("\n")}\n</visible>\n`;
 	}
 }
 
-function entryAttrs(entry) {
-	const turn =
-		entry.source_turn != null ? ` turn="${entry.source_turn}"` : "";
+function renderContextTag(entry, projectedBody) {
+	const tag = entry.scheme ? entry.scheme : "file";
+	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
 	const lines = entry.vLines != null ? ` lines="${entry.vLines}"` : "";
 	const attrs =
@@ -136,26 +139,16 @@ function entryAttrs(entry) {
 	const stateAttr =
 		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
 	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
+	const visibility =
+		entry.visibility === "archived" ? ` visibility="archived"` : "";
 	const summaryText =
 		typeof attrs?.summary === "string"
 			? attrs.summary.replace(/"/g, "'").slice(0, 80)
 			: "";
 	const summary = ` summary="${summaryText}"`;
-	const visibility =
-		entry.visibility === "archived" ? ` visibility="archived"` : "";
-	return `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${lines}`;
-}
-
-function renderSummaryLine(entry) {
-	const tag = entry.scheme ? entry.scheme : "file";
-	return `<${tag} path="${entry.path}"${entryAttrs(entry)}/>`;
-}
-
-function renderVisibleBody(entry) {
-	const tag = entry.scheme ? entry.scheme : "file";
-	const a = entryAttrs(entry);
-	if (entry.body) {
-		return `<${tag} path="${entry.path}"${a}>${entry.body}</${tag}>`;
+	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${lines}`;
+	if (projectedBody) {
+		return `<${tag} path="${entry.path}"${attrStr}>${projectedBody}</${tag}>`;
 	}
-	return `<${tag} path="${entry.path}"${a}/>`;
+	return `<${tag} path="${entry.path}"${attrStr}/>`;
 }

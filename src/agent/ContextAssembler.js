@@ -6,7 +6,6 @@ export default class ContextAssembler {
 			type = "ask",
 			systemPrompt = "",
 			contextSize = 0,
-			demoted = [],
 			toolSet = null,
 			lastContextTokens = 0,
 			turn = 1,
@@ -26,7 +25,6 @@ export default class ContextAssembler {
 			type,
 			contextSize,
 			lastContextTokens,
-			demoted,
 			toolSet,
 			turn,
 		};

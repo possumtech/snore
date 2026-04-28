@@ -54,7 +54,6 @@ describe("token accounting (@token_accounting)", () => {
 				mode: "ask",
 				toolSet: null,
 				contextSize: 50000,
-				demoted: [],
 			});
 			const known = result.rows.find(
 				(r) => r.path === "known://france/capital",
@@ -85,7 +84,6 @@ describe("token accounting (@token_accounting)", () => {
 				mode: "ask",
 				toolSet: null,
 				contextSize: 50000,
-				demoted: [],
 			});
 			for (const row of result.rows) {
 				if (row.aTokens == null) continue;
@@ -121,7 +119,6 @@ describe("token accounting (@token_accounting)", () => {
 				mode: "ask",
 				toolSet: null,
 				contextSize: 50000,
-				demoted: [],
 			});
 			const row = result.rows.find((r) => r.path === "known://summarized_now");
 			assert.ok(row, "summarized entry materialized");

@@ -499,7 +499,6 @@ describe("Budget math", () => {
 					systemPrompt: "test",
 					mode: "act",
 					toolSet: null,
-					demoted: [],
 				},
 				rummy: {
 					db: tdb.db,

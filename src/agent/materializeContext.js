@@ -12,7 +12,6 @@ export default async function materializeContext({
 	mode,
 	toolSet,
 	contextSize,
-	demoted,
 }) {
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
@@ -45,7 +44,13 @@ export default async function materializeContext({
 		const vTokens = countTokens(visibleProjection);
 		const sTokens = countTokens(summarizedProjection);
 		const vLines = countLines(visibleProjection);
-		tokenAccounting.set(row.path, { vTokens, sTokens, vLines });
+		tokenAccounting.set(row.path, {
+			vTokens,
+			sTokens,
+			vLines,
+			vBody: visibleProjection,
+			sBody: summarizedProjection,
+		});
 		const projectedBody =
 			row.visibility === "visible" ? visibleProjection : summarizedProjection;
 		await db.insert_turn_context.run({
@@ -71,6 +76,8 @@ export default async function materializeContext({
 		row.sTokens = t.sTokens;
 		row.aTokens = t.vTokens - t.sTokens;
 		row.vLines = t.vLines;
+		row.vBody = t.vBody;
+		row.sBody = t.sBody;
 	}
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
 	let lastContextTokens = 0;
@@ -82,7 +89,6 @@ export default async function materializeContext({
 			type: mode,
 			systemPrompt,
 			contextSize,
-			demoted,
 			toolSet,
 			lastContextTokens,
 			turn,

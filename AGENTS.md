@@ -324,14 +324,20 @@ Bundled change driven by the audit's CC-1 finding plus the parked
   `assembleVisible` (priority 75). System message stops carrying
   data-surface entries; system is now identity + tools + base
   instructions only.
-- `<summarized>` renders one self-closing summary line per
-  `category=data` entry whose visibility is `visible` or `summarized`.
-  Plus the named puncture: archived prompts pass through with
-  `visibility="archived"` so the active prompt stays discoverable
-  after demotion. Carve-out is filter-level explicit, not generalized.
-- `<visible>` renders full bodies of `category=data` entries whose
-  visibility is `visible`. A visible entry exists in *both* blocks —
-  summary line up top (identity), full body below (working memory).
+- `<summarized>` renders each `category=data` entry whose visibility
+  is `visible` or `summarized` under its scheme tag, with the plugin's
+  summary projection as the tag body (truncated knowns, code symbols
+  for files, page abstracts for URLs — whatever each plugin's
+  `summary()` hook produces). Plus the named puncture: archived prompts
+  pass through with `visibility="archived"` so the active prompt stays
+  discoverable after demotion.
+- `<visible>` renders each `category=data` entry whose visibility is
+  `visible` under its scheme tag with the plugin's visible projection
+  as the tag body. A visible entry exists in *both* blocks — summary
+  projection up top (identity), full body below (working memory).
+- `materializeContext` stores both projections (`vBody` / `sBody`) on
+  each row so the two blocks read from the right one without
+  re-projecting in the filter.
 - Why: matches every major harness convention (Aider, Claude Code,
   Cursor, Codex all put codebase context user-side). Models are
   trained to expect dynamic file/repo content user-side. And the

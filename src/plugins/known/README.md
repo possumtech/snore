@@ -22,14 +22,17 @@ Shows `# known {path}` followed by the entry body.
 Filters `ctx.rows` where `category === "data"`. Two separate blocks
 emit at the top of the user message in this order:
 
-- `<summarized>` — one self-closing summary line per data entry whose
-  visibility is `visible` or `summarized`. Plus the named carve-out:
-  archived prompts pass through (visibility="archived"), so the model
-  can `<get>` the active prompt back after demotion.
-- `<visible>` — full body of each data entry whose visibility is
-  `visible`. A visible entry appears in *both* blocks: as a summary
-  line in `<summarized>` (its identity), and as a full body in
-  `<visible>` (its current working-memory presence).
+- `<summarized>` — each data entry whose visibility is `visible` or
+  `summarized`, rendered under its scheme tag with the plugin's
+  summary projection as body (truncated knowns, code symbols,
+  page abstracts — whatever the plugin's `summary()` hook produces).
+  Plus the named carve-out: archived prompts pass through
+  (visibility="archived") so the model can `<get>` the active prompt
+  back after demotion.
+- `<visible>` — each data entry whose visibility is `visible`,
+  rendered with the plugin's visible projection (full body) as the
+  tag body. A visible entry appears in *both* blocks: summary
+  projection up top, full body below.
 
 This split lets `<summarized>` stay cache-stable across promote/demote
 operations — only `<visible>` mutates when the model promotes a

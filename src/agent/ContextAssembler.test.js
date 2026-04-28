@@ -366,5 +366,95 @@ describe("ContextAssembler", () => {
 				"prompt element carries tokensFree",
 			);
 		});
+
+		it("summary projection renders as the tag body inside <summarized>", async () => {
+			const rows = [
+				{
+					ordinal: 1,
+					path: "src/agent/AgentLoop.js",
+					scheme: null,
+					visibility: "summarized",
+					body: "class AgentLoop { #foo; async start(); }",
+					sBody: "class AgentLoop { #foo; async start(); }",
+					vBody:
+						"class AgentLoop { #foo; async start() { /* full body */ } }",
+					tokens: 12,
+					attributes: null,
+					category: "data",
+					source_turn: 1,
+				},
+				{
+					ordinal: 2,
+					path: "prompt://1",
+					scheme: "prompt",
+					visibility: "visible",
+					body: "Refactor",
+					tokens: 1,
+					attributes: JSON.stringify({ mode: "ask" }),
+					category: "prompt",
+					source_turn: 1,
+				},
+			];
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
+			const user = messages[1].content;
+			const summarizedBlock = user.match(
+				/<summarized>([\s\S]*?)<\/summarized>/,
+			)?.[1];
+			assert.ok(summarizedBlock, "<summarized> block exists");
+			assert.ok(
+				summarizedBlock.includes("class AgentLoop"),
+				"summary projection renders as tag body — symbols visible to model",
+			);
+			assert.ok(
+				summarizedBlock.includes("</file>"),
+				"summary entry is a closed tag, not self-closing, when body is present",
+			);
+		});
+
+		it("visible block renders the full visible projection, summarized block renders the summarized projection", async () => {
+			const rows = [
+				{
+					ordinal: 1,
+					path: "known://fact",
+					scheme: "known",
+					visibility: "visible",
+					body: "FULL BODY HERE",
+					sBody: "short summary",
+					vBody: "FULL BODY HERE",
+					attributes: null,
+					category: "data",
+					source_turn: 2,
+				},
+				{
+					ordinal: 2,
+					path: "prompt://1",
+					scheme: "prompt",
+					visibility: "visible",
+					body: "ask",
+					attributes: JSON.stringify({ mode: "ask" }),
+					category: "prompt",
+					source_turn: 2,
+				},
+			];
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys" },
+				hooks,
+			);
+			const user = messages[1].content;
+			const summarizedBlock = user.match(
+				/<summarized>([\s\S]*?)<\/summarized>/,
+			)?.[1];
+			const visibleBlock = user.match(/<visible>([\s\S]*?)<\/visible>/)?.[1];
+			assert.ok(summarizedBlock.includes("short summary"));
+			assert.ok(!summarizedBlock.includes("FULL BODY HERE"));
+			assert.ok(visibleBlock.includes("FULL BODY HERE"));
+			assert.ok(!visibleBlock.includes("short summary"));
+		});
+
 	});
 });

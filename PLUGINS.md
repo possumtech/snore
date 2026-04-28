@@ -241,7 +241,6 @@ ctx = {
     toolSet,           // Set<string> of active tool names for this loop
     contextSize,       // Model context window size
     lastContextTokens, // Actual API tokens from the prior turn (0 on turn 1)
-    demoted,           // Mutable array — plugins push paths they summarized
     turn,              // Current turn number
 }
 ```

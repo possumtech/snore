@@ -90,7 +90,6 @@ export default class TurnExecutor {
 		const systemPrompt =
 			await this.#hooks.instructions.resolveSystemPrompt(rummy);
 
-		const demoted = [];
 		const budgetCtx = {
 			runId: currentRunId,
 			loopId: currentLoopId,
@@ -98,7 +97,6 @@ export default class TurnExecutor {
 			systemPrompt,
 			mode,
 			toolSet,
-			demoted,
 			loopIteration,
 		};
 		const initial = await materializeContext({

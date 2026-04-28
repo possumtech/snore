@@ -814,18 +814,22 @@ Two messages per turn. System = stable truth. User = active task.
          instructions.toolDocs filter; optional persona appended)
 [user message]
     <summarized>
-        one self-closing summary line per category=data entry whose
-        visibility is visible or summarized; plus the named carve-out
-        (archived prompts pass through with visibility="archived" so
-        the model can <get> the active prompt back). Identity-keyed,
-        slow-mutating: only grows when a new entry lands.
-        (known.js, assembly.user priority 50)
+        one entry per category=data entry whose visibility is visible
+        or summarized; plus the named carve-out (archived prompts pass
+        through with visibility="archived" so the model can <get> the
+        active prompt back). Each entry renders under its scheme tag
+        with its summarized projection as the tag body — this is the
+        compact-but-informative view produced by the plugin's summary()
+        hook (e.g. truncated knowns, code symbols for files, page
+        abstracts for URLs). Identity-keyed, slow-mutating: only grows
+        when a new entry lands. (known.js, assembly.user priority 50)
     </summarized>
     <visible>
-        full body of each category=data entry whose visibility is
-        visible. Working-set: append on promote, remove on demote.
-        A visible entry exists in BOTH blocks — summary line up top,
-        full body here.
+        each category=data entry whose visibility is visible, rendered
+        under its scheme tag with its visible projection as the tag
+        body (full body per the plugin's visible() hook). Working-set:
+        append on promote, remove on demote. A visible entry exists in
+        BOTH blocks — summary projection up top, full body below.
         (known.js, assembly.user priority 75)
     </visible>
     <log>
