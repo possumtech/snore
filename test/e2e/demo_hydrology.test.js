@@ -69,11 +69,11 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
-	it("demo scenario: terminal run/state fires after multi-turn flow with deliverable on disk", {
+	it("demo scenario: run reaches terminal status with deliverable on disk + per-turn telemetry derivable from store", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const states = [];
-		client.on("run/state", (p) => states.push(p));
+		const pulses = [];
+		client.on("run/changed", (p) => pulses.push(p));
 
 		const startRes = await client.call("set", {
 			path: "run://",
@@ -92,12 +92,7 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		assert.ok(finalStatus, "DB reached terminal status");
 		await new Promise((r) => setTimeout(r, 1000));
 
-		console.log(`[TEST] finalStatus=${finalStatus}  states=${states.length}`);
-		for (const s of states) {
-			console.log(
-				`  turn=${s.turn} status=${s.status} ceiling=${s.telemetry?.ceiling} free=${s.telemetry?.tokens_free} used=${s.telemetry?.token_usage}`,
-			);
-		}
+		console.log(`[TEST] finalStatus=${finalStatus}  pulses=${pulses.length}`);
 
 		// Outcome-based: the deliverable must exist on disk with
 		// substantive content. Whichever wire-protocol path the model
@@ -112,16 +107,21 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 			`OC_RIVERS.md has substantive content (got ${deliverable?.length ?? 0} chars)`,
 		);
 
-		const terminal = states.findLast((s) => s.status >= 200);
-		assert.ok(terminal, "terminal run/state arrived");
-		assert.strictEqual(terminal.status, finalStatus);
-		for (const s of states) {
-			assert.ok(s.telemetry?.ceiling > 0, `turn ${s.turn} ceiling`);
+		// Pulses fired during the run; client could reconcile via getEntries.
+		assert.ok(pulses.length > 0, "received run/changed pulses for this run");
+		for (const p of pulses) assert.strictEqual(p.run, alias);
+
+		// Per-turn telemetry derivable from turns table — same source the
+		// statusline pulls from after typed notifications go away.
+		const runRow = await tdb.db.get_run_by_alias.get({ alias });
+		const turns = await tdb.db.get_turns_by_run.all({ run_id: runRow.id });
+		assert.ok(turns.length > 0, "turn rows exist");
+		for (const t of turns) {
+			if (!t.context_tokens) continue;
 			assert.ok(
-				typeof s.telemetry?.token_usage === "number",
-				`turn ${s.turn} token_usage`,
+				typeof t.context_tokens === "number" && t.context_tokens > 0,
+				`turn ${t.sequence} context_tokens populated`,
 			);
-			assert.ok(s.telemetry?.tokens_free >= 0, `turn ${s.turn} tokens_free`);
 		}
 	});
 });

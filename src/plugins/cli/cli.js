@@ -50,16 +50,13 @@ export default class Cli {
 		}, timeoutMs);
 		timer.unref();
 
-		// stderr for progress; stdout reserved for the final summary.
-		hooks.run.state.on(async (state) => {
-			if (state.run !== alias) return;
-			const { status, turn, summary } = state;
-			console.error(`[rummy-cli] turn ${turn} status=${status}`);
-			if (!TERMINAL_STATUSES.has(status)) return;
-			if (summary) process.stdout.write(`${summary}\n`);
-			// Brief flush window for any pending writes / hooks.
-			await new Promise((r) => setTimeout(r, 50));
-			process.exit(status === 200 ? 0 : 1);
+		// stderr progress: log update entries as they land.
+		hooks.entry.created.on((entry) => {
+			if (entry?.scheme !== "update") return;
+			const turnMatch = entry.path?.match(/^log:\/\/turn_(\d+)\//);
+			if (!turnMatch) return;
+			const status = entry.attributes?.status ?? 102;
+			console.error(`[rummy-cli] turn ${turnMatch[1]} status=${status}`);
 		});
 
 		const runFn =
@@ -67,9 +64,33 @@ export default class Cli {
 				? projectAgent.act.bind(projectAgent)
 				: projectAgent.ask.bind(projectAgent);
 
-		runFn(projectId, model, prompt, alias, {}).catch((err) => {
+		try {
+			const result = await runFn(projectId, model, prompt, alias, {});
+			const { status } = result;
+			if (TERMINAL_STATUSES.has(status)) {
+				const summary = await this.#findLatestSummary(db, alias);
+				if (summary) process.stdout.write(`${summary}\n`);
+			}
+			await new Promise((r) => setTimeout(r, 50));
+			process.exit(status === 200 ? 0 : 1);
+		} catch (err) {
 			console.error(`rummy-cli: run crashed: ${err.message}`);
 			process.exit(1);
-		});
+		}
+	}
+
+	async #findLatestSummary(db, alias) {
+		const runRow = await db.get_run_by_alias.get({ alias });
+		if (!runRow) return null;
+		const entries = await db.get_known_entries.all({ run_id: runRow.id });
+		const updates = entries
+			.filter(
+				(e) =>
+					e.scheme === "log" &&
+					/^log:\/\/turn_\d+\/update\//.test(e.path) &&
+					e.state === "resolved",
+			)
+			.toSorted((a, b) => a.turn - b.turn);
+		return updates[updates.length - 1]?.body ?? null;
 	}
 }

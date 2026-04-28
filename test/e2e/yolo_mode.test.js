@@ -6,8 +6,9 @@
  *   1. file edit auto-acceptance + on-disk materialization
  *   2. server-side sh execution with output captured to channel entries
  *
- * Critical guard: NO client-side `run/proposal` handler is registered.
- * If YOLO doesn't auto-resolve server-side, the run will hang on the
+ * Critical guard: NO client-side proposal handler is wired up (raw
+ * RpcClient, no `run/changed` subscriber resolving proposals). If YOLO
+ * doesn't auto-resolve server-side, the run will hang on the
  * proposal-pending wait and time out — and the test will fail. That's
  * the whole point: prove the server can drive a run to completion with
  * zero client involvement past the initial `set run://`.
@@ -74,8 +75,8 @@ describe("E2E: yolo mode auto-resolves and self-executes (@yolo_mode)", {
 			clientVersion: "2.0.0",
 		});
 
-		// CRITICAL: no run/proposal handler. If yolo doesn't engage,
-		// the run will hang on proposal-pending waits.
+		// CRITICAL: no client-side proposal resolver. If yolo doesn't
+		// engage, the run will hang on proposal-pending waits.
 	}, TIMEOUT);
 
 	after(async () => {

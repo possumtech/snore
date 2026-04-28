@@ -309,7 +309,11 @@ describe("error verdict (@response_healing)", () => {
 			});
 			await bumpTurn(i + 2);
 		}
-		assert.strictEqual(verdict.continue, false, "abandons after sustained loop");
+		assert.strictEqual(
+			verdict.continue,
+			false,
+			"abandons after sustained loop",
+		);
 		assert.strictEqual(verdict.status, 499);
 		assert.strictEqual(
 			verdict.reason,
@@ -342,10 +346,7 @@ describe("error verdict (@response_healing)", () => {
 			true,
 			"struck but under MAX_STRIKES → continue with reminder",
 		);
-		assert.ok(
-			verdict.reason,
-			"struck turns carry the contract reminder",
-		);
+		assert.ok(verdict.reason, "struck turns carry the contract reminder");
 	});
 
 	it("reasoning-runaway: ContextExceeded errors accumulate strikes → 499", async () => {

@@ -71,7 +71,8 @@ status.
 
 - **`cli.js`** — plugin class. Subscribes to `boot.completed`; on fire,
   if `RUMMY_PROMPT` is set, constructs a `ProjectAgent`, kicks off
-  the run, watches `run.state` for terminal, exits.
+  the run, awaits its terminal status, prints the latest update body,
+  exits.
 - **`bin.js`** — executable. Parses env-shape args, mirrors
   `bin/rummy.js`'s env-loading prelude, imports `service.js`.
 

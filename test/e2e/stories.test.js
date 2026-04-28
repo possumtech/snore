@@ -405,8 +405,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 		const captureRun = (p) => {
 			runAlias ??= p.run;
 		};
-		client.on("run/progress", captureRun);
-		client.on("run/state", captureRun);
+		client.on("run/changed", captureRun);
 
 		const askPromise = client.ask({
 			model,
@@ -434,8 +433,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			assert.ok(runRow.status !== 102, "run should not be stuck at running");
 		}
 
-		client.removeListener("run/progress", captureRun);
-		client.removeListener("run/state", captureRun);
+		client.removeListener("run/changed", captureRun);
 	});
 
 	// Story 8: Reject a proposal, verify file survives, then accept a different one.

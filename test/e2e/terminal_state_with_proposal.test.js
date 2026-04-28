@@ -22,11 +22,12 @@ async function waitForRunStatus(db, alias, targetStatuses, timeoutMs) {
 }
 
 /**
- * Regression test for the handshake bug: file writes go through the
- * proposal flow (202 awaiting resolve). If anything about the proposal
- * path disrupts the terminal run/state emission, this test catches it.
+ * Regression test for the proposal handshake: file writes go through
+ * the proposal flow (202 awaiting resolve). If anything about the
+ * proposal path disrupts the run/changed pulse cadence or the
+ * derivable per-turn telemetry, this test catches it.
  */
-describe("E2E: terminal run/state after proposal acceptance (@notifications, @resolution, @plugins_rpc_queries)", {
+describe("E2E: terminal status + pulse cadence after proposal acceptance (@notifications, @resolution, @plugins_rpc_queries)", {
 	concurrency: 1,
 }, () => {
 	if (!model) {
@@ -87,26 +88,20 @@ describe("E2E: terminal run/state after proposal acceptance (@notifications, @re
 		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
-	it("after proposal accept, terminal run/state (status >= 200) arrives", {
+	it("proposal flow + run/changed pulses; telemetry derivable from store", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const states = [];
-		const proposals = [];
-		client.on("run/state", (p) => states.push(p));
-		client.on("run/proposal", (p) => proposals.push(p));
+		const pulses = [];
+		client.on("run/changed", (p) => pulses.push(p));
 
 		const startRes = await client.call("set", {
 			path: "run://",
 			// The test's purpose is verifying the proposal-acceptance
-			// machinery — at least one proposal must fire. Earlier the
-			// prompt was a trivial direct-action ("Create FACTS.md with
-			// this exact sentence") that fought the harness's research
-			// bias and stranded gemma in self-manufactured Definition
-			// unknowns. Research-shaped prompt over a planted data file
-			// flows through the protocol naturally: Definition registers
-			// the unknown about the file's contents, Discovery `<get>`s
-			// it, Deployment `<set>`s FACTS.md — at least one proposal
-			// fires by construction.
+			// machinery — at least one proposal must fire. Research-shaped
+			// prompt over a planted data file flows through the protocol
+			// naturally: Definition registers the unknown about the file's
+			// contents, Discovery `<get>`s it, Deployment `<set>`s
+			// FACTS.md — at least one proposal fires by construction.
 			body: "Read data.txt in this project, then write FACTS.md as a markdown list of the facts it contains.",
 			attributes: { model, mode: "act", yolo: true },
 		});
@@ -123,85 +118,46 @@ describe("E2E: terminal run/state after proposal acceptance (@notifications, @re
 		assert.ok(finalStatus, "run reached terminal status in DB");
 		console.log(`[TEST] DB terminal status: ${finalStatus}`);
 
-		// Give notifications a moment to catch up past the DB write.
 		await new Promise((r) => setTimeout(r, 1000));
 
-		console.log(
-			`[TEST] captured ${states.length} run/state, ${proposals.length} run/proposal`,
-		);
-		for (const s of states) {
-			console.log(
-				`  state turn=${s.turn} status=${s.status} ceiling=${s.telemetry?.ceiling} free=${s.telemetry?.tokens_free}`,
-			);
+		console.log(`[TEST] captured ${pulses.length} run/changed pulses`);
+		assert.ok(pulses.length > 0, "received run/changed pulses for this run");
+		for (const p of pulses) {
+			assert.strictEqual(p.run, alias, "pulse scoped to this run");
 		}
 
+		// Proposal flow exercised: at least one resolved set:// log entry
+		// exists (proposals are file edits, accepted by yolo).
+		const runRow = await tdb.db.get_run_by_alias.get({ alias });
+		const setLogEntries = await tdb.db.get_known_entries.all({
+			run_id: runRow.id,
+		});
+		const resolvedSets = setLogEntries.filter(
+			(e) =>
+				e.scheme === "log" &&
+				/^log:\/\/turn_\d+\/set\//.test(e.path) &&
+				e.state === "resolved",
+		);
 		assert.ok(
-			proposals.length > 0,
-			"test must exercise proposal flow (no proposals fired)",
+			resolvedSets.length > 0,
+			"proposal flow fired (at least one resolved set log entry)",
 		);
 
-		const terminalState = states.findLast((s) => s.status >= 200);
-		assert.ok(
-			terminalState,
-			`at least one run/state carries terminal status; got: ${states.map((s) => s.status).join(",")}`,
-		);
-		assert.strictEqual(
-			terminalState.status,
-			finalStatus,
-			"terminal notification status matches DB terminal status",
-		);
-
-		// EVERY run/state this run emits must carry complete budget
-		// telemetry so the statusline can't fall back to stale values.
-		for (const s of states) {
-			const t = s.telemetry;
-			assert.ok(t, `run/state[turn=${s.turn}] has telemetry`);
+		// Telemetry derivable from the turns table — same source the
+		// statusline pulls from after the typed notification surface
+		// goes away.
+		const turns = await tdb.db.get_turns_by_run.all({ run_id: runRow.id });
+		assert.ok(turns.length > 0, "turn rows exist");
+		for (const t of turns) {
+			if (!t.context_tokens) continue; // turn that didn't run an LLM call
 			assert.ok(
-				typeof t.ceiling === "number" && t.ceiling > 0,
-				`run/state[turn=${s.turn}] telemetry.ceiling populated, got ${t.ceiling}`,
+				typeof t.context_tokens === "number" && t.context_tokens > 0,
+				`turn ${t.sequence} context_tokens populated`,
 			);
 			assert.ok(
-				typeof t.token_usage === "number",
-				`run/state[turn=${s.turn}] telemetry.token_usage populated, got ${t.token_usage}`,
-			);
-			assert.ok(
-				typeof t.tokens_free === "number" && t.tokens_free >= 0,
-				`run/state[turn=${s.turn}] telemetry.tokens_free populated, got ${t.tokens_free}`,
-			);
-			// Soft invariant: tokens_free can never exceed ceiling,
-			// and token_usage should fit within ceiling too.
-			assert.ok(
-				t.tokens_free <= t.ceiling,
-				`tokens_free (${t.tokens_free}) must not exceed ceiling (${t.ceiling})`,
-			);
-			assert.ok(
-				t.token_usage <= t.ceiling,
-				`token_usage (${t.token_usage}) must not exceed ceiling (${t.ceiling})`,
+				typeof t.prompt_tokens === "number" && t.prompt_tokens >= 0,
+				`turn ${t.sequence} prompt_tokens populated`,
 			);
 		}
-
-		// Exactly one run/state per turn (one-per-turn emit from
-		// AgentLoop). Multiple emits per turn would indicate we
-		// reintroduced the hardcoded-102 per-command emits that
-		// caused the proposal-checkmark race.
-		const byTurn = new Map();
-		for (const s of states) {
-			byTurn.set(s.turn, (byTurn.get(s.turn) ?? 0) + 1);
-		}
-		for (const [turn, count] of byTurn) {
-			assert.strictEqual(
-				count,
-				1,
-				`turn ${turn} emitted ${count} run/state events; expected exactly 1`,
-			);
-		}
-
-		// Exactly one terminal state in the whole stream.
-		const terminals = states.filter((s) => s.status >= 200);
-		assert.strictEqual(
-			terminals.length,
-			1,
-			`expected exactly 1 terminal run/state, got ${terminals.length}`,
-		);
 	});
 });

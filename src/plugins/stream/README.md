@@ -19,10 +19,10 @@ A streaming action lives in **two namespaces** by design:
   `stream/cancel`. Render inside `<visible>` (or `<summarized>` if
   demoted).
 
-The stream RPC `path` param is always the **log-entry path** (that's
-what clients receive on `run/proposal`). The server derives the data
-base path internally via `logPathToDataBase`. See
-[scheme_category_split](#scheme_category_split).
+The stream RPC `path` param is always the **log-entry path** (the
+`log://...` path the client discovers via `getEntries` after a
+`run/changed` pulse). The server derives the data base path internally
+via `logPathToDataBase`. See [scheme_category_split](#scheme_category_split).
 
 ## RPC Methods
 

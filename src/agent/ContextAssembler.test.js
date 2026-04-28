@@ -376,8 +376,7 @@ describe("ContextAssembler", () => {
 					visibility: "summarized",
 					body: "class AgentLoop { #foo; async start(); }",
 					sBody: "class AgentLoop { #foo; async start(); }",
-					vBody:
-						"class AgentLoop { #foo; async start() { /* full body */ } }",
+					vBody: "class AgentLoop { #foo; async start() { /* full body */ } }",
 					tokens: 12,
 					attributes: null,
 					category: "data",
@@ -455,6 +454,5 @@ describe("ContextAssembler", () => {
 			assert.ok(visibleBlock.includes("FULL BODY HERE"));
 			assert.ok(!visibleBlock.includes("short summary"));
 		});
-
 	});
 });

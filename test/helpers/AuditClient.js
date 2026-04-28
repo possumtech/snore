@@ -5,13 +5,16 @@ import RpcClient from "./RpcClient.js";
 /**
  * AuditClient wraps RpcClient with per-run audit tracking.
  * Dumps the SPECIFIC failing run's K/V state on assertion failure.
- * Auto-resolves proposals via run/proposal notifications.
+ * Auto-resolves proposals: subscribes to run/changed pulses, queries
+ * getEntries(run, { since }) to find new proposed entries, resolves them.
  */
 export default class AuditClient extends RpcClient {
 	#db;
 	#currentRun = null;
 	#projectRoot = null;
 	#resolveHandler = null;
+	#lastSeenByRun = new Map();
+	#resolvedPaths = new Set();
 
 	constructor(url, db, { projectRoot } = {}) {
 		super(url);
@@ -28,27 +31,45 @@ export default class AuditClient extends RpcClient {
 		this.#resolveHandler = fn;
 	}
 
+	// Pulse + query: subscribe to run/changed, query for new proposed
+	// entries since last seen, auto-resolve. Idempotent — same proposal
+	// won't be resolved twice (tracked in #resolvedPaths).
 	#setupAutoResolve() {
-		this.on("run/proposal", async ({ run, proposed }) => {
-			for (const p of proposed || []) {
+		this.on("run/changed", async ({ run }) => {
+			const lastSeen = this.#lastSeenByRun.get(run) || 0;
+			let newEntries;
+			try {
+				newEntries = await super.call("getEntries", {
+					run,
+					pattern: "**",
+					since: lastSeen,
+				});
+			} catch {
+				return;
+			}
+			if (!newEntries.length) return;
+			this.#lastSeenByRun.set(run, Math.max(...newEntries.map((e) => e.id)));
+			for (const e of newEntries) {
+				if (e.state !== "proposed") continue;
+				const key = `${run}:${e.path}`;
+				if (this.#resolvedPaths.has(key)) continue;
+				this.#resolvedPaths.add(key);
 				try {
-					// Custom handler overrides auto-accept
 					if (this.#resolveHandler) {
-						await this.#resolveHandler(this, run, p);
+						await this.#resolveHandler(this, run, e);
 						continue;
 					}
-					// Apply file edits to disk before accepting
-					if (p.path?.startsWith("set://") && this.#projectRoot) {
-						await this.#applySetToDisk(run, p.path);
+					if (e.path?.startsWith("set://") && this.#projectRoot) {
+						await this.#applySetToDisk(run, e.path);
 					}
-					if (p.path?.startsWith("rm://") && this.#projectRoot) {
-						await this.#applyRmToDisk(run, p.path);
+					if (e.path?.startsWith("rm://") && this.#projectRoot) {
+						await this.#applyRmToDisk(run, e.path);
 					}
 					await super.call("set", {
 						run,
-						path: p.path,
+						path: e.path,
 						state: "resolved",
-						body: p.path?.startsWith("ask_user://") ? "N/A" : "",
+						body: e.path?.startsWith("ask_user://") ? "N/A" : "",
 					});
 				} catch {}
 			}

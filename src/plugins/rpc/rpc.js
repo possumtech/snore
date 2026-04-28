@@ -442,12 +442,9 @@ export default class Rpc {
 
 		// --- Notifications ---
 
-		r.registerNotification("run/state", "Turn state update.");
-		r.registerNotification("run/progress", "Turn status.");
-		r.registerNotification("run/proposal", "Proposal awaiting resolution.");
 		r.registerNotification(
 			"run/changed",
-			"Pulse: an entry under this run changed. Query with `getEntriesByPattern(runId, pattern, null, { since })` to reconcile.",
+			"Pulse: an entry under this run changed. Query with `getEntries(run, { pattern, since })` to reconcile.",
 		);
 		r.registerNotification(
 			"stream/cancelled",

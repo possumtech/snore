@@ -32,25 +32,6 @@ export default class ClientConnection {
 		this.#setupNotifications();
 	}
 
-	#onProgress = (payload) => {
-		if (payload.projectId === this.#context.projectId) {
-			this.#sendNotification("run/progress", {
-				run: payload.run,
-				turn: payload.turn,
-				status: payload.status,
-			});
-		}
-	};
-
-	#onProposal = (payload) => {
-		if (payload.projectId === this.#context.projectId) {
-			this.#sendNotification("run/proposal", {
-				run: payload.run,
-				proposed: payload.proposed,
-			});
-		}
-	};
-
 	#onRender = (payload) => {
 		if (payload.projectId === this.#context.projectId) {
 			this.#sendNotification("ui/render", {
@@ -93,36 +74,16 @@ export default class ClientConnection {
 		});
 	};
 
-	#onState = (payload) => {
-		if (payload.projectId === this.#context.projectId) {
-			this.#sendNotification("run/state", {
-				run: payload.run,
-				turn: payload.turn,
-				status: payload.status,
-				summary: payload.summary,
-				history: payload.history,
-				unknowns: payload.unknowns,
-				telemetry: payload.telemetry,
-			});
-		}
-	};
-
 	#setupNotifications() {
-		this.#hooks.run.progress.on(this.#onProgress);
-		this.#hooks.proposal.pending.on(this.#onProposal);
 		this.#hooks.ui.render.on(this.#onRender);
 		this.#hooks.ui.notify.on(this.#onNotify);
-		this.#hooks.run.state.on(this.#onState);
 		this.#hooks.stream.cancelled.on(this.#onStreamCancelled);
 		this.#hooks.entry.changed.on(this.#onEntryChanged);
 	}
 
 	#teardown() {
-		this.#hooks.run.progress.off(this.#onProgress);
-		this.#hooks.proposal.pending.off(this.#onProposal);
 		this.#hooks.ui.render.off(this.#onRender);
 		this.#hooks.ui.notify.off(this.#onNotify);
-		this.#hooks.run.state.off(this.#onState);
 		this.#hooks.stream.cancelled.off(this.#onStreamCancelled);
 		this.#hooks.entry.changed.off(this.#onEntryChanged);
 	}

@@ -112,13 +112,6 @@ export default class TurnExecutor {
 			rowCount: initial.rows.length,
 		});
 
-		await this.#hooks.run.progress.emit({
-			projectId,
-			run: currentAlias,
-			turn,
-			status: "thinking",
-		});
-
 		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
 			messages: initial.messages,
@@ -194,13 +187,6 @@ export default class TurnExecutor {
 		});
 		const responseMessage = result.choices?.[0]?.message;
 		const content = responseMessage?.content ? responseMessage.content : "";
-
-		await this.#hooks.run.progress.emit({
-			projectId,
-			run: currentAlias,
-			turn,
-			status: "processing",
-		});
 
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
 		for (const w of warnings) {

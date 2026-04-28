@@ -151,8 +151,8 @@ async function runTask(client, model, task) {
 
 	const prompt = buildPrompt(task);
 
-	// AuditClient auto-resolves proposals (run/proposal notifications) so
-	// client.act() runs to terminal without manual proposal draining.
+	// AuditClient auto-resolves proposals (run/changed pulse + getEntries
+	// query) so client.act() runs to terminal without manual proposal draining.
 	// noRepo: matches mini-swe-agent baseline — no preloaded file map.
 	// Model discovers structure via <sh ls/find/grep> and reads files with
 	// <get>. Defensible apples-to-apples comparison.

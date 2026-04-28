@@ -50,7 +50,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 	});
 
 	it("returns only entries with id > since, in insertion order", async () => {
-		const a = await store.set({
+		const _a = await store.set({
 			runId: RUN_ID,
 			turn: 1,
 			path: "known://a",

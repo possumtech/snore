@@ -311,13 +311,11 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	// The RPC response to set/accept|reject returns {run, status}. For
 	// weeks the `status` was hardcoded to 200. The nvim client's generic
-	// status-response handler treats `result.status >= 200` as terminal
-	// → closes the document on the FIRST mid-run accept, then ignores
-	// subsequent run/state status=102 updates (guarded by
-	// "don't backtrack from ≥200"). Result: client locks at 200 on
-	// turn 4, sees run/progress events keep firing, reports the run as
-	// "dead" until the actual terminal run/state arrives on turn 5.
-	// Observed in rummy_dev.db::test:demo run gemma_1776989468049.
+	// status-response handler treats `result.status >= 200` as terminal,
+	// so it would lock the run at 200 on the first mid-run accept and
+	// stop reconciling pulses. Observed in rummy_dev.db::test:demo run
+	// gemma_1776989468049 (back when run/state was the wire surface;
+	// the mechanism survives the move to pulse+query).
 	//
 	// Fix: return the current run status so the client sees the real
 	// state (102 mid-run, 200 at completion).

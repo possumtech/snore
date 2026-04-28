@@ -140,37 +140,25 @@ Verified Mini) are scaffolded and run on demand.
   `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
   requiring model intervention.
 
-- [ ] **Phase B: migrate consumers off the typed run/* notifications.**
-  Phase A landed (2026-04-28) — a content-free `run/changed` pulse
-  fires alongside the existing `run/state` / `run/progress` /
-  `run/proposal` notifications, and `getEntries` (RPC) +
-  `getEntriesByPattern` (in-process) accept a `since` cursor for
-  insertion-ordered diff queries. Consumers can already migrate to
-  pulse + query: subscribe `run/changed`, track last-seen entry id,
-  call `getEntries(run, { since: lastSeen })` to reconcile. Phase B
-  is the cleanup after migration:
-  - `rummy.nvim` — currently consumes `run/state` for statusline
-    rendering. Migrate to pulse + query against the entry store.
-  - `test/helpers/AuditClient.js` — currently auto-resolves via
-    `run/proposal`. Migrate to pulse + query for `state="proposed"`
-    entries.
-  - `test/e2e/terminal_state_notification.test.js` and
-    `test/e2e/terminal_state_with_proposal.test.js` — assert against
-    pulse + run row state instead of typed-notification payload.
-  - `src/plugins/cli/cli.js` — uses `hooks.run.state` directly
-    (in-process, not WebSocket); could keep or migrate to entry
-    polling for consistency.
-  - Once everything is migrated: delete `AgentLoop#emitRunState`
-    (the snapshot computation), `ClientConnection#onProgress` /
-    `#onState`, and the typed `run/state` / `run/progress` /
-    `run/proposal` notification registrations in `rpc.js`. The
-    notification protocol collapses to pulse + query.
+- [ ] **rummy.nvim migration to pulse + query.** The server side is
+  done — the typed `run/state` / `run/progress` / `run/proposal`
+  notifications are gone (deleted 2026-04-28). `rummy.nvim` still
+  consumes the legacy notifications and must be migrated to the new
+  contract documented in `CLIENT_INTERFACE.md`: subscribe to
+  `run/changed`, track last-seen entry id per run, call
+  `getEntries(run, { since, pattern })` to reconcile, and drive UI
+  from the entry stream. Substantial lua refactor across
+  `dispatch.lua`, `state.lua`, `statusline.lua`, `diff.lua`, plus
+  tests. Cannot be validated from this repo — drive from the nvim
+  side. Until migrated, `rummy.nvim` will not function against a
+  current server.
 
-- [ ] **Headless nvim e2e test.** Every new `run.state` telemetry
-  field must be manually re-synced in `dispatch.lua` / `state.lua` /
-  `statusline.lua`. A test that spins up a headless nvim against
-  the server and asserts the statusline renders correctly for a
-  known run would catch drift at contract time.
+- [ ] **Headless nvim e2e test.** A test that spins up a headless
+  nvim against the server and asserts the statusline renders
+  correctly for a known run would catch contract drift at the wire
+  layer. Especially valuable now that nvim is consuming the entry
+  stream directly — any change to `getEntries` shape or `run/changed`
+  cadence is a silent break otherwise.
 
 - [ ] **Core → plugin extraction conversation.** Audit what still
   lives in `src/agent/*` that could plausibly be a plugin. Top
@@ -292,17 +280,28 @@ durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
 
-### Pulse + query notification infrastructure (Phase A landed 2026-04-28)
+### Pulse + query notification refactor (landed 2026-04-28)
 
-Replaces the typed `run/state` / `run/progress` / `run/proposal`
+Replaced the typed `run/state` / `run/progress` / `run/proposal`
 notification surface with a content-free `run/changed` pulse plus a
-`since`-cursor query against the entry store. The entry store becomes
-the source of truth; the pulse is a latency hint that says "go look."
+`since`-cursor query against the entry store. The entry store is the
+source of truth; the pulse is a latency hint that says "go look."
+Wire contract documented in `CLIENT_INTERFACE.md`.
 
-Phase A (additive, this session): pulse fires alongside the existing
-typed notifications so nothing breaks during migration. Phase B
-deletes the typed surface once consumers (rummy.nvim, AuditClient,
-two e2e tests, cli.js) have migrated. Filed as Open Item.
+Phase A (2026-04-28): pulse + query infrastructure added alongside
+the typed notifications.
+
+Phase B (2026-04-28): in-repo consumers (`AuditClient`, e2e tests,
+`cli.js`) migrated; then the typed surface deleted entirely —
+`AgentLoop#emitRunState`, both `hooks.run.progress.emit` sites in
+`TurnExecutor`, `ClientConnection`'s `#onProgress`/`#onState`/`#onProposal`
+handlers, `rpc.js`'s `run/state`/`run/progress`/`run/proposal`
+notification registrations, and `hooks.run.state`/`hooks.run.progress`
+in `Hooks.js`. `hooks.proposal.pending` stays — yolo uses it
+server-internally.
+
+Migration of the external `rummy.nvim` consumer remains open (filed
+as Open Item).
 
 **What landed:**
 

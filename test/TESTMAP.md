@@ -146,11 +146,9 @@ Every testable promise in SPEC.md mapped to a test.
 - [x] activate preserves file content in known store (E2E: rpc_methods)
 
 ### §5.2 Notifications
-- [x] run/state sent after each turn with correct shape (E2E: run_state)
-- [x] run/state.history entries have correct shape (E2E: run_state)
-- [x] run/state.proposed includes type (E2E: run_state)
-- [x] run/state.telemetry includes model info (E2E: run_state)
-- [x] run/progress sent during turn (code review)
+- [x] run/changed pulse fires when entries write (E2E: terminal_state_with_proposal)
+- [x] getEntries(run, { since }) returns insertion-ordered diffs (Integration: entries_since)
+- [x] turns table carries per-turn telemetry derivable by clients (E2E: terminal_state_with_proposal)
 
 ### §5.3 Run Lifecycle
 - [x] proposed entries block turn (code review)

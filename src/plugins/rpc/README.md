@@ -29,4 +29,5 @@ all registered tools.
 - `getRuns`, `getRun`
 
 ### Notifications
-- `run/state`, `run/progress`, `run/proposal`, `ui/render`, `ui/notify`, `stream/cancelled`
+- `run/changed` — pulse: an entry under this run changed; client reconciles via `getEntries(run, { since })`.
+- `ui/render`, `ui/notify`, `stream/cancelled`
