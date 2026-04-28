@@ -1,3 +1,4 @@
+import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
@@ -115,8 +116,7 @@ export default class Known {
 	}
 }
 
-function renderSummaryLine(entry) {
-	const tag = entry.scheme ? entry.scheme : "file";
+function entryAttrs(entry) {
 	const turn =
 		entry.source_turn != null ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
@@ -125,6 +125,19 @@ function renderSummaryLine(entry) {
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
+	const statusValue =
+		attrs?.status != null
+			? attrs.status
+			: entry.state
+				? stateToStatus(entry.state, entry.outcome)
+				: null;
+	const status =
+		statusValue != null && statusValue !== 200
+			? ` status="${statusValue}"`
+			: "";
+	const stateAttr =
+		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
+	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
 	const summaryText =
 		typeof attrs?.summary === "string"
 			? attrs.summary.replace(/"/g, "'").slice(0, 80)
@@ -132,15 +145,19 @@ function renderSummaryLine(entry) {
 	const summary = ` summary="${summaryText}"`;
 	const visibility =
 		entry.visibility === "archived" ? ` visibility="archived"` : "";
-	return `<${tag} path="${entry.path}"${turn}${summary}${visibility}${tokens}${lines}/>`;
+	return `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${lines}`;
+}
+
+function renderSummaryLine(entry) {
+	const tag = entry.scheme ? entry.scheme : "file";
+	return `<${tag} path="${entry.path}"${entryAttrs(entry)}/>`;
 }
 
 function renderVisibleBody(entry) {
 	const tag = entry.scheme ? entry.scheme : "file";
-	const turn =
-		entry.source_turn != null ? ` turn="${entry.source_turn}"` : "";
+	const a = entryAttrs(entry);
 	if (entry.body) {
-		return `<${tag} path="${entry.path}"${turn}>${entry.body}</${tag}>`;
+		return `<${tag} path="${entry.path}"${a}>${entry.body}</${tag}>`;
 	}
-	return `<${tag} path="${entry.path}"${turn}/>`;
+	return `<${tag} path="${entry.path}"${a}/>`;
 }
