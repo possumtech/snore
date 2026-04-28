@@ -62,7 +62,7 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 	const turnsHome = join(__dirname, "turns", `complete_${stamp}`);
 
 	before(async () => {
-		// Use the default RUMMY_MAX_TURNS. Capping low short-circuits the
+		// Use the default RUMMY_MAX_LOOP_TURNS. Capping low short-circuits the
 		// guardrail-bouncing the state machine is designed for; the
 		// TIMEOUT below is the wall-clock safety net.
 		await fs.mkdir(projectRoot, { recursive: true });

@@ -1413,8 +1413,9 @@ Termination protocol:
 - Repeated turn fingerprints (commands, attributes, or empty turns) →
   cycle detection (`RUMMY_MIN_CYCLES`, `RUMMY_MAX_CYCLE_PERIOD`); after
   detection, strikes accumulate up to `RUMMY_MAX_STRIKES` then close 499.
-- Hard ceiling: `RUMMY_MAX_TURNS` is the universal cap regardless of
-  any other guard.
+- Hard ceiling: `RUMMY_MAX_LOOP_TURNS` caps turns within a single loop,
+  regardless of any other guard. There is no per-run cap; a run may
+  comprise many loops.
 
 Format normalization:
 - Gemma `\`\`\`tool_code` fences → stripped before parsing
@@ -1658,7 +1659,7 @@ Full reference is `.env.example` — these are the load-bearing vars.
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `RUMMY_MAX_TURNS` | 15 | Hard loop iteration cap |
+| `RUMMY_MAX_LOOP_TURNS` | 99 | Per-loop turn cap (no per-run cap) |
 | `RUMMY_MAX_COMMANDS` | 99 | Max parsed tool calls per turn |
 | `RUMMY_MAX_STRIKES` | 3 | Strikes (errors or detected cycles) before close at 499 |
 | `RUMMY_MIN_CYCLES` | 3 | Consecutive repetitions to trigger cycle detection |

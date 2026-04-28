@@ -27,7 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "data");
 const RESULTS_DIR = join(__dirname, "results");
 const REPOS_DIR = join(__dirname, "repos");
-const MAX_TURNS = 99;
+const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS);
 
 const { values: args } = parseArgs({
 	options: {
@@ -198,7 +198,7 @@ async function main() {
 	console.log(`SWE-bench Verified Mini Runner`);
 	console.log(`Model: ${MODEL}`);
 	console.log(`Tasks: ${start}-${end} of ${tasks.length}`);
-	console.log(`Max turns: ${MAX_TURNS}`);
+	console.log(`Max loop turns: ${MAX_LOOP_TURNS}`);
 
 	await fs.mkdir(RESULTS_DIR, { recursive: true });
 	await fs.mkdir(REPOS_DIR, { recursive: true });

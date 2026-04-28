@@ -384,7 +384,7 @@ export default class AgentLoop {
 		});
 
 		let loopIteration = 0;
-		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS);
+		const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS);
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -394,7 +394,7 @@ export default class AgentLoop {
 		});
 
 		try {
-			while (loopIteration < MAX_LOOP_ITERATIONS) {
+			while (loopIteration < MAX_LOOP_TURNS) {
 				if (signal.aborted) {
 					console.error(
 						`[LOOP] ${currentAlias} iter=${loopIteration} ABORT via signal`,
@@ -410,7 +410,7 @@ export default class AgentLoop {
 				}
 				loopIteration++;
 				console.error(
-					`[LOOP] ${currentAlias} iter=${loopIteration} ENTER (max=${MAX_LOOP_ITERATIONS})`,
+					`[LOOP] ${currentAlias} iter=${loopIteration} ENTER (max=${MAX_LOOP_TURNS})`,
 				);
 
 				let turnPrompt;
@@ -419,7 +419,7 @@ export default class AgentLoop {
 				} else {
 					turnPrompt = this.#buildContinuationPrompt(
 						loopIteration,
-						MAX_LOOP_ITERATIONS,
+						MAX_LOOP_TURNS,
 					);
 				}
 
@@ -495,7 +495,7 @@ export default class AgentLoop {
 			}
 
 			console.error(
-				`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS} — abandoning at 499`,
+				`[LOOP] ${currentAlias} hit MAX_LOOP_TURNS=${MAX_LOOP_TURNS} — abandoning at 499`,
 			);
 			await this.#setRunStatus(currentRunId, currentAlias, 499);
 			const out = {

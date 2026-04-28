@@ -57,7 +57,7 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 	const projectRoot = join(tmpdir(), `rummy-budget-${Date.now()}`);
 
 	before(async () => {
-		// Default RUMMY_MAX_TURNS; TIMEOUT bounds wall-clock. Artificial
+		// Default RUMMY_MAX_LOOP_TURNS; TIMEOUT bounds wall-clock. Artificial
 		// caps starve the state machine of room to bounce.
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");

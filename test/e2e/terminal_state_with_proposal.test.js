@@ -37,12 +37,12 @@ describe("E2E: terminal status + pulse cadence after proposal acceptance (@notif
 
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-proposal-handshake-${Date.now()}`);
-	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
+	const prevMaxTurns = process.env.RUMMY_MAX_LOOP_TURNS;
 
 	before(async () => {
 		// 10 turns gives gemma room for Define→Discover→Deploy without
 		// the cap forcing a confabulated 200 mid-investigation.
-		process.env.RUMMY_MAX_TURNS = "10";
+		process.env.RUMMY_MAX_LOOP_TURNS = "10";
 
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
@@ -84,8 +84,8 @@ describe("E2E: terminal status + pulse cadence after proposal acceptance (@notif
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
-		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
-		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
+		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_LOOP_TURNS;
+		else process.env.RUMMY_MAX_LOOP_TURNS = prevMaxTurns;
 	});
 
 	it("proposal flow + run/changed pulses; telemetry derivable from store", {

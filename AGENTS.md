@@ -179,6 +179,12 @@ Verified Mini) are scaffolded and run on demand.
   see if the example density is earning its cost. Benchmark, not a
   fix — frame as a measurement task.
 
+- [ ] **Sudden-death turn warning.** On the last turn of
+  `RUMMY_MAX_LOOP_TURNS`, surface an error/notice to the model giving
+  it a heads-up that it's on its sudden-death turn — close cleanly
+  rather than getting capped mid-thought. Implementation deferred;
+  this is a reminder.
+
 ## Scope Discipline
 
 - No legacy protocol accommodation. 2.0 is 2.0.
@@ -626,8 +632,9 @@ publishing negative results.
   cleanly (Codex is OpenAI-tuned). Pre-flight resolves.
 - Inside Harbor's docker sandbox, rummy's `<sh>`+YOLO flow needs
   to work robustly. YOLO landed but unproven at tbench scale.
-- `RUMMY_MAX_TURNS=15` default likely too low for compile-heavy
-  tbench tasks; bump in `.env.tbench`.
+- `RUMMY_MAX_LOOP_TURNS` is per-loop only (no per-run cap), so the
+  default 99 is fine for tbench. Re-evaluate if per-loop drift
+  becomes a problem.
 
 **Story angles for the writeup:**
 - "Same model, different harness — rummy beat / lost to Codex by X

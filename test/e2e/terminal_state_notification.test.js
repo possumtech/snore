@@ -31,10 +31,10 @@ describe("E2E: run/changed pulse + query reaches terminal (@notifications, @run_
 
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-handshake-${Date.now()}`);
-	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
+	const prevMaxTurns = process.env.RUMMY_MAX_LOOP_TURNS;
 
 	before(async () => {
-		process.env.RUMMY_MAX_TURNS = "3";
+		process.env.RUMMY_MAX_LOOP_TURNS = "3";
 
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
@@ -63,8 +63,8 @@ describe("E2E: run/changed pulse + query reaches terminal (@notifications, @run_
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
-		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
-		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
+		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_LOOP_TURNS;
+		else process.env.RUMMY_MAX_LOOP_TURNS = prevMaxTurns;
 	});
 
 	it("client receives run/changed pulses; reconciles terminal status + telemetry from store", {
