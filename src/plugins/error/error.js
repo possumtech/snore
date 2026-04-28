@@ -92,21 +92,25 @@ export default class ErrorPlugin {
 		const state = this.#loopState.get(loopId);
 
 		let cycleReason = null;
-		if (recorded && recorded.length > 0) {
-			const fp = recorded.map(fingerprint).toSorted().join("|");
-			state.history.push(fp);
-			const cycle = detectCycle(state.history);
-			if (cycle.detected) {
-				cycleReason = "Loop detected";
-				await this.#core.hooks.error.log.emit({
-					store,
-					runId,
-					turn,
-					loopId,
-					message: cycleReason,
-					status: 429,
-				});
-			}
+		// Track every turn's fingerprint, including empty turns (model
+		// emitted no parseable commands). Empty turns share a blank
+		// fingerprint, so MIN_CYCLES of them in a row trip the same
+		// period-1 detector as a literal command repeat — covering the
+		// "model loops on raw prose / pure reasoning_content" failure
+		// mode that previously escaped detection.
+		const fp = recorded.map(fingerprint).toSorted().join("|");
+		state.history.push(fp);
+		const cycle = detectCycle(state.history);
+		if (cycle.detected) {
+			cycleReason = "Loop detected";
+			await this.#core.hooks.error.log.emit({
+				store,
+				runId,
+				turn,
+				loopId,
+				message: cycleReason,
+				status: 429,
+			});
 		}
 
 		const struck = state.turnErrors > 0;

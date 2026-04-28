@@ -67,21 +67,14 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
-	it("demo scenario: terminal run/state fires after proposal-heavy multi-turn flow", {
+	it("demo scenario: terminal run/state fires after multi-turn flow with deliverable on disk", {
 		timeout: TIMEOUT,
 	}, async () => {
 		const states = [];
-		const proposals = [];
 		client.on("run/state", (p) => states.push(p));
-		client.on("run/proposal", (p) => proposals.push(p));
 
 		const startRes = await client.call("set", {
 			path: "run://",
-			// "Comprehensive review" was open-ended enough that gemma
-			// over-defined and 200'd before reaching Deploy. Tightening
-			// to a concrete brief deliverable (≥3 sections) gives gemma
-			// a clear stopping criterion and a real reason to emit the
-			// file write that this test exists to exercise.
 			body: "Write a brief OC_RIVERS.md about the hydrology of Orange County, Indiana. Three sections minimum: rivers, watersheds, and one other relevant aspect you investigate. Keep each section short.",
 			attributes: { model, mode: "act", yolo: true },
 		});
@@ -98,7 +91,7 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 		await new Promise((r) => setTimeout(r, 1000));
 
 		console.log(
-			`[TEST] finalStatus=${finalStatus}  proposals=${proposals.length}  states=${states.length}`,
+			`[TEST] finalStatus=${finalStatus}  states=${states.length}`,
 		);
 		for (const s of states) {
 			console.log(
@@ -106,7 +99,19 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 			);
 		}
 
-		assert.ok(proposals.length > 0, "scenario must exercise proposals");
+		// Outcome-based: the deliverable must exist on disk with
+		// substantive content. Whichever wire-protocol path the model
+		// chose is its own business — the test cares that the user's
+		// intent ("write OC_RIVERS.md") was carried out.
+		const deliverable = await fs
+			.readFile(join(projectRoot, "OC_RIVERS.md"), "utf8")
+			.catch(() => null);
+		assert.ok(deliverable, "OC_RIVERS.md exists on disk");
+		assert.ok(
+			deliverable.length > 200,
+			`OC_RIVERS.md has substantive content (got ${deliverable?.length ?? 0} chars)`,
+		);
+
 		const terminal = states.findLast((s) => s.status >= 200);
 		assert.ok(terminal, "terminal run/state arrived");
 		assert.strictEqual(terminal.status, finalStatus);

@@ -1205,11 +1205,13 @@ Termination protocol:
   (the claim of doneness is refuted by the failures)
 - `<update status="102">` → run continues
 - Multiple `<update>` → last one wins
-- No `<update>` + investigation tools → stall counter (RUMMY_MAX_STALLS)
 - No `<update>` + action-only tools → healer infers terminal from body
 - No `<update>` + plain text → healer infers terminal from body
-- Repeated commands → cycle detection (RUMMY_MIN_CYCLES, RUMMY_MAX_CYCLE_PERIOD)
-- Repeated update text without non-update work → stall (RUMMY_MAX_UPDATE_REPEATS)
+- Repeated turn fingerprints (commands, attributes, or empty turns) →
+  cycle detection (`RUMMY_MIN_CYCLES`, `RUMMY_MAX_CYCLE_PERIOD`); after
+  detection, strikes accumulate up to `RUMMY_MAX_STRIKES` then close 499.
+- Hard ceiling: `RUMMY_MAX_TURNS` is the universal cap regardless of
+  any other guard.
 
 Format normalization:
 - Gemma `\`\`\`tool_code` fences → stripped before parsing
@@ -1383,8 +1385,7 @@ Full reference is `.env.example` — these are the load-bearing vars.
 |-----|---------|---------|
 | `RUMMY_MAX_TURNS` | 15 | Hard loop iteration cap |
 | `RUMMY_MAX_COMMANDS` | 99 | Max parsed tool calls per turn |
-| `RUMMY_MAX_STALLS` | 3 | Turns without `<update>` before force-complete |
-| `RUMMY_MAX_UPDATE_REPEATS` | 3 | Same-text repeat threshold without progress |
+| `RUMMY_MAX_STRIKES` | 3 | Strikes (errors or detected cycles) before close at 499 |
 | `RUMMY_MIN_CYCLES` | 3 | Consecutive repetitions to trigger cycle detection |
 | `RUMMY_MAX_CYCLE_PERIOD` | 4 | Max cycle period checked by healer |
 | `RUMMY_RETENTION_DAYS` | 31 | Days of completed/aborted runs kept |

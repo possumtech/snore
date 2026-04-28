@@ -42,6 +42,7 @@ export default class OpenRouter {
 		const body = { model, messages, include_reasoning: true };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
+		if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal

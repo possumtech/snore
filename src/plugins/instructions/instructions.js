@@ -112,13 +112,16 @@ export default class Instructions {
 	}
 
 	/**
-	 * Reject illegal stage navigation. Two checks:
+	 * Reject illegal stage navigation. Three checks:
 	 *
 	 *   1. Forward skip — `nextPhase > currentPhase + 1`. Models advancing
 	 *      more than one stage at a time are jumping past required work.
 	 *      Returns and continuations (nextPhase ≤ currentPhase) always pass.
 	 *
-	 *   2. Deployment with prior prompts — any status landing the model in
+	 *   2. Status 200 outside Deployment — 200 is Deployment Completion;
+	 *      emitting it from earlier phases skips the actual Deployment work.
+	 *
+	 *   3. Deployment with prior prompts — any status landing the model in
 	 *      Deployment (phase 7) requires zero visible PRIOR prompts. State-
 	 *      property rule covering both entry (167) and continuation (177,
 	 *      200) — once in Deployment, the model still can't claim it with
@@ -133,6 +136,9 @@ export default class Instructions {
 		const currentPhase = await this.#getCurrentPhase(rummy);
 		const nextPhase = phaseForStatus(status);
 		if (nextPhase > currentPhase + 1) {
+			return { ok: false, reason: "Illegal navigation attempt" };
+		}
+		if (status === 200 && currentPhase !== 7) {
 			return { ok: false, reason: "Illegal navigation attempt" };
 		}
 		if (nextPhase === 7) {

@@ -1,4 +1,5 @@
 import msg from "../agent/messages.js";
+import { countTokens } from "../agent/tokens.js";
 import {
 	ContextExceededError,
 	isContextExceededMessage,
@@ -49,7 +50,18 @@ export default class LlmProvider {
 			(process.env.RUMMY_TEMPERATURE !== undefined
 				? Number.parseFloat(process.env.RUMMY_TEMPERATURE)
 				: undefined);
-		const resolvedOptions = { ...options, temperature };
+
+		// Cap output at 90% of remaining context (contextSize - input).
+		// Without this, models plan responses larger than physics allows
+		// and get truncated mid-thought. Explicit cap means the model
+		// budgets its output coherently from the start. The 10% margin
+		// covers response framing overhead and tokenizer drift.
+		const contextSize = await this.getContextSize(model);
+		const inputTokens = countTokens(JSON.stringify(messages));
+		const remaining = contextSize - inputTokens;
+		const maxTokens = remaining > 0 ? Math.floor(remaining * 0.9) : undefined;
+
+		const resolvedOptions = { ...options, temperature, maxTokens };
 
 		const provider = this.#selectProvider(resolvedModel);
 		if (!provider) {

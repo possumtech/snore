@@ -39,6 +39,8 @@ export default class Xai {
 		const body = { model, input: messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
+		if (options.maxTokens !== undefined)
+			body.max_output_tokens = options.maxTokens;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal

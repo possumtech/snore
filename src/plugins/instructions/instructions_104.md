@@ -2,6 +2,5 @@
 
 Example: <set path="unknown://countries/france/capital" summary="countries,france,capital,geography,trivia">What is the capital of France?</set>
 
-
 ## Turn Termination:
 * Definition Stage Completion: <update status="145">unknowns identified</update>

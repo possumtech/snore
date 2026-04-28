@@ -102,7 +102,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		assert.strictEqual(used + free, ceiling(10000), "used + free = ceiling");
 	});
 
-	it("table cells contain aTokens, sorted descending", () => {
+	it("table cells render six columns sorted by current cost descending", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
@@ -113,19 +113,29 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 			contextSize: 10000,
 			systemPrompt: "",
 		});
-		assert.ok(out.includes("| large | 1 | 5000 |"), "large row uses aTokens");
-		assert.ok(out.includes("| medium | 1 | 800 |"), "medium row uses aTokens");
-		assert.ok(out.includes("| small | 1 | 100 |"), "small row uses aTokens");
+		// Format: | scheme | vis | sum | cost | if-all-sum | premium |
+		assert.ok(
+			out.includes("| large | 1 | 0 | 5000 | 0 | 5000 |"),
+			`large row; got: ${out}`,
+		);
+		assert.ok(
+			out.includes("| medium | 1 | 0 | 1000 | 200 | 800 |"),
+			`medium row; got: ${out}`,
+		);
+		assert.ok(
+			out.includes("| small | 1 | 0 | 200 | 100 | 100 |"),
+			`small row; got: ${out}`,
+		);
 		const largeIdx = out.indexOf("| large |");
 		const mediumIdx = out.indexOf("| medium |");
 		const smallIdx = out.indexOf("| small |");
 		assert.ok(
 			largeIdx < mediumIdx && mediumIdx < smallIdx,
-			`largest first; got order: ${out}`,
+			`highest cost first; got order: ${out}`,
 		);
 	});
 
-	it("summarized aggregate line, no per-entry rows for summarized", () => {
+	it("summarized rows render with vis=0, sum=count and aggregate in Total line", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
@@ -146,10 +156,22 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 			contextSize: 10000,
 			systemPrompt: "",
 		});
-		assert.ok(out.includes("| visible_thing |"), "visible row in table");
-		assert.ok(!out.includes("| sum_a |"), "summarized scheme not in table");
-		assert.ok(!out.includes("| sum_b |"), "summarized scheme not in table");
-		assert.ok(/Summarized: 2 entries, 200 tokens/.test(out));
+		assert.ok(
+			out.includes("| visible_thing | 1 | 0 | 200 | 50 | 150 |"),
+			`visible row; got: ${out}`,
+		);
+		assert.ok(
+			out.includes("| sum_a | 0 | 1 | 80 | 80 | 0 |"),
+			`sum_a row; got: ${out}`,
+		);
+		assert.ok(
+			out.includes("| sum_b | 0 | 1 | 120 | 120 | 0 |"),
+			`sum_b row; got: ${out}`,
+		);
+		assert.ok(
+			/1 visible \+ 2 summarized entries/.test(out),
+			`Total line carries summarized count; got: ${out}`,
+		);
 	});
 
 	it("system overhead surfaced as its own line", () => {
