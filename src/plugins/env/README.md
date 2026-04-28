@@ -17,7 +17,8 @@ side effects.
   The audit record (renders inside `<log>` as `<env>`).
 - **Data channels**: `env://turn_N/{slug}_1` (stdout), `env://turn_N/{slug}_2`
   (stderr) — scheme=`env`, category=`data`. The captured payload
-  (renders inside `<context>` as `<env>`).
+  (renders inside `<visible>` as `<env>` when promoted; otherwise listed
+  in `<summarized>`).
 
 The `env` scheme exists **only** for the data channels. See
 [scheme_category_split](#scheme_category_split).

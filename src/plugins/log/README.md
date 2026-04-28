@@ -29,7 +29,7 @@ size. Resolution:
   own body tokens.
 - `sh` and `env` own multiple streaming channels (`sh://turn_N/{slug}_N`)
   — no single target to point at. `tokens=` is omitted; the channels
-  render their own tokens in `<context>`.
+  render their own tokens in `<visible>`.
 
 ## Behavior
 
@@ -43,6 +43,6 @@ Log entries (`log://turn_N/{action}/{slug}`) are audit records —
 summary, exit status, references to where the data lives — and never
 carry the payload itself. Payload for streaming actions lives under the
 producer's own scheme (`sh://`, `env://`, future `search://`, etc.) at
-`category=data`, and is rendered inside `<context>` by the known
+`category=data`, and is rendered inside `<visible>` by the known
 plugin. Scheme determines category; data and logging never share a
 scheme. See [scheme_category_split](#scheme_category_split).

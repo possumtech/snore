@@ -98,14 +98,8 @@ export default class ErrorPlugin {
 		const cycle = detectCycle(state.history);
 		if (cycle.detected) {
 			cycleReason = "Loop detected";
-			await this.#core.hooks.error.log.emit({
-				store,
-				runId,
-				turn,
-				loopId,
-				message: cycleReason,
-				status: 429,
-			});
+			// Silent strike: increment turn-errors without a model-facing entry.
+			state.turnErrors++;
 		}
 
 		const struck = state.turnErrors > 0;
@@ -139,7 +133,7 @@ export default class ErrorPlugin {
 			}
 			return {
 				continue: true,
-				reason: cycleReason || CONTRACT_REMINDER,
+				reason: CONTRACT_REMINDER,
 			};
 		}
 

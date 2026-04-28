@@ -19,7 +19,7 @@ before(async () => {
 
 describe("ContextAssembler", () => {
 	describe("assembleFromTurnContext", () => {
-		it("renders system prompt + known + user prompt", async () => {
+		it("renders system prompt; known + visible bodies in user", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -63,13 +63,23 @@ describe("ContextAssembler", () => {
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].role, "system");
-			assert.ok(messages[0].content.includes("You are helpful."));
-			assert.ok(messages[0].content.includes("known://auth"));
-			assert.ok(messages[0].content.includes("const x = 1;"));
-			assert.ok(messages[0].content.includes("<known path="));
+			assert.strictEqual(
+				messages[0].content,
+				"You are helpful.",
+				"system holds only the static prompt; <context> moved out",
+			);
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<prompt"));
-			assert.ok(messages[1].content.includes("What does this do?"));
+			const user = messages[1].content;
+			assert.ok(user.includes("<summarized>"), "user has <summarized>");
+			assert.ok(user.includes("<visible>"), "user has <visible>");
+			assert.ok(user.includes("known://auth"), "known summary line");
+			assert.ok(user.includes("const x = 1;"), "file body in <visible>");
+			assert.ok(user.includes("<prompt"));
+			assert.ok(user.includes("What does this do?"));
+			assert.ok(
+				user.indexOf("<summarized>") < user.indexOf("<visible>"),
+				"<summarized> renders above <visible>",
+			);
 		});
 
 		it("prompt always appears last in user message", async () => {
@@ -229,7 +239,7 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[1].content.includes("<prompt"));
 		});
 
-		it("renders known entries in row order", async () => {
+		it("renders data entries in row order in user message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -270,12 +280,12 @@ describe("ContextAssembler", () => {
 				{ systemPrompt: "sys" },
 				hooks,
 			);
-			const content = messages[0].content;
+			const user = messages[1].content;
 
-			assert.ok(content.includes("<known path="));
-			assert.ok(content.includes("const y = 2;"), "old file rendered");
-			assert.ok(content.includes("JWT"), "known rendered");
-			assert.ok(content.includes("const x = 1;"), "new file rendered");
+			assert.ok(user.includes("<known path="), "known summary line in user");
+			assert.ok(user.includes("const y = 2;"), "old file body in <visible>");
+			assert.ok(user.includes("JWT"), "known body in <visible>");
+			assert.ok(user.includes("const x = 1;"), "new file body in <visible>");
 		});
 
 		it("renders unknowns in their own <unknowns> block in the user message", async () => {
@@ -318,10 +328,12 @@ describe("ContextAssembler", () => {
 			);
 			assert.ok(user.includes("which database adapter"));
 			assert.ok(
-				!system.includes("<unknown "),
-				"unknown not rendered inside <context>",
+				!user.includes("<summarized>") ||
+					user.indexOf("<unknowns>") > user.indexOf("<summarized>"),
+				"unknowns block does not nest inside <summarized>",
 			);
-			assert.ok(!system.includes("<unknowns>"), "no separate <unknowns> block");
+			assert.ok(!system.includes("<unknowns>"), "no <unknowns> in system");
+			assert.ok(!system.includes("<unknown "), "no unknowns in system");
 		});
 
 		it("prompt element carries tokenUsage and tokensFree attrs", async () => {

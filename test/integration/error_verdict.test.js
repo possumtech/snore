@@ -253,8 +253,11 @@ describe("error verdict (@response_healing)", () => {
 		);
 	});
 
-	it(`cycle detected after ${MIN_CYCLES} identical turns → logs error, strikes`, async () => {
-		// Emit the same fingerprint MIN_CYCLES times.
+	it(`cycle detection silently strikes — no model-facing error entry`, async () => {
+		// MIN_CYCLES identical fingerprints trips detection. The watchdog
+		// must not surface a "Loop detected" entry to the model — strikes
+		// silently and lets MAX_STRIKES abandon. Telling the model invites
+		// superficial evasion (vary an attribute to bust the fingerprint).
 		const recorded = [fakeGet("src/loop.js")];
 		for (let i = 0; i < MIN_CYCLES; i++) {
 			const verdict = await tdb.hooks.error.verdict({
@@ -265,21 +268,53 @@ describe("error verdict (@response_healing)", () => {
 				recorded,
 				summaryText: null,
 			});
+			assert.strictEqual(
+				verdict.continue,
+				true,
+				`turn ${i + 1}: still under MAX_STRIKES, continue`,
+			);
+			assert.notStrictEqual(
+				verdict.reason,
+				"Loop detected",
+				"verdict reason must not leak the watchdog mechanism",
+			);
 			await bumpTurn(i + 2);
-			if (i < MIN_CYCLES - 1) {
-				assert.strictEqual(
-					verdict.continue,
-					true,
-					`turn ${i + 1} not yet a cycle`,
-				);
-			}
 		}
-		// The MIN_CYCLES-th identical turn should have caused the cycle
-		// detector to emit an error. Verify an error entry landed.
 		const errors = await store.getEntriesByPattern(RUN_ID, "log://**", null);
 		const cycleError = errors.find(
 			(e) => e.path.includes("/error/") && e.body === "Loop detected",
 		);
-		assert.ok(cycleError, "cycle detection emits a log://.../error/... entry");
+		assert.strictEqual(
+			cycleError,
+			undefined,
+			"no model-facing 'Loop detected' entry — watchdog stays silent",
+		);
+	});
+
+	it(`cycle drives 499 abandonment after MAX_STRIKES detections`, async () => {
+		// MIN_CYCLES identical turns trip cycle detection (silent strike #1).
+		// Each subsequent identical turn keeps tripping; once the silent
+		// strike streak reaches MAX_STRIKES, the run abandons at 499.
+		const recorded = [fakeGet("src/loop.js")];
+		const total = MIN_CYCLES + MAX_STRIKES - 1;
+		let verdict;
+		for (let i = 0; i < total; i++) {
+			verdict = await tdb.hooks.error.verdict({
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: i + 1,
+				recorded,
+				summaryText: null,
+			});
+			await bumpTurn(i + 2);
+		}
+		assert.strictEqual(verdict.continue, false, "abandons after sustained loop");
+		assert.strictEqual(verdict.status, 499);
+		assert.strictEqual(
+			verdict.reason,
+			"Loop detected",
+			"abandonment reason is telemetry-only (run is over; model never sees it)",
+		);
 	});
 });

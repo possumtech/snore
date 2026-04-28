@@ -1,6 +1,6 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 
-// sh/env span multiple channels; channels render their own tokens in <context>.
+// sh/env span multiple channels; channels render their own tokens in <visible>.
 const STREAM_NO_TOKENS = new Set(["sh", "env"]);
 
 export default class Log {

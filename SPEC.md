@@ -227,7 +227,7 @@ Every entry plays one of four roles:
 
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
-| **Data** | `data` | `<context>` | Entries the model works with — persistent state and captured payload |
+| **Data** | `data` | `<summarized>` + `<visible>` | Entries the model works with — persistent state and captured payload. Summary line in `<summarized>` for visible+summarized tiers; full body in `<visible>` only when promoted. |
 | **Logging** | `logging` | `<log>` | Records of what happened — tool results, lifecycle signals |
 | **Unknowns** | `unknown` | `<unknowns>` | Open questions the model is tracking |
 | **Prompt** | `prompt` | `<prompt>` | The task driving the loop |
@@ -262,10 +262,11 @@ across two namespaces as a direct consequence:
   scheme=`log`, category=`logging`. Renders in `<log>`.
 - **Payload channels** live in `{action}://turn_N/{slug}_N` —
   scheme=`{action}` (registered as `category: "data"`). Render in
-  `<context>`.
+  `<summarized>` (always, while tracked) and `<visible>` (when
+  promoted).
 
 This keeps `<log>` a terse audit trail (what happened, exit code,
-paths) while `<context>` carries the actual streamed bytes the model
+paths) while `<visible>` carries the actual streamed bytes the model
 reads. Conflating the two — e.g., writing channels under `log://...` —
 mislabels payload as audit and pollutes the logging section with
 multi-line command output. See [streaming_entries](#streaming_entries).
@@ -660,11 +661,13 @@ log://turn_N/{action}/{slug}    scheme=log       category=logging   status=202�
 {action}://turn_N/{slug}_1      scheme={action}  category=data      status=102 → 200/500
                                 body: primary stream (stdout for shell)
                                 summary="{command}" visibility=summarized
-                                (renders in <context>)
+                                (line in <summarized>; full body in
+                                 <visible> when promoted)
 
 {action}://turn_N/{slug}_2      scheme={action}  category=data      status=102 → 200/500
                                 body: alt stream (stderr for shell)
-                                (renders in <context>, often empty)
+                                (line in <summarized>; full body in
+                                 <visible> when promoted, often empty)
 ```
 
 `{action}` is the producer plugin's name (`sh`, `env`, future: `search`,
@@ -710,11 +713,22 @@ Two messages per turn. System = stable truth. User = active task.
     instructions text
         (instructions.md base template + tool docs injected via
          instructions.toolDocs filter; optional persona appended)
-    <context>
-        all category=data entries (knowns, files, http/https),
-        wrapped by known.js on assembly.system at priority 100
-    </context>
 [user message]
+    <summarized>
+        one self-closing summary line per category=data entry whose
+        visibility is visible or summarized; plus the named carve-out
+        (archived prompts pass through with visibility="archived" so
+        the model can <get> the active prompt back). Identity-keyed,
+        slow-mutating: only grows when a new entry lands.
+        (known.js, assembly.user priority 50)
+    </summarized>
+    <visible>
+        full body of each category=data entry whose visibility is
+        visible. Working-set: append on promote, remove on demote.
+        A visible entry exists in BOTH blocks — summary line up top,
+        full body here.
+        (known.js, assembly.user priority 75)
+    </visible>
     <log>
         action history — log:// entries + pre-latest prompts
         (log.js, assembly.user priority 100)
@@ -731,13 +745,23 @@ Two messages per turn. System = stable truth. User = active task.
 ```
 
 **System** = stable world state the model operates within (identity,
-tools, tool docs, reference context). Stable across turns within a
-run, which keeps prompt caching intact. **User** = active work (what
-the model is doing right now): history, open questions, current
-phase, and current prompt. The phase-specific `<instructions>` block
-lives in the user message precisely *because* it changes between
-turns — putting it in system would invalidate the cache on every
-phase transition.
+tools, tool docs). Stable across turns within a run, which keeps
+prompt caching intact. **User** = active work (what the model is
+doing right now): the project's data surface, history, open questions,
+current phase, and current prompt. Both phase-specific
+`<instructions>` and the codebase blocks (`<summarized>` / `<visible>`)
+live in the user message because they change turn-to-turn — putting
+mutable state in system would invalidate the cache on every promote
+or phase transition.
+
+**Why two blocks instead of one `<context>`.** Promote/demote is the
+dominant intra-phase operation. Today's single-block render
+invalidates the entire data surface every time. With the split,
+`<summarized>` mutates only when a new entry lands (slow); `<visible>`
+mutates on every promote/demote (fast). Ordering slow-above-fast
+preserves the prefix cache for `<summarized>` across the common case.
+Cognitively: `<summarized>` is "what I know exists" (identity);
+`<visible>` is "what I'm reading right now" (working memory).
 
 The `<prompt>` tag is present on every turn — first turn and
 continuations alike. The model always sees its task. The active prompt

@@ -16,7 +16,8 @@ A streaming action lives in **two namespaces** by design:
   `{action}://turn_N/{slug}_2`, ... — scheme=`{action}` (sh, env, ...),
   category=`data`. Created at status=102 on proposal acceptance. Grow
   via `stream`; terminal via `stream/completed` / `stream/aborted` /
-  `stream/cancel`. Render inside `<context>`.
+  `stream/cancel`. Render inside `<visible>` (or `<summarized>` if
+  demoted).
 
 The stream RPC `path` param is always the **log-entry path** (that's
 what clients receive on `run/proposal`). The server derives the data

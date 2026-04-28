@@ -230,15 +230,28 @@ describe("Message assembly", () => {
 		);
 	});
 
-	it("context contains files and known entries, not results", async () => {
+	it("data entries land in user <summarized>/<visible>; logs stay out of system", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
+		const user = messages.find((m) => m.role === "user");
 		assert.ok(
-			system.content.includes("<context>"),
-			"should have context section",
+			user.content.includes("<summarized>"),
+			"user has <summarized> block",
 		);
-		assert.ok(system.content.includes("src/app.js"), "files in context");
-		// Results should NOT be in the system message
+		assert.ok(user.content.includes("<visible>"), "user has <visible> block");
+		assert.ok(user.content.includes("src/app.js"), "files in user");
+		assert.ok(
+			!system.content.includes("<summarized>"),
+			"<summarized> is not in system",
+		);
+		assert.ok(
+			!system.content.includes("<visible>"),
+			"<visible> is not in system",
+		);
+		assert.ok(
+			!system.content.includes("src/app.js"),
+			"file paths are not in system",
+		);
 		assert.ok(
 			!system.content.includes("10 results for test"),
 			"search not in system",

@@ -81,6 +81,25 @@
 > for genuinely cross-cutting identity. System instructions pay context
 > every turn; prefer the other two channels first.
 
+## Documentation placement (where each kind of doc belongs)
+
+| Kind | Lives in |
+|---|---|
+| Non-obvious *why* / hack warning at the site | One-line `//` comment in source, nowhere else |
+| *What* the code does | Nowhere — rename until the identifier says it |
+| Contract / promised behavior of the system | `SPEC.md`, anchor-tagged so tests can `@`-reference it |
+| Plugin's behavior, internal design, helper rationale | `src/plugins/<name>/README.md` |
+| Plugin extension surface (events / filters) | `PLUGINS.md` §7 |
+| Model-facing guidance at the decision point | `src/plugins/<name>/<name>Doc.js` (tooldoc) |
+| Cross-cutting model identity / global rules | `instructions.md` (sacred — touched only on explicit approval) |
+| Phase-specific model guidance | `instructions_10N.md` |
+| Project state, standing rules, in-flight threads | `AGENTS.md` |
+
+Per-comment decision flow when sweeping source: says *what* → delete;
+says *spec* → move to `SPEC.md` / `PLUGINS.md` / plugin README and
+delete; warns about a hack/gotcha → trim to one line; duplicates the
+constant name → delete.
+
 ---
 
 ## Where We Are
@@ -171,26 +190,6 @@ Verified Mini) are scaffolded and run on demand.
   archived → summarized → visible bulk-promote-skim-demote idiom on
   a real multi-file project.
 
-- [ ] **`<summarized>` / `<visible>` split in packet structure.**
-  Proposal (parked during 2026-04-27 audit): replace single `<context>`
-  block with two stable blocks — `<summarized>` (every known entry's
-  summary, immutable across promotes/demotes) and `<visible>` (full
-  bodies of currently-promoted entries, append-on-promote /
-  remove-on-demote). Each promoted entry exists in both. Separates
-  identity ("what I know") from state ("what I'm actively reading"),
-  which matches the expert / working-memory analogy and dramatically
-  improves prefix-cache behavior since promote/demote — the most
-  common operations — only mutate `<visible>`. Token cost: ~30 tokens
-  × number of promoted entries (the duplicated summary). Worth
-  investigating after the audit completes; currently parked.
-
-- [ ] **Unit test failures in `src/plugins/budget/budget.test.js`.**
-  At least one suite ("summarized aggregate line, no per-entry rows
-  for summarized") fails on `assert(table.includes("summarized"))`.
-  Pre-existing; not caused by tbench-CLI work. High priority but
-  intentionally deferred to keep the in-flight CLI/tbench thread
-  unblocked. Sweep all `src/**/*.test.js` failures, root-cause, fix.
-
 - [ ] **Core → plugin extraction conversation.** Audit what still
   lives in `src/agent/*` that could plausibly be a plugin. Top
   candidates: `XmlParser` (syntax-layer; would need a `parser.parse`
@@ -202,18 +201,50 @@ Verified Mini) are scaffolded and run on demand.
   conversation needed to decide which extractions are principled vs.
   ceremony. Discuss before refactor.
 
-- [ ] **Silent cycle-detection strikes.** Currently `error.js#verdict`
-  emits a model-facing error entry with `message: "Loop detected"`
-  (status 429) and overrides `CONTRACT_REMINDER` with `cycleReason`
-  in the continue-reason. Two problems: (1) it tips off the watchdog
-  mechanism — a model trying to obey can defeat fingerprinting with
-  superficial variation, (2) any verbose "reconsider / use ask_user
-  / etc." coaching gives the model a recipe to trick the harness into
-  an infinite loop (e.g. ask_user may not even be wired in this run).
-  Fix: cycle detection strikes silently. Telemetry-side 429 stays for
-  the dev-facing log/run-state; the model gets no special message —
-  just the strike, accumulating toward `MAX_STRIKES` abandonment.
-  Watchdog enforces by *abandoning*, never by *telling*.
+- [ ] **`repo://overview` regression on file operations.** Replacing
+  the per-file repo expansion with a single `repo://overview` entry
+  cost the model competence on file ops — it no longer sees dozens
+  of file entries in the packet, so it doesn't know what's there to
+  `<get>`, can't infer naming patterns, and confabulates paths.
+  Solvable but a new problem. Likely shape: keep the overview
+  summary but restore visible-by-default file entries (or a
+  summarized tier the model can promote selectively). Discuss
+  before refactor — affects packet shape and budget math.
+
+- [ ] **Productive-turn strike streak reset.** (CC-10 in the audit.)
+  Today a strike (e.g. "Missing update") on turn N gets reset to 0
+  the moment turn N+1 emits any commands. So a model can confabulate
+  for two silent turns, emit one productive-but-unsourced turn, and
+  the streak never accumulates toward `MAX_STRIKES`. Question:
+  should silent-turn strikes persist across the streak (only a clean,
+  non-silent, non-erroring turn resets), or is the current "any
+  productive emission resets" the right call? Policy decision —
+  affects how aggressively the watchdog terminates confabulation.
+
+- [ ] **Tooldoc example weight.** (CC-13 in the audit.) System prompt
+  is ~6KB / ~2K tokens, of which ~5.5KB is tool docs (10 tools × 5+
+  examples each). Strong models pattern-match tools from one example;
+  weaker models benefit from multiple. Worth measuring same prompts
+  with 2-example vs 5-example tooldocs against grok and gemma to
+  see if the example density is earning its cost. Benchmark, not a
+  fix — frame as a measurement task.
+
+- [ ] **`<search>` prefetch behavior documentation.** (CC-9 in the
+  audit.) `rummy.web` prefetches multiple result URLs in parallel
+  when `<search>` is issued; those land as `<https>`/summarized
+  data entries before the model emits any explicit `<get>`. Auditors
+  reading dumps can be misled — absence of a `log://turn_N/get/`
+  for a URL doesn't mean it wasn't loaded. Not a bug, just undocumented
+  behavior. Either add a short note to SPEC's streaming-producer
+  section, or document in `rummy.web`'s README — preference TBD.
+
+- [ ] **Reasoning-runaway recovery test.** (Audit Open Question 4.)
+  Hydrology turn 11 hit context limit on `completion_tokens` runaway.
+  No system mechanism currently detects or recovers; per Rummy Way,
+  letting the model error out and accumulate strikes is correct.
+  But there's no test verifying that path actually terminates. Add
+  a test that simulates a model returning ever-larger reasoning
+  blocks until context overflow, asserts the run abandons cleanly.
 
 ## Scope Discipline
 
@@ -280,6 +311,45 @@ durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
 
+### Packet shape: `<context>` → user-side `<summarized>` + `<visible>` (landed 2026-04-28)
+
+Bundled change driven by the audit's CC-1 finding plus the parked
+`<summarized>` / `<visible>` proposal. Resolved both Open Items.
+
+**What landed:**
+
+- `known.js` no longer registers on `assembly.system`. Two new filters
+  on `assembly.user`: `assembleSummarized` (priority 50) and
+  `assembleVisible` (priority 75). System message stops carrying
+  data-surface entries; system is now identity + tools + base
+  instructions only.
+- `<summarized>` renders one self-closing summary line per
+  `category=data` entry whose visibility is `visible` or `summarized`.
+  Plus the named puncture: archived prompts pass through with
+  `visibility="archived"` so the active prompt stays discoverable
+  after demotion. Carve-out is filter-level explicit, not generalized.
+- `<visible>` renders full bodies of `category=data` entries whose
+  visibility is `visible`. A visible entry exists in *both* blocks —
+  summary line up top (identity), full body below (working memory).
+- Why: matches every major harness convention (Aider, Claude Code,
+  Cursor, Codex all put codebase context user-side). Models are
+  trained to expect dynamic file/repo content user-side. And the
+  split keeps `<summarized>` cache-stable across promote/demote (the
+  dominant intra-phase operation) — only `<visible>` mutates fast.
+- SPEC.md `{#packet_structure}` and `{#scheme_category_split}`
+  rewritten; plugin READMEs (known, log, env, sh, stream) updated.
+- Tests: `ContextAssembler.test.js` and `message_assembly.test.js`
+  rewritten to assert the new shape. 281 unit + 229 integration green
+  post-change.
+
+**Not yet done (sacred-prompt batch):**
+
+Tooldoc updates teaching the model that summary lines live in
+`<summarized>` and full bodies in `<visible>`, and that promote =
+"add full body to `<visible>`" / demote = "remove from `<visible>`,
+summary line stays." Belongs in the next focused instruction-edit
+session.
+
 ### Comment hygiene sweep (landed)
 
 Every multi-line comment in `src/` cut to one line, moved to docs, or
@@ -345,21 +415,42 @@ prompt provided" failure). Two more tests changed shape from
 timeout while engine works correctly" (`prompt coherence`,
 `accepted edits visible on next turn`).
 
-**Remaining work surfaced by audit, not yet fixed**:
+**Remaining work surfaced by audit (non-instruction)**:
 
-- Reasoning-vs-emission gap (CC-8a) — model plans actions in
-  `reasoning_content`, doesn't emit them. Cross-test pattern.
-  Fix is explanation-side, requires instruction edits (sacred).
-- `sh`/`env` MUST-clause repetition (CC-12a) — 6 negatives for 2
-  binary distinctions. Instruction-side cleanup.
 - Test calibration: hydrology inner timeout 300s vs TIMEOUT 360s;
   stories TIMEOUT 480s tight for multi-run sub-tests on local
   gemma. Tweak per-test or move to `test/live/`.
-- Persona_fork PF-2: Definition stage doesn't recognize
-  fork-inherited knowns; gemma confabulates new unknowns.
-  Instruction edit territory.
-- `<summarized>` / `<visible>` packet split (parked above) —
+- `<summarized>` / `<visible>` packet split (parked in Open Items) —
   parked; potentially powerful but invasive refactor.
+
+### Instruction-side findings (gathering for a focused session)
+
+Sacred prompts (`prompt.ask.md`, `prompt.act.md`,
+`instructions.md`, `instructions_10N.md`, `*Doc.md`) get edited
+together in a single deliberate pass, never piecemeal. As the audit
+surfaces instruction-side issues, append here. When the list feels
+saturated, request explicit go for a focused instruction-edit
+session and work the batch.
+
+- **CC-8a — Reasoning-vs-emission gap.** Model plans actions in
+  `reasoning_content`, doesn't emit them. Cross-test pattern.
+  Explanation-side fix.
+- **CC-12a — `sh`/`env` MUST-clause repetition.** 6 negatives for
+  2 binary distinctions. Tooldoc cleanup.
+- **PF-2 — Persona_fork Definition stage.** Doesn't recognize
+  fork-inherited knowns; gemma confabulates new unknowns.
+  Likely instruction-side.
+- **`repo://overview` file-op regression.** Open Item filed; the
+  fix is partly packet-shape (system) and partly instruction-side
+  (teach the model how to navigate the overview / when to expand).
+  Cross-reference once packet-shape decision lands.
+- **`<summarized>` / `<visible>` packet split — model orientation.**
+  Tooldocs need to teach: summary lines live in `<summarized>` (your
+  identity-keyed map of what exists); full bodies live in `<visible>`
+  (your current working set). Promote `<get>`s a summarized entry into
+  `<visible>`. Demote drops it back. The structural split changes how
+  the model should reason about its working memory; tooldoc examples
+  should reflect the new shape.
 
 ### terminal-bench 2.0 / Harbor wiring (2026-04-27, in flight)
 

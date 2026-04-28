@@ -24,7 +24,8 @@ record, one data payload:
 - **Data channels**: `sh://turn_N/{slug}_1` (stdout), `sh://turn_N/{slug}_2`
   (stderr) — scheme=`sh`, category=`data`. Created at status=102 on
   proposal acceptance, grow via the `stream` RPC, transition to 200/500
-  via `stream/completed`. Render inside the `<context>` block as `<sh>`.
+  via `stream/completed`. Render inside `<visible>` as `<sh>` when
+  promoted; listed in `<summarized>` otherwise.
 
 The `sh` scheme exists **only** for the data channels. The proposal/log
 entry itself is in the unified `log://` namespace along with every

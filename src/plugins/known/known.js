@@ -1,4 +1,3 @@
-import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
@@ -12,7 +11,8 @@ export default class Known {
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
-		core.filter("assembly.system", this.assembleContext.bind(this), 100);
+		core.filter("assembly.user", this.assembleSummarized.bind(this), 50);
+		core.filter("assembly.user", this.assembleVisible.bind(this), 75);
 		// Hidden tool: written via <set path="known://...">; handler tolerates direct <known>.
 		core.markHidden();
 	}
@@ -88,51 +88,59 @@ export default class Known {
 		return `${entry.body.slice(0, 500)}\n[truncated — promote to see the full body]`;
 	}
 
-	async assembleContext(content, ctx) {
-		const entries = ctx.rows.filter((r) => r.category === "data");
+	// Identity-keyed summary lines: every data entry the run is tracking
+	// at visibility=visible or visibility=summarized. Archived prompts pass
+	// through as the named carve-out (active prompt must remain discoverable).
+	async assembleSummarized(content, ctx) {
+		const entries = ctx.rows.filter(
+			(r) =>
+				r.category === "data" &&
+				(r.visibility === "visible" ||
+					r.visibility === "summarized" ||
+					(r.visibility === "archived" && r.scheme === "prompt")),
+		);
 		if (entries.length === 0) return content;
-		const demotedSet = new Set(ctx.demoted);
-		const lines = entries.map((e) => renderContextTag(e, demotedSet));
-		return `${content}\n\n<context>\n${lines.join("\n")}\n</context>`;
+		const lines = entries.map(renderSummaryLine);
+		return `${content}<summarized>\n${lines.join("\n")}\n</summarized>\n`;
+	}
+
+	// Working-set bodies: only entries currently promoted to visible.
+	async assembleVisible(content, ctx) {
+		const entries = ctx.rows.filter(
+			(r) => r.category === "data" && r.visibility === "visible",
+		);
+		if (entries.length === 0) return content;
+		const lines = entries.map(renderVisibleBody);
+		return `${content}<visible>\n${lines.join("\n")}\n</visible>\n`;
 	}
 }
 
-function renderContextTag(entry, demotedSet) {
+function renderSummaryLine(entry) {
 	const tag = entry.scheme ? entry.scheme : "file";
-	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
+	const turn =
+		entry.source_turn != null ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
 	const lines = entry.vLines != null ? ` lines="${entry.vLines}"` : "";
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
-	const statusValue =
-		attrs?.status != null
-			? attrs.status
-			: entry.state
-				? stateToStatus(entry.state, entry.outcome)
-				: null;
-	const status =
-		statusValue != null && statusValue !== 200
-			? ` status="${statusValue}"`
-			: "";
-	const stateAttr =
-		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
-	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const visibility = entry.visibility
-		? ` visibility="${entry.visibility}"`
-		: "";
-	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
-	// Always emit summary; empty value hints the model to add keywords.
 	const summaryText =
 		typeof attrs?.summary === "string"
 			? attrs.summary.replace(/"/g, "'").slice(0, 80)
 			: "";
 	const summary = ` summary="${summaryText}"`;
+	const visibility =
+		entry.visibility === "archived" ? ` visibility="archived"` : "";
+	return `<${tag} path="${entry.path}"${turn}${summary}${visibility}${tokens}${lines}/>`;
+}
 
-	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${lines}${flag}`;
+function renderVisibleBody(entry) {
+	const tag = entry.scheme ? entry.scheme : "file";
+	const turn =
+		entry.source_turn != null ? ` turn="${entry.source_turn}"` : "";
 	if (entry.body) {
-		return `<${tag} path="${entry.path}"${attrStr}>${entry.body}</${tag}>`;
+		return `<${tag} path="${entry.path}"${turn}>${entry.body}</${tag}>`;
 	}
-	return `<${tag} path="${entry.path}"${attrStr}/>`;
+	return `<${tag} path="${entry.path}"${turn}/>`;
 }
