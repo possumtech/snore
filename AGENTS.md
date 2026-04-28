@@ -140,10 +140,31 @@ Verified Mini) are scaffolded and run on demand.
   `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
   requiring model intervention.
 
-- [ ] **`notification_log` table.** `rpc_log` captures
-  request/response; `run/state` / `run/progress` / `run/proposal`
-  fly out untracked. Mirroring the shape would let us replay
-  notification streams for diagnosis.
+- [ ] **Phase B: migrate consumers off the typed run/* notifications.**
+  Phase A landed (2026-04-28) — a content-free `run/changed` pulse
+  fires alongside the existing `run/state` / `run/progress` /
+  `run/proposal` notifications, and `getEntries` (RPC) +
+  `getEntriesByPattern` (in-process) accept a `since` cursor for
+  insertion-ordered diff queries. Consumers can already migrate to
+  pulse + query: subscribe `run/changed`, track last-seen entry id,
+  call `getEntries(run, { since: lastSeen })` to reconcile. Phase B
+  is the cleanup after migration:
+  - `rummy.nvim` — currently consumes `run/state` for statusline
+    rendering. Migrate to pulse + query against the entry store.
+  - `test/helpers/AuditClient.js` — currently auto-resolves via
+    `run/proposal`. Migrate to pulse + query for `state="proposed"`
+    entries.
+  - `test/e2e/terminal_state_notification.test.js` and
+    `test/e2e/terminal_state_with_proposal.test.js` — assert against
+    pulse + run row state instead of typed-notification payload.
+  - `src/plugins/cli/cli.js` — uses `hooks.run.state` directly
+    (in-process, not WebSocket); could keep or migrate to entry
+    polling for consistency.
+  - Once everything is migrated: delete `AgentLoop#emitRunState`
+    (the snapshot computation), `ClientConnection#onProgress` /
+    `#onState`, and the typed `run/state` / `run/progress` /
+    `run/proposal` notification registrations in `rpc.js`. The
+    notification protocol collapses to pulse + query.
 
 - [ ] **Headless nvim e2e test.** Every new `run.state` telemetry
   field must be manually re-synced in `dispatch.lua` / `state.lua` /
@@ -161,16 +182,6 @@ Verified Mini) are scaffolded and run on demand.
   shaping. The Rummy Way: everything is entries+hooks+plugins; a
   conversation needed to decide which extractions are principled vs.
   ceremony. Discuss before refactor.
-
-- [ ] **`repo://overview` regression on file operations.** Replacing
-  the per-file repo expansion with a single `repo://overview` entry
-  cost the model competence on file ops — it no longer sees dozens
-  of file entries in the packet, so it doesn't know what's there to
-  `<get>`, can't infer naming patterns, and confabulates paths.
-  Solvable but a new problem. Likely shape: keep the overview
-  summary but restore visible-by-default file entries (or a
-  summarized tier the model can promote selectively). Discuss
-  before refactor — affects packet shape and budget math.
 
 - [ ] **Tooldoc example weight.** (CC-13 in the audit.) System prompt
   is ~6KB / ~2K tokens, of which ~5.5KB is tool docs (10 tools × 5+
@@ -280,6 +291,53 @@ thread that hasn't resolved). Landed work belongs in git history;
 durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
+
+### Pulse + query notification infrastructure (Phase A landed 2026-04-28)
+
+Replaces the typed `run/state` / `run/progress` / `run/proposal`
+notification surface with a content-free `run/changed` pulse plus a
+`since`-cursor query against the entry store. The entry store becomes
+the source of truth; the pulse is a latency hint that says "go look."
+
+Phase A (additive, this session): pulse fires alongside the existing
+typed notifications so nothing breaks during migration. Phase B
+deletes the typed surface once consumers (rummy.nvim, AuditClient,
+two e2e tests, cli.js) have migrated. Filed as Open Item.
+
+**What landed:**
+
+- `getEntriesByPattern` (`Entries.js`) accepts a `since` cursor.
+  When set, results filter by `e.id > since` and order by id
+  (insertion order) for streaming consumers; otherwise results
+  order by path (browse mode). Single query method, mode-driven.
+- SQL: `get_entries_by_pattern` extended with `:since` filter and
+  conditional ORDER BY. One new clause + one ORDER BY branch.
+  Results now also carry `id` so callers can track last-seen.
+- `getEntries` RPC accepts `since` and `limit` params. Description
+  documents the pulse-and-reconcile pattern for clients.
+- `run/changed` notification registered in `rpc.js`. Content-free —
+  carries `{ run, runId, path, changeType }` for client-side
+  filtering, no payload of the changed data itself.
+- `ClientConnection#onEntryChanged` subscribes to `entry.changed`,
+  looks up the run's project, and forwards a pulse if the entry
+  belongs to the client's project. One DB lookup per entry write
+  per connected client; cheap.
+- New integration test `entries_since.test.js` covers the four
+  modes: nothing-past-since, since-with-insertion-order, chunked
+  catch-up via limit, and browse mode preserves alphabetical.
+
+**Why this shape:**
+
+Notifications were a parallel mechanism that violated "everything
+is an entry." Each typed notification (run/state, run/progress,
+run/proposal) packaged information that already lives in the entry
+store and runs/turns tables. Same pattern as the search-prefetch
+fix and the action-failure-contract alignment: a special-case wire
+path replaced by the universal entry-driven flow. The WebSocket
+downgrades from "channel of truth" to "go look" hint; the entry
+store is the source of truth and the audit log.
+
+**Tests:** 282 unit + 237 integration green.
 
 ### Action-failure contract (landed 2026-04-28)
 

@@ -79,6 +79,20 @@ export default class ClientConnection {
 		}
 	};
 
+	// Pulse: any entry write in this client's project. Content-free hint
+	// — client reconciles via getEntriesByPattern with `since`.
+	#onEntryChanged = async ({ runId, path, changeType }) => {
+		if (this.#context.projectId == null) return;
+		const run = await this.#db.get_run_by_id.get({ id: runId });
+		if (!run || run.project_id !== this.#context.projectId) return;
+		this.#sendNotification("run/changed", {
+			run: run.alias,
+			runId,
+			path,
+			changeType,
+		});
+	};
+
 	#onState = (payload) => {
 		if (payload.projectId === this.#context.projectId) {
 			this.#sendNotification("run/state", {
@@ -100,6 +114,7 @@ export default class ClientConnection {
 		this.#hooks.ui.notify.on(this.#onNotify);
 		this.#hooks.run.state.on(this.#onState);
 		this.#hooks.stream.cancelled.on(this.#onStreamCancelled);
+		this.#hooks.entry.changed.on(this.#onEntryChanged);
 	}
 
 	#teardown() {
@@ -109,6 +124,7 @@ export default class ClientConnection {
 		this.#hooks.ui.notify.off(this.#onNotify);
 		this.#hooks.run.state.off(this.#onState);
 		this.#hooks.stream.cancelled.off(this.#onStreamCancelled);
+		this.#hooks.entry.changed.off(this.#onEntryChanged);
 	}
 
 	// Idempotent abort+drain; cached Promise lets ws.close and server.close share completion.

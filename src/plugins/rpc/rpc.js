@@ -306,11 +306,17 @@ export default class Rpc {
 		r.register("getEntries", {
 			handler: async (params, ctx) => {
 				const runRow = await this.#resolveRun(params.run, ctx);
-				const { pattern = "*", bodyFilter = null } = params;
+				const {
+					pattern = "*",
+					bodyFilter = null,
+					since = null,
+					limit = null,
+				} = params;
 				const rows = await ctx.projectAgent.entries.getEntriesByPattern(
 					runRow.id,
 					pattern,
 					bodyFilter,
+					{ since, limit },
 				);
 				return rows
 					.filter((e) => !params.scheme || e.scheme === params.scheme)
@@ -319,6 +325,7 @@ export default class Rpc {
 						(e) => !params.visibility || e.visibility === params.visibility,
 					)
 					.map((e) => ({
+						id: e.id,
 						path: e.path,
 						scheme: e.scheme,
 						state: e.state,
@@ -334,7 +341,9 @@ export default class Rpc {
 			},
 			description:
 				"List entries matching a pattern. Read-only — no promotion. " +
-				"Optional filters: scheme, state, visibility, bodyFilter.",
+				"Optional filters: scheme, state, visibility, bodyFilter. " +
+				"For incremental sync after a `run/changed` pulse, pass `since` (last seen entry id); " +
+				"use `limit` to chunk catch-up.",
 			params: {
 				run: "string — run alias",
 				pattern: "string? — glob pattern (default '*')",
@@ -342,6 +351,8 @@ export default class Rpc {
 				state: "string? — filter by state",
 				visibility: "string? — filter by visibility",
 				bodyFilter: "string? — narrow pattern matches by body content",
+				since: "number? — only entries with id > since (insertion-ordered)",
+				limit: "number? — cap result count",
 			},
 			requiresInit: true,
 		});
@@ -434,6 +445,10 @@ export default class Rpc {
 		r.registerNotification("run/state", "Turn state update.");
 		r.registerNotification("run/progress", "Turn status.");
 		r.registerNotification("run/proposal", "Proposal awaiting resolution.");
+		r.registerNotification(
+			"run/changed",
+			"Pulse: an entry under this run changed. Query with `getEntriesByPattern(runId, pattern, null, { since })` to reconcile.",
+		);
 		r.registerNotification(
 			"stream/cancelled",
 			"Server-initiated stream cancellation.",
