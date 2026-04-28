@@ -31,6 +31,11 @@ export default class Cli {
 			process.exit(2);
 		}
 
+		// In-process CLI has no socket client to resolve proposals; default
+		// YOLO so any proposal-emitting tool auto-accepts. Operator can
+		// pass --RUMMY_YOLO=0 to opt out.
+		if (process.env.RUMMY_YOLO == null) process.env.RUMMY_YOLO = "1";
+
 		const projectRoot = process.cwd();
 		const alias = `cli_${Date.now()}`;
 

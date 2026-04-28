@@ -7,6 +7,31 @@ everything else.
 
 ---
 
+## Glossary {#glossary}
+
+Canonical meanings. When a doc, comment, test name, or commit message
+uses one of these words, it should mean exactly what's written here.
+
+| Term | Meaning |
+|---|---|
+| **run** | The alias-keyed lifetime of one project-agent invocation. Begins on `set run://{alias}` with a prompt; ends at terminal status (200/204/422/499/500). One run per alias; aliases are unique per project. |
+| **loop** | One `ask` or `act` invocation and all its continuation turns until terminal `<update>`, abandonment, or abort. A run can contain multiple loops if a fresh prompt arrives on an existing run. |
+| **turn** | One round-trip with the LLM: one assembled prompt sent, one response parsed. A loop is a sequence of turns. |
+| **mode** | `ask` (read-only — no proposals, no `<sh>`, no edits) or `act` (full tool surface). Per loop, set at the entry point. |
+| **phase** | (Primary, FCRM sense.) One of five FCRM states selected by `<update status="1XY">`: 104=Definition, 105=Discovery, 106=Demotion, 107=Deployment, 108=Verification. Maps to `instructions_10N.md` rendered in `<instructions>`. **The model-facing instructions call these "stages"** — same concept, dual vocabulary kept for the model's surface stability. Two non-FCRM uses of "phase" coexist in the codebase and AGENTS.md: (1) "two-phase turn execution" refers to RECORD→DISPATCH within a single turn; (2) AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones (Schema, Primitives, etc.) — neither is the FCRM phase. Context disambiguates; if it doesn't, it's a doc bug. |
+| **stage** | Model-facing synonym for **phase**. Lives in `instructions_*.md` and tooldocs. |
+| **proposal** | A tool-call entry at status 202 awaiting client resolution (accept/reject). Side-effecting actions (`<sh>`, `<env>`, file `<set>`, file `<rm>`/`<mv>`/`<cp>`, `<ask_user>`) emit proposals. YOLO mode auto-accepts. |
+| **verdict** | The end-of-turn ruling from `hooks.error.verdict` (owned by the error plugin). Returns `{continue, status, reason}`. Decides whether the loop continues to another turn or terminates. |
+| **strike** | A turn whose verdict counts toward `MAX_STRIKES`. A strike fires when `turnErrors > 0` (any `error.log` entry that turn) or when cycle detection trips silently. The streak counter resets on a clean turn (no errors, no cycle); reaches `MAX_STRIKES` → loop abandons at 499. |
+| **resolution** | Client's accept/reject of a proposal via `run/resolve` RPC. |
+| **dispatch** | The DISPATCH phase of a turn — actually executing recorded action entries. |
+
+**Hierarchy:** project ⊃ run ⊃ loop ⊃ turn. A turn is the smallest
+unit of model interaction. A strike is a per-turn property that
+accumulates across turns within a loop.
+
+---
+
 ## The Contract
 
 Rummy has one contract. Every actor speaks it.
@@ -535,6 +560,50 @@ export default class Rm {
 
 A plugin can be multiple types. Known is a tool AND an assembly plugin.
 
+### Failure Reporting {#failure_reporting}
+
+**The action entry IS its outcome.** Every action plugin's handler
+finalizes the action's own log entry (`log://turn_N/{action}/{slug}`)
+with body, state, and outcome. Success and failure are two values of
+the same shape — only the field values change. The model sees both
+through the same channel, rendered under the action's scheme.
+
+```
+<get path="src/x.js" status="200">…file body…</get>          # success
+<get path="src/x.js" state="failed" outcome="not_found">     # failure
+  src/x.js not found
+</get>
+```
+
+State + outcome label the verdict; body is the result — file content
+on success, failure message on failure. No separate error entry is
+written for action-level failures; the model finds the failure exactly
+where it would find the success: at the action's own log path.
+
+**`error.log.emit` is for actionless failures only** — failures that
+have no corresponding action entry to attach to:
+
+- Dispatch crash — the framework caught an exception thrown from inside
+  a handler before the handler had a chance to write its own entry.
+- Boundary violations — protocol-level rejections that fire before any
+  plugin handler runs, against an entry the model didn't directly
+  emit.
+- Runtime watchdog firings — RPC timeout, stream timeout, etc., not
+  bound to a specific action.
+
+Cycle detection is **silent** — it does not call `error.log.emit`. The
+strike accumulates internally; on `MAX_STRIKES` the run abandons at
+499 with a telemetry-side reason. The model sees no special signal,
+because telling the model "you're looping" invites superficial evasion
+(vary an attribute to bust the fingerprint) without addressing the
+underlying confusion.
+
+**Plugin author contract.** Your handler does one job: finalize the
+action's own log entry with the right body/state/outcome. You do not
+need to call `error.log.emit`. If your handler throws, the framework
+catches and routes through `error.log.emit` at status 500 — that's
+the only situation where the framework writes on your behalf.
+
 ### Mode Enforcement {#mode_enforcement}
 
 Two mechanisms, operating at different layers:
@@ -547,9 +616,11 @@ Two mechanisms, operating at different layers:
 2. **Per-invocation filtering** — the `policy` plugin subscribes to
    `entry.recording` and inspects individual emissions for ask-mode
    violations that the tool-list alone can't catch (file-scheme `<set>`
-   edits, file `<rm>`, file-destination `<mv>`/`<cp>`). Rejects with
-   status 403 and emits `error://`. The tool remains advertised; the
-   specific invocation is blocked.
+   edits, file `<rm>`, file-destination `<mv>`/`<cp>`). Rejects by
+   marking the action entry `state="failed"`, `outcome="permission"`
+   with a body describing the rejection. Per the failure-reporting
+   contract — see [failure_reporting](#failure_reporting). The tool
+   remains advertised; the specific invocation is blocked.
 
 ### YOLO Mode {#yolo_mode}
 
@@ -681,6 +752,16 @@ output (stderr); higher numbers for additional producer-specific
 channels. Non-process producers (search, fetch) map their streams onto
 the same numeric space: `_1` for the primary data stream, `_2` for
 anomalies/errors, `_3`+ for auxiliary streams.
+
+**Search prefetch.** The `search` producer (provided by `rummy.web`
+when wired) may prefetch its result URLs as separate `<https>` data
+entries before the model emits any `<get>`. The model sees those
+pages as already-summarized data without having explicitly loaded
+them. Auditors reading dumps should be aware: the absence of a
+corresponding `log://turn_N/get/` for a URL does **not** mean the
+URL wasn't loaded — it may have arrived via search prefetch. The
+prefetch policy is the search plugin's implementation detail; the
+data entries themselves obey the streaming-producer shape above.
 
 **Status 102 ("Processing") marks an entry in mid-stream:** body is
 partial, will change; tokens grow as chunks arrive. Agents reading a

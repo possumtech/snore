@@ -246,6 +246,45 @@ ctx = {
 }
 ```
 
+#### Filter Priority Bands {#plugins_filter_bands}
+
+Filters run in ascending priority order. The packet renders in
+top-to-bottom order matching that — lower priority appears earlier in
+the message. Current `assembly.user` registrations:
+
+| Priority | Block | Plugin | Mutates per turn? |
+|---|---|---|---|
+| 50 | `<summarized>` | `known.js` | Slow — only on new entry |
+| 75 | `<visible>` | `known.js` | Fast — on every promote/demote |
+| 100 | `<log>` | `log.js` | Always — appends per action |
+| 200 | `<unknowns>` | `unknown.js` | On unknown lifecycle |
+| 250 | `<instructions>` | `instructions.js` | On phase transition |
+| 275 | `<budget>` | `budget.js` | Every turn (live) |
+| 300 | `<prompt>` | `prompt.js` | Stable within a loop |
+
+**Recommended ranges for new plugins** (for cache-friendly placement
+and predictable rendering position):
+
+| Range | Position | Use for |
+|---|---|---|
+| `0–49` | Top of user | Reserved (stable identity-tier blocks above `<summarized>`) |
+| `50–99` | Codebase data surface | Don't add here — owned by `known.js` |
+| `100–149` | History tier | Action history, timeline-style content |
+| `150–199` | Open slot | Inter-history blocks (e.g. recent-decisions, tracked progress) |
+| `200–249` | State tier | Model state (open questions, work-in-progress) |
+| `250–299` | Phase + budget | Avoid; current phase / budget arithmetic owned here |
+| `300–349` | Task | Reserved for prompt-tier content |
+| `350–999` | Bottom | Append-after-prompt content (rare; usually wrong) |
+
+Within a band, lower priority = renders higher. Pick the smallest
+priority that lands you in the right band and leaves room above and
+below.
+
+`assembly.system` currently has no registrations — system message is
+the static identity surface (instructions base + tool docs). Adding
+to `assembly.system` invalidates the system-prefix cache on whatever
+provider you target; reserve for content that's truly stable per-run.
+
 ### Tool Docs {#plugins_tool_docs}
 
 Each tool plugin has a `*Doc.js` file with annotated line arrays.
@@ -281,6 +320,55 @@ entry = {
 
 Multiple handlers per scheme. Lower priority runs first. Return
 `false` to stop the chain.
+
+#### Reporting outcomes {#plugins_handler_outcomes}
+
+**The action entry IS its outcome.** Your handler's one job is to
+finalize the action's own log entry at `entry.resultPath`. Success
+and failure are two values of the same shape — body, state, outcome.
+The model sees both through the same channel under your tool's scheme:
+
+```js
+async handler(entry, rummy) {
+    const { entries: store, runId, turn, loopId } = rummy;
+    const result = await runMyTool(entry.attributes);
+
+    if (result.failed) {
+        await store.set({
+            runId, turn, loopId,
+            path: entry.resultPath,
+            body: result.failureMessage,
+            state: "failed",
+            outcome: result.label,    // "not_found", "validation", etc.
+        });
+        return;
+    }
+
+    await store.set({
+        runId, turn, loopId,
+        path: entry.resultPath,
+        body: result.output,
+        state: "resolved",
+    });
+}
+```
+
+Body is the result on success, the failure message on failure. State
+labels the verdict (`resolved` / `failed`). Outcome is a short
+machine-readable label.
+
+You do **not** need to call `hooks.error.log.emit` for action-level
+failures. That hook is reserved for failures that have **no
+corresponding action entry** (cycle detection — silent strike, no
+emission; dispatch crash — framework catches your throw and routes
+it; runtime watchdog firings; protocol boundary violations).
+
+If your handler throws, the framework catches the exception and
+emits a status-500 error entry on your behalf. That's the only case
+where the framework writes for you.
+
+See SPEC [failure_reporting](SPEC.md#failure_reporting) for the
+full contract and the rationale.
 
 ### full(entry) / summary(entry) {#plugins_views}
 

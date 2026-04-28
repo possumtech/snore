@@ -135,20 +135,6 @@ Verified Mini) are scaffolded and run on demand.
 
 ## Open Items
 
-- [ ] **Bespoke error path audit.** Sweep the codebase for
-  model-facing error handling that bypasses `hooks.error.log.emit`.
-  Covers:
-  - Plugins: any `entries.set({state:"failed"})`, ad-hoc failure
-    entries, custom "something went wrong" tags or schemes.
-  - Core: `src/agent/*` — any direct failure-entry writes,
-    status-code short-circuits, bespoke "tell the model" branches.
-  - Renderer/view projections that surface error-like content
-    outside the standard error entry shape.
-  Anything found either migrates to `error.log.emit` with an
-  appropriate status code, or documents why it's exempt.
-  Success criterion: one channel in, one channel out; no parallel
-  error paths anywhere the model can see.
-
 - [ ] **System auto-pruning.** On loop boundary or when log size
   crosses threshold, archive `log://turn_{M}/**` where M < current -
   `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
@@ -158,11 +144,6 @@ Verified Mini) are scaffolded and run on demand.
   request/response; `run/state` / `run/progress` / `run/proposal`
   fly out untracked. Mirroring the shape would let us replay
   notification streams for diagnosis.
-
-- [ ] **Plugin filter priority magic numbers.** 100 / 150 / 200 /
-  300 appear throughout with no documented meaning. Either name
-  the stages explicitly or document the ranges so third-party
-  plugins can slot between phases without reading source.
 
 - [ ] **Headless nvim e2e test.** Every new `run.state` telemetry
   field must be manually re-synced in `dispatch.lua` / `state.lua` /
@@ -174,10 +155,6 @@ Verified Mini) are scaffolded and run on demand.
   concurrent runs, call `close()` mid-flight, assert (a) the close
   awaits, (b) all run entries land terminal, (c) no Promises pin
   the event loop. Locks in the `abortAll` work.
-
-- [ ] **Glossary in SPEC.** Pin exact meaning of *turn*, *loop*,
-  *run*, *verdict*, *strike*, *phase*, *proposal*. Audit code for
-  misuses.
 
 - [ ] **AuditClient YOLO-redundancy audit.** With YOLO server-side,
   `AuditClient.#applySetToDisk` / `#applyRmToDisk` are redundant for
@@ -228,15 +205,6 @@ Verified Mini) are scaffolded and run on demand.
   with 2-example vs 5-example tooldocs against grok and gemma to
   see if the example density is earning its cost. Benchmark, not a
   fix — frame as a measurement task.
-
-- [ ] **`<search>` prefetch behavior documentation.** (CC-9 in the
-  audit.) `rummy.web` prefetches multiple result URLs in parallel
-  when `<search>` is issued; those land as `<https>`/summarized
-  data entries before the model emits any explicit `<get>`. Auditors
-  reading dumps can be misled — absence of a `log://turn_N/get/`
-  for a URL doesn't mean it wasn't loaded. Not a bug, just undocumented
-  behavior. Either add a short note to SPEC's streaming-producer
-  section, or document in `rummy.web`'s README — preference TBD.
 
 - [ ] **Reasoning-runaway recovery test.** (Audit Open Question 4.)
   Hydrology turn 11 hit context limit on `completion_tokens` runaway.
@@ -310,6 +278,35 @@ thread that hasn't resolved). Landed work belongs in git history;
 durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
+
+### Action-failure contract (landed 2026-04-28)
+
+Resolved the bespoke-action-failure-paths Open Item. Principle:
+
+**The action entry IS its outcome.** Plugin authors finalize their
+action's own log entry at `entry.resultPath` with body, state, and
+outcome. Success and failure are two values of the same shape; the
+model sees both through the same channel under the action's scheme.
+`error.log.emit` is reserved for actionless failures (dispatch crash,
+runtime watchdog, boundary violations). Cycle detection is silent —
+no emission.
+
+**What landed:**
+
+- `policy.js` dropped its `error.log.emit` dual-write. The action
+  entry's `state="failed", outcome="permission", body="<rejection
+  message>"` carries everything. Single entry per rejection.
+- SPEC `{#failure_reporting}` documents the contract for
+  third-party plugin authors. SPEC `{#mode_enforcement}` updated to
+  cross-reference.
+- PLUGINS.md `{#plugins_handler_outcomes}` shows the canonical
+  handler shape with both success and failure branches.
+- 281 unit + 229 integration green throughout.
+
+The eight previously-flagged "bespoke" action-failure sites
+(`known.js:34`, `get.js:77`, `set.js:142,351`, `rm.js:49,69`,
+`TurnExecutor.js:280,407`) are exemplary, not exempt — they define
+the canonical pattern.
 
 ### Packet shape: `<context>` → user-side `<summarized>` + `<visible>` (landed 2026-04-28)
 
@@ -496,22 +493,40 @@ publishing negative results.
 - Smoke verified: invalid-arg → exit 2, missing required env → exit
   2, server-mode boot path clean. Integration: 228/228 green.
 
+**Landed 2026-04-28:**
+- Real LLM smoke ✓ — `rummy-cli --RUMMY_PROMPT="What is 2+2?"
+  --RUMMY_MODEL=xfast --RUMMY_MODE=ask --RUMMY_YOLO=1
+  --RUMMY_NO_INTERACTION=1 --RUMMY_NO_REPO=1 --RUMMY_NO_WEB=1
+  --PORT=3050`. 4 turns, status 200, exit 0, stdout: `2 + 2 = 4`.
+  Kickoff/turn-pipeline/terminal/exit path verified end-to-end on
+  grok-4.1-fast.
+- Two findings filed as Open Items:
+  (a) **rummy-cli must imply YOLO by default** — without it, any
+  proposal-emitting tool (including `<env>` in ask mode) hangs the
+  in-process CLI forever.
+  (b) **`PORT` env var doesn't follow the `RUMMY_` prefix
+  convention** — rename to `RUMMY_PORT`.
+
+**Landed 2026-04-28 (continued):**
+- rummy-cli auto-yolo when `RUMMY_PROMPT` is set ✓ — operator can
+  override with `--RUMMY_YOLO=0`. Re-smoke validated termination
+  without explicit `--RUMMY_YOLO=1`.
+- `PORT` → `RUMMY_PORT` rename ✓ — `service.js`, `.env.example`.
+  Two lines, contained; no other callers.
+
 **Next steps (in order):**
-1. Real LLM smoke — `rummy-cli --RUMMY_PROMPT="..." --RUMMY_MODEL=xfast`
-   trivial prompt (~$0.01) to verify the kickoff/terminal/exit path
-   end-to-end.
-2. `test/tbench/` scaffolding: `setup.sh` (clones harbor fork,
+1. `test/tbench/` scaffolding: `setup.sh` (clones harbor fork,
    installs CLI, links rummy adapter), `runner.js` (orchestration),
    `agent/rummy.py` + `rummy-setup.sh.j2` (harbor adapter source
    we'll PR upstream once stable), `.env.tbench` template.
-3. `package.json` `test:tbench:*` scripts.
-4. Pre-flight: `harbor run --task hello-world --agent rummy
+2. `package.json` `test:tbench:*` scripts.
+3. Pre-flight: `harbor run --task hello-world --agent rummy
    --model openrouter/x-ai/grok-4.1-fast` (~$0.10).
-5. Pre-flight: same for `--agent codex` to verify Codex+grok via
+4. Pre-flight: same for `--agent codex` to verify Codex+grok via
    OpenRouter works at all. Fall back to Goose / Aider if Codex+grok
    has friction.
-6. Full eval: 89-task × 3-seed × both adapters (~$30–90).
-7. Tabulate + writeup.
+5. Full eval: 89-task × 3-seed × both adapters (~$30–90).
+6. Tabulate + writeup.
 
 **Risks / open questions:**
 - Codex's Harbor adapter may not accept `openrouter/x-ai/grok-*`

@@ -172,7 +172,7 @@ async function main() {
 	await hooks.boot.completed.emit({ db, hooks });
 
 	// 7. Start RPC Server
-	const port = Number.parseInt(process.env.PORT);
+	const port = Number.parseInt(process.env.RUMMY_PORT);
 	const server = new SocketServer(db, { port, hooks });
 
 	server.on("error", (err) => {
