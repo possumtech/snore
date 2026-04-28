@@ -42,8 +42,8 @@ export default class Cli {
 		const projectAgent = new ProjectAgent(db, hooks);
 		const { projectId } = await projectAgent.init(alias, projectRoot);
 
-		// Watchdog; overridable via --RUMMY_RUN_TIMEOUT_MS=<ms>.
-		const timeoutMs = config.RUN_TIMEOUT_MS;
+		// Watchdog; overridable via --RUMMY_RUN_TIMEOUT=<ms>.
+		const timeoutMs = config.RUN_TIMEOUT;
 		const timer = setTimeout(() => {
 			console.error(`rummy-cli: timed out after ${timeoutMs}ms`);
 			process.exit(124);

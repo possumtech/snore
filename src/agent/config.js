@@ -2,13 +2,14 @@
 
 const REQUIRED = {
 	BUDGET_CEILING: { env: "RUMMY_BUDGET_CEILING", parse: Number },
-	LLM_DEADLINE_MS: { env: "RUMMY_LLM_DEADLINE_MS", parse: Number },
-	LLM_MAX_BACKOFF_MS: { env: "RUMMY_LLM_MAX_BACKOFF_MS", parse: Number },
+	LLM_DEADLINE: { env: "RUMMY_LLM_DEADLINE", parse: Number },
+	LLM_MAX_BACKOFF: { env: "RUMMY_LLM_MAX_BACKOFF", parse: Number },
 	FETCH_TIMEOUT: { env: "RUMMY_FETCH_TIMEOUT", parse: Number },
 	MAX_STRIKES: { env: "RUMMY_MAX_STRIKES", parse: Number },
 	MIN_CYCLES: { env: "RUMMY_MIN_CYCLES", parse: Number },
 	MAX_CYCLE_PERIOD: { env: "RUMMY_MAX_CYCLE_PERIOD", parse: Number },
-	RUN_TIMEOUT_MS: { env: "RUMMY_RUN_TIMEOUT_MS", parse: Number },
+	RUN_TIMEOUT: { env: "RUMMY_RUN_TIMEOUT", parse: Number },
+	PLUGIN_LOAD_TIMEOUT: { env: "RUMMY_PLUGIN_LOAD_TIMEOUT", parse: Number },
 	THINK: { env: "RUMMY_THINK", parse: (v) => v },
 };
 

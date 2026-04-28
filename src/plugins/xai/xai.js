@@ -128,7 +128,7 @@ export default class Xai {
 		const modelsUrl = this.#baseUrl.replace(/\/responses$/, "/models");
 		const res = await fetch(modelsUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
-			signal: AbortSignal.timeout(5000),
+			signal: AbortSignal.timeout(FETCH_TIMEOUT),
 		});
 		if (res.ok) {
 			const data = await res.json();
@@ -153,7 +153,7 @@ export default class Xai {
 		// Optional probe; failure falls through to terminal throw below.
 		const langRes = await fetch(langUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
-			signal: AbortSignal.timeout(5000),
+			signal: AbortSignal.timeout(FETCH_TIMEOUT),
 		}).catch(() => null);
 		if (langRes?.ok) {
 			const langData = await langRes.json();

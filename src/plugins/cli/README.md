@@ -29,7 +29,7 @@ preserves existing vars).
 |---|---|---|
 | `RUMMY_MODE` | `act` | `ask` or `act`. |
 
-`RUMMY_RUN_TIMEOUT_MS` is required at boot via `src/agent/config.js`;
+`RUMMY_RUN_TIMEOUT` is required at boot via `src/agent/config.js`;
 default lives in `.env.example`. Watchdog exits with code `124` on
 overflow.
 
@@ -61,7 +61,7 @@ provider key. Bench harnesses call `rummy-cli` with just
 | `0` | Terminal status `200`. Model claimed success. |
 | `1` | Terminal status in `{204, 413, 422, 499, 500}` or run crashed. |
 | `2` | Arg parse error (invalid flag shape, missing required env). |
-| `124` | Wall-clock timeout (`RUMMY_RUN_TIMEOUT_MS` exceeded). |
+| `124` | Wall-clock timeout (`RUMMY_RUN_TIMEOUT` exceeded). |
 
 External verifiers (terminal-bench, SWE-bench, etc.) decide actual
 task success — the exit code only reports rummy's internal terminal

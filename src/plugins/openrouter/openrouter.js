@@ -92,7 +92,7 @@ export default class OpenRouter {
 
 		const res = await fetch(`${this.#baseUrl}/models`, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
-			signal: AbortSignal.timeout(5000),
+			signal: AbortSignal.timeout(FETCH_TIMEOUT),
 		});
 		if (!res.ok) {
 			throw new Error(

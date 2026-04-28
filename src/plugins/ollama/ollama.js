@@ -1,5 +1,6 @@
 import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
+import { retryWithBackoff } from "../../llm/retry.js";
 
 const { FETCH_TIMEOUT } = config;
 
@@ -65,40 +66,40 @@ export default class Ollama {
 	}
 
 	async #getContextSize(model) {
-		for (let attempt = 0; attempt < 3; attempt++) {
-			try {
-				const response = await fetch(`${this.#baseUrl}/api/show`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ model }),
-					signal: AbortSignal.timeout(FETCH_TIMEOUT),
-				});
-				if (!response.ok) {
-					throw new Error(
-						msg("error.ollama_show_failed", {
-							status: response.status,
-							baseUrl: this.#baseUrl,
-						}),
-					);
-				}
-				const data = await response.json();
-				if (data.model_info) {
-					for (const [key, value] of Object.entries(data.model_info)) {
-						if (key.endsWith(".context_length")) return value;
-					}
-				}
-				throw new Error(msg("error.ollama_no_context_length", { model }));
-			} catch (err) {
-				if (err.message.includes("Ollama")) throw err;
-				if (attempt < 2) {
-					await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
-					continue;
-				}
+		const fetchContext = async () => {
+			const response = await fetch(`${this.#baseUrl}/api/show`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ model }),
+				signal: AbortSignal.timeout(FETCH_TIMEOUT),
+			});
+			if (!response.ok) {
 				throw new Error(
-					msg("error.ollama_unreachable", { baseUrl: this.#baseUrl }),
-					{ cause: err },
+					msg("error.ollama_show_failed", {
+						status: response.status,
+						baseUrl: this.#baseUrl,
+					}),
 				);
 			}
+			const data = await response.json();
+			if (data.model_info) {
+				for (const [key, value] of Object.entries(data.model_info)) {
+					if (key.endsWith(".context_length")) return value;
+				}
+			}
+			throw new Error(msg("error.ollama_no_context_length", { model }));
+		};
+		try {
+			return await retryWithBackoff(fetchContext, {
+				deadlineMs: FETCH_TIMEOUT,
+				isRetryable: (err) => !err.message.includes("Ollama"),
+			});
+		} catch (err) {
+			if (err.message.includes("Ollama")) throw err;
+			throw new Error(
+				msg("error.ollama_unreachable", { baseUrl: this.#baseUrl }),
+				{ cause: err },
+			);
 		}
 	}
 }

@@ -7,8 +7,7 @@ import {
 } from "./errors.js";
 import { retryWithBackoff } from "./retry.js";
 
-const { LLM_DEADLINE_MS: DEADLINE_MS, LLM_MAX_BACKOFF_MS: MAX_BACKOFF_MS } =
-	config;
+const { LLM_DEADLINE, LLM_MAX_BACKOFF } = config;
 
 // Dispatches to hooks.llm.providers; transient retry; ContextExceededError surface.
 export default class LlmProvider {
@@ -53,8 +52,8 @@ export default class LlmProvider {
 				() => provider.completion(messages, resolvedModel, resolvedOptions),
 				{
 					signal: options.signal,
-					deadlineMs: DEADLINE_MS,
-					maxDelayMs: MAX_BACKOFF_MS,
+					deadlineMs: LLM_DEADLINE,
+					maxDelayMs: LLM_MAX_BACKOFF,
 					isRetryable: (err) => isTransientMessage(err.message),
 					onRetry: (err, attempt, delayMs, remainingMs) => {
 						console.error(

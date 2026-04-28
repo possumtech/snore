@@ -3,7 +3,10 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import config from "../agent/config.js";
 import PluginContext from "../hooks/PluginContext.js";
+
+const { PLUGIN_LOAD_TIMEOUT } = config;
 
 let globalPrefix;
 function getGlobalPrefix() {
@@ -224,8 +227,6 @@ async function collectFromDir(dir, isRoot, descriptors) {
 		}
 	}
 }
-
-const PLUGIN_LOAD_TIMEOUT = 10000;
 
 function withTimeout(promise, ms, message) {
 	return Promise.race([
