@@ -171,6 +171,19 @@ Verified Mini) are scaffolded and run on demand.
   archived → summarized → visible bulk-promote-skim-demote idiom on
   a real multi-file project.
 
+- [ ] **`<summarized>` / `<visible>` split in packet structure.**
+  Proposal (parked during 2026-04-27 audit): replace single `<context>`
+  block with two stable blocks — `<summarized>` (every known entry's
+  summary, immutable across promotes/demotes) and `<visible>` (full
+  bodies of currently-promoted entries, append-on-promote /
+  remove-on-demote). Each promoted entry exists in both. Separates
+  identity ("what I know") from state ("what I'm actively reading"),
+  which matches the expert / working-memory analogy and dramatically
+  improves prefix-cache behavior since promote/demote — the most
+  common operations — only mutate `<visible>`. Token cost: ~30 tokens
+  × number of promoted entries (the duplicated summary). Worth
+  investigating after the audit completes; currently parked.
+
 - [ ] **Unit test failures in `src/plugins/budget/budget.test.js`.**
   At least one suite ("summarized aggregate line, no per-entry rows
   for summarized") fails on `assert(table.includes("summarized"))`.

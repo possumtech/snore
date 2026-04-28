@@ -15,9 +15,17 @@ visible AS (
 		, rv.updated_at
 		, e.attributes
 		, COALESCE(s.category, 'logging') AS category
+		-- Archived entries are filtered out, EXCEPT prompt:// entries.
+		-- The active prompt is run identity — even when archived, the
+		-- model needs to know it exists (and its path) so it can promote
+		-- it back. Archived prompts flow through with effective_visibility
+		-- = 'archived' and body suppressed by the projected.body CASE
+		-- below. This is the only entry-type exception to the
+		-- "archived = invisible" contract.
 		, CASE
-			WHEN rv.visibility = 'archived' THEN NULL
 			WHEN s.model_visible = 0 THEN NULL
+			WHEN rv.visibility = 'archived'
+				AND COALESCE(e.scheme, 'file') != 'prompt' THEN NULL
 			ELSE rv.visibility
 		END AS effective_visibility
 	FROM run_views AS rv

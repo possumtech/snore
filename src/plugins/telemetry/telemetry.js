@@ -7,6 +7,7 @@ export default class Telemetry {
 	#lastRunPath = null;
 	#turnsDir = null;
 	#turnLog = [];
+	#turnStartIdx = 0;
 	#currentRunAlias = null;
 	#currentTurn = null;
 
@@ -31,8 +32,8 @@ export default class Telemetry {
 	async #onRpcStarted({ method, id, params }) {
 		this.#starts.set(id, Date.now());
 		let summary = "";
-		if (method === "ask" || method === "act") {
-			const prompt = params?.prompt ? params.prompt : "";
+		if (method === "set" && params?.path?.startsWith("run://")) {
+			const prompt = params?.body ? params.body : "";
 			summary = `prompt="${prompt.slice(0, 60)}"`;
 		} else if (method === "run/abort") {
 			summary = `run=${params?.run}`;
@@ -40,10 +41,6 @@ export default class Telemetry {
 			summary = `run=${params?.run} action=${params?.resolution?.action}`;
 		}
 		console.log(`[RPC] → ${method}(${id})${summary ? ` ${summary}` : ""}`);
-
-		if (method === "ask" || method === "act") {
-			this.#turnLog = [];
-		}
 	}
 
 	async #onRpcCompleted({ method, id, result }) {
@@ -228,10 +225,24 @@ export default class Telemetry {
 	}
 
 	async #logMessages(messages, context) {
-		this.#currentRunAlias = context.runAlias
+		const newAlias = context.runAlias
 			? context.runAlias
 			: `run_${context.runId}`;
+		// Reset the buffer when we switch to a new run. Prior approach
+		// keyed reset on RPC method name ("ask"/"act"), which broke when
+		// protocol 2.0 unified run starts under `set { path: "run://" }`.
+		// Alias-change is the semantic boundary: a new run gets a fresh
+		// turn log, regardless of how it was started.
+		if (newAlias !== this.#currentRunAlias) {
+			this.#turnLog = [];
+		}
+		this.#currentRunAlias = newAlias;
 		this.#currentTurn = context.turn === undefined ? null : context.turn;
+		// Mark the start of this turn's content within the cumulative
+		// run-log. `#writeTurnFile` writes from this index forward, so
+		// `turn_NNN.txt` contains only that turn (not turns 1..N).
+		// `#flush` still writes the full cumulative log to last_run.txt.
+		this.#turnStartIdx = this.#turnLog.length;
 		const turnLabel = this.#currentTurn === null ? "?" : this.#currentTurn;
 		this.#turnLog.push(
 			`\n${"=".repeat(60)}\nTURN ${turnLabel} — model=${context.model} run=${this.#currentRunAlias}\n${"=".repeat(60)}`,
@@ -272,6 +283,9 @@ export default class Telemetry {
 		const runDir = join(this.#turnsDir, this.#currentRunAlias);
 		await mkdir(runDir, { recursive: true });
 		const fileName = `turn_${String(this.#currentTurn).padStart(3, "0")}.txt`;
-		await writeFile(join(runDir, fileName), `${this.#turnLog.join("\n")}\n`);
+		// Slice from the current turn's start index — per-turn file
+		// contains only this turn's content, not the cumulative log.
+		const turnSlice = this.#turnLog.slice(this.#turnStartIdx);
+		await writeFile(join(runDir, fileName), `${turnSlice.join("\n")}\n`);
 	}
 }
