@@ -162,16 +162,26 @@ describe("Set visibility-only emission preserves body (@schemes_status_visibilit
 		);
 		assert.strictEqual(
 			rummy._errors.length,
-			1,
-			"exactly one error emitted for invalid visibility",
+			0,
+			"no error.log emission — action entry IS its outcome",
+		);
+		const [resultEntry] = await tdb.db.get_entries_by_pattern.all({
+			run_id: runId,
+			path: "log://turn_2/set/bogus",
+			body: null,
+			limit: null,
+			offset: null,
+		});
+		assert.ok(resultEntry, "action entry was finalized");
+		assert.strictEqual(resultEntry.state, "failed");
+		assert.strictEqual(resultEntry.outcome, "validation");
+		assert.ok(
+			resultEntry.body.includes("promoted"),
+			"action body names the bad value",
 		);
 		assert.ok(
-			rummy._errors[0].message.includes("promoted"),
-			"error names the bad value",
-		);
-		assert.ok(
-			rummy._errors[0].message.includes("visible|summarized|archived"),
-			"error lists valid values",
+			resultEntry.body.includes("visible|summarized|archived"),
+			"action body lists valid values",
 		);
 	});
 });

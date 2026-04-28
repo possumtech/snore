@@ -281,32 +281,60 @@ the diff already records.*
 
 ### Action-failure contract (landed 2026-04-28)
 
-Resolved the bespoke-action-failure-paths Open Item. Principle:
+Resolved the bespoke-action-failure-paths Open Item via framework
+alignment, not patch-around. Principle:
 
 **The action entry IS its outcome.** Plugin authors finalize their
 action's own log entry at `entry.resultPath` with body, state, and
-outcome. Success and failure are two values of the same shape; the
-model sees both through the same channel under the action's scheme.
-`error.log.emit` is reserved for actionless failures (dispatch crash,
-runtime watchdog, boundary violations). Cycle detection is silent —
-no emission.
+outcome. Success and failure share one shape. The framework reads
+post-handler `state="failed"` entries as strikes — no `error.log.emit`
+call from plugin authors. `error.log.emit` is the framework's tool
+for actionless failures (parser warnings, dispatch crashes, runtime
+watchdog, budget overflow). Cycle detection stays silent.
 
-**What landed:**
+**Framework changes:**
 
-- `policy.js` dropped its `error.log.emit` dual-write. The action
-  entry's `state="failed", outcome="permission", body="<rejection
-  message>"` carries everything. Single entry per rejection.
-- SPEC `{#failure_reporting}` documents the contract for
-  third-party plugin authors. SPEC `{#mode_enforcement}` updated to
-  cross-reference.
-- PLUGINS.md `{#plugins_handler_outcomes}` shows the canonical
-  handler shape with both success and failure branches.
-- 281 unit + 229 integration green throughout.
+- `TurnExecutor#record` now writes filter-rejected entries to store
+  (was: returned in-memory only, model never saw them). Recording-
+  filter rejection is now visible to the model the same way
+  handler-time rejection is.
+- `error.js#verdict` strike attribution: queries store for the
+  post-handler state of each recorded entry; any `state="failed"`
+  counts as a strike. Either channel (action-entry state=failed or
+  `error.log.emit`'s `turnErrors` increment) advances the streak.
+
+**Plugin migrations to single-call shape:**
+
+- `policy.js` dropped its `error.log.emit` dual-write — recording
+  filter returns the entry with state=failed; framework writes it.
+- `get.js`, `set.js`, `unknown.js` — handler-time validation/dedup
+  failures now write `state="failed"` to the action entry instead of
+  emitting separate `<error>` entries.
+- `update.js` — validation rejection writes `state="failed"` to the
+  action entry; dropped the dead-code `attributes.rejected=true`
+  signal (it never propagated correctly because handler's local
+  `attributes` was scoped to the rummy.update() call, not the
+  recorded entry; resolve() always saw `rejected=undefined`). The
+  CC-5 status-200 navigation check now actually works.
+- `TurnExecutor.js` — proposal/entry-failure error.log.emit calls
+  removed; the action entry's own state=failed is the strike signal.
+
+**Documentation:**
+
+- SPEC `{#failure_reporting}` — contract, strike attribution, what
+  `error.log.emit` is for, recording-filter behavior, cycle silence.
+- SPEC `{#mode_enforcement}` — policy uses entry-state directly.
+- PLUGINS.md `{#plugins_handler_outcomes}` — canonical handler shape;
+  explicit "you don't call error.log.emit" for third-party authors.
+
+**Tests:** 280 unit + 229 integration green. `get.test.js` and
+`set_visibility.test.js` updated to assert the new shape (the old
+tests had been pinned to the dual-channel pattern).
 
 The eight previously-flagged "bespoke" action-failure sites
-(`known.js:34`, `get.js:77`, `set.js:142,351`, `rm.js:49,69`,
-`TurnExecutor.js:280,407`) are exemplary, not exempt — they define
-the canonical pattern.
+(`known.js`, `get.js`, `set.js`, `rm.js`, `TurnExecutor.js`) are now
+genuinely exemplary — both visible AND strike-bearing through one
+write each.
 
 ### Packet shape: `<context>` → user-side `<summarized>` + `<visible>` (landed 2026-04-28)
 

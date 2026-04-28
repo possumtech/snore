@@ -316,33 +316,15 @@ export default class TurnExecutor {
 				});
 				await this.#entries.waitForResolution(currentRunId, p.path);
 				const resolved = await this.#entries.getState(currentRunId, p.path);
-				if (resolved?.status >= 400) {
-					await this.#hooks.error.log.emit({
-						store: this.#entries,
-						runId: currentRunId,
-						turn,
-						loopId: currentLoopId,
-						message: `Proposal ${p.path} rejected: status ${resolved.status}.`,
-						status: resolved.status,
-					});
-					abortAfter = entry.scheme;
-				}
+				// Failure surfaces in the proposal entry itself; abort cascade
+				// triggers the trailing-action "Aborted — preceding <X>" body.
+				if (resolved?.status >= 400) abortAfter = entry.scheme;
 			}
 
 			if (!abortAfter) {
 				const entryPath = entry.resultPath || entry.path;
 				const row = await this.#entries.getState(currentRunId, entryPath);
-				if (row?.status >= 400) {
-					await this.#hooks.error.log.emit({
-						store: this.#entries,
-						runId: currentRunId,
-						turn,
-						loopId: currentLoopId,
-						message: `Entry ${entryPath} failed: status ${row.status}.`,
-						status: row.status,
-					});
-					abortAfter = entry.scheme;
-				}
+				if (row?.status >= 400) abortAfter = entry.scheme;
 			}
 		}
 
@@ -442,7 +424,17 @@ export default class TurnExecutor {
 			{ store: this.#entries, runId, turn, loopId, mode },
 		);
 		if (filtered.state === "failed" || filtered.state === "cancelled") {
-			return filtered;
+			await this.#entries.set({
+				runId,
+				turn,
+				loopId,
+				path: filtered.path,
+				body: filtered.body,
+				state: filtered.state,
+				outcome: filtered.outcome,
+				attributes: filtered.attributes,
+			});
+			return { ...filtered, resultPath: filtered.path };
 		}
 
 		return {

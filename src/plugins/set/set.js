@@ -114,13 +114,15 @@ export default class Set {
 			attrs.visibility !== undefined &&
 			!visibilityAttr
 		) {
-			await rummy.hooks.error.log.emit({
-				store,
+			await store.set({
 				runId,
 				turn,
 				loopId,
-				message: `Invalid visibility "${attrs.visibility}" on <set path="${attrs.path}"/>. Use visibility="visible|summarized|archived".`,
-				status: 400,
+				path: entry.resultPath,
+				body: `Invalid visibility "${attrs.visibility}" on <set path="${attrs.path}"/>. Use visibility="visible|summarized|archived".`,
+				state: "failed",
+				outcome: "validation",
+				attributes: { path: attrs.path },
 			});
 			return;
 		}

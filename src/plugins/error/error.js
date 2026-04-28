@@ -102,7 +102,15 @@ export default class ErrorPlugin {
 			state.turnErrors++;
 		}
 
-		const struck = state.turnErrors > 0;
+		let recordedFailed = false;
+		for (const e of recorded) {
+			const current = await store.getState(runId, e.path);
+			if (current?.state === "failed") {
+				recordedFailed = true;
+				break;
+			}
+		}
+		const struck = state.turnErrors > 0 || recordedFailed;
 
 		if (summaryText && !struck) {
 			state.streak = 0;

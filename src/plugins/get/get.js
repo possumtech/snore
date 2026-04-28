@@ -21,14 +21,14 @@ export default class Get {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
 		if (!target) {
-			await rummy.hooks.error.log.emit({
-				store,
+			await store.set({
 				runId,
 				turn,
 				loopId,
-				message:
-					'Missing required "path" attribute on <get>. Use <get path="..."/>.',
-				status: 400,
+				path: entry.resultPath,
+				body: 'Missing required "path" attribute on <get>. Use <get path="..."/>.',
+				state: "failed",
+				outcome: "validation",
 			});
 			return;
 		}

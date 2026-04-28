@@ -32,50 +32,61 @@ export default class Update {
 	}
 
 	async handler(entry, rummy) {
+		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const status = entry.attributes?.status ?? 102;
 		const validation = await rummy.hooks.instructions.validateNavigation(
 			status,
 			rummy,
 		);
-		const attributes = validation.ok ? {} : { rejected: true };
-		await rummy.update(entry.body, { status, attributes });
 		if (!validation.ok) {
-			await rummy.hooks.error.log.emit({
-				store: rummy.entries,
-				runId: rummy.runId,
-				turn: rummy.sequence,
-				loopId: rummy.loopId,
-				message: validation.reason,
-				status: 422,
+			entry.state = "failed";
+			entry.outcome = "invalid_navigation";
+			entry.body = validation.reason;
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: entry.resultPath,
+				body: validation.reason,
+				state: "failed",
+				outcome: "invalid_navigation",
+				attributes: { status },
 			});
+			return;
 		}
+		if (!isValidStatus(status)) {
+			entry.state = "failed";
+			entry.outcome = "invalid_status";
+			const message = `Invalid status ${status} on update — use 1xx to continue or 200 to conclude.`;
+			entry.body = message;
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: entry.resultPath,
+				body: message,
+				state: "failed",
+				outcome: "invalid_status",
+				attributes: { status },
+			});
+			return;
+		}
+		await rummy.update(entry.body, { status });
 	}
 
-	// summaryText (terminal 200/204/422) | updateText (continuation 1xx); errors → hooks.error.log.
 	async resolve({ recorded, content, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
 		const status = entry?.attributes?.status ?? 102;
-		const rejected = entry?.attributes?.rejected === true;
-		const isTerminal = TERMINAL_STATUSES.has(status) && !rejected;
+		const failed = entry?.state === "failed";
+		const isTerminal = TERMINAL_STATUSES.has(status) && !failed;
 		let summaryText = null;
 		let updateText = null;
-		if (entry?.body) {
+		if (entry?.body && !failed) {
 			if (isTerminal) summaryText = entry.body;
 			else updateText = entry.body;
 		}
 
-		if (entry && !isValidStatus(status)) {
-			await rummy.hooks.error.log.emit({
-				store: rummy.entries,
-				runId,
-				turn,
-				loopId,
-				message: `Invalid status ${entry.attributes?.status} on update — use 1xx to continue or 200 to conclude.`,
-				status: 422,
-			});
-		}
-
-		if (!summaryText && !updateText) {
+		if (!summaryText && !updateText && !failed) {
 			const empty = !content || content.trim() === "";
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,

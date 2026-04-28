@@ -323,10 +323,10 @@ Multiple handlers per scheme. Lower priority runs first. Return
 
 #### Reporting outcomes {#plugins_handler_outcomes}
 
-**The action entry IS its outcome.** Your handler's one job is to
-finalize the action's own log entry at `entry.resultPath`. Success
-and failure are two values of the same shape — body, state, outcome.
-The model sees both through the same channel under your tool's scheme:
+**The action entry IS its outcome.** Your handler finalizes the action's
+own log entry at `entry.resultPath`. Success and failure are two values
+of the same shape — body, state, outcome. The model sees both through
+the same channel under your tool's scheme:
 
 ```js
 async handler(entry, rummy) {
@@ -353,19 +353,24 @@ async handler(entry, rummy) {
 }
 ```
 
-Body is the result on success, the failure message on failure. State
-labels the verdict (`resolved` / `failed`). Outcome is a short
-machine-readable label.
+That's the whole failure-reporting surface. Body is the result on
+success, the failure message on failure. State labels the verdict
+(`resolved` / `failed`). Outcome is a short machine-readable label.
 
-You do **not** need to call `hooks.error.log.emit` for action-level
-failures. That hook is reserved for failures that have **no
-corresponding action entry** (cycle detection — silent strike, no
-emission; dispatch crash — framework catches your throw and routes
-it; runtime watchdog firings; protocol boundary violations).
+The framework reads the post-handler state of every recorded entry
+each turn; any `state="failed"` result counts as a strike toward
+`MAX_STRIKES`. You don't need to do anything else to make the strike
+fire — write the entry's outcome and the framework follows.
 
-If your handler throws, the framework catches the exception and
-emits a status-500 error entry on your behalf. That's the only case
-where the framework writes for you.
+You do **not** call `hooks.error.log.emit` from a tool handler. That
+hook is reserved for the framework's actionless-failure cases (parser
+warnings, dispatch crashes, runtime watchdog, budget overflow) — none
+of which a third-party plugin should be writing.
+
+If your handler throws, the framework catches and emits a status-500
+error entry on your behalf. That's the one case where the framework
+writes for you. Throw with intent; don't try-catch your own handler
+just to avoid a stack trace.
 
 See SPEC [failure_reporting](SPEC.md#failure_reporting) for the
 full contract and the rationale.

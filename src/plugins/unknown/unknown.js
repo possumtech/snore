@@ -1,8 +1,5 @@
 export default class Unknown {
-	#core;
-
 	constructor(core) {
-		this.#core = core;
 		core.ensureTool();
 		core.registerScheme({
 			category: "unknown",
@@ -19,12 +16,14 @@ export default class Unknown {
 
 		const existingValues = await store.getUnknownValues(runId);
 		if (existingValues.has(entry.body)) {
-			await this.#core.hooks.error.log.emit({
-				store,
+			await store.set({
 				runId,
 				turn,
 				loopId,
-				message: `Unknown deduped: "${entry.body.slice(0, 60)}"`,
+				path: entry.resultPath || entry.path,
+				body: `Unknown deduped: "${entry.body.slice(0, 60)}"`,
+				state: "failed",
+				outcome: "duplicate",
 			});
 			return;
 		}

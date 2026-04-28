@@ -580,29 +580,47 @@ on success, failure message on failure. No separate error entry is
 written for action-level failures; the model finds the failure exactly
 where it would find the success: at the action's own log path.
 
-**`error.log.emit` is for actionless failures only** — failures that
-have no corresponding action entry to attach to:
+**Strike attribution.** `error.js#verdict` looks up the post-handler
+state of every recorded entry on each turn. Any `state="failed"`
+result counts as a strike. Plugin authors write their action entry
+once with the right state; the strike machinery follows. They never
+call `error.log.emit` for action-level failures.
+
+**`error.log.emit` is for actionless failures** — failures that have
+no corresponding action entry to attach to:
 
 - Dispatch crash — the framework caught an exception thrown from inside
   a handler before the handler had a chance to write its own entry.
-- Boundary violations — protocol-level rejections that fire before any
-  plugin handler runs, against an entry the model didn't directly
-  emit.
-- Runtime watchdog firings — RPC timeout, stream timeout, etc., not
-  bound to a specific action.
+- Parser-level failures — malformed XML warnings, no-actionable-tags
+  responses, fired before any action entry could be recorded.
+- Runtime watchdog firings — `ContextExceededError`, RPC timeout,
+  stream timeout — not bound to a specific action.
+- Budget overflow — pre-dispatch rejection.
 
-Cycle detection is **silent** — it does not call `error.log.emit`. The
-strike accumulates internally; on `MAX_STRIKES` the run abandons at
-499 with a telemetry-side reason. The model sees no special signal,
-because telling the model "you're looping" invites superficial evasion
-(vary an attribute to bust the fingerprint) without addressing the
-underlying confusion.
+`error.log.emit` writes a `log://turn_N/error/<slug>` entry and
+increments `state.turnErrors`, which also feeds strike accumulation.
+Both channels (action-entry state=failed and `error.log.emit`)
+contribute to the strike streak; either path advances it.
+
+**Recording-filter rejection.** Plugins on the `entry.recording` filter
+chain (e.g. `policy`) can return an entry with `state="failed"`. The
+framework writes that entry to the store before returning from
+`#record`, and dispatch skips it. The model sees the rejection at the
+action's own log path, exactly like any other action-level failure.
+
+Cycle detection is **silent** — it does not call `error.log.emit`.
+The strike accumulates internally via `state.turnErrors++`; on
+`MAX_STRIKES` the run abandons at 499 with a telemetry-side reason.
+The model sees no special signal, because telling the model "you're
+looping" invites superficial evasion (vary an attribute to bust the
+fingerprint) without addressing the underlying confusion.
 
 **Plugin author contract.** Your handler does one job: finalize the
-action's own log entry with the right body/state/outcome. You do not
-need to call `error.log.emit`. If your handler throws, the framework
-catches and routes through `error.log.emit` at status 500 — that's
-the only situation where the framework writes on your behalf.
+action's own log entry with the right body/state/outcome. That's the
+whole API for failure reporting. You do not call `error.log.emit`.
+If your handler throws, the framework catches and routes through
+`error.log.emit` at status 500 — that's the only situation where the
+framework writes on your behalf.
 
 ### Mode Enforcement {#mode_enforcement}
 
