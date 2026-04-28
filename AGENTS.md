@@ -151,16 +151,6 @@ Verified Mini) are scaffolded and run on demand.
   the server and asserts the statusline renders correctly for a
   known run would catch drift at contract time.
 
-- [ ] **Stress test for `SocketServer.close()` drain.** Kick off N
-  concurrent runs, call `close()` mid-flight, assert (a) the close
-  awaits, (b) all run entries land terminal, (c) no Promises pin
-  the event loop. Locks in the `abortAll` work.
-
-- [ ] **Three-tier ladder e2e.** Current e2e tests verify YOLO and
-  basic dispatch; none specifically validate the
-  archived → summarized → visible bulk-promote-skim-demote idiom on
-  a real multi-file project.
-
 - [ ] **Core → plugin extraction conversation.** Audit what still
   lives in `src/agent/*` that could plausibly be a plugin. Top
   candidates: `XmlParser` (syntax-layer; would need a `parser.parse`
@@ -189,17 +179,6 @@ Verified Mini) are scaffolded and run on demand.
   with 2-example vs 5-example tooldocs against grok and gemma to
   see if the example density is earning its cost. Benchmark, not a
   fix — frame as a measurement task.
-
-- [ ] **`act_no_completion` test name vs assertion mismatch.**
-  (CC-8b in the E2E audit.) Test titled *"act run producing a file
-  edit reaches completion"* asserts only terminal status in
-  `[200, 499]` — never checks that the file edit actually landed
-  on disk. A model that takes the strike path to abandonment
-  passes the test even though no file was produced. Fix: either
-  rename the test to reflect what it checks
-  (`engine reaches terminal under MAX_TURNS bound`) or add a
-  file-on-disk assertion analogous to the hydrology test's
-  deliverable check.
 
 ## Scope Discipline
 

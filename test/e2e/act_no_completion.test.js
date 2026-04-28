@@ -60,13 +60,11 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const projectRoot = join(tmpdir(), `rummy-complete-${Date.now()}`);
 	const turnsHome = join(__dirname, "turns", `complete_${stamp}`);
-	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
 
 	before(async () => {
-		// Cap iterations so the test bounds runtime regardless of model
-		// willingness to emit a terminal update.
-		process.env.RUMMY_MAX_TURNS = "5";
-
+		// Use the default RUMMY_MAX_TURNS. Capping low short-circuits the
+		// guardrail-bouncing the state machine is designed for; the
+		// TIMEOUT below is the wall-clock safety net.
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.mkdir(turnsHome, { recursive: true });
 		await fs.writeFile(
@@ -99,11 +97,9 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
-		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
-		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
-	it("act run producing a file edit reaches completion", {
+	it("engine reaches terminal — set-only turns don't block dispatch", {
 		timeout: TIMEOUT,
 	}, async () => {
 		// Trigger the pattern the user reports: act mode, prompt that will

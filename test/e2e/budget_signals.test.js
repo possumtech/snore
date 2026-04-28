@@ -55,11 +55,10 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-budget-${Date.now()}`);
-	const prevMaxTurns = process.env.RUMMY_MAX_TURNS;
 
 	before(async () => {
-		process.env.RUMMY_MAX_TURNS = "5";
-
+		// Default RUMMY_MAX_TURNS; TIMEOUT bounds wall-clock. Artificial
+		// caps starve the state machine of room to bounce.
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
 		const { execSync } = await import("node:child_process");
@@ -87,8 +86,6 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 		await tserver?.stop();
 		await tdb?.cleanup();
 		await fs.rm(projectRoot, { recursive: true, force: true });
-		if (prevMaxTurns === undefined) delete process.env.RUMMY_MAX_TURNS;
-		else process.env.RUMMY_MAX_TURNS = prevMaxTurns;
 	});
 
 	it("budget tag carries non-zero tokenUsage and tokensFree on every turn", {
