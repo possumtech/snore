@@ -22,18 +22,16 @@ export default class Known {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		if (!entry.body) return;
 
-		// Size gate
 		const entryTokens = countTokens(entry.body);
 		if (entryTokens > MAX_ENTRY_TOKENS) {
-			const rejectPath = await store.slugPath(runId, "known", entry.body);
 			await store.set({
 				runId,
 				turn,
-				path: rejectPath,
+				loopId,
+				path: entry.resultPath,
 				body: `Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
 				state: "failed",
 				outcome: `overflow:${entryTokens}`,
-				loopId,
 			});
 			return;
 		}

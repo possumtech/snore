@@ -317,4 +317,91 @@ describe("error verdict (@response_healing)", () => {
 			"abandonment reason is telemetry-only (run is over; model never sees it)",
 		);
 	});
+
+	it("action entry state=failed counts as a strike (no error.log.emit needed)", async () => {
+		const path = "log://turn_1/get/missing";
+		await store.set({
+			runId: RUN_ID,
+			turn: 1,
+			path,
+			body: "target not found",
+			state: "failed",
+			outcome: "not_found",
+			loopId: LOOP_ID,
+		});
+		const verdict = await tdb.hooks.error.verdict({
+			store,
+			runId: RUN_ID,
+			loopId: LOOP_ID,
+			turn: 1,
+			recorded: [{ scheme: "get", path, attributes: { path: "X" } }],
+			summaryText: null,
+		});
+		assert.strictEqual(
+			verdict.continue,
+			true,
+			"struck but under MAX_STRIKES → continue with reminder",
+		);
+		assert.ok(
+			verdict.reason,
+			"struck turns carry the contract reminder",
+		);
+	});
+
+	it("reasoning-runaway: ContextExceeded errors accumulate strikes → 499", async () => {
+		// Simulates the model returning ever-larger reasoning blocks until
+		// the prompt exceeds the context window. TurnExecutor catches
+		// ContextExceededError and emits error.log at status 413; strikes
+		// accumulate via turnErrors. After MAX_STRIKES of these, the run
+		// abandons cleanly at 499. Verifies the watchdog story.
+		let verdict;
+		for (let i = 0; i < MAX_STRIKES; i++) {
+			await tdb.hooks.error.log.emit({
+				store,
+				runId: RUN_ID,
+				turn: i + 1,
+				loopId: LOOP_ID,
+				message: `LLM context exceeded: prompt grew past window`,
+				status: 413,
+			});
+			verdict = await tdb.hooks.error.verdict({
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: i + 1,
+				recorded: [],
+				summaryText: null,
+			});
+			await bumpTurn(i + 2);
+		}
+		assert.strictEqual(verdict.continue, false);
+		assert.strictEqual(verdict.status, 499);
+	});
+
+	it(`${MAX_STRIKES} action-entry failures abandon the run at 499`, async () => {
+		let verdict;
+		for (let i = 0; i < MAX_STRIKES; i++) {
+			const path = `log://turn_${i + 1}/get/miss_${i}`;
+			await store.set({
+				runId: RUN_ID,
+				turn: i + 1,
+				path,
+				body: `target ${i} not found`,
+				state: "failed",
+				outcome: "not_found",
+				loopId: LOOP_ID,
+			});
+			verdict = await tdb.hooks.error.verdict({
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: i + 1,
+				recorded: [{ scheme: "get", path, attributes: { path: `X${i}` } }],
+				summaryText: null,
+			});
+			await bumpTurn(i + 2);
+		}
+		assert.strictEqual(verdict.continue, false);
+		assert.strictEqual(verdict.status, 499);
+	});
 });

@@ -156,12 +156,6 @@ Verified Mini) are scaffolded and run on demand.
   awaits, (b) all run entries land terminal, (c) no Promises pin
   the event loop. Locks in the `abortAll` work.
 
-- [ ] **AuditClient YOLO-redundancy audit.** With YOLO server-side,
-  `AuditClient.#applySetToDisk` / `#applyRmToDisk` are redundant for
-  YOLO runs. The non-YOLO path (rummy.nvim style) still uses them.
-  Decide: keep for non-YOLO compatibility, scope explicitly, or
-  deprecate as nvim moves to YOLO-by-default.
-
 - [ ] **Three-tier ladder e2e.** Current e2e tests verify YOLO and
   basic dispatch; none specifically validate the
   archived → summarized → visible bulk-promote-skim-demote idiom on
@@ -188,16 +182,6 @@ Verified Mini) are scaffolded and run on demand.
   summarized tier the model can promote selectively). Discuss
   before refactor — affects packet shape and budget math.
 
-- [ ] **Productive-turn strike streak reset.** (CC-10 in the audit.)
-  Today a strike (e.g. "Missing update") on turn N gets reset to 0
-  the moment turn N+1 emits any commands. So a model can confabulate
-  for two silent turns, emit one productive-but-unsourced turn, and
-  the streak never accumulates toward `MAX_STRIKES`. Question:
-  should silent-turn strikes persist across the streak (only a clean,
-  non-silent, non-erroring turn resets), or is the current "any
-  productive emission resets" the right call? Policy decision —
-  affects how aggressively the watchdog terminates confabulation.
-
 - [ ] **Tooldoc example weight.** (CC-13 in the audit.) System prompt
   is ~6KB / ~2K tokens, of which ~5.5KB is tool docs (10 tools × 5+
   examples each). Strong models pattern-match tools from one example;
@@ -205,14 +189,6 @@ Verified Mini) are scaffolded and run on demand.
   with 2-example vs 5-example tooldocs against grok and gemma to
   see if the example density is earning its cost. Benchmark, not a
   fix — frame as a measurement task.
-
-- [ ] **Reasoning-runaway recovery test.** (Audit Open Question 4.)
-  Hydrology turn 11 hit context limit on `completion_tokens` runaway.
-  No system mechanism currently detects or recovers; per Rummy Way,
-  letting the model error out and accumulate strikes is correct.
-  But there's no test verifying that path actually terminates. Add
-  a test that simulates a model returning ever-larger reasoning
-  blocks until context overflow, asserts the run abandons cleanly.
 
 ## Scope Discipline
 
