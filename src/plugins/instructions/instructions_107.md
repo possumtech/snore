@@ -2,6 +2,8 @@
 
 YOU MUST act on the prompt.
 
+YOU SHOULD attempt to deterministically verify your actions, outputs, or answers before declaring completion, if appropriate.
+
 ## Turn Termination (CHOOSE ONLY ONE):
 * Definition Stage Return: <update status="174">returning to Definition Stage</update>
 * Discovery Stage Return: <update status="175">returning to Discovery Stage</update>
