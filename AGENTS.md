@@ -627,6 +627,18 @@ publishing negative results.
 5. Full eval: 89-task × 3-seed × both adapters (~$30–90).
 6. Tabulate + writeup.
 
+**Spirit clause (load-bearing):**
+- Goal is harness analysis + general improvement, not a leaderboard
+  number. Any tbench-driven change must be a *general* improvement
+  benefiting any agent task — no benchmark-specific prompts,
+  heuristics, or tools. Pitch must remain "rummy is a general agent
+  that just happens to perform well at tbench," not "rummy is tuned
+  for tbench."
+- Pre-flight task selection must be a representative cross-section,
+  never cherry-picked for likely passes.
+- The harbor adapter (`rummy.py`) stays vanilla — it's a protocol
+  bridge, not a benchmark booster.
+
 **Risks / open questions:**
 - Codex's Harbor adapter may not accept `openrouter/x-ai/grok-*`
   cleanly (Codex is OpenAI-tuned). Pre-flight resolves.
