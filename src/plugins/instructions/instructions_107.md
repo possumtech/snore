@@ -2,12 +2,7 @@
 
 YOU MUST attempt to deterministically verify your actions, outputs, or answers before declaring completion, if possible.
 
-## Example: verify by compiling or syntax-checking
-	<set path="src/parser.js">function parse(s) { return JSON.parse(s); }</set>
-	<sh>node --check src/parser.js</sh>
-	<update status="177">parser.js written and syntax-validation</update>
-
-## Example: verify by running against a sample input
+## Example: verifying by running against a sample input before completion
 	<set path="solve.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
 	<sh>node solve.js 2 3 5</sh>
 	<update status="177">solve.js emits 10 for the sample inputs?</update>

@@ -229,7 +229,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- :since filters to entries created after a given id; when set, results order
 -- by id (insertion order) for streaming consumers; otherwise by path.
 SELECT
-	e.id, e.path, e.body, e.scheme, rv.state, rv.outcome, rv.visibility
+	e.id, e.path, e.body, e.scheme, rv.state, rv.outcome, rv.visibility, rv.turn
 	, countTokens(e.body) AS tokens, e.attributes
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id

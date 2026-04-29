@@ -49,6 +49,39 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		assert.strictEqual(diff.length, 0, "no entries past the latest id");
 	});
 
+	it("returned rows include id, body, scheme, state, outcome, visibility, turn, tokens, attributes (CLIENT_INTERFACE §4 wire shape)", async () => {
+		await store.set({
+			runId: RUN_ID,
+			turn: 7,
+			path: "known://shape_check",
+			body: "shape body",
+			state: "resolved",
+			attributes: { action: "set" },
+		});
+		const [row] = await store.getEntriesByPattern(
+			RUN_ID,
+			"known://shape_check",
+		);
+		for (const k of [
+			"id",
+			"path",
+			"scheme",
+			"state",
+			"outcome",
+			"visibility",
+			"turn",
+			"tokens",
+			"attributes",
+			"body",
+		]) {
+			assert.ok(k in row, `missing field on row: ${k}`);
+		}
+		assert.strictEqual(typeof row.id, "number", "id is integer");
+		assert.strictEqual(row.turn, 7, "turn round-trips from input");
+		assert.strictEqual(row.scheme, "known");
+		assert.strictEqual(row.body, "shape body");
+	});
+
 	it("returns only entries with id > since, in insertion order", async () => {
 		const _a = await store.set({
 			runId: RUN_ID,

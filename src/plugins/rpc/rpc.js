@@ -136,8 +136,9 @@ export default class Rpc {
 				return { ok: true, path };
 			},
 			description:
-				"Write an update:// entry carrying a turn's continuation/terminal " +
-				"signal. Not general — this is the lifecycle verb.",
+				"Write a status update at log://turn_N/update/<slug> carrying a " +
+				"turn's continuation/terminal signal. Not general — this is the " +
+				"lifecycle verb.",
 			params: {
 				run: "string — run alias",
 				body: "string — update text",
@@ -311,6 +312,7 @@ export default class Rpc {
 					bodyFilter = null,
 					since = null,
 					limit = null,
+					withBody = false,
 				} = params;
 				const rows = await ctx.projectAgent.entries.getEntriesByPattern(
 					runRow.id,
@@ -324,24 +326,29 @@ export default class Rpc {
 					.filter(
 						(e) => !params.visibility || e.visibility === params.visibility,
 					)
-					.map((e) => ({
-						id: e.id,
-						path: e.path,
-						scheme: e.scheme,
-						state: e.state,
-						outcome: e.outcome,
-						visibility: e.visibility,
-						turn: e.turn,
-						tokens: e.tokens,
-						attributes:
-							typeof e.attributes === "string"
-								? JSON.parse(e.attributes)
-								: e.attributes,
-					}));
+					.map((e) => {
+						const row = {
+							id: e.id,
+							path: e.path,
+							scheme: e.scheme,
+							state: e.state,
+							outcome: e.outcome,
+							visibility: e.visibility,
+							turn: e.turn,
+							tokens: e.tokens,
+							attributes:
+								typeof e.attributes === "string"
+									? JSON.parse(e.attributes)
+									: e.attributes,
+						};
+						if (withBody) row.body = e.body;
+						return row;
+					});
 			},
 			description:
 				"List entries matching a pattern. Read-only — no promotion. " +
 				"Optional filters: scheme, state, visibility, bodyFilter. " +
+				"Pass `withBody: true` to include `body` on each row (omitted by default to keep pulse-reconcile traffic lean). " +
 				"For incremental sync after a `run/changed` pulse, pass `since` (last seen entry id); " +
 				"use `limit` to chunk catch-up.",
 			params: {
@@ -350,7 +357,9 @@ export default class Rpc {
 				scheme: "string? — filter by scheme (e.g. 'file')",
 				state: "string? — filter by state",
 				visibility: "string? — filter by visibility",
-				bodyFilter: "string? — narrow pattern matches by body content",
+				bodyFilter:
+					"string? — filter rows by content of body (substring/glob; NOT for body inclusion — see withBody)",
+				withBody: "boolean? — include `body` field on each returned row (default false)",
 				since: "number? — only entries with id > since (insertion-ordered)",
 				limit: "number? — cap result count",
 			},
