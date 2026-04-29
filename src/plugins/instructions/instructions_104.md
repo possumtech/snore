@@ -1,4 +1,4 @@
-# Definition Stage: YOU MUST ONLY create topical, taxonomized, and tagged unknown:// entries for missing information
+# Definition Stage: YOU MUST ONLY create topical, taxonomized, and tagged unknown:// entries for key unknowns
 
 Example: <set path="unknown://countries/france/capital" summary="countries,france,capital,geography,trivia">What is the capital of France?</set>
 
