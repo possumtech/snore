@@ -1,5 +1,6 @@
 import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
+import { chatCompletionStream } from "../../llm/openaiStream.js";
 import { retryWithBackoff } from "../../llm/retry.js";
 
 const { FETCH_TIMEOUT } = config;
@@ -36,33 +37,21 @@ export default class Ollama {
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
 
-		const response = await fetch(`${this.#baseUrl}/v1/chat/completions`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-			signal,
-		});
-
-		if (!response.ok) {
-			const error = await response.text();
-			throw new Error(
-				msg("error.ollama_api", { status: `${response.status} - ${error}` }),
-			);
+		try {
+			return await chatCompletionStream({
+				url: `${this.#baseUrl}/v1/chat/completions`,
+				headers: {},
+				body,
+				signal,
+			});
+		} catch (err) {
+			if (err.status) {
+				throw new Error(
+					msg("error.ollama_api", { status: `${err.status} - ${err.body}` }),
+				);
+			}
+			throw err;
 		}
-
-		const data = await response.json();
-
-		for (const choice of data.choices) {
-			const m = choice.message;
-			if (!m) continue;
-			const parts = [m.reasoning_content, m.reasoning, m.thinking].filter(
-				Boolean,
-			);
-			m.reasoning_content =
-				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
-		}
-
-		return data;
 	}
 
 	async #getContextSize(model) {

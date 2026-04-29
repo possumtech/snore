@@ -171,6 +171,18 @@ Verified Mini) are scaffolded and run on demand.
   conversation needed to decide which extractions are principled vs.
   ceremony. Discuss before refactor.
 
+- [ ] **`unknown://env/...` example in instructions_104.md.** Add a
+  second Definition-stage example demonstrating env-sanity unknowns
+  (e.g. `unknown://env/node_runtime` — "What node version is
+  available on this system?") alongside the existing trivia example.
+  Rationale: catch runtime/dependency assumptions in Definition,
+  resolve in Discovery via `<env>`, and re-verify in Deployment via
+  the _107 example. Same pattern, three-stage continuity. Helps weak
+  models (gemma) avoid skipping environment checks before producing
+  deliverables. Discuss namespace (`unknown://env/...`?) and exact
+  wording before landing — keep abstract enough to generalize beyond
+  Node.
+
 - [ ] **Tooldoc example weight.** (CC-13 in the audit.) System prompt
   is ~6KB / ~2K tokens, of which ~5.5KB is tool docs (10 tools × 5+
   examples each). Strong models pattern-match tools from one example;

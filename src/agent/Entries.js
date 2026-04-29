@@ -73,7 +73,13 @@ export default class Entries {
 
 	// Single namespace log://turn_N/action/slug; target URL-encoded for round-trip safety.
 	async logPath(runId, turn, action, target) {
-		const encodedTarget = encodeURIComponent(target);
+		// Cap target before encoding: the schema's CHECK(length(path) <= 2048)
+		// otherwise blows up when callers pass long error messages or other
+		// arbitrary text. encodeURIComponent expands ~3x for ASCII, more for
+		// Unicode; 150 raw chars stays comfortably under 2048 even after
+		// worst-case expansion. The full message belongs in body, not path.
+		const safeTarget = String(target).slice(0, 150);
+		const encodedTarget = encodeURIComponent(safeTarget);
 		const candidate = `log://turn_${turn}/${action}/${encodedTarget}`;
 		const existing = await this.#db.get_entry_body.get({
 			run_id: runId,

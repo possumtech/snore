@@ -1,5 +1,6 @@
 import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
+import { chatCompletionStream } from "../../llm/openaiStream.js";
 
 const { FETCH_TIMEOUT } = config;
 
@@ -39,52 +40,36 @@ export default class OpenRouter {
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
 
-		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${this.#apiKey}`,
-				"Content-Type": "application/json",
-				"HTTP-Referer": process.env.RUMMY_HTTP_REFERER,
-				"X-Title": process.env.RUMMY_X_TITLE,
-			},
-			body: JSON.stringify(body),
-			signal,
-		});
+		const headers = {
+			Authorization: `Bearer ${this.#apiKey}`,
+			"HTTP-Referer": process.env.RUMMY_HTTP_REFERER,
+			"X-Title": process.env.RUMMY_X_TITLE,
+		};
 
-		if (!response.ok) {
-			const error = await response.text();
-			if (response.status === 401 || response.status === 403) {
+		try {
+			return await chatCompletionStream({
+				url: `${this.#baseUrl}/chat/completions`,
+				headers,
+				body,
+				signal,
+			});
+		} catch (err) {
+			if (err.status === 401 || err.status === 403) {
 				throw new Error(
 					msg("error.openrouter_auth", {
-						status: `${response.status} - ${error}`,
+						status: `${err.status} - ${err.body}`,
 					}),
 				);
 			}
-			throw new Error(
-				msg("error.openrouter_api", {
-					status: `${response.status} - ${error}`,
-				}),
-			);
+			if (err.status) {
+				throw new Error(
+					msg("error.openrouter_api", {
+						status: `${err.status} - ${err.body}`,
+					}),
+				);
+			}
+			throw err;
 		}
-		const data = await response.json();
-
-		for (const choice of data.choices) {
-			const cm = choice.message;
-			if (!cm) continue;
-			const details = cm.reasoning_details
-				? cm.reasoning_details.map((d) => d.text)
-				: [];
-			const parts = [
-				cm.reasoning_content,
-				cm.reasoning,
-				cm.thinking,
-				...details,
-			].filter(Boolean);
-			cm.reasoning_content =
-				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
-		}
-
-		return data;
 	}
 
 	async #getContextSize(model) {
