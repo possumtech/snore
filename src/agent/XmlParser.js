@@ -1,4 +1,3 @@
-import { Parser } from "htmlparser2";
 import { parseEditContent } from "../plugins/hedberg/edits.js";
 import { parseJsonEdit } from "../plugins/hedberg/normalize.js";
 import { parseSed } from "../plugins/hedberg/sed.js";
@@ -114,6 +113,27 @@ function resolveCommand(name, a, rawBody) {
 	return { name, ...a, body: trimmed || a.body };
 }
 
+const NAME_CHAR = /[a-zA-Z0-9_]/;
+const ATTR_KEY_CHAR = /[a-zA-Z0-9_:-]/;
+const WS = /\s/;
+
+// Recovery-tolerant tokenizer for rummy's closed set of tool tags.
+//
+// Design contract:
+//   - Tool tags (<get>, <set>, <sh>, ...) are the only syntactic special tags.
+//     Any other "<...>" sequence in OUTER text is treated as literal text.
+//   - Inside a tool tag's body, content is OPAQUE: only the matching close
+//     tag is recognized. Body may contain regex (`(?<!`), generics (`Vec<u8>`),
+//     HTML, XML, heredocs, comparison operators — none of it affects parsing.
+//   - Backtick spans (`...`) and triple-backtick fences (```...```) at the
+//     OUTER level neutralize tag-like content, mirroring the markdown
+//     convention that documentation about a tool isn't a tool call.
+//     Inside tool bodies this tracking does NOT apply (body opacity wins).
+//   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
+//     nested examples don't prematurely close the outer.
+//   - Recovery: unclosed openers capture body to EOF + emit a warning.
+//     Orphan closes at outer level become text, no warning (body opacity
+//     means models legitimately write `</set>` in prose / summaries).
 export default class XmlParser {
 	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS);
 
@@ -121,137 +141,74 @@ export default class XmlParser {
 		if (!content) return { commands: [], warnings: [], unparsed: "" };
 
 		const normalized = XmlParser.#normalizeToolCalls(content);
+		return XmlParser.#tokenize(normalized, []);
+	}
 
+	static #tokenize(s, warnings) {
 		const commands = [];
-		const warnings = [];
-		const textChunks = [];
-
-		const codeNeutralized = XmlParser.#neutralizeCodeSpans(normalized);
-		// Mismatch fix must precede attr-quote balance (needs clean tags).
-		const mismatchFixed = XmlParser.#correctMismatchedCloses(
-			codeNeutralized,
-			warnings,
-		);
-		const balanced = XmlParser.#balanceAttrQuotes(mismatchFixed, warnings);
-		let current = null;
-		let ended = false;
+		const text = [];
+		let i = 0;
+		let inSingleBacktick = false;
+		let inTripleFence = false;
 		let capped = false;
 
-		const parser = new Parser(
-			{
-				onopentag(name, attrs) {
-					if (capped) return;
+		while (i < s.length) {
+			if (commands.length >= XmlParser.MAX_COMMANDS) {
+				capped = true;
+				break;
+			}
 
-					if (current) {
-						// Empty-body before new open: treat as unclosed prior tool.
-						const hasBody = current.rawBody.trim() !== "";
-						const hasNestedOpens = (current.nested || []).length > 0;
-						if (!hasBody && !hasNestedOpens && ALL_TOOLS.has(name)) {
-							warnings.push(
-								`Unclosed <${current.name}> before <${name}> — recovered`,
-							);
-							commands.push(
-								resolveCommand(current.name, current.attrs, current.rawBody),
-							);
-							current = null;
-						} else {
-							// Body opacity: stack the nested open; see SPEC #xml_parser.
-							const attrStr = Object.entries(attrs)
-								.map(([k, v]) => (v === "" ? k : `${k}="${v}"`))
-								.join(" ");
-							current.rawBody += attrStr ? `<${name} ${attrStr}>` : `<${name}>`;
-							current.nested ||= [];
-							current.nested.push(name);
-							return;
-						}
-					}
+			// Triple-backtick fence toggles take precedence over single backtick
+			// because ``` overlaps `.
+			if (s[i] === "`" && s[i + 1] === "`" && s[i + 2] === "`") {
+				inTripleFence = !inTripleFence;
+				text.push("```");
+				i += 3;
+				continue;
+			}
+			if (s[i] === "`" && !inTripleFence) {
+				inSingleBacktick = !inSingleBacktick;
+				text.push("`");
+				i++;
+				continue;
+			}
 
-					if (!ALL_TOOLS.has(name)) return;
+			if (inSingleBacktick || inTripleFence || s[i] !== "<") {
+				text.push(s[i]);
+				i++;
+				continue;
+			}
 
-					if (commands.length >= XmlParser.MAX_COMMANDS) {
-						capped = true;
-						return;
-					}
+			const opener = XmlParser.#matchOpener(s, i);
+			if (!opener) {
+				text.push(s[i]);
+				i++;
+				continue;
+			}
 
-					current = { name, attrs, rawBody: "", nested: [] };
-				},
+			const { name, attrs, selfClose, end: openerEnd } = opener;
 
-				ontext(text) {
-					if (capped) return;
-					if (current) {
-						current.rawBody += text;
-					} else {
-						textChunks.push(text);
-					}
-				},
+			if (selfClose) {
+				commands.push(resolveCommand(name, attrs, ""));
+				i = openerEnd;
+				continue;
+			}
 
-				onclosetag(name, isImplied) {
-					if (capped) return;
+			const result = XmlParser.#findBodyEnd(s, name, openerEnd);
+			const body = s.slice(openerEnd, result.bodyEnd);
+			if (result.unclosed) {
+				warnings.push(`Unclosed <${name}> tag — content captured anyway`);
+			} else if (result.mismatchedCloseName) {
+				warnings.push(
+					`Mismatched </${result.mismatchedCloseName}> closing <${name}> — corrected to </${name}>`,
+				);
+			}
+			commands.push(resolveCommand(name, attrs, body));
+			i = result.afterClose;
 
-					if (current) {
-						const nested = current.nested;
-						if (nested.length > 0 && nested[nested.length - 1] === name) {
-							nested.pop();
-							current.rawBody += `</${name}>`;
-							return;
-						}
-
-						if (name === current.name && nested.length === 0) {
-							if (ended) {
-								warnings.push(
-									`Unclosed <${name}> tag — content captured anyway`,
-								);
-							}
-							commands.push(
-								resolveCommand(current.name, current.attrs, current.rawBody),
-							);
-							current = null;
-							return;
-						}
-
-						// Orphan close of a known tool — likely typo; recover.
-						if (ALL_TOOLS.has(name)) {
-							warnings.push(
-								`Mismatched </${name}> closing <${current.name}> — recovered`,
-							);
-							commands.push(
-								resolveCommand(current.name, current.attrs, current.rawBody),
-							);
-							current = null;
-							return;
-						}
-
-						current.rawBody += `</${name}>`;
-						return;
-					}
-
-					if (isImplied && ALL_TOOLS.has(name)) {
-						// no-op: htmlparser2 auto-closed a top-level self-closer
-					}
-				},
-
-				onerror(err) {
-					warnings.push(`Parse error: ${err.message}`);
-				},
-			},
-			{
-				recognizeSelfClosing: true,
-				lowerCaseTags: true,
-				lowerCaseAttributeNames: true,
-			},
-		);
-
-		parser.write(balanced);
-		ended = true;
-		parser.end();
-
-		// Flush any unclosed tool tag
-		if (current && !capped) {
-			warnings.push(`Unclosed <${current.name}> tag — content captured anyway`);
-			commands.push(
-				resolveCommand(current.name, current.attrs, current.rawBody),
-			);
-			current = null;
+			// Body terminated; reset outer-text fence tracking.
+			inSingleBacktick = false;
+			inTripleFence = false;
 		}
 
 		if (capped) {
@@ -260,63 +217,177 @@ export default class XmlParser {
 			);
 		}
 
-		const unparsed = textChunks.join("").trim();
-		return { commands, warnings, unparsed };
+		return {
+			commands,
+			warnings,
+			unparsed: text.join("").trim(),
+		};
 	}
 
-	// Close ATTR=" values that never quote-close before the next tag.
-	static #balanceAttrQuotes(content, warnings) {
-		let fixes = 0;
-		const repaired = content.replace(
-			/(<\w+\s[^<>]*?\w+=")([^"<>]*?)(<\/?\w+)/g,
-			(_, opening, value, nextTag) => {
-				fixes++;
-				return `${opening}${value}">${nextTag}`;
-			},
-		);
-		if (fixes > 0) {
-			warnings.push(
-				`Repaired ${fixes} malformed attribute(s) — close all attribute values with a quote.`,
-			);
+	// Returns { name, attrs, selfClose, end } if `s[pos..]` opens a known tool,
+	// else null. `end` is the index after the closing `>` (or `/>`).
+	static #matchOpener(s, pos) {
+		if (s[pos] !== "<") return null;
+		let i = pos + 1;
+
+		const nameStart = i;
+		while (i < s.length && NAME_CHAR.test(s[i])) i++;
+		const name = s.slice(nameStart, i).toLowerCase();
+		if (!ALL_TOOLS.has(name)) return null;
+
+		// Char after the name must end the name token cleanly.
+		if (i < s.length && !WS.test(s[i]) && s[i] !== "/" && s[i] !== ">") {
+			return null;
 		}
-		return repaired;
-	}
 
-	// Entity-encode tag brackets inside backtick spans so quoted tool names don't parse.
-	static #neutralizeCodeSpans(content) {
-		return content.replace(/`([^`]*)`/g, (match, inner) => {
-			if (!/<\/?[\w]/.test(inner)) return match;
-			return `\`${inner.replace(/</g, "&lt;").replace(/>/g, "&gt;")}\``;
-		});
-	}
+		const attrsStart = i;
+		let inQuote = null;
 
-	// Rewrite outer-depth mismatched close tags before htmlparser2 silently drops them.
-	static #correctMismatchedCloses(content, warnings) {
-		const stack = [];
-		return content.replace(
-			/<(\/?)(\w+)([^>]*?)(\/?)>/g,
-			(match, slash, tag, _attrs, selfClose) => {
-				if (!ALL_TOOLS.has(tag)) return match;
-				if (selfClose === "/") return match;
-				if (slash === "/") {
-					if (stack.length === 0) return match;
-					if (stack[stack.length - 1] === tag) {
-						stack.pop();
-						return match;
-					}
-					if (stack.length === 1) {
-						const top = stack.pop();
-						warnings.push(
-							`Mismatched </${tag}> closing <${top}> — corrected to </${top}>`,
-						);
-						return `</${top}>`;
-					}
-					return match;
+		while (i < s.length) {
+			const c = s[i];
+			if (inQuote) {
+				if (c === inQuote) inQuote = null;
+				i++;
+				continue;
+			}
+			if (c === '"' || c === "'") {
+				inQuote = c;
+				i++;
+				continue;
+			}
+			if (c === "/") {
+				let k = i + 1;
+				while (k < s.length && WS.test(s[k])) k++;
+				if (s[k] === ">") {
+					return {
+						name,
+						attrs: XmlParser.#parseAttrs(s.slice(attrsStart, i)),
+						selfClose: true,
+						end: k + 1,
+					};
 				}
-				stack.push(tag);
-				return match;
-			},
-		);
+				i++;
+				continue;
+			}
+			if (c === ">") {
+				return {
+					name,
+					attrs: XmlParser.#parseAttrs(s.slice(attrsStart, i)),
+					selfClose: false,
+					end: i + 1,
+				};
+			}
+			i++;
+		}
+
+		// Hit EOF without closing — not a parseable opener.
+		return null;
+	}
+
+	static #parseAttrs(raw) {
+		const attrs = {};
+		let i = 0;
+		while (i < raw.length) {
+			while (i < raw.length && WS.test(raw[i])) i++;
+			if (i >= raw.length) break;
+
+			const keyStart = i;
+			while (i < raw.length && ATTR_KEY_CHAR.test(raw[i])) i++;
+			if (i === keyStart) {
+				i++;
+				continue;
+			}
+			const key = raw.slice(keyStart, i).toLowerCase();
+
+			while (i < raw.length && WS.test(raw[i])) i++;
+
+			if (raw[i] !== "=") {
+				attrs[key] = "";
+				continue;
+			}
+			i++;
+
+			while (i < raw.length && WS.test(raw[i])) i++;
+
+			if (raw[i] === '"' || raw[i] === "'") {
+				const quote = raw[i];
+				i++;
+				const valStart = i;
+				while (i < raw.length && raw[i] !== quote) i++;
+				attrs[key] = raw.slice(valStart, i);
+				if (raw[i] === quote) i++;
+			} else {
+				const valStart = i;
+				while (i < raw.length && !WS.test(raw[i])) i++;
+				attrs[key] = raw.slice(valStart, i);
+			}
+		}
+		return attrs;
+	}
+
+	// Scans body content from `fromPos` until the matching `</name>` closer,
+	// counting depth so same-name nested examples don't prematurely close.
+	// Returns { bodyEnd, afterClose, unclosed, mismatchedCloseName }.
+	//
+	// Mismatched-close recovery: if we encounter `</X>` where X != name and X
+	// is not a depth-counted nested tag, we use a balance heuristic to decide
+	// whether the orphan close was a typo (recover here) or legitimate body
+	// content (continue scanning). Specifically: count `</name>` minus
+	// `<name` in the rest of the string; if non-positive, no real close
+	// exists ahead and the orphan must be the intended close.
+	static #findBodyEnd(s, name, fromPos) {
+		let depth = 1;
+		let i = fromPos;
+		while (i < s.length) {
+			if (s[i] !== "<") {
+				i++;
+				continue;
+			}
+			if (s[i + 1] === "/") {
+				const nameStart = i + 2;
+				let nameEnd = nameStart;
+				while (nameEnd < s.length && NAME_CHAR.test(s[nameEnd])) nameEnd++;
+				const closeName = s.slice(nameStart, nameEnd).toLowerCase();
+				let k = nameEnd;
+				while (k < s.length && WS.test(s[k])) k++;
+				const isCloseTag = s[k] === ">";
+
+				if (isCloseTag && closeName === name) {
+					depth--;
+					if (depth === 0) {
+						return { bodyEnd: i, afterClose: k + 1, unclosed: false };
+					}
+					i = k + 1;
+					continue;
+				}
+
+				if (isCloseTag && closeName.length > 0) {
+					const rest = s.slice(k + 1);
+					const closesAhead = (
+						rest.match(new RegExp(`<\\/${name}\\b\\s*>`, "g")) || []
+					).length;
+					const opensAhead = (
+						rest.match(new RegExp(`<${name}\\b`, "g")) || []
+					).length;
+					if (closesAhead - opensAhead < 1) {
+						return {
+							bodyEnd: i,
+							afterClose: k + 1,
+							unclosed: false,
+							mismatchedCloseName: closeName,
+						};
+					}
+				}
+			}
+			const opener = XmlParser.#matchOpener(s, i);
+			if (opener && opener.name === name && !opener.selfClose) {
+				depth++;
+				i = opener.end;
+				continue;
+			}
+			i++;
+		}
+		return { bodyEnd: s.length, afterClose: s.length, unclosed: true };
 	}
 
 	// Translate native training-format tool calls into rummy XML silently.
