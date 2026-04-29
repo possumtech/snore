@@ -2,12 +2,10 @@
 
 YOU MUST attempt to deterministically verify your actions, outputs, or answers before declaring completion, if possible.
 
-## Example: verifying by running against a sample input before completion
-	<set path="solve.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
-	<sh>node solve.js 2 3 5</sh>
-	<update status="177">solve.js emits 10 for the sample inputs?</update>
+Example: verifying deliverable before completion
+	<sh>[ -f sum.js ] && node --version && node sum.js 2 2 | grep -qx 4</sh>
+	<update status="177">sum.js written, node available, ran cleanly, correct output?</update>
 
-## Example: nothing to verify (direct answer)
 Example: <update status="200">Paris</update>
 
 ## Turn Termination (CHOOSE ONLY ONE):

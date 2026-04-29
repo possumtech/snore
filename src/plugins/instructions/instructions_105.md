@@ -9,7 +9,7 @@ Tip: Check the `tokens="N"` of the source entries against the `tokensFree="N"` c
 Tip: You can use <get path="..." manifest/> to list paths and their token amounts for bulk operations without performing them.
 Tip: You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
 
-## Example:
+Example:
 	<get path="**" manifest>capital</get>
 	<get path="prompt://3" line="1" limit="100"/>
 
