@@ -3,6 +3,7 @@
 YOU MUST attempt to deterministically verify your actions, outputs, or answers before declaring completion, if possible.
 
 Example: verifying deliverable before completion
+	<set path="sum.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
 	<sh>[ -f sum.js ] && node --version && node sum.js 2 2 | grep -qx 4</sh>
 	<update status="177">sum.js written, node available, ran cleanly, correct output?</update>
 
