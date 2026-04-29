@@ -56,6 +56,24 @@ LIMIT
 	OFFSET
 	COALESCE(:offset, 0);
 
+-- PREP: get_run_summary
+-- Per-run aggregation across all turns. LEFT JOIN: a run with zero
+-- recorded turns (e.g. signal abort before first turn) returns 0s,
+-- not NULL.
+SELECT
+	r.model AS model
+	, COUNT(t.id) AS turns
+	, COALESCE(SUM(t.cost), 0) AS cost
+	, COALESCE(SUM(t.prompt_tokens), 0) AS prompt_tokens
+	, COALESCE(SUM(t.cached_tokens), 0) AS cached_tokens
+	, COALESCE(SUM(t.completion_tokens), 0) AS completion_tokens
+	, COALESCE(SUM(t.reasoning_tokens), 0) AS reasoning_tokens
+	, COALESCE(SUM(t.total_tokens), 0) AS total_tokens
+FROM runs AS r
+LEFT JOIN turns AS t ON t.run_id = r.id
+WHERE r.id = :id
+GROUP BY r.id;
+
 -- PREP: rename_run
 UPDATE runs
 SET alias = :new_alias

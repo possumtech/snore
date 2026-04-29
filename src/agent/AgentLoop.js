@@ -48,6 +48,24 @@ export default class AgentLoop {
 		return `Turn ${turn}/${maxTurns}`;
 	}
 
+	async #emitCompleted(hook, projectId, runId, out) {
+		const s = await this.#db.get_run_summary.get({ id: runId });
+		await hook.completed.emit({
+			projectId,
+			...out,
+			model: s.model,
+			turns: s.turns,
+			cost: s.cost,
+			tokens: {
+				prompt: s.prompt_tokens,
+				cached: s.cached_tokens,
+				completion: s.completion_tokens,
+				reasoning: s.reasoning_tokens,
+				total: s.total_tokens,
+			},
+		});
+	}
+
 	async #setRunStatus(runId, alias, httpStatus) {
 		await this.#db.update_run_status.run({ id: runId, status: httpStatus });
 		const state = HTTP_TO_RUN_STATE[httpStatus];
@@ -405,7 +423,7 @@ export default class AgentLoop {
 						status: 499,
 						turn: loopIteration,
 					};
-					await hook.completed.emit({ projectId, ...out });
+					await this.#emitCompleted(hook, projectId, currentRunId, out);
 					return out;
 				}
 				loopIteration++;
@@ -490,7 +508,7 @@ export default class AgentLoop {
 					turn: result.turn,
 					reason: verdict.reason,
 				};
-				await hook.completed.emit({ projectId, ...out });
+				await this.#emitCompleted(hook, projectId, currentRunId, out);
 				return out;
 			}
 
@@ -503,7 +521,7 @@ export default class AgentLoop {
 				status: 499,
 				turn: loopIteration,
 			};
-			await hook.completed.emit({ projectId, ...out });
+			await this.#emitCompleted(hook, projectId, currentRunId, out);
 			return out;
 		} catch (err) {
 			const status = signal.aborted ? 499 : 500;
@@ -519,7 +537,7 @@ export default class AgentLoop {
 			}
 			const out = { run: currentAlias, status, turn: loopIteration };
 			if (status === 500) out.error = err.message;
-			await hook.completed.emit({ projectId, ...out });
+			await this.#emitCompleted(hook, projectId, currentRunId, out);
 			return out;
 		} finally {
 			await this.#hooks.loop.completed.emit({

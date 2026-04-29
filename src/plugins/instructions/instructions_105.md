@@ -16,15 +16,15 @@ Tip: You can use <get path="..." line="X" limit="Y"/> to read subsets of entries
 	<set path="trivia/capitals.csv" visibility="visible"/>
 
 	<set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
+		# Related
+		[trivia question](prompt://3)
+		[unknown resolving](unknown://countries/france/capital)
+		[source entry](trivia/capitals.csv)
+
 		# Capital of France
 		The capital of France is Paris.
 
 		{...}
-
-		## Related
-		[trivia question](prompt://3)
-		[unknown resolving](unknown://countries/france/capital)
-		[source entry](trivia/capitals.csv)
 	</set>
 
 	<set path="prompt://3" visibility="summarized"/>

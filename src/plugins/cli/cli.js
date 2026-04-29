@@ -59,6 +59,16 @@ export default class Cli {
 			console.error(`[rummy-cli] turn ${turnMatch[1]} status=${status}`);
 		});
 
+		// Capture enriched terminal payload (status, cost, tokens, model)
+		// from ask.completed / act.completed. Only one fires for our run.
+		let runSummary = null;
+		const captureSummary = (payload) => {
+			if (payload.run !== alias) return;
+			runSummary = payload;
+		};
+		hooks.ask.completed.on(captureSummary);
+		hooks.act.completed.on(captureSummary);
+
 		const runFn =
 			mode === "act"
 				? projectAgent.act.bind(projectAgent)
@@ -68,8 +78,21 @@ export default class Cli {
 			const result = await runFn(projectId, model, prompt, alias, {});
 			const { status } = result;
 			if (TERMINAL_STATUSES.has(status)) {
-				const summary = await this.#findLatestSummary(db, alias);
-				if (summary) process.stdout.write(`${summary}\n`);
+				const text = await this.#findLatestSummary(db, alias);
+				if (text) process.stdout.write(`${text}\n`);
+			}
+			if (runSummary) {
+				process.stdout.write(
+					`__RUMMY_RUN_SUMMARY__ ${JSON.stringify({
+						run: runSummary.run,
+						status: runSummary.status,
+						turn: runSummary.turn,
+						turns: runSummary.turns,
+						cost: runSummary.cost,
+						tokens: runSummary.tokens,
+						model: runSummary.model,
+					})}\n`,
+				);
 			}
 			await new Promise((r) => setTimeout(r, 50));
 			process.exit(status === 200 ? 0 : 1);
