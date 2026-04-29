@@ -18,6 +18,29 @@ export function logPathToDataBase(logPath) {
 	return `${m[2]}://turn_${m[1]}/${m[3]}`;
 }
 
+// env/sh stdout/stderr summary projection: header with line range + last
+// TAIL_LINES of body. The header tells the model exactly which slice is
+// shown so it can issue <get line="N" limit="M"/> for the rest without
+// re-running the command.
+export function streamSummary(label, entry, TAIL_LINES = 12) {
+	const body = entry?.body ?? "";
+	if (!body) return "";
+	const command = entry?.attributes?.command ?? "";
+	const channel = entry?.attributes?.channel === 2 ? "stderr" : "stdout";
+	const trailingNewline = body.endsWith("\n");
+	const lines = trailingNewline
+		? body.slice(0, -1).split("\n")
+		: body.split("\n");
+	const total = lines.length;
+	if (total <= TAIL_LINES) {
+		return `# ${label} ${command} (${channel}, ${total}L)\n${body}`;
+	}
+	const startLine = total - TAIL_LINES + 1;
+	const tail =
+		lines.slice(-TAIL_LINES).join("\n") + (trailingNewline ? "\n" : "");
+	return `# ${label} ${command} (${channel}, tail L${startLine}-${total}/${total}; <get line="1" limit="N"/> for head)\n${tail}`;
+}
+
 // Pattern-result log entry shared by get/set/store/rm.
 export async function storePatternResult(
 	store,

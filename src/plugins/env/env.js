@@ -1,4 +1,4 @@
-import { logPathToDataBase } from "../helpers.js";
+import { logPathToDataBase, streamSummary } from "../helpers.js";
 import docs from "./envDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -64,7 +64,7 @@ export default class Env {
 		return `# env ${entry.attributes.command}\n${entry.body}`;
 	}
 
-	summary() {
-		return "";
+	summary(entry) {
+		return streamSummary("env", entry);
 	}
 }

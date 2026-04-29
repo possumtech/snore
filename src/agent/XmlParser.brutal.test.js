@@ -9,7 +9,11 @@ const parse = (input) => XmlParser.parse(input);
 
 const expectOne = (input, name, predicate) => {
 	const { commands } = parse(input);
-	assert.strictEqual(commands.length, 1, `expected one command, got ${commands.length}`);
+	assert.strictEqual(
+		commands.length,
+		1,
+		`expected one command, got ${commands.length}`,
+	);
 	assert.strictEqual(commands[0].name, name);
 	if (predicate) predicate(commands[0]);
 };
@@ -19,7 +23,10 @@ describe("XmlParser brutal corpus", () => {
 		it("regex negative lookbehind", () => {
 			const input = '<set path="r.txt">(?<![a-zA-Z0-9])\\d+</set>';
 			expectOne(input, "set", (c) =>
-				assert.ok(c.body?.includes("(?<![a-zA-Z0-9])"), `body lost lookbehind: ${c.body}`),
+				assert.ok(
+					c.body?.includes("(?<![a-zA-Z0-9])"),
+					`body lost lookbehind: ${c.body}`,
+				),
 			);
 		});
 
@@ -30,12 +37,16 @@ describe("XmlParser brutal corpus", () => {
 
 		it("regex atomic group", () => {
 			const input = '<set path="r.txt">(?>greedy+)</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("(?>greedy+)")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("(?>greedy+)")),
+			);
 		});
 
 		it("comparison operators in pseudocode", () => {
 			const input = '<set path="x.txt">if x < 10 && y > 5 { ok }</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("x < 10 && y > 5")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("x < 10 && y > 5")),
+			);
 		});
 
 		it("bit-shift operators", () => {
@@ -44,20 +55,26 @@ describe("XmlParser brutal corpus", () => {
 		});
 
 		it("typescript generics", () => {
-			const input = '<set path="x.ts">const m: Map<string, Vec<i32>> = new Map();</set>';
+			const input =
+				'<set path="x.ts">const m: Map<string, Vec<i32>> = new Map();</set>';
 			expectOne(input, "set", (c) =>
 				assert.ok(c.body?.includes("Map<string, Vec<i32>>")),
 			);
 		});
 
 		it("rust generic", () => {
-			const input = '<set path="x.rs">fn f() -> Result<Vec<u8>, Error> { ok }</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("Result<Vec<u8>, Error>")));
+			const input =
+				'<set path="x.rs">fn f() -> Result<Vec<u8>, Error> { ok }</set>';
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("Result<Vec<u8>, Error>")),
+			);
 		});
 
 		it("c++ include", () => {
 			const input = '<set path="x.cpp">#include <iostream>\nint main(){}</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("#include <iostream>")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("#include <iostream>")),
+			);
 		});
 
 		it("c++ deeply nested template", () => {
@@ -70,12 +87,16 @@ describe("XmlParser brutal corpus", () => {
 
 		it("jsx fragment in body", () => {
 			const input = '<set path="App.jsx">return <div>{x}</div>;</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("<div>{x}</div>")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("<div>{x}</div>")),
+			);
 		});
 
 		it("html literal in body", () => {
 			const input = '<set path="x.html"><a href="y">link</a></set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes('<a href="y">link</a>')));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes('<a href="y">link</a>')),
+			);
 		});
 
 		it("xml processing instruction in body", () => {
@@ -87,7 +108,9 @@ describe("XmlParser brutal corpus", () => {
 
 		it("doctype declaration in body", () => {
 			const input = '<set path="x.html"><!DOCTYPE html>\n<html></html></set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("<!DOCTYPE html>")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("<!DOCTYPE html>")),
+			);
 		});
 
 		it("html comment in body", () => {
@@ -105,23 +128,32 @@ describe("XmlParser brutal corpus", () => {
 		});
 
 		it("bash redirect", () => {
-			const input = '<sh>grep foo bar.txt > out.txt 2>&1</sh>';
-			expectOne(input, "sh", (c) => assert.ok(c.command?.includes("> out.txt 2>&1")));
+			const input = "<sh>grep foo bar.txt > out.txt 2>&1</sh>";
+			expectOne(input, "sh", (c) =>
+				assert.ok(c.command?.includes("> out.txt 2>&1")),
+			);
 		});
 
 		it("bash heredoc", () => {
-			const input = '<sh>cat <<EOF\nhello world\nEOF</sh>';
-			expectOne(input, "sh", (c) => assert.ok(c.command?.includes("cat <<EOF")));
+			const input = "<sh>cat <<EOF\nhello world\nEOF</sh>";
+			expectOne(input, "sh", (c) =>
+				assert.ok(c.command?.includes("cat <<EOF")),
+			);
 		});
 
 		it("markdown blockquote in body", () => {
 			const input = '<set path="x.md">> quoted text\n> another line</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("> quoted text")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("> quoted text")),
+			);
 		});
 
 		it("email reply quote", () => {
-			const input = '<set path="reply.txt">> Original message\nResponse here</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("> Original message")));
+			const input =
+				'<set path="reply.txt">> Original message\nResponse here</set>';
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("> Original message")),
+			);
 		});
 
 		it("python type hints with brackets", () => {
@@ -134,7 +166,9 @@ describe("XmlParser brutal corpus", () => {
 
 		it("c-pointer arrow chain", () => {
 			const input = '<set path="x.c">x->y->z->value;</set>';
-			expectOne(input, "set", (c) => assert.ok(c.body?.includes("x->y->z->value")));
+			expectOne(input, "set", (c) =>
+				assert.ok(c.body?.includes("x->y->z->value")),
+			);
 		});
 	});
 
@@ -213,11 +247,15 @@ describe("XmlParser brutal corpus", () => {
 
 	describe("C. Tag boundary edge cases", () => {
 		it("self-closing no space", () => {
-			expectOne('<get path="a"/>', "get", (c) => assert.strictEqual(c.path, "a"));
+			expectOne('<get path="a"/>', "get", (c) =>
+				assert.strictEqual(c.path, "a"),
+			);
 		});
 
 		it("self-closing with space", () => {
-			expectOne('<get path="a" />', "get", (c) => assert.strictEqual(c.path, "a"));
+			expectOne('<get path="a" />', "get", (c) =>
+				assert.strictEqual(c.path, "a"),
+			);
 		});
 
 		it("multi-line opener", () => {
@@ -247,7 +285,9 @@ describe("XmlParser brutal corpus", () => {
 		it("boolean-only attribute", () => {
 			expectOne('<get path="a" manifest/>', "get", (c) => {
 				assert.strictEqual(c.path, "a");
-				assert.ok(c.manifest === true || c.manifest === "" || c.manifest === "manifest");
+				assert.ok(
+					c.manifest === true || c.manifest === "" || c.manifest === "manifest",
+				);
 			});
 		});
 
@@ -259,7 +299,9 @@ describe("XmlParser brutal corpus", () => {
 
 	describe("D. Attribute edge cases", () => {
 		it("single-quoted attribute value", () => {
-			expectOne("<get path='a'/>", "get", (c) => assert.strictEqual(c.path, "a"));
+			expectOne("<get path='a'/>", "get", (c) =>
+				assert.strictEqual(c.path, "a"),
+			);
 		});
 
 		it("mixed quote styles in same opener", () => {
@@ -280,7 +322,9 @@ describe("XmlParser brutal corpus", () => {
 		});
 
 		it("whitespace around equals", () => {
-			expectOne('<get path = "a" />', "get", (c) => assert.strictEqual(c.path, "a"));
+			expectOne('<get path = "a" />', "get", (c) =>
+				assert.strictEqual(c.path, "a"),
+			);
 		});
 
 		it("attribute value containing <", () => {
@@ -298,7 +342,9 @@ describe("XmlParser brutal corpus", () => {
 
 		it("attribute value with both < and >", () => {
 			const input = '<set path="x" summary="x < y > z">body</set>';
-			expectOne(input, "set", (c) => assert.strictEqual(c.summary, "x < y > z"));
+			expectOne(input, "set", (c) =>
+				assert.strictEqual(c.summary, "x < y > z"),
+			);
 		});
 
 		it("attribute value with newline", () => {
@@ -363,14 +409,14 @@ describe("XmlParser brutal corpus", () => {
 			assert.strictEqual(commands[0].name, "set");
 			assert.ok(
 				commands[0].body?.includes("A") &&
-					commands[0].body?.includes("<set path=\"inner\">B</set>") &&
+					commands[0].body?.includes('<set path="inner">B</set>') &&
 					commands[0].body?.includes("C"),
 				`outer body should contain inner verbatim, got: ${commands[0].body}`,
 			);
 		});
 
 		it("genuinely nested same-tag (depth 3)", () => {
-			const input = "<set path=\"a\"><set><set>x</set></set></set>";
+			const input = '<set path="a"><set><set>x</set></set></set>';
 			const { commands } = parse(input);
 			assert.strictEqual(commands.length, 1);
 			assert.ok(commands[0].body?.includes("<set><set>x</set></set>"));
@@ -420,7 +466,7 @@ describe("XmlParser brutal corpus", () => {
 		});
 
 		it("EOF mid-attribute name", () => {
-			const { commands } = parse('<set pa');
+			const { commands } = parse("<set pa");
 			assert.strictEqual(commands.length, 0);
 		});
 
@@ -433,7 +479,7 @@ describe("XmlParser brutal corpus", () => {
 		});
 
 		it("orphan close tag of a known tool", () => {
-			const { commands, warnings } = parse('text </set> more text');
+			const { commands, warnings } = parse("text </set> more text");
 			assert.strictEqual(commands.length, 0);
 			// Warning is optional; outcome must not produce a phantom command.
 		});
@@ -467,7 +513,11 @@ Validates dotted decimal IPv4.
 <set path="unknown://regex/ipv4" visibility="summarized" summary="RESOLVED"/>
 <update status="156">written</update>`;
 			const { commands, warnings } = parse(input);
-			assert.strictEqual(commands.length, 3, `got ${commands.length}: ${commands.map((c) => c.name).join(",")}`);
+			assert.strictEqual(
+				commands.length,
+				3,
+				`got ${commands.length}: ${commands.map((c) => c.name).join(",")}`,
+			);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[1].name, "set");
 			assert.strictEqual(commands[2].name, "update");
@@ -480,7 +530,7 @@ Validates dotted decimal IPv4.
 		});
 
 		it("heredoc inside sh", () => {
-			const input = '<sh>cat <<EOF\nline with < and >\nEOF</sh>';
+			const input = "<sh>cat <<EOF\nline with < and >\nEOF</sh>";
 			expectOne(input, "sh", (c) =>
 				assert.ok(c.command?.includes("line with < and >")),
 			);
@@ -516,7 +566,7 @@ Validates dotted decimal IPv4.
 
 	describe("H. Pre-processed model formats", () => {
 		it("gemma fenced tool_code block", () => {
-			const input = ['```tool_code', '<get path="a"/>', "```"].join("\n");
+			const input = ["```tool_code", '<get path="a"/>', "```"].join("\n");
 			expectOne(input, "get", (c) => assert.strictEqual(c.path, "a"));
 		});
 
@@ -569,7 +619,7 @@ Validates dotted decimal IPv4.
 		});
 
 		it("'<' followed by space", () => {
-			const input = "< get path=\"x\"/>"; // space breaks tag-open
+			const input = '< get path="x"/>'; // space breaks tag-open
 			const { commands } = parse(input);
 			assert.strictEqual(commands.length, 0);
 		});
@@ -611,7 +661,8 @@ Validates dotted decimal IPv4.
 		});
 
 		it("unclosed quote then later tag", () => {
-			const input = '<set path="oops>body</set><update status="200">ok</update>';
+			const input =
+				'<set path="oops>body</set><update status="200">ok</update>';
 			const { commands } = parse(input);
 			// At minimum, the trailing update must still be findable.
 			assert.ok(commands.some((c) => c.name === "update"));

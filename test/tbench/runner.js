@@ -9,8 +9,7 @@
  * dataset, default model. Tees harbor output to test/tbench/results/.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -65,11 +64,16 @@ const harborBin = existsSync(venvHarbor) ? venvHarbor : "harbor";
 
 const harborArgs = [
 	"run",
-	"--dataset", dataset,
-	"--include-task-name", args.task,
-	"--agent", args.agent,
-	"--model", model,
-	"--jobs-dir", runDir,
+	"--dataset",
+	dataset,
+	"--include-task-name",
+	args.task,
+	"--agent",
+	args.agent,
+	"--model",
+	model,
+	"--jobs-dir",
+	runDir,
 ];
 
 console.log(`harbor: ${harborBin} ${harborArgs.join(" ")}`);

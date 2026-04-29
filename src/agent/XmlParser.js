@@ -366,9 +366,8 @@ export default class XmlParser {
 					const closesAhead = (
 						rest.match(new RegExp(`<\\/${name}\\b\\s*>`, "g")) || []
 					).length;
-					const opensAhead = (
-						rest.match(new RegExp(`<${name}\\b`, "g")) || []
-					).length;
+					const opensAhead = (rest.match(new RegExp(`<${name}\\b`, "g")) || [])
+						.length;
 					if (closesAhead - opensAhead < 1) {
 						return {
 							bodyEnd: i,

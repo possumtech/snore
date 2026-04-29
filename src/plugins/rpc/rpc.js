@@ -359,7 +359,8 @@ export default class Rpc {
 				visibility: "string? — filter by visibility",
 				bodyFilter:
 					"string? — filter rows by content of body (substring/glob; NOT for body inclusion — see withBody)",
-				withBody: "boolean? — include `body` field on each returned row (default false)",
+				withBody:
+					"boolean? — include `body` field on each returned row (default false)",
 				since: "number? — only entries with id > since (insertion-ordered)",
 				limit: "number? — cap result count",
 			},

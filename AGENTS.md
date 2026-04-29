@@ -171,6 +171,38 @@ Verified Mini) are scaffolded and run on demand.
   conversation needed to decide which extractions are principled vs.
   ceremony. Discuss before refactor.
 
+- [ ] **Definition-tarpit failure mode in the FCRM state machine.**
+  Observed in the gemma extract-elf run on 2026-04-29: 50 turns of
+  state-machine churn, six `<env>` filesystem probes, zero `<sh>`,
+  zero `<set>` for the deliverable, 499 abort. Model kept defining
+  new unknowns as old ones distilled; "I need to fully understand
+  before acting" loops indefinitely on knowledge-heavy tasks where
+  understanding is unbounded. The FCRM currently has no termination
+  signal except "all unknowns resolved" — but the model can always
+  generate more unknowns. Inverse of the regex-log failure mode
+  (act-without-verify); both reflect a missing balance between
+  Definition and Deployment. Mitigations to weigh: scope Definition
+  header to "unknowns required to act on the prompt"; add a Tip to
+  Deployment that reaching it on partial understanding is allowed
+  when the deliverable is producible. See "Conservative reforms"
+  conversation in this thread for terse drafts. General improvement
+  across all models, not gemma-specific.
+
+- [ ] **Render empty user-message section blocks for cache stability.**
+  Today rummy renders sections (`<log>`, `<summarized>`, `<visible>`,
+  `<unknowns>`) only when they have content. Result: any turn that
+  adds the first entry of a category — or removes the last — *changes
+  the byte at that position* in the user message and invalidates
+  the prefix cache from there forward. Empirically traced in the
+  passing gemma regex-log run on 2026-04-29: T1→T2 cliff at the
+  first `<log>` block, T2→T3 cliff at the first `<summarized>`
+  block, T3→T4 cliff when log entries were demoted out. Mitigation:
+  always render the section structure (e.g., `<summarized></summarized>`
+  even when empty); content APPENDS into stable shapes. Cost:
+  ~20 tokens per empty section per turn. Win: deeper prefix cache
+  on structurally-stable user messages. Worth doing once we have
+  baseline numbers to A/B against.
+
 - [ ] **`unknown://env/...` example in instructions_104.md.** Add a
   second Definition-stage example demonstrating env-sanity unknowns
   (e.g. `unknown://env/node_runtime` — "What node version is

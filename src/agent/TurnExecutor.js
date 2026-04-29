@@ -205,7 +205,7 @@ export default class TurnExecutor {
 				status: 422,
 			});
 		}
-		if (commands.length === 0 && !!unparsed?.trim() && warnings.length === 0) {
+		if (commands.length === 0 && unparsed?.trim() && warnings.length === 0) {
 			await this.#hooks.error.log.emit({
 				store: this.#entries,
 				runId: currentRunId,

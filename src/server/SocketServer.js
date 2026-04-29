@@ -41,7 +41,9 @@ export default class SocketServer {
 		);
 		for (const r of results) {
 			if (r.status === "rejected") {
-				console.error(`[RUMMY] Connection shutdown failed: ${r.reason?.message ?? r.reason}`);
+				console.error(
+					`[RUMMY] Connection shutdown failed: ${r.reason?.message ?? r.reason}`,
+				);
 			}
 		}
 		this.#connections.clear();

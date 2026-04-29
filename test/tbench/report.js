@@ -156,9 +156,7 @@ function printTable(rows) {
 		["reason", 7],
 		["model", 8],
 	];
-	const header = cols
-		.map(([key, w]) => String(key).padEnd(w))
-		.join("  ");
+	const header = cols.map(([key, w]) => String(key).padEnd(w)).join("  ");
 	console.log(header);
 	console.log("─".repeat(header.length));
 	for (const r of rows) {
@@ -173,9 +171,7 @@ function printCsv(rows) {
 	const keys = Object.keys(rows[0]);
 	console.log(keys.join(","));
 	for (const r of rows) {
-		console.log(
-			keys.map((k) => JSON.stringify(r[k] ?? "")).join(","),
-		);
+		console.log(keys.map((k) => JSON.stringify(r[k] ?? "")).join(","));
 	}
 }
 

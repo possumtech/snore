@@ -1,5 +1,6 @@
 import slugify from "../sql/functions/slugify.js";
 import { PermissionError } from "./errors.js";
+import encodeSegment from "./pathEncode.js";
 
 export default class Entries {
 	#db;
@@ -48,9 +49,9 @@ export default class Entries {
 		try {
 			// Decode first (idempotent), then encode — but preserve slashes
 			const decoded = decodeURIComponent(rest);
-			return `${scheme}://${decoded.split("/").map(encodeURIComponent).join("/")}`;
+			return `${scheme}://${decoded.split("/").map(encodeSegment).join("/")}`;
 		} catch {
-			return `${scheme}://${rest.split("/").map(encodeURIComponent).join("/")}`;
+			return `${scheme}://${rest.split("/").map(encodeSegment).join("/")}`;
 		}
 	}
 
@@ -60,7 +61,7 @@ export default class Entries {
 	}
 
 	async dedup(runId, scheme, target, turn) {
-		const encodedTarget = encodeURIComponent(target);
+		const encodedTarget = encodeSegment(target);
 		const turnPrefix = turn ? `turn_${turn}/` : "";
 		const candidate = `${scheme}://${turnPrefix}${encodedTarget}`;
 		const existing = await this.#db.get_entry_body.get({
@@ -79,7 +80,7 @@ export default class Entries {
 		// Unicode; 150 raw chars stays comfortably under 2048 even after
 		// worst-case expansion. The full message belongs in body, not path.
 		const safeTarget = String(target).slice(0, 150);
-		const encodedTarget = encodeURIComponent(safeTarget);
+		const encodedTarget = encodeSegment(safeTarget);
 		const candidate = `log://turn_${turn}/${action}/${encodedTarget}`;
 		const existing = await this.#db.get_entry_body.get({
 			run_id: runId,

@@ -39,7 +39,9 @@ export async function registerPlugins(dirs = [], hooks) {
 			// plugins (RUMMY_PLUGIN_<x>) are user-installed and may be
 			// busted; we log loudly and continue without them.
 			if (d.source.startsWith("env:")) {
-				console.error(`[RUMMY] Plugin import failed: ${d.name} — ${err.message}`);
+				console.error(
+					`[RUMMY] Plugin import failed: ${d.name} — ${err.message}`,
+				);
 				continue;
 			}
 			throw new Error(`Core plugin '${d.name}' import failed`, { cause: err });
