@@ -7,7 +7,7 @@ export default class Unknown {
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
-		core.filter("assembly.user", this.assembleUnknowns.bind(this), 200);
+		core.filter("assembly.user", this.assembleUnknowns.bind(this), 150);
 		core.markHidden();
 	}
 

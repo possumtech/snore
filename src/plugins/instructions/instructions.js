@@ -59,7 +59,7 @@ export default class Instructions {
 			this.validateNavigation.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
-		core.filter("assembly.user", this.assembleInstructions.bind(this), 250);
+		core.filter("assembly.user", this.assembleInstructions.bind(this), 200);
 		new Protocol(core);
 	}
 

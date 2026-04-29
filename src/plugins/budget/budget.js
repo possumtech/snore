@@ -36,7 +36,7 @@ export default class Budget {
 			enforce: this.enforce.bind(this),
 			postDispatch: this.postDispatch.bind(this),
 		};
-		core.filter("assembly.user", this.assembleBudget.bind(this), 275);
+		core.filter("assembly.user", this.assembleBudget.bind(this), 175);
 	}
 
 	// Renders <budget> at priority 275; see SPEC #token_accounting.

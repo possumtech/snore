@@ -16,7 +16,7 @@ export default class Prompt {
 			"summarized",
 		);
 		core.on("turn.started", this.onTurnStarted.bind(this));
-		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
+		core.filter("assembly.user", this.assemblePrompt.bind(this), 225);
 	}
 
 	async onTurnStarted({ rummy, mode, prompt, isContinuation }) {
