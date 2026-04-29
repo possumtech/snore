@@ -43,11 +43,7 @@ if (!rummyHome) {
 		}
 		for (const path of [homeExample, homeEnv]) {
 			if (!existsSync(path)) continue;
-			try {
-				process.loadEnvFile(path);
-			} catch (err) {
-				console.warn(`[RUMMY] Failed to load ${path}: ${err.message}`);
-			}
+			process.loadEnvFile(path);
 		}
 	}
 }
@@ -136,11 +132,21 @@ async function main() {
 		}
 	}
 
-	// 6b. Database Hygiene
+	// 6b. Database Hygiene — opt-in via RUMMY_RETENTION_DAYS.
 	const { statSync } = await import("node:fs");
-	try {
+	const retentionRaw = process.env.RUMMY_RETENTION_DAYS;
+	if (retentionRaw == null || retentionRaw === "") {
+		const dbSizeMB = (statSync(dbPath).size / 1024 / 1024).toFixed(2);
+		console.log(`[RUMMY] DB size: ${dbSizeMB}MB`);
+	} else {
+		const retentionDays = Number.parseInt(retentionRaw, 10);
+		if (!Number.isInteger(retentionDays) || retentionDays < 0) {
+			throw new Error(
+				`Invalid RUMMY_RETENTION_DAYS=${JSON.stringify(retentionRaw)} ` +
+					"(expected non-negative integer)",
+			);
+		}
 		const dbSizeBefore = statSync(dbPath).size;
-		const retentionDays = Number.parseInt(process.env.RUMMY_RETENTION_DAYS, 10);
 		await db.purge_old_runs.run({ retention_days: retentionDays });
 		const dbSizeAfter = statSync(dbPath).size;
 		const dbSizeMB = (dbSizeAfter / 1024 / 1024).toFixed(2);
@@ -153,8 +159,6 @@ async function main() {
 		if (dbSizeAfter > 100 * 1024 * 1024) {
 			console.warn(`[RUMMY] WARNING: Database exceeds 100MB. Consider manual cleanup.`);
 		}
-	} catch (err) {
-		console.warn(`[RUMMY] Hygiene skipped: ${err.message}`);
 	}
 
 	// 6b. Abort stuck runs (can't be running if the server just started)

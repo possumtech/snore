@@ -34,11 +34,16 @@ export default class SocketServer {
 
 	async close() {
 		// Drain in-flight runs first; otherwise detached kickoffs pin the event loop.
-		const shutdowns = [];
-		for (const conn of this.#connections) {
-			shutdowns.push(conn.shutdown().catch(() => {}));
+		// Best-effort: a single connection failing to shut down cleanly should not
+		// prevent the others from closing, but the failure must be visible.
+		const results = await Promise.allSettled(
+			Array.from(this.#connections, (conn) => conn.shutdown()),
+		);
+		for (const r of results) {
+			if (r.status === "rejected") {
+				console.error(`[RUMMY] Connection shutdown failed: ${r.reason?.message ?? r.reason}`);
+			}
 		}
-		await Promise.all(shutdowns);
 		this.#connections.clear();
 
 		await new Promise((resolve) => {

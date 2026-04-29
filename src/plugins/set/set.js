@@ -89,9 +89,13 @@ export default class Set {
 			visibility: existingState?.visibility,
 		});
 		if (projectRoot) {
-			const { writeFile } = await import("node:fs/promises");
-			const { join } = await import("node:path");
-			await writeFile(join(projectRoot, attrs.path), patched).catch(() => {});
+			const { writeFile, mkdir } = await import("node:fs/promises");
+			const { dirname, isAbsolute, join } = await import("node:path");
+			const targetPath = isAbsolute(attrs.path)
+				? attrs.path
+				: join(projectRoot, attrs.path);
+			await mkdir(dirname(targetPath), { recursive: true });
+			await writeFile(targetPath, patched);
 		}
 		if (isNewFile && projectId) {
 			await File.setConstraint(db, projectId, attrs.path, "active");

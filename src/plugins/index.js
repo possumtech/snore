@@ -34,7 +34,15 @@ export async function registerPlugins(dirs = [], hooks) {
 			);
 			resolved.push({ ...d, Plugin: module.default });
 		} catch (err) {
-			console.warn(`[RUMMY] Plugin import failed: ${d.name} — ${err.message}`);
+			// Core plugins live on disk and are part of rummy's contract;
+			// their failure is structural and must crash. Third-party
+			// plugins (RUMMY_PLUGIN_<x>) are user-installed and may be
+			// busted; we log loudly and continue without them.
+			if (d.source.startsWith("env:")) {
+				console.error(`[RUMMY] Plugin import failed: ${d.name} — ${err.message}`);
+				continue;
+			}
+			throw new Error(`Core plugin '${d.name}' import failed`, { cause: err });
 		}
 	}
 
@@ -43,7 +51,11 @@ export async function registerPlugins(dirs = [], hooks) {
 		try {
 			await instantiatePlugin(r, hooks, instances);
 		} catch (err) {
-			console.warn(`[RUMMY] Plugin load failed: ${r.name} — ${err.message}`);
+			if (r.source.startsWith("env:")) {
+				console.error(`[RUMMY] Plugin load failed: ${r.name} — ${err.message}`);
+				continue;
+			}
+			throw new Error(`Core plugin '${r.name}' load failed`, { cause: err });
 		}
 	}
 	return instances;
