@@ -3,6 +3,7 @@ test/mab/data/
 test/mab/results/
 test/lme/data/
 test/lme/results/
+test/tbench/results/
 test/e2e/turns/
 
 # Logs

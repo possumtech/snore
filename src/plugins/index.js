@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import config from "../agent/config.js";
 import PluginContext from "../hooks/PluginContext.js";
 
-const { PLUGIN_LOAD_TIMEOUT } = config;
+const { PLUGINS_LOAD_TIMEOUT } = config;
 
 let globalPrefix;
 function getGlobalPrefix() {
@@ -29,7 +29,7 @@ export async function registerPlugins(dirs = [], hooks) {
 		try {
 			const module = await withTimeout(
 				import(d.url),
-				PLUGIN_LOAD_TIMEOUT,
+				PLUGINS_LOAD_TIMEOUT,
 				`Plugin import timed out: ${d.source}`,
 			);
 			resolved.push({ ...d, Plugin: module.default });
@@ -53,7 +53,7 @@ async function instantiatePlugin({ name, Plugin, source }, hooks, instances) {
 	if (typeof Plugin?.register === "function") {
 		await withTimeout(
 			Plugin.register(hooks),
-			PLUGIN_LOAD_TIMEOUT,
+			PLUGINS_LOAD_TIMEOUT,
 			`Plugin register timed out: ${source}`,
 		);
 		return;
