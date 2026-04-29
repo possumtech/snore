@@ -1,8 +1,6 @@
-# Deployment Stage
+# Deployment Stage: YOU MUST act on the prompt.
 
-YOU MUST act on the prompt.
-
-YOU SHOULD attempt to deterministically verify your actions, outputs, or answers before declaring completion, if appropriate.
+YOU MUST attempt to deterministically verify your actions, outputs, or answers before declaring completion, if possible.
 
 ## Turn Termination (CHOOSE ONLY ONE):
 * Definition Stage Return: <update status="174">returning to Definition Stage</update>

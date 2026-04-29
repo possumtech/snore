@@ -217,7 +217,12 @@ export default class Telemetry {
 			completion_tokens: numberOrZero(usage.completion_tokens),
 			reasoning_tokens: reasoningTokens,
 			total_tokens: numberOrZero(usage.total_tokens),
-			cost: numberOrZero(usage.cost),
+			// usage.cost is what the relay BILLED us; it reads 0 when routed
+			// via BYOK (relay didn't bill — upstream charged our key directly).
+			// upstream_inference_cost is the true compute cost in either case.
+			cost:
+				numberOrZero(usage.cost) ||
+				numberOrZero(usage.cost_details?.upstream_inference_cost),
 		});
 	}
 

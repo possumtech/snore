@@ -179,6 +179,16 @@ Verified Mini) are scaffolded and run on demand.
   see if the example density is earning its cost. Benchmark, not a
   fix — frame as a measurement task.
 
+- [ ] **resolveCommand `||` empty-string conflation.**
+  `src/agent/XmlParser.js` `resolveCommand` uses chains like
+  `a.path || trimmed || null` for path/command/options/etc. Empty
+  string is falsy, so `<get path=""/>` collapses to `path: null` —
+  conflating "explicit empty" with "unset." Probably benign for all
+  current callers (empty path is meaningless in every tool we ship)
+  but the pattern is fallback-shaped and worth a `??` pass when a
+  real caller surfaces the distinction. Cross-tool sweep, not a
+  one-liner.
+
 - [ ] **Sudden-death turn warning.** On the last turn of
   `RUMMY_MAX_LOOP_TURNS`, surface an error/notice to the model giving
   it a heads-up that it's on its sudden-death turn — close cleanly
@@ -207,6 +217,22 @@ Verified Mini) are scaffolded and run on demand.
 - **The codebase is the codebase.** Don't compartmentalize by
   "prior model's code vs my code" when auditing. If you're
   touching it, it's yours now.
+- **OpenRouter routing can flip mid-session.** Observed during regex-log
+  pre-flight: turns 1–3 routed `is_byok: false` (relay-funded), turns 4–5
+  flipped to `is_byok: true` (BYOK). Different upstream pools mean
+  different cache state — saw cache hit drop 99% → 2% across the flip
+  with bit-identical system prompt and append-only user content. This
+  is OpenRouter behavior, not a rummy design issue. For clean
+  latency/caching analysis, route direct (`xai/grok-4-1-fast-reasoning`)
+  rather than via OpenRouter (`openrouter/x-ai/grok-4.1-fast`).
+  Reserve OpenRouter for the final leaderboard-comparison run where
+  matching the leaderboard's upstream matters; document which routing
+  was used in the writeup.
+- **Cost reporting under BYOK.** OpenRouter's `usage.cost` reads `0`
+  when routed via BYOK — the relay didn't bill, the upstream charged
+  the user's API key directly. The truth is in
+  `usage.cost_details.upstream_inference_cost`. Telemetry uses that
+  as a fallback so the run-summary line reflects real spend.
 - **Attribute semantics must not split on context.** If `visibility=`
   means one thing on a state-entry tag (`<known>`) and another on an
   action-record tag (`<set>` in `<log>`), the model will confuse them
@@ -286,239 +312,6 @@ durable rules belong in the standing rules block above; durable
 observations belong in the Lessons section. Don't chronicle what
 the diff already records.*
 
-### Pulse + query notification refactor (landed 2026-04-28)
-
-Replaced the typed `run/state` / `run/progress` / `run/proposal`
-notification surface with a content-free `run/changed` pulse plus a
-`since`-cursor query against the entry store. The entry store is the
-source of truth; the pulse is a latency hint that says "go look."
-Wire contract documented in `CLIENT_INTERFACE.md`.
-
-Phase A (2026-04-28): pulse + query infrastructure added alongside
-the typed notifications.
-
-Phase B (2026-04-28): in-repo consumers (`AuditClient`, e2e tests,
-`cli.js`) migrated; then the typed surface deleted entirely —
-`AgentLoop#emitRunState`, both `hooks.run.progress.emit` sites in
-`TurnExecutor`, `ClientConnection`'s `#onProgress`/`#onState`/`#onProposal`
-handlers, `rpc.js`'s `run/state`/`run/progress`/`run/proposal`
-notification registrations, and `hooks.run.state`/`hooks.run.progress`
-in `Hooks.js`. `hooks.proposal.pending` stays — yolo uses it
-server-internally.
-
-Migration of the external `rummy.nvim` consumer remains open (filed
-as Open Item).
-
-**What landed:**
-
-- `getEntriesByPattern` (`Entries.js`) accepts a `since` cursor.
-  When set, results filter by `e.id > since` and order by id
-  (insertion order) for streaming consumers; otherwise results
-  order by path (browse mode). Single query method, mode-driven.
-- SQL: `get_entries_by_pattern` extended with `:since` filter and
-  conditional ORDER BY. One new clause + one ORDER BY branch.
-  Results now also carry `id` so callers can track last-seen.
-- `getEntries` RPC accepts `since` and `limit` params. Description
-  documents the pulse-and-reconcile pattern for clients.
-- `run/changed` notification registered in `rpc.js`. Content-free —
-  carries `{ run, runId, path, changeType }` for client-side
-  filtering, no payload of the changed data itself.
-- `ClientConnection#onEntryChanged` subscribes to `entry.changed`,
-  looks up the run's project, and forwards a pulse if the entry
-  belongs to the client's project. One DB lookup per entry write
-  per connected client; cheap.
-- New integration test `entries_since.test.js` covers the four
-  modes: nothing-past-since, since-with-insertion-order, chunked
-  catch-up via limit, and browse mode preserves alphabetical.
-
-**Why this shape:**
-
-Notifications were a parallel mechanism that violated "everything
-is an entry." Each typed notification (run/state, run/progress,
-run/proposal) packaged information that already lives in the entry
-store and runs/turns tables. Same pattern as the search-prefetch
-fix and the action-failure-contract alignment: a special-case wire
-path replaced by the universal entry-driven flow. The WebSocket
-downgrades from "channel of truth" to "go look" hint; the entry
-store is the source of truth and the audit log.
-
-**Tests:** 282 unit + 237 integration green.
-
-### Action-failure contract (landed 2026-04-28)
-
-Resolved the bespoke-action-failure-paths Open Item via framework
-alignment, not patch-around. Principle:
-
-**The action entry IS its outcome.** Plugin authors finalize their
-action's own log entry at `entry.resultPath` with body, state, and
-outcome. Success and failure share one shape. The framework reads
-post-handler `state="failed"` entries as strikes — no `error.log.emit`
-call from plugin authors. `error.log.emit` is the framework's tool
-for actionless failures (parser warnings, dispatch crashes, runtime
-watchdog, budget overflow). Cycle detection stays silent.
-
-**Framework changes:**
-
-- `TurnExecutor#record` now writes filter-rejected entries to store
-  (was: returned in-memory only, model never saw them). Recording-
-  filter rejection is now visible to the model the same way
-  handler-time rejection is.
-- `error.js#verdict` strike attribution: queries store for the
-  post-handler state of each recorded entry; any `state="failed"`
-  counts as a strike. Either channel (action-entry state=failed or
-  `error.log.emit`'s `turnErrors` increment) advances the streak.
-
-**Plugin migrations to single-call shape:**
-
-- `policy.js` dropped its `error.log.emit` dual-write — recording
-  filter returns the entry with state=failed; framework writes it.
-- `get.js`, `set.js`, `unknown.js` — handler-time validation/dedup
-  failures now write `state="failed"` to the action entry instead of
-  emitting separate `<error>` entries.
-- `update.js` — validation rejection writes `state="failed"` to the
-  action entry; dropped the dead-code `attributes.rejected=true`
-  signal (it never propagated correctly because handler's local
-  `attributes` was scoped to the rummy.update() call, not the
-  recorded entry; resolve() always saw `rejected=undefined`). The
-  CC-5 status-200 navigation check now actually works.
-- `TurnExecutor.js` — proposal/entry-failure error.log.emit calls
-  removed; the action entry's own state=failed is the strike signal.
-
-**Documentation:**
-
-- SPEC `{#failure_reporting}` — contract, strike attribution, what
-  `error.log.emit` is for, recording-filter behavior, cycle silence.
-- SPEC `{#mode_enforcement}` — policy uses entry-state directly.
-- PLUGINS.md `{#plugins_handler_outcomes}` — canonical handler shape;
-  explicit "you don't call error.log.emit" for third-party authors.
-
-**Tests:** 280 unit + 229 integration green. `get.test.js` and
-`set_visibility.test.js` updated to assert the new shape (the old
-tests had been pinned to the dual-channel pattern).
-
-The eight previously-flagged "bespoke" action-failure sites
-(`known.js`, `get.js`, `set.js`, `rm.js`, `TurnExecutor.js`) are now
-genuinely exemplary — both visible AND strike-bearing through one
-write each.
-
-### Packet shape: `<context>` → user-side `<summarized>` + `<visible>` (landed 2026-04-28)
-
-Bundled change driven by the audit's CC-1 finding plus the parked
-`<summarized>` / `<visible>` proposal. Resolved both Open Items.
-
-**What landed:**
-
-- `known.js` no longer registers on `assembly.system`. Two new filters
-  on `assembly.user`: `assembleSummarized` (priority 50) and
-  `assembleVisible` (priority 75). System message stops carrying
-  data-surface entries; system is now identity + tools + base
-  instructions only.
-- `<summarized>` renders each `category=data` entry whose visibility
-  is `visible` or `summarized` under its scheme tag, with the plugin's
-  summary projection as the tag body (truncated knowns, code symbols
-  for files, page abstracts for URLs — whatever each plugin's
-  `summary()` hook produces). Plus the named puncture: archived prompts
-  pass through with `visibility="archived"` so the active prompt stays
-  discoverable after demotion.
-- `<visible>` renders each `category=data` entry whose visibility is
-  `visible` under its scheme tag with the plugin's visible projection
-  as the tag body. A visible entry exists in *both* blocks — summary
-  projection up top (identity), full body below (working memory).
-- `materializeContext` stores both projections (`vBody` / `sBody`) on
-  each row so the two blocks read from the right one without
-  re-projecting in the filter.
-- Why: matches every major harness convention (Aider, Claude Code,
-  Cursor, Codex all put codebase context user-side). Models are
-  trained to expect dynamic file/repo content user-side. And the
-  split keeps `<summarized>` cache-stable across promote/demote (the
-  dominant intra-phase operation) — only `<visible>` mutates fast.
-- SPEC.md `{#packet_structure}` and `{#scheme_category_split}`
-  rewritten; plugin READMEs (known, log, env, sh, stream) updated.
-- Tests: `ContextAssembler.test.js` and `message_assembly.test.js`
-  rewritten to assert the new shape. 281 unit + 229 integration green
-  post-change.
-
-**Not yet done (sacred-prompt batch):**
-
-Tooldoc updates teaching the model that summary lines live in
-`<summarized>` and full bodies in `<visible>`, and that promote =
-"add full body to `<visible>`" / demote = "remove from `<visible>`,
-summary line stays." Belongs in the next focused instruction-edit
-session.
-
-### Comment hygiene sweep (landed)
-
-Every multi-line comment in `src/` cut to one line, moved to docs, or
-deleted. Final sweep across `src/agent/*`, `src/plugins/*/`,
-`src/server/*`, `src/llm/*`, `src/sql/*`, and `src/hooks/*` found
-zero remaining `/* */` blocks and zero ≥2-line `//` runs in
-production code. The earlier targeted edits (`config.js`,
-`telemetry.js`, `prompt.js`, `cli.js`, `error.js`, `instructions.js`,
-`v_model_context.sql`, `001_initial_schema.sql`) had already drained
-the surface. 509/509 unit + integration green post-sweep.
-
-### E2E packet audit + system fixes (landed)
-
-Comprehensive packet-level audit of every e2e test surfaced 13+
-cross-cutting findings. Multiple system bugs identified and fixed.
-See `E2E_ANALYSIS.md` for the full audit document.
-
-**System fixes landed this session**:
-
-- **Cycle detection empty-turn gate** (`error.js`) — fingerprint now
-  always pushed (even for empty turns), so 3+ consecutive
-  no-emission turns trip period-1 cycle detection.
-- **Status 200 navigation check** (`instructions.js`) — `validateNavigation`
-  rejects status 200 from non-Deployment phases.
-- **Active prompt archive exception** (`v_model_context.sql`,
-  `prompt/README.md`) — archived prompts (singular exception)
-  flow through to packet with `visibility="archived"` and empty
-  body, so the model can `<get>` to promote back. Resolved
-  recurring "No prompt provided" failures.
-- **`turn_context.visibility` CHECK constraint** relaxed to permit
-  `'archived'` (was hardcoded to visible/summarized).
-- **Telemetry `#turnLog` reset** moved from RPC-method-name check
-  (legacy 1.x) to alias-change detection in `#logMessages` —
-  multi-test dump pollution resolved.
-- **Per-turn dump slicing** (`telemetry.js`) — `turn_NNN.txt` now
-  contains only that turn's content (was cumulative).
-- **`TestDb.create({ home })` option** — sets `RUMMY_HOME` BEFORE
-  plugin construction so telemetry's `#turnsDir` initializes.
-  Restored turn-dump capture for stories and hydrology tests.
-- **SQL view sort** changed to `(category, scheme, turn,
-  updated_at, path)` — entries within a scheme stay in turn-order;
-  promote/demote no longer shifts position; cache-friendly on
-  real-cache providers.
-- **Config consolidation** (`src/agent/config.js`) — 9 required
-  env-driven scalars (BUDGET_CEILING, LLM_DEADLINE_MS,
-  LLM_MAX_BACKOFF_MS, FETCH_TIMEOUT, MAX_STRIKES, MIN_CYCLES,
-  MAX_CYCLE_PERIOD, RUN_TIMEOUT_MS, THINK) consolidated. 11
-  scattered `if (!X) throw...` removed across 8 consumer files.
-  Single error message listing every missing/invalid var at boot.
-- **Hydrology 16-turn cap removed** — state machine gets room to
-  bounce per the user's principle.
-- **`fcrmScore` removal** (`budget.js`) — opaque-to-model metric
-  with no telemetry consumer eliminated.
-- **`RUMMY_MAX_STALLS` and `RUMMY_MAX_UPDATE_REPEATS`** retired
-  from `.env.example` and SPEC. Cycle detection (gate-fixed) is
-  the unified mechanism.
-
-**Test status**: 509/509 unit + integration green throughout. E2E
-went from 26/31 (pre-session) to demonstrably-improved post-fix:
-`factual answer from context` now passes (was the canonical "No
-prompt provided" failure). Two more tests changed shape from
-"system bug → fast assertion fail" to "test calibration tight →
-timeout while engine works correctly" (`prompt coherence`,
-`accepted edits visible on next turn`).
-
-**Remaining work surfaced by audit (non-instruction)**:
-
-- Test calibration: hydrology inner timeout 300s vs TIMEOUT 360s;
-  stories TIMEOUT 480s tight for multi-run sub-tests on local
-  gemma. Tweak per-test or move to `test/live/`.
-- `<summarized>` / `<visible>` packet split (parked in Open Items) —
-  parked; potentially powerful but invasive refactor.
-
 ### Instruction-side findings (gathering for a focused session)
 
 Sacred prompts (`prompt.ask.md`, `prompt.act.md`,
@@ -574,58 +367,46 @@ publishing negative results.
   `--env-file-if-exists=.env.tbench`.
 - Test scaffolding lives in `test/tbench/`, mirrors `test/swe/`.
 
-**Landed (this session):**
-- AgentLoop boundary normalization: `RUMMY_NO_REPO`,
-  `RUMMY_NO_WEB`, `RUMMY_NO_INTERACTION`, `RUMMY_NO_PROPOSALS`,
-  `RUMMY_YOLO` env defaults trump-only-if-unset (`options ??
-  process.env.X === "1"`). Both `ask`/`act` start path AND `inject`
-  continuation path patched.
-- `.env.example` documents the new run-attribute defaults
-  (commented out, with profile-cascade note).
-- `hooks.boot.completed` event — fires after DB open + plugin init
-  + model bootstrap + hygiene, before SocketServer attaches. Plugin
-  extension point per the standing rule.
-- `src/plugins/cli/`: `cli.js` (subscribes to boot.completed,
-  programmatic ProjectAgent kickoff, exit-on-terminal),
-  `bin.js` (executable, env-shape arg parser, mirrors bin/rummy.js
-  prelude), `README.md`. `package.json` registers `rummy-cli` bin.
-- Smoke verified: invalid-arg → exit 2, missing required env → exit
-  2, server-mode boot path clean. Integration: 228/228 green.
+**Status.** Mechanics verified end-to-end. The harbor fork
+(`possumtech/harbor`, branch `add-rummy-agent`) holds the rummy
+adapter, registered in `AgentName` enum and `AgentFactory`. Adapter
+clones rummy's `test/tbench` ref into the docker sandbox at install
+time, runs `rummy-cli`, exfils `turns/`, `last_run.txt`, and
+`rummy.db` from `$HOME/rummy/` into `/logs/agent/` for analysis. Cli
+plugin emits a trailing `__RUMMY_RUN_SUMMARY__ {…}` line on stdout
+(status, turns, cost, tokens, model) consumed by
+`populate_context_post_run`.
 
-**Landed 2026-04-28:**
-- Real LLM smoke ✓ — `rummy-cli --RUMMY_PROMPT="What is 2+2?"
-  --RUMMY_MODEL=xfast --RUMMY_MODE=ask --RUMMY_YOLO=1
-  --RUMMY_NO_INTERACTION=1 --RUMMY_NO_REPO=1 --RUMMY_NO_WEB=1
-  --PORT=3050`. 4 turns, status 200, exit 0, stdout: `2 + 2 = 4`.
-  Kickoff/turn-pipeline/terminal/exit path verified end-to-end on
-  grok-4.1-fast.
-- Two findings filed as Open Items:
-  (a) **rummy-cli must imply YOLO by default** — without it, any
-  proposal-emitting tool (including `<env>` in ask mode) hangs the
-  in-process CLI forever.
-  (b) **`PORT` env var doesn't follow the `RUMMY_` prefix
-  convention** — rename to `RUMMY_PORT`.
+**Spirit-clause-driven harness improvements that came out of
+analysis** (all pushed to `test/tbench`):
+- Set plugin: absolute paths honored (model emitting `/app/file.txt`
+  no longer joined into `/app/app/file.txt`); silent
+  `.catch(() => {})` removed; auto-mkdir parent dir on new-file set.
+- Plugin loader: core-plugin failures crash; third-party
+  (`RUMMY_PLUGIN_<x>`) failures log loud and continue.
+- Service: env-load failures throw; database hygiene refactored to
+  opt-in pre-check (skip cleanly when `RUMMY_RETENTION_DAYS` unset,
+  throw on configured-but-bad value).
+- SocketServer: shutdown loop uses `Promise.allSettled` with
+  per-rejection logging instead of empty-catch fan-out.
+- XmlParser: replaced htmlparser2 + 4 pre-passes with a custom
+  recovery-tolerant tokenizer; body opacity preserves regex
+  lookbehind, generics, fenced code, etc.; mismatched-close uses a
+  forward-balance heuristic; brutal-corpus regression tests pin the
+  contract.
+- `RUMMY_PLUGIN_LOAD_TIMEOUT` → `RUMMY_PLUGINS_LOAD_TIMEOUT`
+  (namespace collision with plugin-spec env vars).
+- `RUMMY_MAX_TURNS` → `RUMMY_MAX_LOOP_TURNS` (clarify per-loop scope).
 
-**Landed 2026-04-28 (continued):**
-- rummy-cli auto-yolo when `RUMMY_PROMPT` is set ✓ — operator can
-  override with `--RUMMY_YOLO=0`. Re-smoke validated termination
-  without explicit `--RUMMY_YOLO=1`.
-- `PORT` → `RUMMY_PORT` rename ✓ — `service.js`, `.env.example`.
-  Two lines, contained; no other callers.
-
-**Next steps (in order):**
-1. `test/tbench/` scaffolding: `setup.sh` (clones harbor fork,
-   installs CLI, links rummy adapter), `runner.js` (orchestration),
-   `agent/rummy.py` + `rummy-setup.sh.j2` (harbor adapter source
-   we'll PR upstream once stable), `.env.tbench` template.
-2. `package.json` `test:tbench:*` scripts.
-3. Pre-flight: `harbor run --task hello-world --agent rummy
-   --model openrouter/x-ai/grok-4.1-fast` (~$0.10).
-4. Pre-flight: same for `--agent codex` to verify Codex+grok via
-   OpenRouter works at all. Fall back to Goose / Aider if Codex+grok
-   has friction.
-5. Full eval: 89-task × 3-seed × both adapters (~$30–90).
-6. Tabulate + writeup.
+**Next steps:**
+1. Cross-section pre-flight (3 representative tasks) once mechanics
+   pre-flight repeats cleanly with the parser refactor: `regex-log`,
+   `extract-elf`, `git-multibranch`. Different muscle groups.
+2. Codex+grok pre-flight to verify the comparison adapter works
+   off-distribution. Fall back to Goose / Aider if Codex+grok has
+   friction.
+3. Full eval: 89-task × 3-seed × both adapters (~$30–90).
+4. Tabulate + writeup.
 
 **Spirit clause (load-bearing):**
 - Goal is harness analysis + general improvement, not a leaderboard

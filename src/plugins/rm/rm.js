@@ -27,9 +27,12 @@ export default class Rm {
 		await ctx.entries.rm({ runId: ctx.runId, path: target });
 		if (ctx.projectRoot) {
 			const { unlink } = await import("node:fs/promises");
-			const { join } = await import("node:path");
+			const { isAbsolute, join } = await import("node:path");
+			const targetPath = isAbsolute(target)
+				? target
+				: join(ctx.projectRoot, target);
 			try {
-				await unlink(join(ctx.projectRoot, target));
+				await unlink(targetPath);
 			} catch (err) {
 				// File may already be absent — entry rm'd regardless.
 				if (err.code !== "ENOENT") throw err;
