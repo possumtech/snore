@@ -151,7 +151,13 @@ export default class TurnExecutor {
 			rawResult = await this.#llmProvider.completion(
 				filteredMessages,
 				requestedModel,
-				{ temperature: options?.temperature, signal },
+				{
+					temperature: options?.temperature,
+					signal,
+					// Per-run stable identifier for provider-side prompt caching
+					// (xAI prompt_cache_key, OpenAI prompt_cache_key, etc.).
+					runAlias: runRow?.alias || `run_${currentRunId}`,
+				},
 			);
 		} catch (err) {
 			if (err instanceof ContextExceededError) {

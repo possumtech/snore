@@ -34,6 +34,11 @@ export default class Xai {
 		const body = { model, input: messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
+		// xAI auto-caches per-server; stable prompt_cache_key keeps a multi-
+		// turn run pinned to the same backend so the cached prefix actually
+		// hits. Without this, requests load-balance and cache_tokens stays
+		// near-zero. See https://docs.x.ai/developers/advanced-api-usage/prompt-caching.
+		if (options.runAlias) body.prompt_cache_key = options.runAlias;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal
