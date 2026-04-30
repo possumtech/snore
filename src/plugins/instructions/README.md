@@ -24,8 +24,9 @@ phase directive so prompt caching holds across turns within a run.
 - `instructions.md` — the system-side base template. Static across
   turns; only identity + `[%TOOLS%]` + `[%TOOLDOCS%]` placeholders.
 - `instructions_104.md` … `instructions_108.md` — phase-specific
-  directives keyed by the 1XY status encoding (Define / Discover /
-  Distill / Demote / Deploy).
+  directives keyed by the 1XY status encoding (Decompose / Distill /
+  Demote / Deploy / Resolve). `_108` is currently an empty
+  placeholder reserved for the Resolution stage.
 - `protocol.js` — placeholder module reserved for deterministic
   protocol rule enforcement. Currently pass-through.
 

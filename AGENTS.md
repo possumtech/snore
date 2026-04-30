@@ -104,32 +104,22 @@ constant name → delete.
 
 ## Where We Are
 
-The contract (SPEC [entries](SPEC.md#entries)) is fully delivered.
-Schema, primitives, entry grammar, client RPC surface, plugin hygiene,
-and external repo rewrites (`rummy.repo`, `rummy.web`, `rummy.nvim`)
-are landed. System instructions are split into a stable base
-(identity + tools + tooldocs) plus a dynamic `<instructions>` block
-that rides the user message to keep prompt caching intact. Lifecycle
-handshake, budget math, and fallback hygiene are clean. Phase 7
-(verification) is the remaining work; benchmarks (LME, SWE-bench
-Verified Mini) are scaffolded and run on demand.
+The contract (SPEC [entries](SPEC.md#entries)) is delivered through
+Phase 6. Phase 7 (harness verification) is the active surface: the
+FCRM stage rename to Decomposition / Distillation / Demotion /
+Deployment, the retry classifier, the prompt-archive paradigm
+cleanup (carve-out removed; archived means archived), and the
+test-suite parallelism harmonization landed 2026-04-30 with full
+e2e green (31/31). The next signal is the tbench cross-section
+pre-flight.
 
 ## The Plan
 
-- **Phase 1 — Schema** ✓ `run_views.state`, four writer tiers, view
-  layer, boot env resolution.
-- **Phase 2 — Primitives** ✓ Six-verb object-arg grammar:
-  `set` / `get` / `rm` / `cp` / `mv` / `update`.
-- **Phase 3 — Runs-as-entries** ✓ `run://<alias>` scheme, client
-  writer tier, run:// → entry mirror with unified lifecycle.
-- **Phase 4 — Client surface** ✓ RPC is a thin projection of the
-  plugin API. Protocol 2.0.
-- **Phase 5 — Plugin hygiene** ✓ Plugin-dep system deleted,
-  TestDb+TestServer share one graph, PermissionError typed, handler
-  writer plumbed via Proxy.
-- **Phase 6 — External projects** ✓ `rummy.repo`, `rummy.web`,
-  `rummy.nvim` all rewritten to the 2.0 wire and green.
-- **Phase 7 — Verification** ⌛ Doc walk, demo handoff. See Open Items.
+- Phases 1–6 (schema, primitives, runs-as-entries, client surface,
+  plugin hygiene, external projects) ✓ landed.
+- **Phase 7 — Harness verification** ⌛ tbench cross-section pre-flight
+  (`regex-log`, `extract-elf`, `git-multibranch`) is the next signal;
+  Codex+grok comparison pre-flight after.
 
 ---
 
@@ -171,23 +161,6 @@ Verified Mini) are scaffolded and run on demand.
   conversation needed to decide which extractions are principled vs.
   ceremony. Discuss before refactor.
 
-- [ ] **Definition-tarpit failure mode in the FCRM state machine.**
-  Observed in the gemma extract-elf run on 2026-04-29: 50 turns of
-  state-machine churn, six `<env>` filesystem probes, zero `<sh>`,
-  zero `<set>` for the deliverable, 499 abort. Model kept defining
-  new unknowns as old ones distilled; "I need to fully understand
-  before acting" loops indefinitely on knowledge-heavy tasks where
-  understanding is unbounded. The FCRM currently has no termination
-  signal except "all unknowns resolved" — but the model can always
-  generate more unknowns. Inverse of the regex-log failure mode
-  (act-without-verify); both reflect a missing balance between
-  Definition and Deployment. Mitigations to weigh: scope Definition
-  header to "unknowns required to act on the prompt"; add a Tip to
-  Deployment that reaching it on partial understanding is allowed
-  when the deliverable is producible. See "Conservative reforms"
-  conversation in this thread for terse drafts. General improvement
-  across all models, not gemma-specific.
-
 - [ ] **Render empty user-message section blocks for cache stability.**
   Today rummy renders sections (`<log>`, `<summarized>`, `<visible>`,
   `<unknowns>`) only when they have content. Result: any turn that
@@ -204,16 +177,16 @@ Verified Mini) are scaffolded and run on demand.
   baseline numbers to A/B against.
 
 - [ ] **`unknown://env/...` example in instructions_104.md.** Add a
-  second Definition-stage example demonstrating env-sanity unknowns
-  (e.g. `unknown://env/node_runtime` — "What node version is
-  available on this system?") alongside the existing trivia example.
-  Rationale: catch runtime/dependency assumptions in Definition,
-  resolve in Discovery via `<env>`, and re-verify in Deployment via
-  the _107 example. Same pattern, three-stage continuity. Helps weak
-  models (gemma) avoid skipping environment checks before producing
-  deliverables. Discuss namespace (`unknown://env/...`?) and exact
-  wording before landing — keep abstract enough to generalize beyond
-  Node.
+  second Decomposition-stage example demonstrating env-sanity
+  unknowns (e.g. `unknown://env/node_runtime` — "What node version
+  is available on this system?") alongside the existing trivia
+  example. Rationale: catch runtime/dependency assumptions in
+  Decomposition, resolve in Distillation via `<env>`, and re-verify
+  in Deployment via the _107 example. Same pattern, three-stage
+  continuity. Helps weak models avoid skipping environment checks
+  before producing deliverables. Discuss namespace
+  (`unknown://env/...`?) and exact wording before landing — keep
+  abstract enough to generalize beyond Node.
 
 - [ ] **Tooldoc example weight.** (CC-13 in the audit.) System prompt
   is ~6KB / ~2K tokens, of which ~5.5KB is tool docs (10 tools × 5+
@@ -345,11 +318,12 @@ Verified Mini) are scaffolded and run on demand.
   spelling, an unbalanced tag in a code block. Treat the model's
   syntax mistake as an audit trigger before treating it as a model
   capability problem.
-- **Unknown spamming is real.** Gemma can emit 90+ visible unknowns
-  in a single Definition pass on a fact-heavy ingest. The state
-  machine then has to grind every one through Discovery+Demotion
-  before reaching Deployment. Front-loaded over-definition is a
-  documented failure mode, not a baseline to accept.
+- **Unknown spamming is real.** Weak models can emit 90+ visible
+  unknowns in a single Decomposition pass on a fact-heavy ingest.
+  The state machine then has to grind every one through
+  Distillation+Demotion before reaching Deployment. Front-loaded
+  over-decomposition is a documented failure mode, not a baseline
+  to accept.
 - **When a model misbehaves, audit the test prompt against the
   documented protocol first.** Don't theorize about model
   non-determinism or harness bugs until you've verified the prompt
@@ -461,8 +435,8 @@ session and work the batch.
   Explanation-side fix.
 - **CC-12a — `sh`/`env` MUST-clause repetition.** 6 negatives for
   2 binary distinctions. Tooldoc cleanup.
-- **PF-2 — Persona_fork Definition stage.** Doesn't recognize
-  fork-inherited knowns; gemma confabulates new unknowns.
+- **PF-2 — Persona_fork Decomposition stage.** Doesn't recognize
+  fork-inherited knowns; weak models confabulate new unknowns.
   Likely instruction-side.
 - **`repo://overview` file-op regression.** Open Item filed; the
   fix is partly packet-shape (system) and partly instruction-side
@@ -512,26 +486,13 @@ plugin emits a trailing `__RUMMY_RUN_SUMMARY__ {…}` line on stdout
 (status, turns, cost, tokens, model) consumed by
 `populate_context_post_run`.
 
-**Spirit-clause-driven harness improvements that came out of
-analysis** (all pushed to `test/tbench`):
-- Set plugin: absolute paths honored (model emitting `/app/file.txt`
-  no longer joined into `/app/app/file.txt`); silent
-  `.catch(() => {})` removed; auto-mkdir parent dir on new-file set.
-- Plugin loader: core-plugin failures crash; third-party
-  (`RUMMY_PLUGIN_<x>`) failures log loud and continue.
-- Service: env-load failures throw; database hygiene refactored to
-  opt-in pre-check (skip cleanly when `RUMMY_RETENTION_DAYS` unset,
-  throw on configured-but-bad value).
-- SocketServer: shutdown loop uses `Promise.allSettled` with
-  per-rejection logging instead of empty-catch fan-out.
-- XmlParser: replaced htmlparser2 + 4 pre-passes with a custom
-  recovery-tolerant tokenizer; body opacity preserves regex
-  lookbehind, generics, fenced code, etc.; mismatched-close uses a
-  forward-balance heuristic; brutal-corpus regression tests pin the
-  contract.
-- `RUMMY_PLUGIN_LOAD_TIMEOUT` → `RUMMY_PLUGINS_LOAD_TIMEOUT`
-  (namespace collision with plugin-spec env vars).
-- `RUMMY_MAX_TURNS` → `RUMMY_MAX_LOOP_TURNS` (clarify per-loop scope).
+**Spirit-clause-driven harness improvements** that came out of
+tbench analysis are landed (set/get plugin hygiene, plugin loader
+crash-vs-warn split, env-load throws, XmlParser recovery-tolerant
+tokenizer, env namespace fixes, FCRM stage rename, retry
+classifier, prompt-archive paradigm cleanup, AuditClient
+zombie-run abort) — all in git history, summarized in "Where We
+Are" above.
 
 **Next steps:**
 1. Cross-section pre-flight (3 representative tasks) once mechanics

@@ -15,24 +15,32 @@ attribute (available tool list) and optional `warn` attribute in ask
 mode. Falls back to the mode passed by the core if no prompt entry
 exists.
 
-## Archived prompts: the singular exception to invisibility
+## Archived prompts disappear, by design
 
 `v_model_context.sql` filters archived entries out of the model's
-context — every scheme **except `prompt`**. Archived `prompt://`
-entries flow through with `effective_visibility = 'archived'` and
-their body suppressed (per `projected.body`'s visibility CASE). The
-plugin then renders the tag with full attributes (`path`,
-`visibility="archived"`, etc.) but empty body.
+context for every scheme — `prompt` included. There is no carve-out.
+An archived `prompt://N` does not appear in the user message at
+all: no tag, no body, no metadata.
 
-The exception exists because the prompt is run identity: every other
-archived entry is recoverable by pattern search if the model ever
-needs it back, but the prompt is the question the run is answering.
-A model that loses sight of its prompt cannot honestly act. Keeping
-the archived prompt's path visible lets the model emit
-`<get path="prompt://N"/>` to promote it back if it archived
-prematurely (or step back to an earlier stage via
-`<update status="174">`).
+The model is told not to archive the active prompt via the tip in
+`instructions_105.md`:
 
-This is the only entry-type exception to the "archived = invisible"
-contract. New schemes that warrant similar treatment should be added
-explicitly here, not by accident.
+> * Don't accidentally set the current prompt to `archived`.
+
+If the model archives the prompt anyway, the run will visibly fail
+on the next turn (no `<prompt>` tag for the model to act on; the
+model emits "please provide a prompt to act upon" or similar
+confusion). That instructive failure mode is intentional —
+paradigm purity (archived means archived, no exceptions) over
+silent data-layer rescue.
+
+If practical behavior at scale ever demands a guard, the right
+surface is an action-gate (refuse the `<set>` of `visibility="archived"`
+on the active `prompt://N` with a soft 403 the model can read),
+not a read-view carve-out that quietly keeps the entry visible.
+
+System-level auto-archive on new prompt is unaffected: when a fresh
+`prompt://M` arrives, the engine archives `prompt://N` (M > N) so
+the prior cycle's prompt cleanly leaves context. `unknown://` /
+`known://` entries persist across cycles; logs are demoted per
+stage instructions.

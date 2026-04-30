@@ -18,7 +18,7 @@ uses one of these words, it should mean exactly what's written here.
 | **loop** | One `ask` or `act` invocation and all its continuation turns until terminal `<update>`, abandonment, or abort. A run can contain multiple loops if a fresh prompt arrives on an existing run. |
 | **turn** | One round-trip with the LLM: one assembled prompt sent, one response parsed. A loop is a sequence of turns. |
 | **mode** | `ask` (read-only — no proposals, no `<sh>`, no edits) or `act` (full tool surface). Per loop, set at the entry point. |
-| **phase** | (Primary, FCRM sense.) One of five FCRM states selected by `<update status="1XY">`: 104=Definition, 105=Discovery, 106=Demotion, 107=Deployment, 108=Verification. Maps to `instructions_10N.md` rendered in `<instructions>`. **The model-facing instructions call these "stages"** — same concept, dual vocabulary kept for the model's surface stability. Two non-FCRM uses of "phase" coexist in the codebase and AGENTS.md: (1) "two-phase turn execution" refers to RECORD→DISPATCH within a single turn; (2) AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones (Schema, Primitives, etc.) — neither is the FCRM phase. Context disambiguates; if it doesn't, it's a doc bug. |
+| **phase** | (Primary, FCRM sense.) One of five FCRM states selected by `<update status="1XY">`: 104=Decomposition, 105=Distillation, 106=Demotion, 107=Deployment, 108=Resolution. Maps to `instructions_10N.md` rendered in `<instructions>`. **The model-facing instructions call these "stages"** — same concept, dual vocabulary kept for the model's surface stability. Two non-FCRM uses of "phase" coexist in the codebase and AGENTS.md: (1) "two-phase turn execution" refers to RECORD→DISPATCH within a single turn; (2) AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones (Schema, Primitives, etc.) — neither is the FCRM phase. Context disambiguates; if it doesn't, it's a doc bug. |
 | **stage** | Model-facing synonym for **phase**. Lives in `instructions_*.md` and tooldocs. |
 | **proposal** | A tool-call entry at status 202 awaiting client resolution (accept/reject). Side-effecting actions (`<sh>`, `<env>`, file `<set>`, file `<rm>`/`<mv>`/`<cp>`, `<ask_user>`) emit proposals. YOLO mode auto-accepts. |
 | **verdict** | The end-of-turn ruling from `hooks.error.verdict` (owned by the error plugin). Returns `{continue, status, reason}`. Decides whether the loop continues to another turn or terminates. |
@@ -815,14 +815,15 @@ Two messages per turn. System = stable truth. User = active task.
 [user message]
     <summarized>
         one entry per category=data entry whose visibility is visible
-        or summarized; plus the named carve-out (archived prompts pass
-        through with visibility="archived" so the model can <get> the
-        active prompt back). Each entry renders under its scheme tag
-        with its summarized projection as the tag body — this is the
+        or summarized. Each entry renders under its scheme tag with
+        its summarized projection as the tag body — this is the
         compact-but-informative view produced by the plugin's summary()
         hook (e.g. truncated knowns, code symbols for files, page
         abstracts for URLs). Identity-keyed, slow-mutating: only grows
-        when a new entry lands. (known.js, assembly.user priority 50)
+        when a new entry lands. Archived entries — including prompts —
+        are filtered out uniformly; the model is told not to archive
+        the active prompt via instructions_105.md's tip block.
+        (known.js, assembly.user priority 50)
     </summarized>
     <visible>
         each category=data entry whose visibility is visible, rendered
@@ -1669,6 +1670,8 @@ Full reference is `.env.example` — these are the load-bearing vars.
 | `RUMMY_TEMPERATURE` | 0.5 | Default LLM temperature |
 | `RUMMY_RPC_TIMEOUT` | 30000 | RPC timeout (ms) |
 | `RUMMY_FETCH_TIMEOUT` | 300000 | LLM HTTP timeout (ms) |
+| `RUMMY_LLM_DEADLINE` | 600000 | LLM transient-retry deadline (ms). Used as the budget for `warmup` and `rate_limit` categories in `src/llm/retry.js#retryClassified`; gateway/server categories have shorter hardcoded deadlines (30s / 60s). |
+| `RUMMY_LLM_MAX_BACKOFF` | 30000 | Max single backoff between retry attempts (ms) for warmup/rate_limit categories. |
 
 **LLM providers** (plugin-scoped; a provider with no config is inert):
 

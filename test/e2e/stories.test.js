@@ -356,7 +356,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			// unknowns (port, user, name, password) that the prompt didn't
 			// ask for, after which the protocol blocked completion until
 			// every unknown resolved. The current phrasing scopes the
-			// answer-set to exactly two values so gemma's Definition stage
+			// answer-set to exactly two values so the Decomposition stage
 			// has a natural stopping point.
 			prompt:
 				"Find exactly two values in this project: the database connection pool size, and the database host. Answer with just those two values when you have them. Do not investigate any other database settings.",

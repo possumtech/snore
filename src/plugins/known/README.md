@@ -26,9 +26,8 @@ emit at the top of the user message in this order:
   `summarized`, rendered under its scheme tag with the plugin's
   summary projection as body (truncated knowns, code symbols,
   page abstracts — whatever the plugin's `summary()` hook produces).
-  Plus the named carve-out: archived prompts pass through
-  (visibility="archived") so the model can `<get>` the active prompt
-  back after demotion.
+  Archived entries — including prompts — are filtered out uniformly
+  (no carve-out).
 - `<visible>` — each data entry whose visibility is `visible`,
   rendered with the plugin's visible projection (full body) as the
   tag body. A visible entry appears in *both* blocks: summary
