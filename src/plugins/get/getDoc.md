@@ -35,4 +35,4 @@ Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200
 
 * Remember to <set path="..." visibility="summarize"/> when entries or log events are no longer relevant.
 
-* Promotions aren't visible until the next turn.
+* Promotions don't appear until next turn — emit Stage Continuation (1xx), not Completion (200)
