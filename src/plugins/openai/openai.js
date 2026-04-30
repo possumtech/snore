@@ -50,9 +50,14 @@ export default class OpenAi {
 			});
 		} catch (err) {
 			if (err.status) {
-				throw new Error(
+				const wrapped = new Error(
 					msg("error.openai_api", { status: `${err.status} - ${err.body}` }),
+					{ cause: err },
 				);
+				wrapped.status = err.status;
+				wrapped.body = err.body;
+				wrapped.retryAfter = err.retryAfter;
+				throw wrapped;
 			}
 			throw err;
 		}

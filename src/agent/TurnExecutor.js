@@ -1,5 +1,6 @@
 import RummyContext from "../hooks/RummyContext.js";
 import { ContextExceededError } from "../llm/errors.js";
+import { PermissionError } from "./errors.js";
 import materializeContext from "./materializeContext.js";
 import XmlParser from "./XmlParser.js";
 
@@ -279,6 +280,21 @@ export default class TurnExecutor {
 			try {
 				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			} catch (dispatchErr) {
+				// PermissionError is the model attempting a documented-forbidden
+				// write (e.g. <set path="prompt://1"> with body). Surface as a
+				// soft 403 so the model can adjust on the next turn; do not
+				// abort sibling entries — the rest of the turn was valid.
+				if (dispatchErr instanceof PermissionError) {
+					await this.#hooks.error.log.emit({
+						store: this.#entries,
+						runId: currentRunId,
+						turn,
+						loopId: currentLoopId,
+						message: dispatchErr.message,
+						status: 403,
+					});
+					continue;
+				}
 				await this.#hooks.error.log.emit({
 					store: this.#entries,
 					runId: currentRunId,

@@ -40,8 +40,13 @@ projected AS (
 		, attributes
 		-- Category comes from schemes table — plugins declare it via registerScheme().
 		, category
+		-- Archived prompts pass through with body so the active prompt
+		-- remains discoverable to the model in Deployment Stage. CTE 1
+		-- already restricts archived rows to scheme='prompt'; mirror that
+		-- in the body projection here.
 		, CASE
 			WHEN effective_visibility IN ('visible', 'summarized') THEN body
+			WHEN effective_visibility = 'archived' AND scheme = 'prompt' THEN body
 			ELSE ''
 		END AS body
 	FROM visible

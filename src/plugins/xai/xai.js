@@ -1,5 +1,6 @@
 import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
+import { parseRetryAfter } from "../../llm/errors.js";
 
 const { FETCH_TIMEOUT } = config;
 
@@ -56,15 +57,27 @@ export default class Xai {
 		});
 
 		if (!response.ok) {
-			const error = await response.text();
+			const errorBody = await response.text();
+			const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
 			if (response.status === 401 || response.status === 403) {
-				throw new Error(
-					msg("error.xai_auth", { status: `${response.status} - ${error}` }),
+				const err = new Error(
+					msg("error.xai_auth", {
+						status: `${response.status} - ${errorBody}`,
+					}),
 				);
+				err.status = response.status;
+				err.body = errorBody;
+				throw err;
 			}
-			throw new Error(
-				msg("error.xai_api", { status: `${response.status} - ${error}` }),
+			const err = new Error(
+				msg("error.xai_api", {
+					status: `${response.status} - ${errorBody}`,
+				}),
 			);
+			err.status = response.status;
+			err.body = errorBody;
+			err.retryAfter = retryAfter;
+			throw err;
 		}
 
 		return this.#normalize(await response.json());

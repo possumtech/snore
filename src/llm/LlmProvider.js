@@ -2,14 +2,32 @@ import config from "../agent/config.js";
 import msg from "../agent/messages.js";
 import {
 	ContextExceededError,
+	classifyTransient,
 	isContextExceededMessage,
-	isTransientMessage,
 } from "./errors.js";
-import { retryWithBackoff } from "./retry.js";
+import { retryClassified } from "./retry.js";
 
 const { LLM_DEADLINE, LLM_MAX_BACKOFF } = config;
 
-// Dispatches to hooks.llm.providers; transient retry; ContextExceededError surface.
+// Per-category retry policies. Gateway/server are bounded short because
+// upstream-down won't recover by waiting; warmup/rate_limit get the full
+// LLM deadline because they're recoverable wait states with knowable bounds.
+const POLICIES = Object.freeze({
+	gateway: { deadlineMs: 30_000, baseDelayMs: 500, maxDelayMs: 5_000 },
+	warmup: {
+		deadlineMs: LLM_DEADLINE,
+		baseDelayMs: 2000,
+		maxDelayMs: LLM_MAX_BACKOFF,
+	},
+	rate_limit: {
+		deadlineMs: LLM_DEADLINE,
+		baseDelayMs: 1000,
+		maxDelayMs: LLM_MAX_BACKOFF,
+	},
+	server: { deadlineMs: 60_000, baseDelayMs: 1000, maxDelayMs: 10_000 },
+});
+
+// Dispatches to hooks.llm.providers; per-category transient retry; ContextExceededError surface.
 export default class LlmProvider {
 	#db;
 	#hooks;
@@ -48,16 +66,15 @@ export default class LlmProvider {
 		}
 
 		try {
-			return await retryWithBackoff(
+			return await retryClassified(
 				() => provider.completion(messages, resolvedModel, resolvedOptions),
 				{
 					signal: options.signal,
-					deadlineMs: LLM_DEADLINE,
-					maxDelayMs: LLM_MAX_BACKOFF,
-					isRetryable: (err) => isTransientMessage(err.message),
-					onRetry: (err, attempt, delayMs, remainingMs) => {
+					classify: classifyTransient,
+					policies: POLICIES,
+					onRetry: (err, category, attempt, delayMs, remainingMs) => {
 						console.error(
-							`[LLM] transient failure on ${provider.name} attempt ${attempt}: ${err.message}; retrying in ${delayMs}ms (${Math.round(remainingMs / 1000)}s deadline remaining)`,
+							`[LLM] ${category} on ${provider.name} attempt ${attempt}: ${err.message}; retrying in ${delayMs}ms (${Math.round(remainingMs / 1000)}s ${category} budget remaining)`,
 						);
 					},
 				},

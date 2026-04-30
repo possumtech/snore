@@ -239,6 +239,55 @@ Verified Mini) are scaffolded and run on demand.
   rather than getting capped mid-thought. Implementation deferred;
   this is a reminder.
 
+- [ ] **Zero-downtime model swaps on `gemma.possumtech.com`.** Today
+  a model swap on the prod endpoint produces a measurable window of
+  Cloudflare 502s (origin unreachable) followed by `503 "Loading
+  model"` (origin alive, model not yet warm). Observed during e2e
+  validation on 2026-04-29: one test passed in 84 s, the next chewed
+  300 s of retry budget on 502/503 before timing out. A public
+  benchmark service can't be trusted to retry through this kind of
+  window, so it's launch-blocking infrastructure work — `gemma.possumtech.com`
+  is the launch endpoint. Three real fixes (pick one or layer):
+  (a) blue/green `llama-server` pair behind the proxy — load new
+  model on standby, atomic upstream flip, drain old; (b) origin
+  health-gate at the proxy — `llama-server` reports not-ready until
+  `/v1/models` returns 200, proxy surfaces honest `Retry-After`
+  instead of letting Cloudflare 502 the gap; (c) operator
+  discipline — never swap models during external benchmark windows.
+  (a) is the launch-grade answer. Outside this repo (proxy / server
+  config) but pinned here so it doesn't get folded into "we'll
+  handle it in retry" — retry is the bandage, this is the wound.
+  Cross-ref: `src/llm/retry.js` classification refactor landed
+  2026-04-29.
+
+- [ ] **Streaming-pipeline integrity from `llama-server` to
+  Cloudflare.** Even with rummy doing SSE on its side, the full
+  end-to-end stream depends on the origin proxy and `llama-server`
+  preserving streaming behavior. Two concerns to verify on the
+  prod box, both infra-side (no rummy code change):
+  (a) **Origin proxy buffering.** Whatever fronts `llama-server`
+  (nginx, Caddy, etc.) must pass `text/event-stream` through
+  unbuffered. Nginx specifically needs `proxy_buffering off` and
+  `proxy_http_version 1.1` on the upstream block; otherwise it
+  accumulates SSE chunks until its buffer fills, defeating
+  streaming end-to-end and turning fast-token streams into
+  batched responses (which exposes us to Cloudflare's TTFB cap on
+  long completions). Cheap to verify, free to fix if wrong.
+  (b) **Heartbeat during cold-start prompt-eval silence.** When
+  the model is parsing a large prompt before generating its first
+  token, no bytes flow on the stream — and Cloudflare's free-tier
+  TTFB cap is ~100s. A 32K-token prompt at ~500 tok/s prompt-eval
+  gets close to that ceiling. The standard SSE-comment heartbeat
+  (`:keep-alive\n\n` every 5–15s during silence) resets the TTFB
+  timer. Either find the right `llama-server` flag (if there is
+  one), or run a tiny heartbeat-injecting sidecar between
+  `llama-server` and Cloudflare. Our consumer (`openaiStream.js`)
+  already tolerates SSE comments — they're skipped in the parse
+  loop — so this is purely a producer-side fix. Sibling to the
+  blue/green Open Item; both protect different lanes of the same
+  failure surface.
+
+
 ## Scope Discipline
 
 - No legacy protocol accommodation. 2.0 is 2.0.
@@ -333,6 +382,48 @@ Verified Mini) are scaffolded and run on demand.
   whole point. The protocol-as-state-machine guarantees terminal
   reachability, not deterministic success. (Source: CC-8c in the
   E2E audit; seen in `persona_fork` 3rd subtest pre-session.)
+- **Output rendered inside a tag the model also emits as input gets
+  reproduced as input.** rummy.web's search log entry rendered
+  under `<search>` (the same tag the model emits as a tool call)
+  with a body of `URL — title (N tokens)` lines. Weak gemma
+  reading prior search-result blocks then emitted NEW `<search>`
+  queries with that same line shape inside — confusing output for
+  input. Fixed by switching the body to a markdown bullet list
+  (`* URL — title (N tokens)`); the leading `*` is the
+  load-bearing signal that this is prose output, not a query the
+  model would type. Tag-shaped fixes (whether a new tag like
+  `<hit>` or an existing scheme tag like `<https>`) are also at
+  risk of being reproduced as tool calls — markdown bullets are
+  the unambiguous choice. General rule: when an action's log
+  entry shares its wrapper with the input tag, the body must use
+  a marker (markdown bullet, indent, prose) the model has no
+  training-prior to emit as a tool.
+- **State transitions don't mint new entry ids; since-based pulse
+  filters miss them.** `AuditClient` originally used `since:
+  lastSeen` to filter `getEntries` for new proposed entries on
+  every `run/changed` pulse. But proposals are *materialized* by a
+  plugin hook that rewrites the existing run_view row in place
+  (state: resolved → proposed) — the entry id doesn't change.
+  Result: the auto-resolver's first snapshot saw the entry as
+  resolved, advanced lastSeen past it, and every subsequent pulse
+  filtered it out. The proposal sat unresolved forever; tests
+  hung. Fix shape: drop the since-based optimization for state-
+  sensitive scans, full-scan + dedupe via a resolved-set. Lesson:
+  any client tracking state changes via `since: id` filters needs
+  to think about whether state transitions allocate new ids.
+- **Multi-CTE views need carve-outs mirrored at every stage that
+  processes the affected column.** `v_model_context` had a
+  carve-out for archived prompts at the visibility layer (CTE 1)
+  but not at the body-projection layer (CTE 2), silently zeroing
+  the prompt body even though the row passed through. Symptom: the
+  model in Deployment Stage saw `<prompt>...</prompt>` with an
+  empty body and emitted "please provide a prompt to act upon"
+  instead of answering. When you add a carve-out at one stage of a
+  multi-stage view or pipeline, audit every downstream stage that
+  touches the same data — partial carve-outs are worse than no
+  carve-out because the entry's *presence* is preserved while its
+  *content* silently vanishes. Pin with an integration test at
+  every layer, not just the entry layer.
 - **Block ordering matters for prefix caching.** Within the user
   message, blocks are ordered slowest-mutating-first (top) to
   fastest-mutating-last (bottom). This isn't aesthetic — KV cache

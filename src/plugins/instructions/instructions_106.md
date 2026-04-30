@@ -13,6 +13,7 @@ Examples:
 <set path="log://turn_3/search/**" visibility="archived"/>
 
 Tip: You need room to think. Demote large prompts and source entries, then iterate them with <get path="..." line="N" limit="N"/> as necessary.
+Tip: When demoting prompts, prefer "summarized" to "archived" to avoid losing necessary context.
 
 ## Turn Termination (CHOOSE ONLY ONE):
 * Definition Stage Return: <update status="164">returning to Definition Stage</update>

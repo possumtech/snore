@@ -1,3 +1,5 @@
+import { parseRetryAfter } from "./errors.js";
+
 /**
  * Shared streaming client for OpenAI-compatible /chat/completions endpoints.
  *
@@ -47,6 +49,7 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 		const err = new Error(`${response.status} - ${errorBody}`);
 		err.status = response.status;
 		err.body = errorBody;
+		err.retryAfter = parseRetryAfter(response.headers.get("retry-after"));
 		throw err;
 	}
 

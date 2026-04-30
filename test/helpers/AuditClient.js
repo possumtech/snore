@@ -13,7 +13,6 @@ export default class AuditClient extends RpcClient {
 	#currentRun = null;
 	#projectRoot = null;
 	#resolveHandler = null;
-	#lastSeenByRun = new Map();
 	#resolvedPaths = new Set();
 
 	constructor(url, db, { projectRoot } = {}) {
@@ -31,25 +30,25 @@ export default class AuditClient extends RpcClient {
 		this.#resolveHandler = fn;
 	}
 
-	// Pulse + query: subscribe to run/changed, query for new proposed
-	// entries since last seen, auto-resolve. Idempotent — same proposal
-	// won't be resolved twice (tracked in #resolvedPaths).
+	// Subscribe to run/changed, scan for proposed entries, auto-resolve.
+	// We full-scan every pulse rather than filter by `since: lastSeen`
+	// because state transitions (resolved→proposed when a plugin hook
+	// materializes a proposal) don't allocate new entry ids — the run_view
+	// row is rewritten in place. A since-based filter would advance past
+	// the entry on its first-write snapshot and miss the second write's
+	// state transition. Idempotent via #resolvedPaths.
 	#setupAutoResolve() {
 		this.on("run/changed", async ({ run }) => {
-			const lastSeen = this.#lastSeenByRun.get(run) || 0;
-			let newEntries;
+			let entries;
 			try {
-				newEntries = await super.call("getEntries", {
+				entries = await super.call("getEntries", {
 					run,
 					pattern: "**",
-					since: lastSeen,
 				});
 			} catch {
 				return;
 			}
-			if (!newEntries.length) return;
-			this.#lastSeenByRun.set(run, Math.max(...newEntries.map((e) => e.id)));
-			for (const e of newEntries) {
+			for (const e of entries) {
 				if (e.state !== "proposed") continue;
 				const key = `${run}:${e.path}`;
 				if (this.#resolvedPaths.has(key)) continue;

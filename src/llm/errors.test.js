@@ -2,8 +2,9 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
 	ContextExceededError,
+	classifyTransient,
 	isContextExceededMessage,
-	isTransientMessage,
+	parseRetryAfter,
 } from "./errors.js";
 
 describe("isContextExceededMessage", () => {
@@ -49,34 +50,93 @@ describe("isContextExceededMessage", () => {
 	}
 });
 
-describe("isTransientMessage", () => {
-	const matches = [
-		"503 Service Unavailable",
-		"429 Too Many Requests",
-		"timeout after 30000ms",
-		"ECONNREFUSED",
-		"ECONNRESET on socket",
-		"service unavailable",
+describe("classifyTransient", () => {
+	const cases = [
+		// gateway: upstream unreachable
+		{ message: "502 - <html>...</html>", body: "", expected: "gateway" },
+		{ message: "504 Gateway Timeout", body: "", expected: "gateway" },
+		{ message: "fetch failed", body: "", expected: "gateway" },
+		{ message: "ECONNREFUSED 127.0.0.1:11435", body: "", expected: "gateway" },
+		{ message: "ECONNRESET on socket", body: "", expected: "gateway" },
+		{ message: "ENOTFOUND example.com", body: "", expected: "gateway" },
+		{ message: "ETIMEDOUT", body: "", expected: "gateway" },
+		// undici mid-stream socket close.
+		{ message: "terminated", body: "", expected: "gateway" },
+		// rate_limit
+		{ message: "429 Too Many Requests", body: "", expected: "rate_limit" },
+		// warmup: 503 + explicit "Loading model" body
+		{
+			message:
+				'503 - {"error":{"message":"Loading model","type":"unavailable_error","code":503}}',
+			body: '{"error":{"message":"Loading model","code":503}}',
+			expected: "warmup",
+		},
+		{
+			message: "503 Service Unavailable",
+			body: "Loading model from disk...",
+			expected: "warmup",
+		},
+		// server: 500 or generic 503
+		{ message: "500 Internal Server Error", body: "", expected: "server" },
+		{ message: "503 Service Unavailable", body: "", expected: "server" },
+		// null: not retryable
+		{ message: "401 Unauthorized", body: "", expected: null },
+		{ message: "400 Bad Request", body: "", expected: null },
+		{ message: "404 Not Found", body: "", expected: null },
+		{ message: "This operation was aborted", body: "", expected: null },
+		{
+			message: "AbortError: The operation was aborted",
+			body: "",
+			expected: null,
+		},
+		{ message: "TimeoutError: timed out", body: "", expected: null },
+		{ message: "model not found", body: "", expected: null },
 	];
 
-	const noMatch = [
-		"context limit reached",
-		"maximum context length exceeded",
-		"invalid API key",
-		"400 Bad Request",
-	];
-
-	for (const msg of matches) {
-		it(`matches: "${msg.slice(0, 60)}"`, () => {
-			assert.ok(isTransientMessage(msg), `should match: ${msg}`);
+	for (const { message, body, expected } of cases) {
+		it(`classifies "${message.slice(0, 50)}" as ${expected ?? "null"}`, () => {
+			assert.strictEqual(classifyTransient({ message, body }), expected);
 		});
 	}
 
-	for (const msg of noMatch) {
-		it(`rejects: "${msg.slice(0, 60)}"`, () => {
-			assert.ok(!isTransientMessage(msg), `should NOT match: ${msg}`);
-		});
-	}
+	it("handles non-Error inputs gracefully", () => {
+		assert.strictEqual(classifyTransient(null), null);
+		assert.strictEqual(classifyTransient(undefined), null);
+		assert.strictEqual(classifyTransient({}), null);
+	});
+
+	it("does not require a body field", () => {
+		assert.strictEqual(
+			classifyTransient({ message: "502 Bad Gateway" }),
+			"gateway",
+		);
+	});
+});
+
+describe("parseRetryAfter", () => {
+	it("parses integer seconds", () => {
+		assert.strictEqual(parseRetryAfter("120"), 120);
+		assert.strictEqual(parseRetryAfter("0"), 0);
+		assert.strictEqual(parseRetryAfter("3.5"), 3.5);
+	});
+
+	it("returns undefined for missing/null/empty", () => {
+		assert.strictEqual(parseRetryAfter(null), undefined);
+		assert.strictEqual(parseRetryAfter(undefined), undefined);
+		assert.strictEqual(parseRetryAfter(""), undefined);
+	});
+
+	it("returns undefined for HTTP-date form (intentional)", () => {
+		assert.strictEqual(
+			parseRetryAfter("Wed, 21 Oct 2015 07:28:00 GMT"),
+			undefined,
+		);
+	});
+
+	it("returns undefined for malformed values", () => {
+		assert.strictEqual(parseRetryAfter("not-a-number"), undefined);
+		assert.strictEqual(parseRetryAfter("-1"), undefined);
+	});
 });
 
 describe("ContextExceededError", () => {
