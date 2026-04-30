@@ -410,6 +410,24 @@ pre-flight.
   last). The system message stays fully stable post-bifurcation.
   Don't reorder blocks without considering the cache impact at the
   bottom of the order.
+- **Wire-body literals masquerade as config-driven defaults.** The
+  provider plugins (`openai.js`, `ollama.js`, `openrouter.js`) hardcoded
+  `think: true` / `include_reasoning: true` for weeks while
+  `src/agent/config.js` declared `RUMMY_THINK` and `.env.example`
+  defaulted it to `1`. The flag was unused; the literal was
+  load-bearing. Symptoms presented as "gemma reasoning-runaway" — a
+  documented model pathology — and the strike-streak watchdog
+  cleanly recovered, so the harness bug hid behind a model story.
+  A reasoning-capable model (grok-fast-reasoning) would have
+  absorbed the forced reasoning and still produced output, masking
+  the bug from any non-gemma benchmark. Lesson: when a model
+  exhibits a documented pathology, **read the actual wire body**
+  before classifying. A literal `true` in plugin source that
+  ignores its config knob is the most expensive kind of bug —
+  every prior benchmark number on the affected provider is
+  potentially compromised. Cross-ref: TBENCH_AUDIT.md
+  `@audit_task_regex_log_smoke_1`, the audit's first STRUCTURAL
+  finding (2026-04-30).
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
