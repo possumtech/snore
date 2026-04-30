@@ -171,6 +171,12 @@ export default class AuditClient extends RpcClient {
 			}
 			await new Promise((r) => setTimeout(r, 250));
 		}
+		// Abort the run before throwing so it doesn't keep emitting turns
+		// in the server with stale resolver state in the test session.
+		// Without this, a timed-out act() leaves a zombie run that a
+		// subsequent client.resolveHandler clear can render destructive
+		// (default auto-resolver accepts proposals the test meant to reject).
+		await this.abortRun(alias).catch(() => {});
 		throw new Error(
 			`run ${alias} did not reach terminal status in ${timeoutMs}ms`,
 		);

@@ -19,6 +19,7 @@ YOU MUST ONLY perform the actions corresponding with your current stage:
 * Leverage the FCRM's Visibility States with folksonomic taxonomies and tags to store and recall unlimited information.
 * When an entry is "visible", it will appear in both the summarized and visible sections.
 * The `tokens="N"` shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
+* <get/> retrieval operations require Stage Continuation, not Completion. Promotions don't appear until next turn.
 
 YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log events to exceed `tokensFree` budget.
 
