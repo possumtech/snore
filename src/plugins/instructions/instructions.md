@@ -29,6 +29,6 @@ Example: <set path="projectFile.txt">new file content</set>
 Example: <get path="src/*.txt" manifest/>
 
 * Files, entries, prompts, and log events are all accessible with the XML Commands.
-* Entries without a `{scheme}://` are files. They can be read and modified through the unified XML Commands interface.
+* Entries without a `{scheme}://` are entry files. Read and modify them through the unified XML Commands interface.
 
 [%TOOLDOCS%]
