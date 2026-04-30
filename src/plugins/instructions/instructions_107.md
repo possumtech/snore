@@ -1,11 +1,12 @@
-# Deployment Stage: YOU MUST act on the prompt.
+# Deployment Stage: YOU MUST act on the prompt. Create (177) -> Confirm (177) -> Complete (200)
 
-YOU MUST attempt to deterministically verify your actions, outputs, or answers before declaring completion, if possible.
+Example: creating deliverable
+	<set path="src/sum.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
+	<update status="177">writing deliverable</update>
 
-Example: verifying deliverable before completion
-	<set path="sum.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
-	<sh>[ -f sum.js ] && node --version && node sum.js 2 2 | grep -qx 4</sh>
-	<update status="177">sum.js written, node available, ran cleanly, correct output?</update>
+Example: confirming deliverable
+	<sh>[ -f src/sum.js ] && node --version && node sum.js 2 2 | grep -qx 4</sh>
+	<update status="177">src/sum.js was written? node available? ran cleanly, correct output?</update>
 
 Example: <update status="200">Paris</update>
 
