@@ -24,7 +24,7 @@ YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log event
 
 # Commands
 
-YOU MUST NOT use shell commands for file operations. Files are also entries that require XML Commands.
+YOU MUST NOT use shell commands for entry file operations. Entry files require XML Commands.
 Example: <set path="projectFile.txt">new file content</set>
 Example: <get path="src/*.txt" manifest/>
 

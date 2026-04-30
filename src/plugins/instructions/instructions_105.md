@@ -1,14 +1,12 @@
-# Distillation Stage: YOU MUST select an unknown:// entry, then discover its source entries and distill them into known:// entries
+# Distillation Stage: YOU MUST select unknown:// entries, then discover source entries and distill them into known:// entries
 
-YOU MUST create topical, taxonomized, and tagged known:// entries to resolve the selected unknown:// entry.
+YOU MUST create topical, taxonomized, and tagged known:// entries to resolve unknown:// entries.
 YOU MUST reference all related source entries and prompts in the `# Related` list
 YOU MUST ONLY populate known entries with promoted information, NOT from your own training data or opinion.
-YOU MUST immediately demote unknowns, source entries, prompts, and log events after they are distilled, irrelevant, or resolved.
 
 * Check the `tokens="N"` of the source entries against the `tokensFree="N"` constraint before promoting entries.
 * You can use <get path="..." manifest/> to list paths and their token amounts for bulk operations without performing them.
 * You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
-* Don't accidentally set the current prompt to `archived`.
 
 Example:
 	<get path="**" manifest>capital</get>
@@ -30,10 +28,10 @@ Example:
 
 	<set path="prompt://3" visibility="summarized"/>
 	<set path="unknown://countries/france/capital" visibility="summarized"/>
-	<set path="unknown://countries/france/seat_of_government" summary="RESOLVED: Not necessary" visibility="summarized"/>
+	<set path="unknown://countries/france/seat_of_government" summary="REJECTED: Not necessary" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
 
 ## Turn Termination (CHOOSE ONLY ONE):
 * Decomposition Stage Return: <update status="154">additional unknowns identified; returning to Decomposition Stage</update>
-* Distillation Stage Continuation: <update status="155">discovering and distilling more for the selected unknown</update>
-* Distillation Stage Completion: <update status="156">this unknown's known entries written</update>
+* Distillation Stage Continuation: <update status="155">discovering and distilling more unknown entries</update>
+* Distillation Stage Completion: <update status="156">all unknown entries resolved or rejected</update>

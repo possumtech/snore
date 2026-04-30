@@ -1,5 +1,6 @@
 import config from "../../agent/config.js";
 import ProjectAgent from "../../agent/ProjectAgent.js";
+import File from "../file/file.js";
 
 const TERMINAL_STATUSES = new Set([200, 204, 413, 422, 499, 500]);
 
@@ -36,11 +37,25 @@ export default class Cli {
 		// pass --RUMMY_YOLO=0 to opt out.
 		if (process.env.RUMMY_YOLO == null) process.env.RUMMY_YOLO = "1";
 
-		const projectRoot = process.cwd();
+		const projectRoot = process.env.RUMMY_PROJECT_ROOT ?? process.cwd();
 		const alias = `cli_${Date.now()}`;
 
 		const projectAgent = new ProjectAgent(db, hooks);
 		const { projectId } = await projectAgent.init(alias, projectRoot);
+
+		// Operator-declared project surface (comma-separated literal paths,
+		// relative to project root). Harness enumerates and declares; rummy
+		// ingests via the existing constraints overlay. No globs.
+		const activeFilesRaw = process.env.RUMMY_ACTIVE_FILES;
+		if (activeFilesRaw) {
+			const patterns = activeFilesRaw
+				.split(",")
+				.map((s) => s.trim())
+				.filter(Boolean);
+			for (const pattern of patterns) {
+				await File.setConstraint(db, projectId, pattern, "active");
+			}
+		}
 
 		// Watchdog; overridable via --RUMMY_RUN_TIMEOUT=<ms>.
 		const timeoutMs = config.RUN_TIMEOUT;
