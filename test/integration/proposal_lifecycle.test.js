@@ -97,10 +97,10 @@ describe("proposal lifecycle (@resolution)", () => {
 					await tdb.db.get_run_by_alias.get({ alias: "set_bare_path" })
 				).project_id,
 			});
-			const active = constraints.find(
-				(c) => c.pattern === "a.md" && c.visibility === "active",
+			const added = constraints.find(
+				(c) => c.pattern === "a.md" && c.visibility === "add",
 			);
-			assert.ok(active, "new file registered as active in file_constraints");
+			assert.ok(added, "new file registered as add in file_constraints");
 		});
 
 		it("readonly constraint vetoes accept with outcome=readonly", async () => {

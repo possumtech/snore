@@ -44,16 +44,18 @@ export default class Cli {
 		const { projectId } = await projectAgent.init(alias, projectRoot);
 
 		// Operator-declared project surface (comma-separated literal paths,
-		// relative to project root). Harness enumerates and declares; rummy
-		// ingests via the existing constraints overlay. No globs.
-		const activeFilesRaw = process.env.RUMMY_ACTIVE_FILES;
-		if (activeFilesRaw) {
-			const patterns = activeFilesRaw
+		// relative to project root). Files are ingested as entries with
+		// default visibility=archived; the model promotes specific
+		// entries via <get>. Decouples membership (constraint) from
+		// visibility (per-entry, model-controlled).
+		const projectFilesRaw = process.env.RUMMY_PROJECT_FILES;
+		if (projectFilesRaw) {
+			const patterns = projectFilesRaw
 				.split(",")
 				.map((s) => s.trim())
 				.filter(Boolean);
 			for (const pattern of patterns) {
-				await File.setConstraint(db, projectId, pattern, "active");
+				await File.setConstraint(db, projectId, pattern, "add");
 			}
 		}
 

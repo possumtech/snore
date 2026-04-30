@@ -104,26 +104,86 @@ constant name → delete.
 
 ## Where We Are
 
-The contract (SPEC [entries](SPEC.md#entries)) is delivered through
-Phase 6. Phase 7 (harness verification) is the active surface: the
-FCRM stage rename to Decomposition / Distillation / Demotion /
-Deployment, the retry classifier, the prompt-archive paradigm
-cleanup (carve-out removed; archived means archived), and the
-test-suite parallelism harmonization landed 2026-04-30 with full
-e2e green (31/31). The next signal is the tbench cross-section
-pre-flight.
+Phase 7 audit is in flight against tbench@2.0. The harness chain end-
+to-end (rummy.repo plugin install + load, project root pinned to
+/app, constraints overlay populated, brave search backend wired,
+Playwright browser pre-installed, soft-warning fix for parser-
+recovered XML, test files excluded from active ingestion, deployment
+rhythm in `instructions_107.md` reframed as Create→Confirm→Complete)
+is now verified end-to-end via grok smoke on `break-filter-js-from-html`
+(2026-04-30: clean 200, real `<search>` dispatches, no verifier-
+mutation impulse, no parser warnings striking).
+
+A first-pass gemma sweep (3 trials, halted) surfaced two distinct
+real-world failure modes worth chronicling: a t64-distro install
+break (already fixed) and a token-budget overflow shape from
+declaring `.jsonl` data files as `active`. Both are filed as audit
+findings below.
 
 ## The Plan
 
 - Phases 1–6 (schema, primitives, runs-as-entries, client surface,
   plugin hygiene, external projects) ✓ landed.
-- **Phase 7 — Harness verification** ⌛ tbench cross-section pre-flight
-  (`regex-log`, `extract-elf`, `git-multibranch`) is the next signal;
-  Codex+grok comparison pre-flight after.
+- **Phase 7 — Harness verification** ⌛ in flight. Audit relaunch
+  pending decisions on the constraint-vs-budget design surfaced by
+  llm-inference-batching-scheduler.
 
 ---
 
 ## Open Items
+
+- [ ] **Active-constraint visibility forces token budget overflow on
+  data-heavy tasks.** Surfaced 2026-04-30 by tbench
+  `llm-inference-batching-scheduler`: harbor's adapter declares
+  every file in `/app` as an `active` file_constraint via
+  `RUMMY_ACTIVE_FILES`. `rummy.repo`'s `FileScanner` writes
+  active-constrained files with `visibility="visible"`
+  (`FileScanner.js:147–148`). For tasks shipping large data files
+  (this one had two `.jsonl` requests-bucket files at ~50K chars
+  each), the assembled user message exceeds gemma's `n_ctx` ceiling
+  on turn 1 (60525 tokens > 29491-token demoted ceiling). The
+  budget-plugin catches it and emits `Token Budget overflow` errors
+  every turn → loop detected → 499. The harness recovered cleanly,
+  but the model never had a chance.
+
+  Three possible angles, each with tradeoffs:
+  1. **Size-threshold heuristic in harbor**: declare files <N KB
+     as `active`, leave larger files unmentioned. Cost: model
+     can't `<get>` the larger files at all (get returns "not
+     found" because they aren't entries). Many real tbench tasks
+     have data files the agent must read.
+  2. **New constraint type in rummy.repo (`scanned`?)**: ingests
+     the file as an entry but defaults visibility=`archived`. Model
+     can `<get>` it to promote on demand. Bigger change — touches
+     rummy.repo's FileScanner constraint semantics.
+  3. **Trust the model to demote**: declare active, let visibility
+     default to visible, expect the model to demote large files
+     it doesn't need on turn 1. Fails when the model can't even
+     emit a turn-1 update because the budget already overflowed
+     before the model got a chance to see anything.
+
+  Option 2 is the principled answer. Discuss before refactor.
+
+- [ ] **Continuation-forever in Distillation has no protocol-side
+  cap.** Surfaced 2026-04-30 on `break-filter-js-from-html`
+  (gemma): 21+ turns of `<update status="155">` with no advance.
+  The strike machinery only catches struck turns (turn-errors,
+  failed entries, missing-update). A model that productively emits
+  `<set known://...>` + `<update status="155">` every turn has no
+  internal stopping condition besides `RUMMY_MAX_LOOP_TURNS=99`.
+  The new `instructions_105.md` "rejected" termination is the
+  intent-side lever, but doesn't bound runaway distillation. Two
+  candidate fixes:
+  1. Turn-budget within stage: if streak of 155-without-progress
+     hits N, force-advance with a soft warning. Hard to define
+     "without progress" — model could be making progress between
+     unknowns even if it doesn't change knowns.
+  2. Cycle detection at `<update status>` level: if the same
+     update body fingerprint recurs, treat as a strike. Already
+     have detectCycle infrastructure in `error.js`; would extend
+     it to update-body fingerprints rather than turn fingerprints.
+
+  Discuss before fixing.
 
 - [ ] **System auto-pruning.** On loop boundary or when log size
   crosses threshold, archive `log://turn_{M}/**` where M < current -
@@ -444,6 +504,56 @@ pre-flight.
   tweaks, sampler/stop tokens, swap to a non-reasoning gemma
   variant) — not harness-side. Document the observation; expect
   it on every gemma run.
+- **`reasoning_tokens` in turns table is a misleading metric.**
+  Llama-server (gemma) populates `reasoning_content` via the chat
+  template's split, but doesn't break out a separate
+  `reasoning_tokens` counter in the OpenAI-compatible usage
+  block — everything bundles into `completion_tokens`. So
+  `turns.reasoning_tokens=0` does NOT mean "the model didn't
+  reason." Verify reasoning capture by reading `reasoning://N`
+  entry sizes (rummy.web's openaiStream captures the
+  `delta.reasoning_content` chunks correctly into entries),
+  not by the per-turn token counter. Earlier audit framing
+  cited the counter as fix-verification; that framing is
+  retracted (TBENCH_AUDIT.md retraction note 2026-04-30).
+- **Parser warnings should be soft, not strikes.** Recoverable
+  XML pathology (mismatched closing tag, unclosed tag with
+  content captured) is exactly that: recovered. The parser fixed
+  it, the turn's productive emissions survive. Counting parser
+  warnings as strike-eligible (state="failed" via
+  error.log.emit) punishes the model for sloppy syntax the
+  framework already handled. Fix landed 2026-04-30: error.log
+  takes a `soft` flag; soft entries land state="resolved" and
+  skip turnErrors++. Wired only at TurnExecutor's parser-warnings
+  loop. Missing-update / no-actionable-tags / dispatch crashes /
+  context-exceeded all stay strike-eligible — those are real
+  FCRM-compliance signals.
+- **Verifier-mutation impulse is a benchmark-integrity threat
+  separate from cheating-via-search.** Grok on
+  `break-filter-js-from-html` (smoke 2026-04-30) emitted
+  `<set known://fix/test_outputs.py>` documenting how to PATCH
+  the test_outputs.py verifier — including swapping `/tests/`
+  for `/app/`. The `known://` scope kept it informational, but
+  if the model had emitted `<set path="test_outputs.py">` the
+  current set proposal-accept gate would have allowed the
+  write (file_constraints declared the test file as `active`,
+  not `readonly`). Mitigated via harbor adapter excluding
+  `test_*.py` / `*_test.py` / `tests/*` from the active find,
+  so verifier source isn't ingested as entries — the model
+  runs the verifier via `<sh>` to check itself, but doesn't
+  see its source as something to engage with. Distinct from
+  the web-search "look up the answer" risk; both want
+  separate treatment in the audit writeup.
+- **Tbench task containers span multiple Ubuntu base versions.**
+  Surfaced by gpt2-codegolf (Ubuntu Noble 24.04, t64-renamed
+  libs) vs break-filter-js-from-html (Jammy 22.04, non-t64).
+  Apt package names diverge across the t64 transition. Single
+  fixed install list breaks one or the other. Fix shape: split
+  the install into stable names (work everywhere) + a
+  t64-or-fallback chain for the renamed packages
+  (libatk1.0-0t64 || libatk1.0-0, etc.). Lesson: don't assume
+  homogeneous base images across a benchmark dataset; tbench
+  authors compose images independently.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 

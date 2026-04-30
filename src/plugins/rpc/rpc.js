@@ -2,7 +2,7 @@ import msg from "../../agent/messages.js";
 import RummyContext from "../../hooks/RummyContext.js";
 import File from "../file/file.js";
 
-const CONSTRAINT_VISIBILITIES = new Set(["active", "readonly", "ignore"]);
+const CONSTRAINT_VISIBILITIES = new Set(["add", "readonly", "ignore"]);
 
 export default class Rpc {
 	#core;
@@ -261,11 +261,11 @@ export default class Rpc {
 			},
 			description:
 				"Set a project-level file constraint. Visibility ∈ " +
-				"{active, readonly, ignore}. Patterns can be globs. " +
+				"{add, readonly, ignore}. Patterns can be globs. " +
 				"Persists across runs; overlays git defaults.",
 			params: {
 				pattern: "string — file path or glob",
-				visibility: "string — active | readonly | ignore",
+				visibility: "string — add | readonly | ignore",
 			},
 			requiresInit: true,
 		});

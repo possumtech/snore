@@ -98,7 +98,7 @@ export default class Set {
 			await writeFile(targetPath, patched);
 		}
 		if (isNewFile && projectId) {
-			await File.setConstraint(db, projectId, attrs.path, "active");
+			await File.setConstraint(db, projectId, attrs.path, "add");
 		}
 	}
 

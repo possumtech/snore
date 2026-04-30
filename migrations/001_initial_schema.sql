@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS file_constraints (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, pattern TEXT NOT NULL
-	, visibility TEXT NOT NULL CHECK (visibility IN ('active', 'readonly', 'ignore'))
+	, visibility TEXT NOT NULL CHECK (visibility IN ('add', 'readonly', 'ignore'))
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (project_id, pattern)
 );

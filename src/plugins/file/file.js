@@ -19,7 +19,7 @@ export default class File {
 		return "";
 	}
 
-	static async setConstraint(db, projectId, pattern, visibility = "active") {
+	static async setConstraint(db, projectId, pattern, visibility = "add") {
 		const path = await normalizePath(db, projectId, pattern);
 		if (!path) return null;
 
