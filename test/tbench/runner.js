@@ -2,8 +2,9 @@
  * terminal-bench 2.0 runner. Thin wrapper around `harbor run`.
  *
  * Usage:
- *   node test/tbench/runner.js --task <id> [--agent rummy|codex] [--model <id>]
- *   node test/tbench/runner.js --task hello-world --agent rummy   # pre-flight
+ *   node test/tbench/runner.js                                    # full dataset sweep (all 89 tasks)
+ *   node test/tbench/runner.js --task <id>                        # single task
+ *   node test/tbench/runner.js --task <id> --agent codex          # alt adapter
  *
  * Reads .env.tbench (loaded by the npm script) for harbor location,
  * dataset, default model. Tees harbor output to test/tbench/results/.
@@ -27,11 +28,6 @@ const { values: args } = parseArgs({
 	strict: true,
 });
 
-if (!args.task) {
-	console.error("Missing --task <id>. Example: --task hello-world");
-	process.exit(2);
-}
-
 const harborDir = process.env.RUMMY_TBENCH_HARBOR_DIR?.replace(
 	/^~/,
 	process.env.HOME,
@@ -54,7 +50,8 @@ if (!dataset || !model) {
 
 mkdirSync(RESULTS_DIR, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const runDir = join(RESULTS_DIR, `${stamp}_${args.agent}_${args.task}`);
+const runSlug = args.task ?? "all";
+const runDir = join(RESULTS_DIR, `${stamp}_${args.agent}_${runSlug}`);
 mkdirSync(runDir, { recursive: true });
 const logPath = join(runDir, "harbor.log");
 const logStream = createWriteStream(logPath);
@@ -66,8 +63,7 @@ const harborArgs = [
 	"run",
 	"--dataset",
 	dataset,
-	"--include-task-name",
-	args.task,
+	...(args.task ? ["--include-task-name", args.task] : []),
 	"--agent",
 	args.agent,
 	"--model",
