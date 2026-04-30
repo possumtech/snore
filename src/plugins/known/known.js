@@ -88,9 +88,7 @@ export default class Known {
 	}
 
 	// Identity-keyed summary lines: every data entry the run is tracking
-	// at visibility=visible or visibility=summarized. The active prompt
-	// (including when archived) is rendered separately by the prompt
-	// plugin's <prompt> tag at the bottom of the user message.
+	// at visibility=visible or visibility=summarized.
 	async assembleSummarized(content, ctx) {
 		const entries = ctx.rows.filter(
 			(r) =>

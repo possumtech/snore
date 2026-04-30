@@ -15,11 +15,9 @@ visible AS (
 		, rv.updated_at
 		, e.attributes
 		, COALESCE(s.category, 'logging') AS category
-		-- Archived prompts pass through; see prompt plugin README.
 		, CASE
 			WHEN s.model_visible = 0 THEN NULL
-			WHEN rv.visibility = 'archived'
-				AND COALESCE(e.scheme, 'file') != 'prompt' THEN NULL
+			WHEN rv.visibility = 'archived' THEN NULL
 			ELSE rv.visibility
 		END AS effective_visibility
 	FROM run_views AS rv
@@ -40,15 +38,7 @@ projected AS (
 		, attributes
 		-- Category comes from schemes table — plugins declare it via registerScheme().
 		, category
-		-- Archived prompts pass through with body so the active prompt
-		-- remains discoverable to the model in Deployment Stage. CTE 1
-		-- already restricts archived rows to scheme='prompt'; mirror that
-		-- in the body projection here.
-		, CASE
-			WHEN effective_visibility IN ('visible', 'summarized') THEN body
-			WHEN effective_visibility = 'archived' AND scheme = 'prompt' THEN body
-			ELSE ''
-		END AS body
+		, body
 	FROM visible
 	WHERE effective_visibility IS NOT NULL
 )
