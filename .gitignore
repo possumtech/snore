@@ -153,3 +153,4 @@ audits/
 .claude/
 turns/
 last_run.txt
+scriptify/

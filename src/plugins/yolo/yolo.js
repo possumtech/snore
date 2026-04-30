@@ -10,7 +10,7 @@ export default class Yolo {
 		core.hooks.proposal.pending.on(this.#onPending.bind(this));
 	}
 
-	async #onPending({ run, proposed, rummy }) {
+	async #onPending({ proposed, rummy }) {
 		if (!rummy?.yolo) return;
 		for (const p of proposed) {
 			// Resolve first so sh/env's post-accept seeds channels before we stream into them.
@@ -142,7 +142,7 @@ export default class Yolo {
 						null,
 					);
 					const summary = channels
-						.map((c) => `${c.path} (${c.tokens || 0} tokens)`)
+						.map((c) => `${c.path} (${c.tokens} tokens)`)
 						.join(", ");
 					const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
 					await entries.set({

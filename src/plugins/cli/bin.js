@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import resolveRummyHome from "../../agent/rummyHome.js";
 
 // Env-var-shape args: --KEY=value, --KEY value, or --KEY (→ "1").
 const ENV_FLAG = /^--([A-Z][A-Z0-9_]*)(?:=([\s\S]*))?$/;
@@ -42,7 +42,7 @@ parseEnvArgs(process.argv);
 // Same env cascade as bin/rummy.js; CLI flags trump because loadEnvFile preserves existing vars.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(__dirname, "../../..");
-const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");
+const rummyHome = resolveRummyHome();
 
 const cwd = process.cwd();
 const baseDir = existsSync(join(cwd, ".env.example")) ? cwd : rummyHome;

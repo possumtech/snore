@@ -75,22 +75,22 @@ export default class Budget {
 			const entry = schemeEntry(s);
 			if (r.visibility === "visible") {
 				entry.vis += 1;
-				entry.visTokens += r.vTokens || 0;
-				entry.visIfSumTokens += r.sTokens || 0;
-				entry.premium += r.aTokens || 0;
+				entry.visTokens += r.vTokens;
+				entry.visIfSumTokens += r.sTokens;
+				entry.premium += r.aTokens;
 				visibleCount += 1;
 				premiumTokens += r.aTokens;
 				floorTokens += r.sTokens;
 			} else if (r.visibility === "summarized") {
 				entry.sum += 1;
-				entry.sumTokens += r.sTokens || 0;
+				entry.sumTokens += r.sTokens;
 				summarizedCount += 1;
 				_summarizedTokens += r.sTokens;
 				floorTokens += r.sTokens;
 			}
 		}
 
-		const systemTokens = countTokens(systemPrompt || "");
+		const systemTokens = countTokens(systemPrompt);
 		const tokenUsage = floorTokens + premiumTokens + systemTokens;
 		const tokensFree = Math.max(0, cap - tokenUsage);
 

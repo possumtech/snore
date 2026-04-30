@@ -3,12 +3,12 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import resolveRummyHome from "../src/agent/rummyHome.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(__dirname, "..");
 
-const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");
+const rummyHome = resolveRummyHome();
 
 // Base dir for env files: cwd if it has .env.example, else $RUMMY_HOME.
 // The package's own .env.example is never consulted — silent package-

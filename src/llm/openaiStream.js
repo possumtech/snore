@@ -69,7 +69,7 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 		// line carries the JSON payload. Process complete lines and keep any
 		// trailing partial-line in the buffer for the next read.
 		const lines = buffer.split("\n");
-		buffer = lines.pop() ?? "";
+		buffer = lines.pop();
 
 		for (const rawLine of lines) {
 			const line = rawLine.trim();
@@ -112,7 +112,7 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 				message: {
 					role: "assistant",
 					content,
-					reasoning_content: reasoningContent || null,
+					reasoning_content: reasoningContent,
 				},
 				finish_reason: finishReason,
 			},

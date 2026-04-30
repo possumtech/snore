@@ -23,10 +23,10 @@ export function logPathToDataBase(logPath) {
 // shown so it can issue <get line="N" limit="M"/> for the rest without
 // re-running the command.
 export function streamSummary(label, entry, TAIL_LINES = 12) {
-	const body = entry?.body ?? "";
-	if (!body) return "";
-	const command = entry?.attributes?.command ?? "";
-	const channel = entry?.attributes?.channel === 2 ? "stderr" : "stdout";
+	if (!entry.body) return "";
+	const { body, attributes } = entry;
+	const command = attributes.command;
+	const channel = attributes.channel === 2 ? "stderr" : "stdout";
 	const trailingNewline = body.endsWith("\n");
 	const lines = trailingNewline
 		? body.slice(0, -1).split("\n")

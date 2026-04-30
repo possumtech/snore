@@ -479,7 +479,7 @@ describe("XmlParser brutal corpus", () => {
 		});
 
 		it("orphan close tag of a known tool", () => {
-			const { commands, warnings } = parse("text </set> more text");
+			const { commands } = parse("text </set> more text");
 			assert.strictEqual(commands.length, 0);
 			// Warning is optional; outcome must not produce a phantom command.
 		});

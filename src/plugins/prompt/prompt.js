@@ -40,7 +40,7 @@ export default class Prompt {
 	}
 
 	async assemblePrompt(content, ctx) {
-		const { rows, contextSize, toolSet } = ctx;
+		const { rows, toolSet } = ctx;
 		const promptEntry = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);

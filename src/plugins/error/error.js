@@ -88,7 +88,7 @@ export default class ErrorPlugin {
 		if (state) state.turnErrors++;
 	}
 
-	async #verdict({ store, runId, loopId, turn, recorded, summaryText }) {
+	async #verdict({ store, runId, loopId, recorded, summaryText }) {
 		const state = this.#loopState.get(loopId);
 
 		let cycleReason = null;

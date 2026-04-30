@@ -114,6 +114,7 @@ export default class Cli {
 					e.state === "resolved",
 			)
 			.toSorted((a, b) => a.turn - b.turn);
-		return updates[updates.length - 1]?.body ?? null;
+		if (updates.length === 0) return null;
+		return updates.at(-1).body;
 	}
 }

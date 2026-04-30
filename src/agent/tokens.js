@@ -9,6 +9,6 @@ export function countTokens(text) {
 
 export function countLines(text) {
 	if (!text) return 0;
-	const newlines = (text.match(/\n/g) || []).length;
+	const newlines = text.split("\n").length - 1;
 	return text.endsWith("\n") ? newlines : newlines + 1;
 }

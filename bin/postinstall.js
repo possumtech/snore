@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import resolveRummyHome from "../src/agent/rummyHome.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(__dirname, "..");
 const envExample = join(packageRoot, ".env.example");
 
-const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");
+const rummyHome = resolveRummyHome();
 
 if (!existsSync(rummyHome)) {
 	mkdirSync(rummyHome, { recursive: true });
