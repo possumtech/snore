@@ -1,4 +1,6 @@
-XML Commands Available: [%TOOLS%]
+XML Commands available: [%TOOLS%]
+
+YOU MUST ONLY use the available XML Commands.
 
 # FCRM State Machine
 

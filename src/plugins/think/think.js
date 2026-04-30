@@ -6,7 +6,7 @@ const { THINK } = config;
 export default class Think {
 	constructor(core) {
 		core.registerScheme({ modelVisible: 0, category: "logging" });
-		if (THINK === "1") {
+		if (THINK) {
 			core.ensureTool();
 			core.filter("instructions.toolDocs", async (docsMap) => {
 				docsMap.think = docs;

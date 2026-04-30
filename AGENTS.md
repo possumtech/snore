@@ -428,6 +428,22 @@ pre-flight.
   potentially compromised. Cross-ref: TBENCH_AUDIT.md
   `@audit_task_regex_log_smoke_1`, the audit's first STRUCTURAL
   finding (2026-04-30).
+- **Models reach for tools we never advertised.** Gemma 4 IT has a
+  deep CoT training prior — it emits `<think>...</think>` even
+  when the harness doesn't advertise the `<think>` command and no
+  prompt content references it. Verified post-RUMMY_THINK=0 fix
+  via `regex-log` smoke #2: zero `think` tokens in the system
+  prompt, model still emitted `<think>` blocks across all 5 turns.
+  The think plugin already absorbs this gracefully (scheme
+  registers unconditionally; tool handler conditional on `THINK`;
+  reasoning-merge filter folds `<think>` bodies into
+  reasoning_content for telemetry regardless), so the parser
+  doesn't trip and the entries land cleanly. But: extended
+  CoT-in-content blows past n_ctx the same way server-side
+  reasoning would. Mitigations are model-side (chat template
+  tweaks, sampler/stop tokens, swap to a non-reasoning gemma
+  variant) — not harness-side. Document the observation; expect
+  it on every gemma run.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
