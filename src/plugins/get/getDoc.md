@@ -34,3 +34,5 @@ Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200
 <!-- manifest = listing, not snippet. The natural-language reading of "preview" pulled small models toward content-sampling; for body samples use line/limit. -->
 
 * Remember to <set path="..." visibility="summarize"/> when entries or log events are no longer relevant.
+
+* Promotions aren't visible until the next turn.

@@ -10,8 +10,8 @@ Example: verifying deliverable before completion
 Example: <update status="200">Paris</update>
 
 ## Turn Termination (CHOOSE ONLY ONE):
-* Definition Stage Return: <update status="174">returning to Definition Stage</update>
-* Discovery Stage Return: <update status="175">returning to Discovery Stage</update>
-* Demotion Stage Return: <update status="176">returning to Demotion Stage</update>
+* Decomposition Stage Return: <update status="174">additional unknowns identified; returning to Decomposition Stage</update>
+* Distillation Stage Return: <update status="175">selected unknown not yet resolved; returning to Distillation Stage</update>
+* Demotion Stage Return: <update status="176">context not yet sufficiently demoted; returning to Demotion Stage</update>
 * Deployment Stage Continuation: <update status="177">performing more actions</update>
 * Deployment Stage Completion: <update status="200">{direct answer (summary of actions performed if prompt not a question)}</update>

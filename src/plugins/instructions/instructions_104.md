@@ -1,6 +1,8 @@
-# Definition Stage: YOU MUST ONLY create topical, taxonomized, and tagged unknown:// entries for key unknowns
+# Decomposition Stage: YOU MUST ONLY create topical, taxonomized, and tagged unknown:// entries
+
+YOU MUST decompose the prompt into the key information, issues, and items that are unknown and/or unresolved.
 
 Example: <set path="unknown://countries/france/capital" summary="countries,france,capital,geography,trivia">What is the capital of France?</set>
 
-## Turn Termination:
-* Definition Stage Completion: <update status="145">unknowns identified</update>
+## Turn Termination (CHOOSE ONLY ONE):
+* Decomposition Stage Completion: <update status="145">prompt decomposed</update>
