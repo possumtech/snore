@@ -196,6 +196,10 @@ export default class TurnExecutor {
 		const content = responseMessage?.content ? responseMessage.content : "";
 
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
+		// Parser warnings are recovered emissions — the parser already
+		// corrected a mismatched/unclosed tag and produced commands. Log
+		// them so the model sees what happened, but don't strike: the
+		// turn's productive work is intact.
 		for (const w of warnings) {
 			await this.#hooks.error.log.emit({
 				store: this.#entries,
@@ -204,6 +208,7 @@ export default class TurnExecutor {
 				message: w,
 				loopId: currentLoopId,
 				status: 422,
+				soft: true,
 			});
 		}
 		if (commands.length === 0 && unparsed?.trim() && warnings.length === 0) {

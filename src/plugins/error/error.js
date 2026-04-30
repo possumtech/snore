@@ -71,19 +71,26 @@ export default class ErrorPlugin {
 		message,
 		status,
 		attributes,
+		soft,
 	}) {
 		const statusValue = status ?? 400;
 		const path = await store.logPath(runId, turn, "error", message);
+		// Soft errors record but don't strike: the issue was already
+		// recovered (e.g. parser auto-corrected a closing-tag mismatch)
+		// and the entry exists only so the model can see what happened.
+		// state="resolved" keeps recordedFailed clean; skipping
+		// turnErrors++ keeps the strike machinery from firing.
 		await store.set({
 			runId,
 			turn,
 			path,
 			body: message,
-			state: "failed",
+			state: soft ? "resolved" : "failed",
 			outcome: `status:${statusValue}`,
 			loopId,
 			attributes: { ...attributes, status: statusValue },
 		});
+		if (soft) return;
 		const state = this.#loopState.get(loopId);
 		if (state) state.turnErrors++;
 	}
