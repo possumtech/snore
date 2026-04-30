@@ -1,18 +1,22 @@
 /**
  * Handler dispatch integration test.
  *
- * Covers @dispatch_path, @plugins_handler, @get_plugin — the
- * record → dispatch → state-change loop that turns parsed XML
+ * Covers @dispatch_path, @plugins_handler, @get_plugin,
+ * @xml_parser, @failure_reporting, @plugins_handler_outcomes —
+ * the record → dispatch → state-change loop that turns parsed XML
  * commands into entries with outcomes. View projection
  * (@plugins_views) is tested separately in engine.test.js and
  * tool_visibility.test.js, which exercise the full/summary
  * rendering path.
  *
  * Proves the record→dispatch→state-change loop:
- * 1. XmlParser produces commands
+ * 1. XmlParser produces commands (@xml_parser — parser is the
+ *    syntax layer this test feeds)
  * 2. Commands recorded as entries at "full" state
  * 3. Handlers dispatched via ToolRegistry
- * 4. Handlers update entry state (proposed, pass, read, etc.)
+ * 4. Handlers finalize their own log entry's body+state+outcome
+ *    on success or failure (@failure_reporting,
+ *    @plugins_handler_outcomes — the action entry IS its outcome).
  * 5. Multiple handlers per scheme run in priority order
  */
 import assert from "node:assert";

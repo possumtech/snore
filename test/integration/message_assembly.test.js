@@ -2,11 +2,14 @@
  * Message assembly integration test.
  *
  * Covers @packet_structure, @message_structure,
- * @loops_previous_performed, @instructions_plugin, @log_plugin —
- * what we actually send to the model.
+ * @loops_previous_performed, @instructions_plugin, @log_plugin,
+ * @plugins_filter_bands — what we actually send to the model.
  * Populates known_entries, materializes turn_context, assembles the
  * messages, and inspects system and user content directly including
- * the rendering of prior-loop and current-loop entries.
+ * the rendering of prior-loop and current-loop entries. Filter
+ * priority bands (@plugins_filter_bands) govern the user-message
+ * block order verified here: <summarized> @50, <visible> @75,
+ * <log> @100, etc.
  */
 import assert from "node:assert";
 import { dirname, join } from "node:path";

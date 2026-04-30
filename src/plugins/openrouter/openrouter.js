@@ -2,7 +2,7 @@ import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 import { chatCompletionStream } from "../../llm/openaiStream.js";
 
-const { FETCH_TIMEOUT } = config;
+const { FETCH_TIMEOUT, THINK } = config;
 
 const PROVIDER = "openrouter";
 
@@ -31,7 +31,7 @@ export default class OpenRouter {
 	}
 
 	async #completion(messages, model, options = {}) {
-		const body = { model, messages, include_reasoning: true };
+		const body = { model, messages, include_reasoning: THINK };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

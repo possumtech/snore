@@ -2,7 +2,7 @@ import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 import { chatCompletionStream } from "../../llm/openaiStream.js";
 
-const { FETCH_TIMEOUT } = config;
+const { FETCH_TIMEOUT, THINK } = config;
 
 const PROVIDER = "openai";
 
@@ -29,7 +29,7 @@ export default class OpenAi {
 	}
 
 	async #completion(messages, model, options = {}) {
-		const body = { model, messages, think: true };
+		const body = { model, messages, think: THINK };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

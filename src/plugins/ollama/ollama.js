@@ -3,7 +3,7 @@ import msg from "../../agent/messages.js";
 import { chatCompletionStream } from "../../llm/openaiStream.js";
 import { retryWithBackoff } from "../../llm/retry.js";
 
-const { FETCH_TIMEOUT } = config;
+const { FETCH_TIMEOUT, THINK } = config;
 
 const PROVIDER = "ollama";
 
@@ -28,7 +28,7 @@ export default class Ollama {
 	}
 
 	async #completion(messages, model, options = {}) {
-		const body = { model, messages, think: true };
+		const body = { model, messages, think: THINK };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

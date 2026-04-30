@@ -1,5 +1,11 @@
 // Validates required RUMMY_* env at module load; defaults in .env.example.
 
+const parseBool = (v) => {
+	if (v === "0" || v === "false") return false;
+	if (v === "1" || v === "true") return true;
+	throw new Error(`expected 0|1|true|false, got "${v}"`);
+};
+
 const REQUIRED = {
 	BUDGET_CEILING: { env: "RUMMY_BUDGET_CEILING", parse: Number },
 	LLM_DEADLINE: { env: "RUMMY_LLM_DEADLINE", parse: Number },
@@ -10,7 +16,7 @@ const REQUIRED = {
 	MAX_CYCLE_PERIOD: { env: "RUMMY_MAX_CYCLE_PERIOD", parse: Number },
 	RUN_TIMEOUT: { env: "RUMMY_RUN_TIMEOUT", parse: Number },
 	PLUGINS_LOAD_TIMEOUT: { env: "RUMMY_PLUGINS_LOAD_TIMEOUT", parse: Number },
-	THINK: { env: "RUMMY_THINK", parse: (v) => v },
+	THINK: { env: "RUMMY_THINK", parse: parseBool },
 };
 
 const config = {};
