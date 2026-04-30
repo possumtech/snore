@@ -2,7 +2,7 @@ import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 import { chatCompletionStream } from "../../llm/openaiStream.js";
 
-const { FETCH_TIMEOUT, THINK } = config;
+const { FETCH_TIMEOUT } = config;
 
 const PROVIDER = "openrouter";
 
@@ -31,7 +31,10 @@ export default class OpenRouter {
 	}
 
 	async #completion(messages, model, options = {}) {
-		const body = { model, messages, include_reasoning: THINK };
+		// include_reasoning is OpenRouter's relay-level knob: does the proxy
+		// surface reasoning back to us? Always on — we pay for the tokens,
+		// we keep the telemetry. Orthogonal to RUMMY_THINK (model-side).
+		const body = { model, messages, include_reasoning: true };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

@@ -70,6 +70,8 @@ const harborArgs = [
 	model,
 	"--jobs-dir",
 	runDir,
+	"--n-concurrent",
+	"1",
 ];
 
 console.log(`harbor: ${harborBin} ${harborArgs.join(" ")}`);
