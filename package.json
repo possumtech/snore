@@ -55,6 +55,7 @@
 		"test:tbench:setup": "bash -c 'set -a; source .env.tbench; set +a; bash test/tbench/setup.sh'",
 		"test:tbench": "bash -c 'set -o pipefail; mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.tbench test/tbench/runner.js \"$@\" 2>&1 | tee /tmp/rummy_test_diag/tbench_$(date +%Y%m%dT%H%M%S).log' --",
 		"test:tbench:clean": "rm -rf test/tbench/results/*/",
+		"test:tbench:summary": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.tbench test/tbench/summarize.js",
 		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*",
 		"test:demo": "node --env-file-if-exists=.env.example --env-file-if-exists=.env bin/demo.js",
 		"test:spec": "node test/spec-coverage.js"

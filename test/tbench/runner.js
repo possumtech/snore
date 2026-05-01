@@ -10,7 +10,12 @@
  * dataset, default model. Tees harbor output to test/tbench/results/.
  */
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import {
+	createWriteStream,
+	existsSync,
+	mkdirSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -59,6 +64,12 @@ const logStream = createWriteStream(logPath);
 const venvHarbor = join(__dirname, ".venv/bin/harbor");
 const harborBin = existsSync(venvHarbor) ? venvHarbor : "harbor";
 
+// Concurrency: harbor spawns one docker container per task, so the
+// bound is CPU/RAM/network on the host. `RUMMY_TBENCH_CONCURRENCY`
+// lets the operator tune per-machine. Default 1 stays safe for
+// single-task analysis runs (where caching + clean logs matter);
+// override before a full sweep to parallelize the 89-task fan-out.
+const concurrency = process.env.RUMMY_TBENCH_CONCURRENCY ?? "1";
 const harborArgs = [
 	"run",
 	"--dataset",
@@ -71,13 +82,35 @@ const harborArgs = [
 	"--jobs-dir",
 	runDir,
 	"--n-concurrent",
-	"1",
+	concurrency,
 ];
 
 console.log(`harbor: ${harborBin} ${harborArgs.join(" ")}`);
 console.log(`logs:   ${logPath}`);
 console.log(`harbor checkout: ${harborDir}`);
+console.log(`concurrency: ${concurrency}`);
 console.log("");
+
+// Auto-launch sysmon alongside the sweep. Captures host RAM/swap/load,
+// per-container memory, and docker OOM events into CSVs under runDir.
+// Required input for the post-mortem retune of RUMMY_TBENCH_CONCURRENCY
+// (and for honest "ran the full bench in X minutes" claims with peak
+// resource numbers attached). Skip the daemon when --task is set —
+// single-task runs don't need the metrics overhead.
+const sysmonScript = join(__dirname, "sysmon.sh");
+let sysmon = null;
+if (!args.task && existsSync(sysmonScript)) {
+	sysmon = spawn("bash", [sysmonScript, runDir, "15"], {
+		stdio: ["ignore", "ignore", "pipe"],
+		detached: false,
+	});
+	sysmon.stderr?.on("data", (chunk) =>
+		process.stderr.write(`[sysmon] ${chunk}`),
+	);
+}
+
+const sweepStartMs = Date.now();
+const sweepStartIso = new Date(sweepStartMs).toISOString();
 
 const child = spawn(harborBin, harborArgs, {
 	stdio: ["ignore", "pipe", "pipe"],
@@ -95,7 +128,35 @@ tee(child.stderr, process.stderr);
 
 child.on("close", (code) => {
 	logStream.end();
+	if (sysmon) {
+		sysmon.kill("SIGTERM");
+	}
+	const sweepEndMs = Date.now();
+	const wallSeconds = Math.round((sweepEndMs - sweepStartMs) / 1000);
+	const wallHuman = `${Math.floor(wallSeconds / 60)}m ${wallSeconds % 60}s`;
+
+	// Sweep summary at runDir root for at-a-glance stats. Aggregating per-task
+	// reward/cost/tokens lives in a separate aggregator script (reads each
+	// agent/rummy.txt's `__RUMMY_RUN_SUMMARY__` line).
+	const summary = {
+		startedAt: sweepStartIso,
+		endedAt: new Date(sweepEndMs).toISOString(),
+		wallSeconds,
+		wallHuman,
+		harborExit: code,
+		dataset,
+		model,
+		agent: args.agent,
+		concurrency: Number(concurrency),
+		task: args.task ?? null,
+	};
+	writeFileSync(
+		join(runDir, "sweep_summary.json"),
+		`${JSON.stringify(summary, null, 2)}\n`,
+	);
+
 	console.log(`\nharbor exited code=${code}`);
+	console.log(`wall time: ${wallHuman}`);
 	console.log(`results: ${runDir}`);
 	process.exit(code === null ? 1 : code);
 });
