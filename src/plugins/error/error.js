@@ -4,6 +4,12 @@ const { MAX_STRIKES, MIN_CYCLES, MAX_CYCLE_PERIOD, STAGNATION_FREE_TURNS } =
 	config;
 
 const CONTRACT_REMINDER = "Missing update";
+// Stagnation pressure applies only to the admin phases — Decomposition
+// (defining unknowns) and Demotion (archiving irrelevants). Staying
+// long there is genuinely stuck. Distillation (5) and Deployment (7)
+// are work phases where grinding on a hard sub-problem is legitimate;
+// the strike system must not punish that.
+const STAGNATION_PHASES = new Set([4, 6]);
 const PHASES = [4, 5, 6, 7, 8, 9];
 const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\//;
 
@@ -121,7 +127,10 @@ export default class ErrorPlugin {
 			state.phaseTurnCount = 1;
 		}
 
-		if (state.phaseTurnCount > STAGNATION_FREE_TURNS) {
+		if (
+			STAGNATION_PHASES.has(phase) &&
+			state.phaseTurnCount > STAGNATION_FREE_TURNS
+		) {
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId: rummy.runId,
