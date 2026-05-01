@@ -175,41 +175,25 @@ describe("Handler dispatch", () => {
 			await hooks.tools.dispatch("set", entry, rummy);
 			await hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
-			// body = new (patched) content — what turn N wrote
-			const resultBody = await store.getBody(RUN_ID, "set://src/edit_me.js");
-			assert.ok(
-				resultBody.includes("const port = 8080"),
-				"body is new content",
-			);
-
-			// attributes.patch = udiff for client
-			const attrs = await store.getAttributes(RUN_ID, "set://src/edit_me.js");
-			assert.ok(
-				attrs.patch.includes("---") && attrs.patch.includes("+++"),
-				"attributes.patch is udiff",
-			);
-			assert.ok(attrs.patch.includes("8080"), "udiff shows new content");
-
-			// attributes.merge = git conflict for model
+			// Bare-file edits land as a `proposed` log entry at the
+			// dispatch's resultPath. The body carries the canonicalized
+			// SEARCH/REPLACE merge for the materializer; attrs.path names
+			// the target file. Acceptance applies the merge to the file
+			// (proposal.accepted handler), not the dispatch.
+			const logPath = "log://turn_1/set/src%2Fedit_me.js";
+			const attrs = await store.getAttributes(RUN_ID, logPath);
+			assert.equal(attrs.path, "src/edit_me.js");
 			assert.ok(
 				attrs.merge.includes("<<<<<<< SEARCH"),
-				"attributes.merge has git conflict format",
+				"attributes.merge has SEARCH/REPLACE format",
 			);
-			assert.ok(attrs.merge.includes("8080"), "merge shows new content");
+			assert.ok(attrs.merge.includes("8080"), "merge has new content");
 
-			// File entries → proposed
-			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const writeResult = entries.find(
-				(e) => e.path === "set://src/edit_me.js",
-			);
-			assert.strictEqual(
-				writeResult.state,
-				"proposed",
-				"file edit is proposed",
-			);
+			const logState = await store.getState(RUN_ID, logPath);
+			assert.equal(logState.state, "proposed", "bare-file edit is proposed");
 		});
 
-		it("merges multiple edits to the same file into one proposal", async () => {
+		it("two edits to the same file produce two independent proposals", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 1,
@@ -220,9 +204,11 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 
+			const path1 = "log://turn_1/set/src%2Fmath.txt";
+			const path2 = "log://turn_1/set/src%2Fmath.txt_1";
 			const entry1 = {
 				scheme: "set",
-				path: "log://turn_1/set/src%2Fmath.txt",
+				path: path1,
 				body: "",
 				attributes: {
 					path: "src/math.txt",
@@ -230,13 +216,13 @@ describe("Handler dispatch", () => {
 					replace: "7 - a = 5",
 				},
 				state: "resolved",
-				resultPath: "log://turn_1/set/src%2Fmath.txt",
+				resultPath: path1,
 			};
 			await hooks.tools.dispatch("set", entry1, rummy);
 
 			const entry2 = {
 				scheme: "set",
-				path: "log://turn_1/set/src%2Fmath.txt_1",
+				path: path2,
 				body: "",
 				attributes: {
 					path: "src/math.txt",
@@ -244,23 +230,27 @@ describe("Handler dispatch", () => {
 					replace: "a + b = 14",
 				},
 				state: "resolved",
-				resultPath: "log://turn_1/set/src%2Fmath.txt_1",
+				resultPath: path2,
 			};
 			await hooks.tools.dispatch("set", entry2, rummy);
 
 			await hooks.proposal.prepare.emit({ rummy, recorded: [entry1, entry2] });
 
-			const body = await store.getBody(RUN_ID, "set://src/math.txt");
-			assert.ok(body.includes("a + 4 = 6"), "body is original content");
+			// Each edit is its own proposal — predictable, parallel-friendly,
+			// no cross-dispatch canonical-entry state. Materialization (on
+			// proposal.accepted) applies merges to the actual file.
+			const a1 = await store.getAttributes(RUN_ID, path1);
+			assert.equal(a1.path, "src/math.txt");
+			assert.ok(a1.merge.includes("7 - a = 5"), "first proposal has first edit");
 
-			const attrs = await store.getAttributes(RUN_ID, "set://src/math.txt");
-			assert.ok(attrs.patch.includes("7 - a = 5"), "patch has first edit");
-			assert.ok(attrs.patch.includes("a + b = 14"), "patch has second edit");
-			assert.ok(attrs.merge.includes("7 - a = 5"), "merge has first block");
-			assert.ok(attrs.merge.includes("a + b = 14"), "merge has second block");
+			const a2 = await store.getAttributes(RUN_ID, path2);
+			assert.equal(a2.path, "src/math.txt");
+			assert.ok(a2.merge.includes("a + b = 14"), "second proposal has second edit");
 
-			const row = await store.getState(RUN_ID, "set://src/math.txt");
-			assert.strictEqual(row.state, "proposed", "merged result is proposed");
+			const s1 = await store.getState(RUN_ID, path1);
+			const s2 = await store.getState(RUN_ID, path2);
+			assert.equal(s1.state, "proposed");
+			assert.equal(s2.state, "proposed");
 		});
 
 		it("applies patch immediately for known:// entries", async () => {

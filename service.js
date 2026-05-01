@@ -105,6 +105,7 @@ async function main() {
 		functions: sqlFunctions,
 		params: {
 			mmap_size: Number(process.env.RUMMY_MMAP_MB) * 1024 * 1024,
+			entry_size_max: Number(process.env.RUMMY_ENTRY_SIZE_MAX),
 		},
 	});
 

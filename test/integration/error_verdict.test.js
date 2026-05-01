@@ -323,14 +323,17 @@ describe("error verdict (@response_healing)", () => {
 	});
 
 	it("action entry state=failed counts as a strike (no error.log.emit needed)", async () => {
-		const path = "log://turn_1/get/missing";
+		// "validation" is a hard outcome (not in SOFT_FAILURE_OUTCOMES);
+		// soft outcomes like "not_found" / "conflict" are findings the
+		// model adapts to, not contract violations, and don't strike.
+		const path = "log://turn_1/set/bad_path";
 		await store.set({
 			runId: RUN_ID,
 			turn: 1,
 			path,
-			body: "target not found",
+			body: "target invalid",
 			state: "failed",
-			outcome: "not_found",
+			outcome: "validation",
 			loopId: LOOP_ID,
 		});
 		const verdict = await tdb.hooks.error.verdict({
@@ -380,16 +383,19 @@ describe("error verdict (@response_healing)", () => {
 	});
 
 	it(`${MAX_STRIKES} action-entry failures abandon the run at 499`, async () => {
+		// Hard outcomes (e.g. "validation") strike each turn; soft
+		// outcomes ("not_found" / "conflict") don't accumulate strikes
+		// because they're recoverable findings, not contract violations.
 		let verdict;
 		for (let i = 0; i < MAX_STRIKES; i++) {
-			const path = `log://turn_${i + 1}/get/miss_${i}`;
+			const path = `log://turn_${i + 1}/set/bad_${i}`;
 			await store.set({
 				runId: RUN_ID,
 				turn: i + 1,
 				path,
-				body: `target ${i} not found`,
+				body: `bad payload ${i}`,
 				state: "failed",
-				outcome: "not_found",
+				outcome: "validation",
 				loopId: LOOP_ID,
 			});
 			verdict = await tdb.hooks.error.verdict({
@@ -397,7 +403,7 @@ describe("error verdict (@response_healing)", () => {
 				runId: RUN_ID,
 				loopId: LOOP_ID,
 				turn: i + 1,
-				recorded: [{ scheme: "get", path, attributes: { path: `X${i}` } }],
+				recorded: [{ scheme: "set", path, attributes: { path: `X${i}` } }],
 				summaryText: null,
 			});
 			await bumpTurn(i + 2);

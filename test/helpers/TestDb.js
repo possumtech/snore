@@ -65,7 +65,10 @@ export default class TestDb {
 			path: dbPath,
 			dir: ["migrations", "src"],
 			functions: sqlFunctions,
-			params: { mmap_size: 0 },
+			params: {
+				mmap_size: 0,
+				entry_size_max: Number(process.env.RUMMY_ENTRY_SIZE_MAX),
+			},
 		});
 		const hooks = createHooks();
 		const pluginsDir = join(

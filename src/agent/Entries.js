@@ -1,18 +1,44 @@
 import slugify from "../sql/functions/slugify.js";
-import { PermissionError } from "./errors.js";
+import { EntryOverflowError, PermissionError } from "./errors.js";
 import encodeSegment from "./pathEncode.js";
+
+// SQLite surfaces the CHECK as either err.code === "SQLITE_CONSTRAINT_CHECK"
+// or an Error whose message names the failing column. Both forms appear in
+// the wild depending on the driver build, so we match defensively.
+function isBodyOverflow(err) {
+	if (!err) return false;
+	if (err.code === "SQLITE_CONSTRAINT_CHECK") return true;
+	const msg = err.message ?? "";
+	return msg.includes("CHECK") && msg.includes("length(body)");
+}
+
+function translateBodyOverflow(err, path, body) {
+	if (!isBodyOverflow(err)) return err;
+	const size = body == null ? 0 : body.length;
+	return new EntryOverflowError(path, size);
+}
 
 export default class Entries {
 	#db;
 	#onChanged;
+	#onError;
 	#schemes = new Map();
 	#schemesLoaded = null;
 	#seq = 0;
 	#pendingResolutions = new Map();
 
-	constructor(db, { onChanged = null } = {}) {
+	// onError is the centralized site for storage-layer rejections that
+	// should surface to the model as strikes rather than crash the run.
+	// Today: EntryOverflowError (RUMMY_ENTRY_SIZE_MAX CHECK violations).
+	// When onError is supplied, set() catches the typed error, dispatches
+	// it to the callback (which emits hooks.error.log → 413 strike), and
+	// returns silently — callers don't need to handle storage-layer
+	// rejections at every write site. When onError is null (e.g. unit
+	// tests with a bare Entries), the error propagates as before.
+	constructor(db, { onChanged = null, onError = null } = {}) {
 		this.#db = db;
 		this.#onChanged = onChanged;
+		this.#onError = onError;
 	}
 
 	// Populate the scheme cache; idempotent, lazy on first need.
@@ -150,7 +176,31 @@ export default class Entries {
 	}
 
 	// set — create or update an entry; see PLUGINS.md primitives.
-	async set({
+	async set(args) {
+		if (!args.runId) throw new Error("set: runId is required");
+		if (!args.path) throw new Error("set: path is required");
+		try {
+			return await this.#setImpl(args);
+		} catch (err) {
+			// EntryOverflowError: storage-layer CHECK fired. When the host
+			// supplies onError (the production wiring), route the strike
+			// to error.log and return silently — every set() caller in
+			// the codebase becomes overflow-safe without per-site catches.
+			// Without onError (raw unit tests), propagate as before.
+			if (err instanceof EntryOverflowError && this.#onError) {
+				await this.#onError({
+					runId: args.runId,
+					loopId: args.loopId ?? null,
+					turn: args.turn ?? 0,
+					error: err,
+				});
+				return;
+			}
+			throw err;
+		}
+	}
+
+	async #setImpl({
 		runId,
 		projectId = null,
 		turn = 0,
@@ -167,20 +217,21 @@ export default class Entries {
 		loopId = null,
 		writer = "plugin",
 	}) {
-		if (!runId) throw new Error("set: runId is required");
-		if (!path) throw new Error("set: path is required");
-
 		// Pattern mode is explicit; never inferred from `*` in path.
 		const isPattern = pattern === true || bodyFilter !== null;
 
 		if (isPattern) {
 			if (body != null && !append) {
-				await this.#db.update_body_by_pattern.run({
-					run_id: runId,
-					path,
-					body: bodyFilter,
-					new_body: body,
-				});
+				try {
+					await this.#db.update_body_by_pattern.run({
+						run_id: runId,
+						path,
+						body: bodyFilter,
+						new_body: body,
+					});
+				} catch (err) {
+					throw translateBodyOverflow(err, path, body);
+				}
 				await this.#db.bump_write_count_by_pattern.run({
 					run_id: runId,
 					path,
@@ -213,11 +264,15 @@ export default class Entries {
 		// Append mode: streaming body growth on an existing entry.
 		if (append) {
 			if (body == null) throw new Error("set: append requires body");
-			await this.#db.append_entry_body.run({
-				run_id: runId,
-				path: normalized,
-				chunk: body,
-			});
+			try {
+				await this.#db.append_entry_body.run({
+					run_id: runId,
+					path: normalized,
+					chunk: body,
+				});
+			} catch (err) {
+				throw translateBodyOverflow(err, normalized, body);
+			}
 			this.#emitChanged(runId, normalized, "append");
 			return;
 		}
@@ -265,15 +320,20 @@ export default class Entries {
 			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
 			if (m) effectiveAttributes.action = m[1];
 		}
-		const entry = await this.#db.upsert_entry.get({
-			scope,
-			path: normalized,
-			body,
-			attributes: effectiveAttributes
-				? JSON.stringify(effectiveAttributes)
-				: null,
-			hash,
-		});
+		let entry;
+		try {
+			entry = await this.#db.upsert_entry.get({
+				scope,
+				path: normalized,
+				body,
+				attributes: effectiveAttributes
+					? JSON.stringify(effectiveAttributes)
+					: null,
+				hash,
+			});
+		} catch (err) {
+			throw translateBodyOverflow(err, normalized, body);
+		}
 		const effectiveState = state === undefined ? "resolved" : state;
 		const effectiveVisibility =
 			visibility === undefined

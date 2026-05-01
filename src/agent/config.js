@@ -24,6 +24,7 @@ const REQUIRED = {
 	},
 	LOOP_TIMEOUT: { env: "RUMMY_LOOP_TIMEOUT", parse: Number },
 	PLUGINS_LOAD_TIMEOUT: { env: "RUMMY_PLUGINS_LOAD_TIMEOUT", parse: Number },
+	ENTRY_SIZE_MAX: { env: "RUMMY_ENTRY_SIZE_MAX", parse: Number },
 	THINK: { env: "RUMMY_THINK", parse: parseBool, expected: "0|1|true|false" },
 };
 

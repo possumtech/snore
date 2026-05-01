@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import Entries from "./Entries.js";
+import { EntryOverflowError } from "./errors.js";
 
 function mockDb({ entryExists = () => null } = {}) {
 	return {
@@ -158,6 +159,98 @@ describe("Entries instance methods (DB-backed)", () => {
 		const e = new Entries(mockDb());
 		assert.equal(await e.dedup(1, "known", "hello", 0), "known://hello");
 		assert.equal(await e.dedup(1, "known", "hello", null), "known://hello");
+	});
+
+	it("set routes EntryOverflowError to onError callback and returns silently", async () => {
+		const checkErr = new Error(
+			"CHECK constraint failed: length(body) <= 104857600",
+		);
+		checkErr.code = "SQLITE_CONSTRAINT_CHECK";
+		const db = {
+			...mockDb(),
+			upsert_entry: {
+				get: async () => {
+					throw checkErr;
+				},
+			},
+		};
+		const errors = [];
+		const e = new Entries(db, {
+			onError: (event) => errors.push(event),
+		});
+		// Pre-load schemes so set() doesn't try to fetch them mid-test.
+		await e.loadSchemes();
+		const huge = "x".repeat(200);
+		await e.set({
+			runId: 1,
+			turn: 3,
+			path: "data://turn_3/sh/big",
+			body: huge,
+			loopId: 7,
+		});
+		assert.equal(errors.length, 1);
+		assert.ok(errors[0].error instanceof EntryOverflowError);
+		assert.equal(errors[0].error.path, "data://turn_3/sh/big");
+		assert.equal(errors[0].error.size, 200);
+		assert.equal(errors[0].runId, 1);
+		assert.equal(errors[0].turn, 3);
+		assert.equal(errors[0].loopId, 7);
+	});
+
+	it("set propagates EntryOverflowError when no onError callback is registered", async () => {
+		const checkErr = new Error(
+			"CHECK constraint failed: length(body) <= 104857600",
+		);
+		checkErr.code = "SQLITE_CONSTRAINT_CHECK";
+		const db = {
+			...mockDb(),
+			upsert_entry: {
+				get: async () => {
+					throw checkErr;
+				},
+			},
+		};
+		const e = new Entries(db);
+		await e.loadSchemes();
+		await assert.rejects(
+			() =>
+				e.set({
+					runId: 1,
+					turn: 1,
+					path: "data://x",
+					body: "abc",
+				}),
+			EntryOverflowError,
+		);
+	});
+
+	it("set re-throws non-overflow SQL errors without invoking onError", async () => {
+		const otherErr = new Error("UNIQUE constraint failed: entries.path");
+		otherErr.code = "SQLITE_CONSTRAINT_UNIQUE";
+		const db = {
+			...mockDb(),
+			upsert_entry: {
+				get: async () => {
+					throw otherErr;
+				},
+			},
+		};
+		const errors = [];
+		const e = new Entries(db, {
+			onError: (event) => errors.push(event),
+		});
+		await e.loadSchemes();
+		await assert.rejects(
+			() =>
+				e.set({
+					runId: 1,
+					turn: 1,
+					path: "data://x",
+					body: "abc",
+				}),
+			/UNIQUE constraint/,
+		);
+		assert.equal(errors.length, 0);
 	});
 
 	it("loadSchemes populates the scheme cache", async () => {

@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS entries (
 	, scope TEXT NOT NULL
 	, path TEXT NOT NULL CHECK (length(path) <= 2048)
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
-	, body TEXT NOT NULL DEFAULT ''
+	, body TEXT NOT NULL DEFAULT '' CHECK (length(body) <= $entry_size_max)
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, hash TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP

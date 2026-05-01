@@ -134,7 +134,7 @@ export default class ErrorPlugin {
 			STAGNATION_PHASES.has(phase) &&
 			state.phaseTurnCount > STAGNATION_FREE_TURNS
 		) {
-			await rummy.hooks.error.log.emit({
+			await this.#core.hooks.error.log.emit({
 				store: rummy.entries,
 				runId: rummy.runId,
 				turn: rummy.sequence,

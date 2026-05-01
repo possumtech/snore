@@ -16,6 +16,16 @@ export default class ProjectAgent {
 		this.#llm = new LlmProvider(db, hooks);
 		this.#entries = new Entries(db, {
 			onChanged: (event) => hooks.entry.changed.emit(event),
+			onError: ({ runId, loopId, turn, error }) =>
+				hooks.error.log.emit({
+					store: this.#entries,
+					runId,
+					turn,
+					loopId,
+					message: error.message,
+					status: 413,
+					attributes: { path: error.path, size: error.size },
+				}),
 		});
 		this.#entries.loadSchemes(db);
 
