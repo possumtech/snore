@@ -4,6 +4,9 @@ const { MAX_STRIKES, MIN_CYCLES, MAX_CYCLE_PERIOD, STAGNATION_FREE_TURNS } =
 	config;
 
 const CONTRACT_REMINDER = "Missing update";
+// Failure outcomes that don't accumulate strikes — they're findings
+// the model adapts to, not contract violations. See verdict() for usage.
+const SOFT_FAILURE_OUTCOMES = new Set(["not_found", "conflict"]);
 // Stagnation pressure applies only to the admin phases — Decomposition
 // (defining unknowns) and Demotion (archiving irrelevants). Staying
 // long there is genuinely stuck. Distillation (5) and Deployment (7)
@@ -193,10 +196,20 @@ export default class ErrorPlugin {
 			state.turnErrors++;
 		}
 
+		// Some failure outcomes are findings the model should adapt to,
+		// not contract violations. `not_found` (model tried to act on an
+		// entry that doesn't exist) and `conflict` (SEARCH text didn't
+		// match current body) are recoverable: the model reads the new
+		// state and tries again. Striking on these punishes legitimate
+		// state-discovery and accumulates 499s on otherwise productive
+		// runs. Hard outcomes (validation, permission, exit:N) still strike.
 		let recordedFailed = false;
 		for (const e of recorded) {
 			const current = await store.getState(runId, e.path);
-			if (current?.state === "failed") {
+			if (
+				current?.state === "failed" &&
+				!SOFT_FAILURE_OUTCOMES.has(current.outcome)
+			) {
 				recordedFailed = true;
 				break;
 			}

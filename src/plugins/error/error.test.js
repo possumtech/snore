@@ -201,11 +201,13 @@ describe("error plugin: verdict", () => {
 		assert.match(verdict.reason, /Missing update/);
 	});
 
-	it("recorded failed entry counts as strike even without error.log", async () => {
+	it("recorded HARD-failed entry (validation outcome) counts as strike", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		await startTurn(hooks, "L1");
-		const stateByPath = new Map([["log://turn_1/set/x", { state: "failed" }]]);
+		const stateByPath = new Map([
+			["log://turn_1/set/x", { state: "failed", outcome: "validation" }],
+		]);
 		const store = makeStore({ stateByPath });
 		const recorded = [
 			{
@@ -223,6 +225,85 @@ describe("error plugin: verdict", () => {
 		});
 		assert.equal(verdict.continue, true);
 		assert.match(verdict.reason, /Missing update/);
+	});
+
+	it("recorded SOFT-failed entry (not_found outcome) does NOT strike", async () => {
+		const { hooks } = makeCore();
+		await startLoop(hooks, "L1");
+		await startTurn(hooks, "L1");
+		const stateByPath = new Map([
+			["log://turn_1/set/x", { state: "failed", outcome: "not_found" }],
+		]);
+		const store = makeStore({ stateByPath });
+		const recorded = [
+			{
+				scheme: "set",
+				path: "log://turn_1/set/x",
+				attributes: { path: "x" },
+			},
+		];
+		const verdict = await hooks.error.verdict({
+			store,
+			runId: "r",
+			loopId: "L1",
+			recorded,
+			summaryText: null,
+		});
+		// not_found is a finding, not a contract violation — the model
+		// adapts and re-tries. Run continues without striking.
+		assert.deepEqual(verdict, { continue: true });
+	});
+
+	it("recorded SOFT-failed entry (conflict outcome) does NOT strike", async () => {
+		const { hooks } = makeCore();
+		await startLoop(hooks, "L1");
+		await startTurn(hooks, "L1");
+		const stateByPath = new Map([
+			["log://turn_1/set/x", { state: "failed", outcome: "conflict" }],
+		]);
+		const store = makeStore({ stateByPath });
+		const recorded = [
+			{
+				scheme: "set",
+				path: "log://turn_1/set/x",
+				attributes: { path: "x" },
+			},
+		];
+		const verdict = await hooks.error.verdict({
+			store,
+			runId: "r",
+			loopId: "L1",
+			recorded,
+			summaryText: null,
+		});
+		assert.deepEqual(verdict, { continue: true });
+	});
+
+	it("repeated not_found failures (varied paths) do NOT accumulate strikes via recordedFailed", async () => {
+		const { hooks } = makeCore();
+		await startLoop(hooks, "L1");
+		await startTurn(hooks, "L1");
+		// Vary paths each iteration so cycle detection (orthogonal strike
+		// source) doesn't conflate with the recordedFailed path we're
+		// testing here.
+		const stateByPath = new Map();
+		let verdict;
+		for (let i = 0; i < MAX_STRIKES + 5; i++) {
+			const path = `log://turn_1/set/x${i}`;
+			stateByPath.set(path, { state: "failed", outcome: "not_found" });
+			const store = makeStore({ stateByPath });
+			verdict = await hooks.error.verdict({
+				store,
+				runId: "r",
+				loopId: "L1",
+				recorded: [
+					{ scheme: "set", path, attributes: { path: `x${i}` } },
+				],
+				summaryText: null,
+			});
+		}
+		assert.equal(verdict.continue, true);
+		assert.equal(verdict.status, undefined);
 	});
 
 	it("after MAX_STRIKES strikes without summary: abandons run with status 499", async () => {
