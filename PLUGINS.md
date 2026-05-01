@@ -424,6 +424,23 @@ instead.
 | `rummy.getEntry(path)` | First matching entry or null |
 | `rummy.getEntries(pattern, bodyFilter?)` | Array of matching entries |
 | `rummy.setAttributes(path, attrs)` | Merge attributes via json_patch |
+| `rummy.entries.logPath(runId, turn, action, target)` | Build a `log://turn_N/<action>/<slug>` path, slugified + collision-safe |
+| `rummy.entries.slugPath(runId, scheme, content, summary?)` | Build a `<scheme>://<slug>` path, slugified + collision-safe |
+
+#### Path conventions {#plugins_path_conventions}
+
+Entry paths are bounded by a hard `length(path) <= 2048` DB
+CHECK constraint. In normal use, paths stay well under ~100 chars
+because plugins build them via `logPath` / `slugPath`, which run the
+target through `slugify` (80-char cap, `/` preserved as separator,
+URL-encoded per segment) and append an integer tie-breaker on
+collision (e.g. `log://turn_3/set/src/app.js_2`).
+
+Plugin authors should pass any model-supplied target straight
+through these helpers instead of stitching paths from the model's
+raw input. The helpers absorb arbitrary target length and exotic
+character composition without the caller having to defend against
+either. The 2048 limit is the outer wall, not the working budget.
 
 ### Properties {#plugins_rummy_properties}
 

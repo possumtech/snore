@@ -74,23 +74,34 @@ describe("Entries instance methods (DB-backed)", () => {
 		assert.equal(await e.nextTurn(7), 1);
 	});
 
-	it("logPath produces log://turn_N/action/encoded-target paths", async () => {
+	it("logPath produces slugified log://turn_N/action/<slug> paths", async () => {
 		const e = new Entries(mockDb());
+		// slugify preserves "/" as separator and encodes per-segment.
 		const path = await e.logPath(7, 3, "set", "src/app.js");
-		assert.equal(path, "log://turn_3/set/src%2Fapp.js");
+		assert.equal(path, "log://turn_3/set/src/app.js");
 	});
 
-	it("logPath caps target at 150 chars before encoding", async () => {
+	it("logPath caps slug at slugify's 80-char limit", async () => {
 		const e = new Entries(mockDb());
 		const long = "x".repeat(500);
 		const path = await e.logPath(1, 1, "error", long);
-		// Encoded path should not contain more than ~150 'x's in body.
-		const slug = path.split("/").pop();
-		assert.ok(
-			slug.length <= 150 * 3, // worst-case 3x for ASCII
-			`slug too long: ${slug.length}`,
-		);
+		const slug = path.slice("log://turn_1/error/".length);
+		assert.ok(slug.length <= 80, `slug too long: ${slug.length}`);
 		assert.ok(slug.startsWith("xxxxx"));
+	});
+
+	it("logPath stays well under DB 2048-char limit even on huge targets", async () => {
+		const e = new Entries(mockDb());
+		const huge = "y".repeat(10000);
+		const path = await e.logPath(1, 1, "set", huge);
+		assert.ok(path.length < 200, `logPath should stay <200 chars: ${path.length}`);
+		assert.ok(path.length <= 2048);
+	});
+
+	it("logPath uses '_' placeholder when target is empty", async () => {
+		const e = new Entries(mockDb());
+		assert.equal(await e.logPath(1, 1, "update", ""), "log://turn_1/update/_");
+		assert.equal(await e.logPath(1, 1, "update", null), "log://turn_1/update/_");
 	});
 
 	it("logPath sequence-suffixes when path collides", async () => {

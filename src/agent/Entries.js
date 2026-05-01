@@ -72,22 +72,23 @@ export default class Entries {
 		return `${candidate}_${++this.#seq}`;
 	}
 
-	// Single namespace log://turn_N/action/slug; target URL-encoded for round-trip safety.
+	// Single namespace log://turn_N/action/slug. slug is built via slugify
+	// (80-char cap + integer tie-breaker on collision) — same contract as
+	// slugPath. Plugins (including externals) can trust that any target
+	// they pass will produce a bounded, unique log path, regardless of
+	// the target's length or character composition. Full payload always
+	// belongs in the entry body, not the slug.
 	async logPath(runId, turn, action, target) {
-		// Cap target before encoding: the schema's CHECK(length(path) <= 2048)
-		// otherwise blows up when callers pass long error messages or other
-		// arbitrary text. encodeURIComponent expands ~3x for ASCII, more for
-		// Unicode; 150 raw chars stays comfortably under 2048 even after
-		// worst-case expansion. The full message belongs in body, not path.
-		const safeTarget = String(target).slice(0, 150);
-		const encodedTarget = encodeSegment(safeTarget);
-		const candidate = `log://turn_${turn}/${action}/${encodedTarget}`;
+		const slug = slugify(String(target ?? ""));
+		const base = slug
+			? `log://turn_${turn}/${action}/${slug}`
+			: `log://turn_${turn}/${action}/_`;
 		const existing = await this.#db.get_entry_body.get({
 			run_id: runId,
-			path: candidate,
+			path: base,
 		});
-		if (!existing) return candidate;
-		return `${candidate}_${++this.#seq}`;
+		if (!existing) return base;
+		return `${base}_${++this.#seq}`;
 	}
 
 	async slugPath(runId, scheme, content, summary) {
