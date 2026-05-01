@@ -338,4 +338,71 @@ describe("Set plugin", () => {
 			assert.equal(out, "default");
 		});
 	});
+
+	describe("processEdit — bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
+		it("successful edit on bare file yields state=proposed with attrs.path + attrs.merge", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("src/app.js", { body: "old line", scheme: null, tokens: 2 });
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/src%2Fapp.js",
+					resultPath: "log://turn_1/set/src%2Fapp.js",
+					attributes: { path: "src/app.js", search: "old", replace: "new" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/src%2Fapp.js",
+			);
+			assert.ok(log);
+			assert.equal(log.state, "proposed");
+			assert.equal(log.attributes.path, "src/app.js");
+			assert.match(log.attributes.merge, /^<<<<<<< SEARCH\nold\n=======\nnew/);
+		});
+
+		it("does not write a set:// canonical entry (no detour)", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("src/app.js", { body: "old line", scheme: null, tokens: 2 });
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/src%2Fapp.js",
+					resultPath: "log://turn_1/set/src%2Fapp.js",
+					attributes: { path: "src/app.js", search: "old", replace: "new" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const canonical = store._calls.find((c) =>
+				c.path?.startsWith?.("set://"),
+			);
+			assert.equal(canonical, undefined);
+		});
+
+		it("failed edit (search not found) yields state=failed with conflict outcome", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("src/app.js", { body: "actual content", scheme: null, tokens: 2 });
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/src%2Fapp.js",
+					resultPath: "log://turn_1/set/src%2Fapp.js",
+					attributes: {
+						path: "src/app.js",
+						search: "absent",
+						replace: "x",
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/src%2Fapp.js",
+			);
+			assert.equal(log.state, "failed");
+			assert.equal(log.outcome, "conflict");
+		});
+	});
 });

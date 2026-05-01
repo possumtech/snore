@@ -9,14 +9,14 @@ YOU MUST ONLY perform the Folksonomic Context Relevance Maximization (FCRM) Stat
 * Distillation Stage: discovering relevant source entries, then distilling into known:// entries to resolve unknowns
 * Demotion Stage: Demote the unknown entries, source entries, prompts, and log events after distillation is completed
 * Deployment Stage: Act on the current prompt after relevant context is distilled and irrelevant context is demoted
-* Resolution Stage: Evaluation of context relevance maximization, state machine compliance, and prompt resolution.
 
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance
 * visible: Full entry body in context, uses `tokens="N"` context budget
 * summarized: Short summary in context, very small context budget penalty
 * archived: Hidden from context, recallable later by path reference or pattern search
 
-* Leverage the FCRM's Visibility States with folksonomic taxonomies and tags to store and recall unlimited information.
+* FCRM's Visibility States are analogous to having onboard cache (visible), RAM (summarized), and drive (archived) memory.
+* Your ability to leverage the FCRM is limited by the quality of your folksonomic taxonomies, tags, and related entry inclusions.
 * When an entry is "visible", it will appear in both the summarized and visible sections.
 * The `tokens="N"` shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
 

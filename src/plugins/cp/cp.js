@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { buildMerge } from "../hedberg/merge.js";
 import docs from "./cpDoc.js";
 
 export default class Cp {
@@ -29,20 +30,33 @@ export default class Cp {
 
 		const destScheme = Entries.scheme(to);
 		const existing = await store.getBody(runId, to);
-		const warning =
-			existing !== null && destScheme !== null
-				? `Overwrote existing entry at ${to}`
-				: null;
+		const warning = existing !== null
+			? `Overwrote existing entry at ${to}`
+			: null;
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
+			// Bare-file destination: build a whole-body-replace merge so
+			// the shared materializer (set.js #materializeFile, gated on
+			// attrs.path + attrs.merge) writes the source content to disk
+			// on accept. Without this, the proposal accepted but no file
+			// landed — the model's strategy of "<cp src dest> then <set
+			// dest> SEARCH/REPLACE" silently no-op'd.
+			const merge = buildMerge(existing ?? "", source);
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
 				body,
 				state: "proposed",
-				attributes: { from: path, to, isMove: false, warning },
+				attributes: {
+					from: path,
+					to,
+					isMove: false,
+					warning,
+					path: to,
+					merge,
+				},
 				loopId,
 			});
 		} else {

@@ -2,6 +2,7 @@ import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import File from "../file/file.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
+import { applyMerge, buildMerge } from "../hedberg/merge.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
@@ -23,13 +24,15 @@ export default class Set {
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
-		core.on("proposal.prepare", this.#materializeRevisions.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.set = docs;
 			return docsMap;
 		});
 		core.filter("proposal.accepting", this.#vetoReadonly.bind(this));
 		core.filter("proposal.content", this.#preferExistingBody.bind(this));
+		// Materialization is shape-coupled (attrs.path + attrs.merge), not
+		// path-coupled. Any plugin emitting a proposal in that shape
+		// (set, cp, future tools) gets fs materialization for free.
 		core.on("proposal.accepted", this.#materializeFile.bind(this));
 	}
 
@@ -58,26 +61,17 @@ export default class Set {
 	}
 
 	async #materializeFile(ctx) {
-		if (!isSetProposal(ctx.path)) return;
 		const { attrs, runId, projectId, projectRoot, db, entries } = ctx;
+		// Shape gate, not path gate: any accepted proposal whose
+		// attributes describe a file materialization (target path +
+		// SEARCH/REPLACE merge) lands a fresh file body and writes to
+		// disk. Lets cp/set/future tools share one materializer.
 		if (!attrs?.path || !attrs?.merge) return;
 
 		const existing = await entries.getBody(runId, attrs.path);
 		const isNewFile = existing === null;
 		const fileBody = isNewFile ? "" : existing;
-		const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
-		let patched = fileBody;
-		for (const block of blocks) {
-			const m = block.match(
-				/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
-			);
-			if (!m) continue;
-			if (m[1] === "") {
-				patched = m[2];
-			} else {
-				patched = patched.replace(m[1], m[2]);
-			}
-		}
+		const patched = applyMerge(fileBody, attrs.merge);
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
 		// Preserve current visibility; default would wipe an earlier <get>'s promotion.
 		const existingState = await entries.getState(runId, attrs.path);
@@ -214,9 +208,7 @@ export default class Set {
 				const oldContent = existing === null ? "" : existing;
 				const newContent = entry.body;
 				const udiff = generatePatch(target, oldContent, newContent);
-				const merge = oldContent
-					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
-					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
+				const merge = buildMerge(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 				await store.set({
@@ -264,9 +256,7 @@ export default class Set {
 				const oldContent = existing === null ? "" : existing;
 				const newContent = entry.body;
 				const udiff = generatePatch(target, oldContent, newContent);
-				const merge = oldContent
-					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
-					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
+				const merge = buildMerge(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
@@ -364,32 +354,18 @@ export default class Set {
 
 		for (const match of matches) {
 			if (match.scheme === null) {
-				// Bare file: apply edit immediately so log carries before/after merge.
-				const canonicalPath = `set://${match.path}`;
-				const revision = Set.#buildRevision(attrs);
-				const existingAttrs = await rummy.getAttributes(canonicalPath);
-				const revisions = existingAttrs?.revisions
-					? existingAttrs.revisions
-					: [];
-				revisions.push(revision);
-				await store.set({
-					runId,
-					turn,
-					path: canonicalPath,
-					body: "",
-					state: "resolved",
-					attributes: { path: match.path, revisions },
-					loopId,
-				});
+				// Bare file: emit a "proposed" log entry whose attrs carry
+				// the merge. yolo (or manual accept) → proposal.accepted →
+				// materializeFile applies the merge and writes to disk.
+				// Each edit is its own proposal — predictable, parallel-
+				// friendly, no cross-turn canonical-entry state to leak.
 				const { patch, searchText, replaceText, warning, error } =
 					Set.#applyRevision(match.body, attrs);
 				const merge =
-					searchText != null
-						? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
-						: null;
+					searchText != null ? buildMerge(searchText, replaceText) : null;
 				const beforeTokens = match.tokens;
 				const afterTokens = patch ? countTokens(patch) : beforeTokens;
-				const logState = error ? "failed" : "resolved";
+				const logState = error ? "failed" : "proposed";
 				await store.set({
 					runId,
 					turn,
@@ -417,9 +393,7 @@ export default class Set {
 			const outcome = error ? "conflict" : null;
 			const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
 			const merge =
-				searchText != null
-					? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
-					: null;
+				searchText != null ? buildMerge(searchText, replaceText) : null;
 			const beforeTokens = match.tokens;
 			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
@@ -456,87 +430,9 @@ export default class Set {
 		}
 	}
 
-	async #materializeRevisions({ rummy }) {
-		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const setEntries = await store.getEntriesByPattern(runId, "set://*");
-
-		for (const entry of setEntries) {
-			const attrs =
-				typeof entry.attributes === "string"
-					? JSON.parse(entry.attributes)
-					: entry.attributes;
-			if (!attrs?.revisions?.length) continue;
-
-			const entryPath = attrs.path;
-			const targetEntry = await store.getEntriesByPattern(runId, entryPath);
-			if (targetEntry.length === 0) continue;
-
-			const original = targetEntry[0].body;
-			let current = original;
-			const mergeBlocks = [];
-			let lastError = null;
-			let lastWarning = null;
-
-			for (const rev of attrs.revisions) {
-				if (!rev) continue;
-				const { patch, searchText, replaceText, warning, error } =
-					Set.#applyRevision(current, rev);
-
-				if (error) lastError = error;
-				else if (patch) current = patch;
-				if (warning) lastWarning = warning;
-
-				if (searchText != null) {
-					mergeBlocks.push(
-						`<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`,
-					);
-				}
-			}
-
-			const state = lastError ? "failed" : "proposed";
-			const outcome = lastError ? "conflict" : null;
-			const udiff =
-				current !== original
-					? generatePatch(entryPath, original, current)
-					: null;
-			const merge = mergeBlocks.length > 0 ? mergeBlocks.join("\n") : null;
-			const beforeTokens = targetEntry[0].tokens;
-			const afterTokens = current ? countTokens(current) : beforeTokens;
-
-			await store.set({
-				runId,
-				turn,
-				path: entry.path,
-				body: current,
-				state,
-				outcome,
-				attributes: {
-					path: entryPath,
-					patch: udiff,
-					merge,
-					beforeTokens,
-					afterTokens,
-					warning: lastWarning,
-					error: lastError,
-				},
-				loopId,
-			});
-		}
-	}
-
 	// Missing `replace` = delete the match; normalize to empty string.
 	static #resolveReplace(attrs) {
 		return attrs.replace === undefined ? "" : attrs.replace;
-	}
-
-	static #buildRevision(attrs) {
-		if (attrs.search != null) {
-			return { search: attrs.search, replace: Set.#resolveReplace(attrs) };
-		}
-		if (attrs.blocks?.length > 0) {
-			return { blocks: attrs.blocks };
-		}
-		return null;
 	}
 
 	static #applyRevision(body, attrs) {
