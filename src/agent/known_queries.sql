@@ -1,7 +1,7 @@
 -- PREP: get_known_entries
 SELECT
 	path, scheme, state, outcome, visibility, body, turn, hash
-	, attributes, countTokens(body) AS tokens, scope, loop_id
+	, attributes, scope, loop_id, countTokens(body) AS tokens
 FROM known_entries
 WHERE run_id = :run_id
 ORDER BY path;

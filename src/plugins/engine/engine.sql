@@ -1,7 +1,7 @@
 -- PREP: get_promoted_entries
 SELECT
 	ke.path, ke.scheme, ke.state, ke.outcome, ke.visibility, ke.turn
-	, countTokens(ke.body) AS tokens, ke.refs
+	, ke.refs, countTokens(ke.body) AS tokens
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE

@@ -230,7 +230,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- by id (insertion order) for streaming consumers; otherwise by path.
 SELECT
 	e.id, e.path, e.body, e.scheme, rv.state, rv.outcome, rv.visibility, rv.turn
-	, countTokens(e.body) AS tokens, e.attributes
+	, e.attributes, countTokens(e.body) AS tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 JOIN schemes AS s ON s.name = COALESCE(e.scheme, 'file')
@@ -333,7 +333,7 @@ WHERE
 -- budget postDispatch as the fallback demotion set when this-turn
 -- demotion yields nothing but the packet still overflows (promotions
 -- from prior turns the model forgot to demote themselves).
-SELECT e.path, countTokens(e.body) AS tokens, rv.turn
+SELECT e.path, rv.turn, countTokens(e.body) AS tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE

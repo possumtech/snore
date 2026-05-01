@@ -121,7 +121,8 @@ WHERE run_id = :parent_run_id;
 -- which represent prior cycles' artifacts inherited into a clean child.
 UPDATE run_views
 SET visibility = 'archived'
-WHERE run_id = :run_id
+WHERE
+	run_id = :run_id
 	AND visibility != 'archived'
 	AND (turn < :current_turn OR loop_id IS NULL)
 	AND entry_id IN (

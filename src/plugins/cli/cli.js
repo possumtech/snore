@@ -37,7 +37,7 @@ export default class Cli {
 		// pass --RUMMY_YOLO=0 to opt out.
 		if (process.env.RUMMY_YOLO == null) process.env.RUMMY_YOLO = "1";
 
-		const projectRoot = process.env.RUMMY_PROJECT_ROOT ?? process.cwd();
+		const projectRoot = process.cwd();
 		const alias = `cli_${Date.now()}`;
 
 		const projectAgent = new ProjectAgent(db, hooks);
