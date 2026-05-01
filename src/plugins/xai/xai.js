@@ -28,6 +28,21 @@ export default class Xai {
 		const baseUrl = process.env.XAI_BASE_URL;
 		if (!baseUrl) return;
 		this.#baseUrl = baseUrl.replace(/\/$/, "");
+		// Fail-fast on the legacy `/v1/responses` endpoint (used in earlier
+		// rummy versions before we switched to streaming /chat/completions).
+		// Composing `${baseUrl}/chat/completions` against a stale shell
+		// `XAI_BASE_URL=https://api.x.ai/v1/responses` produces a 404 route
+		// that escapes to AgentLoop's outer catch and 500-storms a sweep
+		// silently. Throwing at construction surfaces the env trap before
+		// any task starts (verified pathology: 2026-05-01 sweep, 31/31
+		// status=500). xAI's API root ends in `/v1`; anything else is wrong.
+		if (!/\/v1$/.test(this.#baseUrl)) {
+			throw new Error(
+				`XAI_BASE_URL must be the API root ending in /v1 (got "${this.#baseUrl}"). ` +
+					"Likely a stale shell env from earlier /v1/responses usage; " +
+					"set XAI_BASE_URL=https://api.x.ai/v1 (or the relevant proxy root).",
+			);
+		}
 		this.#apiKey = process.env.XAI_API_KEY;
 
 		const wireModel = (alias) => alias.split("/").slice(1).join("/");

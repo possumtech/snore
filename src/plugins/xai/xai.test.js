@@ -83,7 +83,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("matches xai/* aliases only", () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		const core = mockCore();
 		new Xai(core);
 		const p = core.providers[0];
@@ -93,7 +93,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: throws when XAI_API_KEY missing", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		delete process.env.XAI_API_KEY;
 		const core = mockCore();
 		new Xai(core);
@@ -121,7 +121,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: pins cache via x-grok-conv-id header when runAlias provided", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		const cap = {};
 		globalThis.fetch = streamingFetch({ captureRef: cap });
@@ -134,7 +134,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: omits x-grok-conv-id when runAlias absent", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		const cap = {};
 		globalThis.fetch = streamingFetch({ captureRef: cap });
@@ -145,7 +145,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: includes Authorization bearer header", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		const cap = {};
 		globalThis.fetch = streamingFetch({ captureRef: cap });
@@ -156,7 +156,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: includes temperature when provided in options", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		const cap = {};
 		globalThis.fetch = streamingFetch({ captureRef: cap });
@@ -167,7 +167,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: surfaces reasoning_content from streamed deltas", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		globalThis.fetch = streamingFetch({
 			content: "answer",
@@ -188,7 +188,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: 401 throws auth-tagged error with status preserved", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		globalThis.fetch = async () => ({
 			ok: false,
@@ -205,7 +205,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("completion: non-auth status surfaces error with status code", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_BASE_URL = "https://x/v1";
 		process.env.XAI_API_KEY = "xai-test";
 		globalThis.fetch = async () => ({
 			ok: false,
