@@ -47,7 +47,10 @@ describe("applyMerge", () => {
 
 	it("multiline SEARCH/REPLACE handles newlines verbatim", () => {
 		const merge = buildMerge("line1\nline2", "single");
-		assert.equal(applyMerge("pre\nline1\nline2\npost", merge), "pre\nsingle\npost");
+		assert.equal(
+			applyMerge("pre\nline1\nline2\npost", merge),
+			"pre\nsingle\npost",
+		);
 	});
 
 	it("malformed block (no =======) is skipped silently", () => {

@@ -249,10 +249,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		);
 
 		const dataBase = logPathToDataBase(proposalPath);
-		const stdoutState = await rummy.entries.getState(
-			runId,
-			`${dataBase}_1`,
-		);
+		const stdoutState = await rummy.entries.getState(runId, `${dataBase}_1`);
 		// On SIGTERM-from-abort the child exits non-zero; channels land
 		// in a terminal state either way, never lingering in 'streaming'.
 		assert.ok(

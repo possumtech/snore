@@ -44,9 +44,7 @@ describe("Cp", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const proposal = store._calls.find(
-				(c) => c.path === "log://turn_1/cp/x",
-			);
+			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
 			assert.ok(proposal);
 			assert.equal(proposal.state, "proposed");
 			assert.equal(proposal.attributes.path, "src/out.c");
@@ -76,9 +74,7 @@ describe("Cp", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const proposal = store._calls.find(
-				(c) => c.path === "log://turn_1/cp/x",
-			);
+			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
 			assert.match(
 				proposal.attributes.merge,
 				/^<<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE$/,
@@ -97,9 +93,7 @@ describe("Cp", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const proposal = store._calls.find(
-				(c) => c.path === "log://turn_1/cp/x",
-			);
+			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
 			assert.equal(proposal.attributes.from, "src/a");
 			assert.equal(proposal.attributes.to, "src/b");
 			assert.equal(proposal.attributes.isMove, false);

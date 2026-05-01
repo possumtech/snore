@@ -30,9 +30,8 @@ export default class Cp {
 
 		const destScheme = Entries.scheme(to);
 		const existing = await store.getBody(runId, to);
-		const warning = existing !== null
-			? `Overwrote existing entry at ${to}`
-			: null;
+		const warning =
+			existing !== null ? `Overwrote existing entry at ${to}` : null;
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
@@ -42,7 +41,10 @@ export default class Cp {
 			// on accept. Without this, the proposal accepted but no file
 			// landed — the model's strategy of "<cp src dest> then <set
 			// dest> SEARCH/REPLACE" silently no-op'd.
-			const merge = buildMerge(existing ?? "", source);
+			// existing === null means brand-new file — buildMerge already
+			// produces an empty-SEARCH block when its first arg is falsy,
+			// so passing null straight through is the right contract.
+			const merge = buildMerge(existing, source);
 			await store.set({
 				runId,
 				turn,

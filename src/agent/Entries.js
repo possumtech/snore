@@ -5,11 +5,12 @@ import encodeSegment from "./pathEncode.js";
 // SQLite surfaces the CHECK as either err.code === "SQLITE_CONSTRAINT_CHECK"
 // or an Error whose message names the failing column. Both forms appear in
 // the wild depending on the driver build, so we match defensively.
+// Caller-side contract: only invoked from a SQL try/catch, so err is always
+// an Error instance — err.message is a string (possibly empty), not undefined.
 function isBodyOverflow(err) {
 	if (!err) return false;
 	if (err.code === "SQLITE_CONSTRAINT_CHECK") return true;
-	const msg = err.message ?? "";
-	return msg.includes("CHECK") && msg.includes("length(body)");
+	return err.message.includes("CHECK") && err.message.includes("length(body)");
 }
 
 function translateBodyOverflow(err, path, body) {
@@ -105,7 +106,7 @@ export default class Entries {
 	// the target's length or character composition. Full payload always
 	// belongs in the entry body, not the slug.
 	async logPath(runId, turn, action, target) {
-		const slug = slugify(String(target ?? ""));
+		const slug = target == null ? "" : slugify(String(target));
 		const base = slug
 			? `log://turn_${turn}/${action}/${slug}`
 			: `log://turn_${turn}/${action}/_`;
@@ -188,10 +189,14 @@ export default class Entries {
 			// the codebase becomes overflow-safe without per-site catches.
 			// Without onError (raw unit tests), propagate as before.
 			if (err instanceof EntryOverflowError && this.#onError) {
+				// Destructure with the same defaults as #setImpl so the
+				// callback sees the same loopId/turn shape callers wrote
+				// against — no `??` fallback shim, just contract alignment.
+				const { runId, loopId = null, turn = 0 } = args;
 				await this.#onError({
-					runId: args.runId,
-					loopId: args.loopId ?? null,
-					turn: args.turn ?? 0,
+					runId,
+					loopId,
+					turn,
 					error: err,
 				});
 				return;

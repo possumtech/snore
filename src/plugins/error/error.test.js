@@ -50,6 +50,30 @@ async function startTurn(hooks, loopId, sequence = 1, opts = {}) {
 	});
 }
 
+// Fire a verdict carrying a single recorded update at the given status —
+// what the model emitted on this turn. Stagnation pressure now lives in
+// verdict and reads phase from this entry, not from prior-turn DB scans.
+async function runVerdict(hooks, store, loopId, turn, status) {
+	const recorded =
+		status == null
+			? []
+			: [
+					{
+						scheme: "update",
+						path: `log://turn_${turn}/update/x`,
+						attributes: { status },
+					},
+				];
+	return hooks.error.verdict({
+		store,
+		runId: "r",
+		loopId,
+		turn,
+		recorded,
+		summaryText: null,
+	});
+}
+
 describe("error plugin: views", () => {
 	it("visible projection labels body with `# error` header", async () => {
 		const { hooks } = makeCore();
@@ -285,19 +309,28 @@ describe("error plugin: verdict", () => {
 		await startTurn(hooks, "L1");
 		// Vary paths each iteration so cycle detection (orthogonal strike
 		// source) doesn't conflate with the recordedFailed path we're
-		// testing here.
+		// testing here. Pair each turn with a 155 update so the model
+		// stays in Distillation (phase 5, exempt from stagnation) — this
+		// test isolates the recordedFailed soft-vs-hard distinction, not
+		// stagnation pressure.
 		const stateByPath = new Map();
 		let verdict;
 		for (let i = 0; i < MAX_STRIKES + 5; i++) {
-			const path = `log://turn_1/set/x${i}`;
+			const path = `log://turn_${i + 1}/set/x${i}`;
 			stateByPath.set(path, { state: "failed", outcome: "not_found" });
 			const store = makeStore({ stateByPath });
 			verdict = await hooks.error.verdict({
 				store,
 				runId: "r",
+				turn: i + 1,
 				loopId: "L1",
 				recorded: [
 					{ scheme: "set", path, attributes: { path: `x${i}` } },
+					{
+						scheme: "update",
+						path: `log://turn_${i + 1}/update/x`,
+						attributes: { status: 155 },
+					},
 				],
 				summaryText: null,
 			});
@@ -414,7 +447,7 @@ describe("error plugin: verdict", () => {
 // Per-stage stagnation pressure: turns 1–6 in the same phase are free,
 // each turn after that fires a strike via the same error.log channel.
 describe("error plugin: stage-stagnation strikes", () => {
-	function turnUpdate(turn, status) {
+	function _turnUpdate(turn, status) {
 		return {
 			path: `log://turn_${turn}/update/x`,
 			attributes: { status },
@@ -424,9 +457,9 @@ describe("error plugin: stage-stagnation strikes", () => {
 	it("turns 1–3 in Decomposition (phase 4): no stagnation strike fires", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		const store = makeStore({ updates: [] });
+		const store = makeStore();
 		for (let t = 1; t <= 3; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
+			await runVerdict(hooks, store, "L1", t, null);
 		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
@@ -437,9 +470,9 @@ describe("error plugin: stage-stagnation strikes", () => {
 	it("turn 4 in Decomposition: strike fires with phase-aware message", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		const store = makeStore({ updates: [] });
+		const store = makeStore();
 		for (let t = 1; t <= 4; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
+			await runVerdict(hooks, store, "L1", t, null);
 		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
@@ -458,14 +491,12 @@ describe("error plugin: stage-stagnation strikes", () => {
 	it("Distillation (phase 5) is exempt: no stagnation strike no matter how many turns", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		// Turn 1 in phase 4, then turn 2 sees a 145 update → phase advances
-		// to 5. Subsequent 20 turns in phase 5 should never accumulate
-		// stagnation strikes — Distillation can grind on hard tasks.
-		let store = makeStore({ updates: [] });
-		await startTurn(hooks, "L1", 1, { entries: store });
-		store = makeStore({ updates: [turnUpdate(1, 145)] });
-		for (let t = 2; t <= 22; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
+		const store = makeStore();
+		// 22 consecutive turns emitting status=145 (Decomposition→Distillation
+		// transition; phase 5). Distillation must accumulate no strikes —
+		// hard sub-problems get to grind.
+		for (let t = 1; t <= 22; t++) {
+			await runVerdict(hooks, store, "L1", t, 145);
 		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
@@ -480,13 +511,11 @@ describe("error plugin: stage-stagnation strikes", () => {
 	it("Demotion (phase 6) is gated: turn 4 in same stage strikes", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		// Turn 1 in phase 4, turn 2 sees 156 (Distill complete) → phase 6.
-		// Four turns in phase 6 → strike on the 4th.
-		let store = makeStore({ updates: [] });
-		await startTurn(hooks, "L1", 1, { entries: store });
-		store = makeStore({ updates: [turnUpdate(1, 156)] });
-		for (let t = 2; t <= 5; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
+		const store = makeStore();
+		// Four consecutive turns emitting 156 (Distill complete → phase 6).
+		// Strike fires on the 4th turn-in-phase-6.
+		for (let t = 1; t <= 4; t++) {
+			await runVerdict(hooks, store, "L1", t, 156);
 		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
@@ -498,12 +527,10 @@ describe("error plugin: stage-stagnation strikes", () => {
 	it("Deployment (phase 7) is exempt: no stagnation strike no matter how many turns", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		let store = makeStore({ updates: [] });
-		await startTurn(hooks, "L1", 1, { entries: store });
-		// 167 = Demotion Complete → phase 7 (Deployment).
-		store = makeStore({ updates: [turnUpdate(1, 167)] });
-		for (let t = 2; t <= 22; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
+		const store = makeStore();
+		// 22 turns emitting 167 (Demotion Complete → Deployment, phase 7).
+		for (let t = 1; t <= 22; t++) {
+			await runVerdict(hooks, store, "L1", t, 167);
 		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
@@ -515,39 +542,33 @@ describe("error plugin: stage-stagnation strikes", () => {
 		);
 	});
 
-	it("Decomposition stagnation strike feeds turnErrors → verdict treats it as a strike", async () => {
+	it("model advancing on the strike-eligible turn cancels the strike", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		const store = makeStore({ updates: [] });
-		for (let t = 1; t <= 4; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
+		const store = makeStore();
+		// Three turns in Demotion (phase 6), then on what would be the
+		// strike turn the model emits 167 (advance to Deployment, phase 7).
+		// Pre-fix, the strike pre-fired at turn-start before the model's
+		// emission could change the phase, blocking the abandoning-strike
+		// rescue. Verdict-time stagnation honors the actual emission.
+		for (let t = 1; t <= 3; t++) {
+			await runVerdict(hooks, store, "L1", t, 156);
 		}
-		const verdict = await hooks.error.verdict({
-			store,
-			runId: "r",
-			loopId: "L1",
-			recorded: [],
-			summaryText: null,
-		});
+		const verdict = await runVerdict(hooks, store, "L1", 4, 167);
+		const stagnationCalls = store._calls.filter(
+			(c) => c.body && /turns in current stage/.test(c.body),
+		);
+		assert.equal(stagnationCalls.length, 0, "advance cancels the strike");
 		assert.equal(verdict.continue, true);
-		assert.match(verdict.reason, /Missing update/);
 	});
 
-	it("MAX_STRIKES consecutive Decomposition strikes terminate the run with 499", async () => {
+	it("MAX_STRIKES consecutive stagnation strikes terminate the run with 499", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		const store = makeStore({ updates: [] });
+		const store = makeStore();
 		let verdict;
-		// Turns 1–3 free, then each subsequent turn strikes; MAX_STRIKES-th kills.
 		for (let t = 1; t <= 3 + MAX_STRIKES; t++) {
-			await startTurn(hooks, "L1", t, { entries: store });
-			verdict = await hooks.error.verdict({
-				store,
-				runId: "r",
-				loopId: "L1",
-				recorded: [],
-				summaryText: null,
-			});
+			verdict = await runVerdict(hooks, store, "L1", t, null);
 		}
 		assert.equal(verdict.continue, false);
 		assert.equal(verdict.status, 499);

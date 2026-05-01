@@ -343,7 +343,11 @@ describe("Set plugin", () => {
 		it("successful edit on bare file yields state=proposed with attrs.path + attrs.merge", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
-			store.setEntry("src/app.js", { body: "old line", scheme: null, tokens: 2 });
+			store.setEntry("src/app.js", {
+				body: "old line",
+				scheme: null,
+				tokens: 2,
+			});
 			await plugin.handler(
 				{
 					body: "",
@@ -365,7 +369,11 @@ describe("Set plugin", () => {
 		it("does not write a set:// canonical entry (no detour)", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
-			store.setEntry("src/app.js", { body: "old line", scheme: null, tokens: 2 });
+			store.setEntry("src/app.js", {
+				body: "old line",
+				scheme: null,
+				tokens: 2,
+			});
 			await plugin.handler(
 				{
 					body: "",
@@ -384,7 +392,11 @@ describe("Set plugin", () => {
 		it("failed edit (search not found) yields state=failed with conflict outcome", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
-			store.setEntry("src/app.js", { body: "actual content", scheme: null, tokens: 2 });
+			store.setEntry("src/app.js", {
+				body: "actual content",
+				scheme: null,
+				tokens: 2,
+			});
 			await plugin.handler(
 				{
 					body: "",

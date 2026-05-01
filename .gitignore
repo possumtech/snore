@@ -76,7 +76,7 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
+!.env*.example
 
 # Bare-key files (e.g. .xai.key, .openrouter.key) — never tracked
 *.key

@@ -95,14 +95,20 @@ describe("Entries instance methods (DB-backed)", () => {
 		const e = new Entries(mockDb());
 		const huge = "y".repeat(10000);
 		const path = await e.logPath(1, 1, "set", huge);
-		assert.ok(path.length < 200, `logPath should stay <200 chars: ${path.length}`);
+		assert.ok(
+			path.length < 200,
+			`logPath should stay <200 chars: ${path.length}`,
+		);
 		assert.ok(path.length <= 2048);
 	});
 
 	it("logPath uses '_' placeholder when target is empty", async () => {
 		const e = new Entries(mockDb());
 		assert.equal(await e.logPath(1, 1, "update", ""), "log://turn_1/update/_");
-		assert.equal(await e.logPath(1, 1, "update", null), "log://turn_1/update/_");
+		assert.equal(
+			await e.logPath(1, 1, "update", null),
+			"log://turn_1/update/_",
+		);
 	});
 
 	it("logPath sequence-suffixes when path collides", async () => {

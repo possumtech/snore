@@ -241,11 +241,17 @@ describe("Handler dispatch", () => {
 			// proposal.accepted) applies merges to the actual file.
 			const a1 = await store.getAttributes(RUN_ID, path1);
 			assert.equal(a1.path, "src/math.txt");
-			assert.ok(a1.merge.includes("7 - a = 5"), "first proposal has first edit");
+			assert.ok(
+				a1.merge.includes("7 - a = 5"),
+				"first proposal has first edit",
+			);
 
 			const a2 = await store.getAttributes(RUN_ID, path2);
 			assert.equal(a2.path, "src/math.txt");
-			assert.ok(a2.merge.includes("a + b = 14"), "second proposal has second edit");
+			assert.ok(
+				a2.merge.includes("a + b = 14"),
+				"second proposal has second edit",
+			);
 
 			const s1 = await store.getState(RUN_ID, path1);
 			const s2 = await store.getState(RUN_ID, path2);

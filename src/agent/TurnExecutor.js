@@ -181,6 +181,35 @@ export default class TurnExecutor {
 					contextSize,
 				};
 			}
+			// LLM fetch hit its per-call ceiling (provider's
+			// AbortSignal.timeout(FETCH_TIMEOUT) fired). Convert to a
+			// 504 strike so the loop continues — one timed-out turn is
+			// recoverable; MAX_STRIKES in a row abandon at 499. Without
+			// this catch the AbortError escapes to AgentLoop's outer
+			// catch and the run dies at status=500, losing all prior
+			// productive turns. signal.aborted being true means OUR
+			// controller fired (drain), not a fetch timeout — re-throw
+			// so AgentLoop ends the run cleanly at 499.
+			if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+				if (signal?.aborted) throw err;
+				await this.#hooks.error.log.emit({
+					store: this.#entries,
+					runId: currentRunId,
+					turn,
+					loopId: currentLoopId,
+					message: `LLM call timed out: ${err.message}`,
+					status: 504,
+				});
+				return {
+					turn,
+					turnId: turnRow.id,
+					recorded: [],
+					summaryText: null,
+					updateText: null,
+					assembledTokens,
+					contextSize,
+				};
+			}
 			throw err;
 		}
 		const result = await this.#hooks.llm.response.filter(rawResult, {

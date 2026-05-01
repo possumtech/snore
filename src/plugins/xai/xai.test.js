@@ -38,8 +38,7 @@ function streamingFetch({
 			ok: true,
 			body: new ReadableStream({
 				start(c) {
-					for (const l of lines)
-						c.enqueue(new TextEncoder().encode(l));
+					for (const l of lines) c.enqueue(new TextEncoder().encode(l));
 					c.close();
 				},
 			}),
