@@ -86,9 +86,18 @@ export default class Yolo {
 		const stderrPath = `${dataBase}_2`;
 
 		const start = Date.now();
+		// signal: tied to AgentLoop's per-run AbortController. When drain
+		// fires (cli.js watchdog or external abort), Node's spawn auto-
+		// kills the child via SIGTERM, which unblocks the close-promise
+		// below. Without this, a long-running <sh> (e.g. pip install,
+		// server startup, vim) holds the run promise pending past
+		// harbor's outer SIGKILL deadline and the post-mortem packet
+		// (rummy.db, turns/, last_run.txt) never exfils. Verified
+		// pathology in the 2026-05-01 pypi-server tbench trial.
 		const child = spawn("bash", ["-lc", command], {
 			cwd: projectRoot,
 			env: process.env,
+			signal: rummy.signal ?? undefined,
 		});
 		// Buffer + write-once-on-exit; async appends would race the terminal-state transition.
 		const stdoutChunks = [];
@@ -97,6 +106,21 @@ export default class Yolo {
 		child.stderr.on("data", (data) => stderrChunks.push(data.toString()));
 
 		await new Promise((resolve) => {
+			let launched = false;
+			child.on("spawn", () => {
+				launched = true;
+			});
+			// Once the process is launched, "close" will fire even on
+			// SIGTERM-from-abort (after the process dies + stdio streams
+			// close) — let the close handler below write the terminal
+			// state. If "error" fires BEFORE "spawn", the launch itself
+			// failed (binary missing, cwd invalid) and "close" will never
+			// arrive, so we resolve here to keep drain from hanging past
+			// the harbor SIGKILL deadline. Verified pypi-server pathology
+			// 2026-05-01.
+			child.on("error", () => {
+				if (!launched) resolve();
+			});
 			child.on("close", async (code) => {
 				const stdoutBody = stdoutChunks.join("");
 				const stderrBody = stderrChunks.join("");

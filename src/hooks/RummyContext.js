@@ -13,6 +13,7 @@ const CONTEXT_DEFAULTS = Object.freeze({
 	systemPrompt: "",
 	loopPrompt: "",
 	writer: "model",
+	signal: null,
 });
 
 export default class RummyContext {
@@ -120,6 +121,16 @@ export default class RummyContext {
 	// Default 'model' (handlers write on the model's behalf); plugins pass writer explicitly.
 	get writer() {
 		return this.#context.writer;
+	}
+
+	// AbortSignal tied to the current run/loop's controller. Plugins that
+	// spawn subprocesses or perform long-running work MUST honor this so
+	// drain (rummy-cli's 895s watchdog → projectAgent.shutdown) can flush
+	// telemetry before harbor's outer SIGKILL. Without this wired into a
+	// spawn, the in-flight subprocess outlives drain and rummy.db / turns/
+	// / last_run.txt never make it out of the docker sandbox.
+	get signal() {
+		return this.#context.signal;
 	}
 
 	get system() {

@@ -17,7 +17,7 @@ import Entries from "../../src/agent/Entries.js";
 import { logPathToDataBase } from "../../src/plugins/helpers.js";
 import TestDb from "../helpers/TestDb.js";
 
-async function makeRummy(tdb, runId, projectId, projectRoot, yolo) {
+async function makeRummy(tdb, runId, projectId, projectRoot, yolo, signal) {
 	const entries = new Entries(tdb.db);
 	entries.loadSchemes(tdb.db);
 	return {
@@ -28,6 +28,7 @@ async function makeRummy(tdb, runId, projectId, projectRoot, yolo) {
 		yolo: yolo === true,
 		hooks: tdb.hooks,
 		project: { id: projectId, project_root: projectRoot },
+		signal,
 	};
 }
 
@@ -196,6 +197,67 @@ describe("yolo mode (@yolo_mode)", () => {
 			proposalState.state,
 			"resolved",
 			"sh log entry resolved after command + auto-accept",
+		);
+	});
+
+	it("abort during long-running sh kills the child and resolves promptly", async () => {
+		// Regression for the pypi-server tbench pathology: when rummy-cli's
+		// 895s watchdog → projectAgent.shutdown → AgentLoop.abortAll fires
+		// while a long <sh> is mid-flight, the spawned child must die so
+		// drain unwinds before harbor's outer SIGKILL hits and trashes the
+		// post-mortem packet (rummy.db / turns/ / last_run.txt).
+		const projectRoot = join(tmpdir(), `yolo_sh_abort_${Date.now()}`);
+		await fs.mkdir(projectRoot, { recursive: true });
+		const { runId, projectId } = await tdb.seedRun({
+			alias: "yolo_sh_abort",
+			projectRoot,
+		});
+		const controller = new AbortController();
+		const rummy = await makeRummy(
+			tdb,
+			runId,
+			projectId,
+			projectRoot,
+			true,
+			controller.signal,
+		);
+
+		// 30s sleep — would deadline-blow the test if abort weren't honored.
+		const proposalPath = await seedShProposal(
+			rummy.entries,
+			runId,
+			1,
+			"sleep 30",
+		);
+
+		const start = Date.now();
+		const pending = tdb.hooks.proposal.pending.emit({
+			projectId,
+			run: "yolo_sh_abort",
+			proposed: [{ path: proposalPath }],
+			rummy,
+		});
+
+		// Give spawn a moment to launch, then abort.
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		controller.abort();
+		await pending;
+		const elapsed = Date.now() - start;
+		assert.ok(
+			elapsed < 5000,
+			`abort unwound in ${elapsed}ms — must be well under sleep 30 (5s ceiling)`,
+		);
+
+		const dataBase = logPathToDataBase(proposalPath);
+		const stdoutState = await rummy.entries.getState(
+			runId,
+			`${dataBase}_1`,
+		);
+		// On SIGTERM-from-abort the child exits non-zero; channels land
+		// in a terminal state either way, never lingering in 'streaming'.
+		assert.ok(
+			stdoutState?.state === "resolved" || stdoutState?.state === "failed",
+			`channel transitioned to terminal state; got ${stdoutState?.state}`,
 		);
 	});
 

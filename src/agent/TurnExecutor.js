@@ -76,6 +76,7 @@ export default class TurnExecutor {
 				contextSize,
 				systemPrompt: null,
 				loopPrompt,
+				signal,
 			},
 		);
 		await this.#hooks.turn.started.emit({
