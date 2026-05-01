@@ -47,10 +47,10 @@ rummy
 
 ## Usage
 
-Rummy is a headless service. It exposes a JSON-RPC over WebSocket interface (default port `3044`) for clients to drive the engine. 
+Rummy is a headless service. It exposes a JSON-RPC over WebSocket interface (default port `3044`) for clients to drive the engine.
 
 *   **Official Client:** [rummy.nvim](https://github.com/possumtech/rummy.nvim) (Neovim interface)
-*   **Automation:** [TBENCH](TBENCH_AUDIT.md) (Autonomous benchmarking harness)
+*   **In-process CLI:** `rummy-cli` (one-shot ask/act invocations against a project; see `src/plugins/cli/`)
 
 ## Documentation
 

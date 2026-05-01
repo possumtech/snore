@@ -78,6 +78,9 @@ web_modules/
 .env.*
 !.env.example
 
+# Bare-key files (e.g. .xai.key, .openrouter.key) — never tracked
+*.key
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
