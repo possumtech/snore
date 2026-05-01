@@ -330,7 +330,7 @@ describe("error plugin: verdict", () => {
 	});
 });
 
-// Per-stage stagnation pressure: turns 1–3 in the same phase are free,
+// Per-stage stagnation pressure: turns 1–6 in the same phase are free,
 // each turn after that fires a strike via the same error.log channel.
 describe("error plugin: stage-stagnation strikes", () => {
 	function turnUpdate(turn, status) {
@@ -340,54 +340,55 @@ describe("error plugin: stage-stagnation strikes", () => {
 		};
 	}
 
-	it("turns 1–3 in same stage: no stagnation strike fires", async () => {
+	it("turns 1–6 in same stage: no stagnation strike fires", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		// Three consecutive turns with no prior updates → all in phase 4.
 		const store = makeStore({ updates: [] });
-		await startTurn(hooks, "L1", 1, { entries: store });
-		await startTurn(hooks, "L1", 2, { entries: store });
-		await startTurn(hooks, "L1", 3, { entries: store });
-		// No error.log entries written for stagnation
+		for (let t = 1; t <= 6; t++) {
+			await startTurn(hooks, "L1", t, { entries: store });
+		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
 		);
 		assert.equal(stagnationCalls.length, 0);
 	});
 
-	it("turn 4 in same stage: strike fires with phase-aware message", async () => {
+	it("turn 7 in same stage: strike fires with phase-aware message", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		const store = makeStore({ updates: [] });
-		for (let t = 1; t <= 4; t++) {
+		for (let t = 1; t <= 7; t++) {
 			await startTurn(hooks, "L1", t, { entries: store });
 		}
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
 		);
 		assert.equal(stagnationCalls.length, 1);
-		assert.match(stagnationCalls[0].body, /^4 turns in current stage\. Attempt to proceed to next stage\.$/);
+		assert.match(
+			stagnationCalls[0].body,
+			/^7 turns in current stage\. Attempt to proceed to next stage\.$/,
+		);
 		assert.equal(stagnationCalls[0].state, "failed");
 		assert.equal(stagnationCalls[0].outcome, "status:408");
 		assert.equal(stagnationCalls[0].attributes.stagnation, true);
 		assert.equal(stagnationCalls[0].attributes.phase, 4);
 	});
 
-	it("phase change resets the counter (turns in new phase 1–3 free again)", async () => {
+	it("phase change resets the counter (turns in new phase 1–6 free again)", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
-		// Turns 1–3 in phase 4 (no prior updates), turn 4 advances to phase 5
-		// (status 145), turns 5–7 in phase 5 — no new strikes expected.
+		// Turns 1–3 in phase 4 (no prior updates), then turn 4 advances to
+		// phase 5 (status 145 emitted on turn 3); turns 4–9 in phase 5 — six
+		// more free turns, no new strikes expected.
 		let store = makeStore({ updates: [] });
 		await startTurn(hooks, "L1", 1, { entries: store });
 		await startTurn(hooks, "L1", 2, { entries: store });
 		await startTurn(hooks, "L1", 3, { entries: store });
 
-		// Now turn 4 sees a 145 update from turn 3 → phase becomes 5.
 		store = makeStore({ updates: [turnUpdate(3, 145)] });
-		await startTurn(hooks, "L1", 4, { entries: store });
-		await startTurn(hooks, "L1", 5, { entries: store });
-		await startTurn(hooks, "L1", 6, { entries: store });
+		for (let t = 4; t <= 9; t++) {
+			await startTurn(hooks, "L1", t, { entries: store });
+		}
 
 		const stagnationCalls = store._calls.filter(
 			(c) => c.body && /turns in current stage/.test(c.body),
@@ -395,7 +396,7 @@ describe("error plugin: stage-stagnation strikes", () => {
 		assert.equal(
 			stagnationCalls.length,
 			0,
-			"phase change at turn 4 resets counter; turns 4–6 in phase 5 are free",
+			"phase change resets counter; six fresh turns in phase 5 are free",
 		);
 	});
 
@@ -403,10 +404,10 @@ describe("error plugin: stage-stagnation strikes", () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		const store = makeStore({ updates: [] });
-		for (let t = 1; t <= 4; t++) {
+		for (let t = 1; t <= 7; t++) {
 			await startTurn(hooks, "L1", t, { entries: store });
 		}
-		// Turn 4's verdict with no further error and no summary → struck via
+		// Turn 7's verdict with no further error and no summary → struck via
 		// stagnation alone → continue:true with Missing-update reminder.
 		const verdict = await hooks.error.verdict({
 			store,
@@ -424,9 +425,9 @@ describe("error plugin: stage-stagnation strikes", () => {
 		await startLoop(hooks, "L1");
 		const store = makeStore({ updates: [] });
 		let verdict;
-		// Walk through turns 1..(3+MAX_STRIKES). Turns 1–3 free, then each
+		// Walk through turns 1..(6+MAX_STRIKES). Turns 1–6 free, then each
 		// stagnation turn accrues a streak; the MAX_STRIKES-th strike kills.
-		for (let t = 1; t <= 3 + MAX_STRIKES; t++) {
+		for (let t = 1; t <= 6 + MAX_STRIKES; t++) {
 			await startTurn(hooks, "L1", t, { entries: store });
 			verdict = await hooks.error.verdict({
 				store,

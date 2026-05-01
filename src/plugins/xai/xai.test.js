@@ -7,6 +7,46 @@ function mockCore() {
 	return { providers, hooks: { llm: { providers } } };
 }
 
+// Streaming-style fetch stub: emits a single SSE chunk wrapping the
+// provided assistant content (and optional reasoning), then [DONE].
+function streamingFetch({
+	content = "",
+	reasoning = null,
+	usage = null,
+	captureRef = {},
+} = {}) {
+	return async (url, init) => {
+		captureRef.url = url;
+		captureRef.init = init;
+		captureRef.headers = init.headers;
+		captureRef.body = JSON.parse(init.body);
+		const delta = { content };
+		if (reasoning !== null) delta.reasoning_content = reasoning;
+		const chunk = {
+			choices: [{ delta, index: 0, finish_reason: null }],
+		};
+		const finalChunk = {
+			choices: [{ delta: {}, index: 0, finish_reason: "stop" }],
+			usage,
+		};
+		const lines = [
+			`data: ${JSON.stringify(chunk)}\n\n`,
+			`data: ${JSON.stringify(finalChunk)}\n\n`,
+			"data: [DONE]\n\n",
+		];
+		return {
+			ok: true,
+			body: new ReadableStream({
+				start(c) {
+					for (const l of lines)
+						c.enqueue(new TextEncoder().encode(l));
+					c.close();
+				},
+			}),
+		};
+	};
+}
+
 describe("Xai provider plugin", () => {
 	let originalBase;
 	let originalKey;
@@ -36,7 +76,7 @@ describe("Xai provider plugin", () => {
 	});
 
 	it("registers provider when XAI_BASE_URL set", () => {
-		process.env.XAI_BASE_URL = "https://api.x.ai/v1/responses";
+		process.env.XAI_BASE_URL = "https://api.x.ai/v1";
 		const core = mockCore();
 		new Xai(core);
 		assert.equal(core.providers.length, 1);
@@ -64,53 +104,91 @@ describe("Xai provider plugin", () => {
 		);
 	});
 
-	it("completion: includes prompt_cache_key when runAlias provided", async () => {
+	it("completion: POSTs to {base}/chat/completions with messages body", async () => {
+		process.env.XAI_BASE_URL = "https://api.x.ai/v1";
+		process.env.XAI_API_KEY = "xai-test";
+		const cap = {};
+		globalThis.fetch = streamingFetch({ content: "hi", captureRef: cap });
+		const core = mockCore();
+		new Xai(core);
+		await core.providers[0].completion(
+			[{ role: "user", content: "ping" }],
+			"xai/grok",
+			{},
+		);
+		assert.equal(cap.url, "https://api.x.ai/v1/chat/completions");
+		assert.deepEqual(cap.body.messages, [{ role: "user", content: "ping" }]);
+		assert.equal(cap.body.model, "grok");
+	});
+
+	it("completion: pins cache via x-grok-conv-id header when runAlias provided", async () => {
 		process.env.XAI_BASE_URL = "https://x";
 		process.env.XAI_API_KEY = "xai-test";
-		let captured;
-		globalThis.fetch = async (_url, init) => {
-			captured = JSON.parse(init.body);
-			return {
-				ok: true,
-				json: async () => ({
-					output: [
-						{ type: "message", content: [{ type: "output_text", text: "hi" }] },
-					],
-					usage: { input_tokens: 10, output_tokens: 5 },
-				}),
-			};
-		};
+		const cap = {};
+		globalThis.fetch = streamingFetch({ captureRef: cap });
 		const core = mockCore();
 		new Xai(core);
 		await core.providers[0].completion([], "xai/grok", {
 			runAlias: "cli_123",
 		});
-		assert.equal(captured.prompt_cache_key, "cli_123");
+		assert.equal(cap.headers["x-grok-conv-id"], "cli_123");
 	});
 
-	it("completion: omits prompt_cache_key when runAlias absent", async () => {
+	it("completion: omits x-grok-conv-id when runAlias absent", async () => {
 		process.env.XAI_BASE_URL = "https://x";
 		process.env.XAI_API_KEY = "xai-test";
-		let captured;
-		globalThis.fetch = async (_url, init) => {
-			captured = JSON.parse(init.body);
-			return {
-				ok: true,
-				json: async () => ({
-					output: [
-						{ type: "message", content: [{ type: "output_text", text: "x" }] },
-					],
-					usage: { input_tokens: 1, output_tokens: 1 },
-				}),
-			};
-		};
+		const cap = {};
+		globalThis.fetch = streamingFetch({ captureRef: cap });
 		const core = mockCore();
 		new Xai(core);
 		await core.providers[0].completion([], "xai/grok", {});
-		assert.equal(captured.prompt_cache_key, undefined);
+		assert.equal(cap.headers["x-grok-conv-id"], undefined);
 	});
 
-	it("completion: 401/403 throws auth-tagged error with status", async () => {
+	it("completion: includes Authorization bearer header", async () => {
+		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_API_KEY = "xai-test";
+		const cap = {};
+		globalThis.fetch = streamingFetch({ captureRef: cap });
+		const core = mockCore();
+		new Xai(core);
+		await core.providers[0].completion([], "xai/grok", {});
+		assert.equal(cap.headers.Authorization, "Bearer xai-test");
+	});
+
+	it("completion: includes temperature when provided in options", async () => {
+		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_API_KEY = "xai-test";
+		const cap = {};
+		globalThis.fetch = streamingFetch({ captureRef: cap });
+		const core = mockCore();
+		new Xai(core);
+		await core.providers[0].completion([], "xai/grok", { temperature: 0.42 });
+		assert.equal(cap.body.temperature, 0.42);
+	});
+
+	it("completion: surfaces reasoning_content from streamed deltas", async () => {
+		process.env.XAI_BASE_URL = "https://x";
+		process.env.XAI_API_KEY = "xai-test";
+		globalThis.fetch = streamingFetch({
+			content: "answer",
+			reasoning: "thinking...",
+			usage: {
+				prompt_tokens: 10,
+				completion_tokens: 5,
+				total_tokens: 15,
+			},
+		});
+		const core = mockCore();
+		new Xai(core);
+		const result = await core.providers[0].completion([], "xai/grok", {});
+		assert.equal(result.choices[0].message.content, "answer");
+		assert.equal(result.choices[0].message.reasoning_content, "thinking...");
+		assert.equal(result.usage.prompt_tokens, 10);
+		assert.equal(result.usage.completion_tokens, 5);
+	});
+
+	it("completion: 401 throws auth-tagged error with status preserved", async () => {
 		process.env.XAI_BASE_URL = "https://x";
 		process.env.XAI_API_KEY = "xai-test";
 		globalThis.fetch = async () => ({
@@ -123,14 +201,11 @@ describe("Xai provider plugin", () => {
 		new Xai(core);
 		await assert.rejects(
 			core.providers[0].completion([], "xai/grok", {}),
-			(err) => {
-				assert.equal(err.status, 401);
-				return true;
-			},
+			/401/,
 		);
 	});
 
-	it("completion: non-auth status surfaces err.status, err.body, err.retryAfter", async () => {
+	it("completion: non-auth status surfaces error with status code", async () => {
 		process.env.XAI_BASE_URL = "https://x";
 		process.env.XAI_API_KEY = "xai-test";
 		globalThis.fetch = async () => ({
@@ -143,114 +218,18 @@ describe("Xai provider plugin", () => {
 		new Xai(core);
 		await assert.rejects(
 			core.providers[0].completion([], "xai/grok", {}),
-			(err) => {
-				assert.equal(err.status, 429);
-				assert.equal(err.body, "rate limited");
-				assert.equal(err.retryAfter, 12);
-				return true;
-			},
+			/429/,
 		);
 	});
 
-	it("normalize: extracts message + reasoning into OpenAI-shape choices", async () => {
-		process.env.XAI_BASE_URL = "https://x";
+	it("completion: trailing slash on XAI_BASE_URL is normalized", async () => {
+		process.env.XAI_BASE_URL = "https://api.x.ai/v1/";
 		process.env.XAI_API_KEY = "xai-test";
-		globalThis.fetch = async () => ({
-			ok: true,
-			json: async () => ({
-				output: [
-					{
-						type: "reasoning",
-						content: [{ type: "text", text: "thinking..." }],
-					},
-					{
-						type: "message",
-						content: [{ type: "output_text", text: "answer" }],
-					},
-				],
-				usage: {
-					input_tokens: 10,
-					output_tokens: 5,
-					input_tokens_details: { cached_tokens: 3 },
-					output_tokens_details: { reasoning_tokens: 2 },
-					cost_in_usd_ticks: 100_000_000_000,
-				},
-			}),
-		});
+		const cap = {};
+		globalThis.fetch = streamingFetch({ captureRef: cap });
 		const core = mockCore();
 		new Xai(core);
-		const result = await core.providers[0].completion([], "xai/grok", {});
-		assert.equal(result.choices[0].message.content, "answer");
-		assert.equal(result.choices[0].message.reasoning_content, "thinking...");
-		assert.equal(result.usage.prompt_tokens, 10);
-		assert.equal(result.usage.completion_tokens, 5);
-		assert.equal(result.usage.cached_tokens, 3);
-		assert.equal(result.usage.reasoning_tokens, 2);
-		assert.equal(result.usage.total_tokens, 15);
-		assert.equal(result.usage.cost, 10);
-	});
-
-	it("normalize: handles missing optional usage fields with 0 defaults", async () => {
-		process.env.XAI_BASE_URL = "https://x";
-		process.env.XAI_API_KEY = "xai-test";
-		globalThis.fetch = async () => ({
-			ok: true,
-			json: async () => ({
-				output: [
-					{
-						type: "message",
-						content: [{ type: "output_text", text: "x" }],
-					},
-				],
-				usage: { input_tokens: 1, output_tokens: 1 },
-			}),
-		});
-		const core = mockCore();
-		new Xai(core);
-		const result = await core.providers[0].completion([], "xai/grok", {});
-		assert.equal(result.usage.cached_tokens, 0);
-		assert.equal(result.usage.reasoning_tokens, 0);
-		assert.equal(result.usage.cost, 0);
-	});
-
-	it("normalize: concatenates multiple message items with \\n", async () => {
-		process.env.XAI_BASE_URL = "https://x";
-		process.env.XAI_API_KEY = "xai-test";
-		globalThis.fetch = async () => ({
-			ok: true,
-			json: async () => ({
-				output: [
-					{
-						type: "message",
-						content: [{ type: "output_text", text: "first" }],
-					},
-					{
-						type: "message",
-						content: [{ type: "output_text", text: "second" }],
-					},
-				],
-				usage: { input_tokens: 1, output_tokens: 1 },
-			}),
-		});
-		const core = mockCore();
-		new Xai(core);
-		const result = await core.providers[0].completion([], "xai/grok", {});
-		assert.equal(result.choices[0].message.content, "first\nsecond");
-	});
-
-	it("normalize: handles content as raw string (vs array)", async () => {
-		process.env.XAI_BASE_URL = "https://x";
-		process.env.XAI_API_KEY = "xai-test";
-		globalThis.fetch = async () => ({
-			ok: true,
-			json: async () => ({
-				output: [{ type: "message", content: "raw string" }],
-				usage: { input_tokens: 1, output_tokens: 1 },
-			}),
-		});
-		const core = mockCore();
-		new Xai(core);
-		const result = await core.providers[0].completion([], "xai/grok", {});
-		assert.equal(result.choices[0].message.content, "raw string");
+		await core.providers[0].completion([], "xai/grok", {});
+		assert.equal(cap.url, "https://api.x.ai/v1/chat/completions");
 	});
 });

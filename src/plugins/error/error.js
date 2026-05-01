@@ -1,9 +1,9 @@
 import config from "../../agent/config.js";
 
-const { MAX_STRIKES, MIN_CYCLES, MAX_CYCLE_PERIOD } = config;
+const { MAX_STRIKES, MIN_CYCLES, MAX_CYCLE_PERIOD, STAGNATION_FREE_TURNS } =
+	config;
 
 const CONTRACT_REMINDER = "Missing update";
-const STAGNATION_FREE_TURNS = 3;
 const PHASES = [4, 5, 6, 7, 8, 9];
 const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\//;
 

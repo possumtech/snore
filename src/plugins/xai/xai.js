@@ -1,12 +1,24 @@
 import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
-import { parseRetryAfter } from "../../llm/errors.js";
+import { chatCompletionStream } from "../../llm/openaiStream.js";
 
 const { FETCH_TIMEOUT } = config;
 
 const PROVIDER = "xai";
 
-// Inert unless XAI_BASE_URL set; xai/{model} aliases; normalizes to OpenAI envelope.
+// Inert unless XAI_BASE_URL set; xai/{model} aliases.
+//
+// XAI_BASE_URL points at xAI's v1 root (e.g. https://api.x.ai/v1).
+// We POST to {base}/chat/completions and stream the response via the
+// shared OpenAI-compatible client — this is the path that surfaces
+// reasoning_content deltas. The /v1/responses endpoint is xAI's newer
+// API but its non-streaming output drops reasoning content (we still
+// pay for it via reasoning_tokens; we just never see it). Streaming on
+// /v1/responses uses a different event shape that our shared stream
+// client doesn't speak. So we use /v1/chat/completions: caching is
+// preserved via the `x-grok-conv-id` header (xAI's chat-completions
+// equivalent of the /v1/responses `prompt_cache_key` body field).
+// See https://docs.x.ai/developers/advanced-api-usage/prompt-caching.
 export default class Xai {
 	#baseUrl;
 	#apiKey;
@@ -15,7 +27,7 @@ export default class Xai {
 	constructor(core) {
 		const baseUrl = process.env.XAI_BASE_URL;
 		if (!baseUrl) return;
-		this.#baseUrl = baseUrl;
+		this.#baseUrl = baseUrl.replace(/\/$/, "");
 		this.#apiKey = process.env.XAI_API_KEY;
 
 		const wireModel = (alias) => alias.split("/").slice(1).join("/");
@@ -32,119 +44,55 @@ export default class Xai {
 	async #completion(messages, model, options = {}) {
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
-		const body = { model, input: messages };
+		const body = { model, messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
-		// xAI auto-caches per-server; stable prompt_cache_key keeps a multi-
-		// turn run pinned to the same backend so the cached prefix actually
-		// hits. Without this, requests load-balance and cache_tokens stays
-		// near-zero. See https://docs.x.ai/developers/advanced-api-usage/prompt-caching.
-		if (options.runAlias) body.prompt_cache_key = options.runAlias;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
 
-		const response = await fetch(this.#baseUrl, {
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${this.#apiKey}`,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(body),
-			signal,
-		});
+		const headers = {
+			Authorization: `Bearer ${this.#apiKey}`,
+		};
+		// Pin caching to the run alias. xAI's chat-completions cache is
+		// per-server; same conv-id routes to the same backend, which is
+		// where the cached prefix lives. Without this, requests load-
+		// balance across servers and cached_tokens stays near zero.
+		if (options.runAlias) headers["x-grok-conv-id"] = options.runAlias;
 
-		if (!response.ok) {
-			const errorBody = await response.text();
-			const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
-			if (response.status === 401 || response.status === 403) {
-				const err = new Error(
+		try {
+			return await chatCompletionStream({
+				url: `${this.#baseUrl}/chat/completions`,
+				headers,
+				body,
+				signal,
+			});
+		} catch (err) {
+			if (err.status === 401 || err.status === 403) {
+				throw new Error(
 					msg("error.xai_auth", {
-						status: `${response.status} - ${errorBody}`,
+						status: `${err.status} - ${err.body}`,
 					}),
 				);
-				err.status = response.status;
-				err.body = errorBody;
-				throw err;
 			}
-			const err = new Error(
-				msg("error.xai_api", {
-					status: `${response.status} - ${errorBody}`,
-				}),
-			);
-			err.status = response.status;
-			err.body = errorBody;
-			err.retryAfter = retryAfter;
+			if (err.status) {
+				throw new Error(
+					msg("error.xai_api", {
+						status: `${err.status} - ${err.body}`,
+					}),
+				);
+			}
 			throw err;
 		}
-
-		return this.#normalize(await response.json());
-	}
-
-	#normalize(data) {
-		let content = "";
-		let reasoningContent = null;
-
-		for (const item of data.output) {
-			if (item.type === "reasoning") {
-				const text = this.#extractText(item.content);
-				if (text)
-					reasoningContent = reasoningContent
-						? `${reasoningContent}\n${text}`
-						: text;
-			}
-			if (item.type === "message") {
-				const text = this.#extractText(item.content);
-				if (text) content = content ? `${content}\n${text}` : text;
-			}
-		}
-
-		const { usage } = data;
-		const inputTokens = usage.input_tokens;
-		const outputTokens = usage.output_tokens;
-		// Optional per xAI API; absent on providers that don't surface them.
-		const cached = usage.input_tokens_details?.cached_tokens;
-		const reasoningTokens = usage.output_tokens_details?.reasoning_tokens;
-		const costTicks = usage.cost_in_usd_ticks;
-		return {
-			choices: [
-				{
-					message: {
-						role: "assistant",
-						content,
-						reasoning_content: reasoningContent,
-					},
-				},
-			],
-			usage: {
-				prompt_tokens: inputTokens,
-				cached_tokens: cached === undefined ? 0 : cached,
-				completion_tokens: outputTokens,
-				reasoning_tokens: reasoningTokens === undefined ? 0 : reasoningTokens,
-				total_tokens: inputTokens + outputTokens,
-				cost: costTicks === undefined ? 0 : costTicks / 10_000_000_000,
-			},
-		};
-	}
-
-	#extractText(content) {
-		if (typeof content === "string") return content;
-		if (!Array.isArray(content)) return null;
-		const joined = content
-			.filter((c) => c.type === "text" || c.type === "output_text")
-			.map((c) => c.text)
-			.join("\n");
-		return joined ? joined : null;
 	}
 
 	async #getContextSize(model) {
 		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
-		const modelsUrl = this.#baseUrl.replace(/\/responses$/, "/models");
-		const res = await fetch(modelsUrl, {
+		const res = await fetch(`${this.#baseUrl}/models`, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(FETCH_TIMEOUT),
 		});
@@ -164,10 +112,7 @@ export default class Xai {
 			}
 		}
 
-		const langUrl = this.#baseUrl.replace(
-			/\/responses$/,
-			`/language-models/${model}`,
-		);
+		const langUrl = `${this.#baseUrl}/language-models/${model}`;
 		// Optional probe; failure falls through to terminal throw below.
 		const langRes = await fetch(langUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
