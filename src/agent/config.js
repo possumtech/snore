@@ -1,9 +1,13 @@
 // Validates required RUMMY_* env at module load; defaults in .env.example.
 
+// Parsers signal "invalid" by returning Number.NaN — the validation loop
+// collects all such failures into `missing[]` and reports them in one
+// consolidated error. Throwing from a parser would short-circuit the
+// loop and force operators to fix issues serially across restarts.
 const parseBool = (v) => {
 	if (v === "0" || v === "false") return false;
 	if (v === "1" || v === "true") return true;
-	throw new Error(`expected 0|1|true|false, got "${v}"`);
+	return Number.NaN;
 };
 
 const REQUIRED = {
@@ -16,7 +20,7 @@ const REQUIRED = {
 	MAX_CYCLE_PERIOD: { env: "RUMMY_MAX_CYCLE_PERIOD", parse: Number },
 	RUN_TIMEOUT: { env: "RUMMY_RUN_TIMEOUT", parse: Number },
 	PLUGINS_LOAD_TIMEOUT: { env: "RUMMY_PLUGINS_LOAD_TIMEOUT", parse: Number },
-	THINK: { env: "RUMMY_THINK", parse: parseBool },
+	THINK: { env: "RUMMY_THINK", parse: parseBool, expected: "0|1|true|false" },
 };
 
 const config = {};
@@ -29,7 +33,8 @@ for (const [key, spec] of Object.entries(REQUIRED)) {
 	}
 	const parsed = spec.parse(raw);
 	if (typeof parsed === "number" && Number.isNaN(parsed)) {
-		missing.push(`${spec.env} (got "${raw}", expected number)`);
+		const expected = spec.expected ?? "number";
+		missing.push(`${spec.env} (got "${raw}", expected ${expected})`);
 		continue;
 	}
 	config[key] = parsed;

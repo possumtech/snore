@@ -5,7 +5,7 @@ Example: creating deliverable
 	<update status="177">writing deliverable</update>
 
 Example: confirming deliverable
-	<sh>[ -f src/sum.js ] && node --version && node sum.js 2 2 | grep -qx 4</sh>
+	<sh>[ -f src/sum.js ] && node --version && node src/sum.js 2 2 | grep -qx 4</sh>
 	<update status="177">src/sum.js was written? node available? ran cleanly, correct output?</update>
 
 Example: <update status="200">Paris</update>

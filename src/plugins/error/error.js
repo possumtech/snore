@@ -79,14 +79,18 @@ export default class ErrorPlugin {
 		// recovered (e.g. parser auto-corrected a closing-tag mismatch)
 		// and the entry exists only so the model can see what happened.
 		// state="resolved" keeps recordedFailed clean; skipping
-		// turnErrors++ keeps the strike machinery from firing.
+		// turnErrors++ keeps the strike machinery from firing. Per SPEC
+		// #entries, outcome is reserved for state ∈ {failed, cancelled}
+		// — soft entries land with outcome=null. Status carrier for
+		// rendering is attributes.status, consulted before outcome by
+		// log.js's renderLogTag.
 		await store.set({
 			runId,
 			turn,
 			path,
 			body: message,
 			state: soft ? "resolved" : "failed",
-			outcome: `status:${statusValue}`,
+			outcome: soft ? null : `status:${statusValue}`,
 			loopId,
 			attributes: { ...attributes, status: statusValue },
 		});

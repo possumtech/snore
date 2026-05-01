@@ -390,11 +390,18 @@ the current loop; pending loops survive. Projects > runs > loops > turns.
 
 The `file_constraints` table is project-level configuration — it
 defines which files a project cares about. This is backbone, not tool
-dispatch. Constraints have three visibilities:
+dispatch. Constraint type governs **membership** and **write
+permission**, not in-context visibility. In-context visibility
+(`visible` / `summarized` / `archived`) is per-entry and model-
+controlled — files default to `archived` on ingestion; the model
+promotes via `<get>` / `<set visibility=…>`.
 
-- `active` — matching files are promoted into the run's context
-- `readonly` — promoted but not editable by the model
-- `ignore` — demoted (excluded from context)
+- `add` — file is part of the project; ingested as an entry; model
+  may write. Default for `setConstraint`.
+- `readonly` — same ingestion; `<set>` is vetoed at the proposal-
+  accept gate.
+- `ignore` — excluded from scans entirely. The file remains on disk
+  for `<sh>` / `<env>` invocation but is not present as an entry.
 
 **Boundary:** Setting a constraint (`File.setConstraint`) is a
 project-config write. Promoting/demoting the matching entries is tool
@@ -821,8 +828,12 @@ Two messages per turn. System = stable truth. User = active task.
         hook (e.g. truncated knowns, code symbols for files, page
         abstracts for URLs). Identity-keyed, slow-mutating: only grows
         when a new entry lands. Archived entries — including prompts —
-        are filtered out uniformly; the model is told not to archive
-        the active prompt via instructions_105.md's tip block.
+        are filtered out uniformly. There is no instruction-side
+        guard against archiving the active prompt — if the model
+        archives it, the next turn renders without a <prompt> tag
+        and visibly fails (paradigm purity over silent rescue;
+        action-gate is the principled future fix per
+        src/plugins/prompt/README.md).
         (known.js, assembly.user priority 50)
     </summarized>
     <visible>
@@ -1666,8 +1677,8 @@ Full reference is `.env.example` — these are the load-bearing vars.
 | `RUMMY_MIN_CYCLES` | 3 | Consecutive repetitions to trigger cycle detection |
 | `RUMMY_MAX_CYCLE_PERIOD` | 4 | Max cycle period checked by healer |
 | `RUMMY_RETENTION_DAYS` | 31 | Days of completed/aborted runs kept |
-| `RUMMY_THINK` | 1 | Enable `<think>` tag reasoning |
-| `RUMMY_TEMPERATURE` | 0.5 | Default LLM temperature |
+| `RUMMY_THINK` | 0 | Reasoning request flag forwarded to LLM provider |
+| `RUMMY_TEMPERATURE` | 0.1 | Default LLM temperature |
 | `RUMMY_RPC_TIMEOUT` | 30000 | RPC timeout (ms) |
 | `RUMMY_FETCH_TIMEOUT` | 300000 | LLM HTTP timeout (ms) |
 | `RUMMY_LLM_DEADLINE` | 600000 | LLM transient-retry deadline (ms). Used as the budget for `warmup` and `rate_limit` categories in `src/llm/retry.js#retryClassified`; gateway/server categories have shorter hardcoded deadlines (30s / 60s). |

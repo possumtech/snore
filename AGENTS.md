@@ -272,35 +272,15 @@ verified or explicitly recorded as wontfix here with rationale.
 
 ### Pre-existing items (out of scope for the freeze gates)
 
-- [ ] **Active-constraint visibility forces token budget overflow on
-  data-heavy tasks.** Surfaced 2026-04-30 by tbench
-  `llm-inference-batching-scheduler`: harbor's adapter declares
-  every file in `/app` as an `active` file_constraint via
-  `RUMMY_ACTIVE_FILES`. `rummy.repo`'s `FileScanner` writes
-  active-constrained files with `visibility="visible"`
-  (`FileScanner.js:147–148`). For tasks shipping large data files
-  (this one had two `.jsonl` requests-bucket files at ~50K chars
-  each), the assembled user message exceeds gemma's `n_ctx` ceiling
-  on turn 1 (60525 tokens > 29491-token demoted ceiling). The
-  budget-plugin catches it and emits `Token Budget overflow` errors
-  every turn → loop detected → 499. The harness recovered cleanly,
-  but the model never had a chance.
-
-  Three possible angles, each with tradeoffs:
-  1. **Size-threshold heuristic in harbor**: declare files <N KB
-     as `active`, leave larger files unmentioned. Cost: model
-     can't `<get>` the larger files at all (get returns "not
-     found" because they aren't entries). Many real tbench tasks
-     have data files the agent must read.
-  2. **New constraint type in rummy.repo (`scanned`?)**: ingests
-     the file as an entry but defaults visibility=`archived`. Model
-     can `<get>` it to promote on demand. Bigger change — touches
-     rummy.repo's FileScanner constraint semantics.
-  3. **Trust the model to demote**: declare active, let visibility
-     default to visible, expect the model to demote large files
-     it doesn't need on turn 1. Fails when the model can't even
-     emit a turn-1 update because the budget already overflowed
-     before the model got a chance to see anything.
+- [x] **Active-constraint visibility forces token budget overflow on
+  data-heavy tasks.** ~~Surfaced 2026-04-30 by tbench
+  `llm-inference-batching-scheduler`~~ Resolved by the same-session
+  constraint refactor: `active` (which forced visibility=visible)
+  was replaced with `add` (ingest with default visibility=archived;
+  model promotes via `<get>`). Schema, file plugin, scanner, harbor
+  adapter, and env var (`RUMMY_PROJECT_FILES`) all renamed in
+  lockstep. Membership and in-context visibility are now decoupled.
+  Original symptom no longer reachable via the documented surface.
 
   Option 2 is the principled answer. Discuss before refactor.
 
@@ -676,9 +656,9 @@ verified or explicitly recorded as wontfix here with rationale.
   for `/app/`. The `known://` scope kept it informational, but
   if the model had emitted `<set path="test_outputs.py">` the
   current set proposal-accept gate would have allowed the
-  write (file_constraints declared the test file as `active`,
+  write (file_constraints declared the test file as `add`,
   not `readonly`). Mitigated via harbor adapter excluding
-  `test_*.py` / `*_test.py` / `tests/*` from the active find,
+  `test_*.py` / `*_test.py` / `tests/*` from the project-files find,
   so verifier source isn't ingested as entries — the model
   runs the verifier via `<sh>` to check itself, but doesn't
   see its source as something to engage with. Distinct from

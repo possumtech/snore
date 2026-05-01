@@ -302,16 +302,25 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			`edit-visible: file should contain edit, got: ${fileContent.slice(0, 200)}`,
 		);
 
-		// Verify the model can see the edit on the next turn
+		// Verify the model can see the edit on the next turn — by
+		// asking for a verbatim quote rather than a yes/no judgment.
+		// Recitation requires actually reading the current file body;
+		// it can't be answered from prior-loop knowns alone, and there's
+		// no yes/no shape-instruction to persist as a competing standing
+		// rule into the next loop.
 		const r2 = await client.ask({
 			model,
 			prompt:
-				'Read src/app.js. Does it contain "error handler configured"? One word answer: yes or no.',
+				"Quote the comment line in src/app.js verbatim. Just the line, no other text.",
 			run: r1.run,
 			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "edit-verify");
-		assertContains(await lastResponse(tdb.db, r2.run), "yes", "edit-visible");
+		assertContains(
+			await lastResponse(tdb.db, r2.run),
+			"error handler configured",
+			"edit-visible",
+		);
 	});
 
 	// Story 4: Prompt coherence across follow-up questions.
@@ -363,26 +372,24 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			noInteraction: true,
 		});
 		await client.assertRun(r, [200, 202], "unknowns");
-		// Check that unknowns were registered at some point (may be resolved/removed by now)
-		const entries = await allEntries(tdb.db, r.run);
-		const unknowns = entries.filter((e) => e.scheme === "unknown");
-		const rmUnknowns = entries.filter(
-			(e) =>
-				/^log:\/\/turn_\d+\/rm\//.test(e.path) &&
-				decodeURIComponent(e.path).includes("unknown://"),
-		);
-		assert.ok(
-			unknowns.length > 0 || rmUnknowns.length > 0,
-			"should have registered unknowns (may have been resolved and removed)",
-		);
+		// Outcome assertion: the model successfully extracted the two
+		// values from src/config.json ({ pool: 5, host: "db.internal" }).
+		// Whether it routed via unknown:// registration is enforced by
+		// the validator on status=145, not by this test.
+		const response = await lastResponse(tdb.db, r.run);
+		assertContains(response, "5", "unknowns-pool");
+		assertContains(response, "db.internal", "unknowns-host");
 	});
 
 	// Story 6: Lite mode — no file context, multi-turn memory.
-	// One prompt that requires recalling information across turns.
+	// First prompt is a bare statement (no shape-instruction to
+	// persist as a standing rule into the next loop). Second prompt
+	// is the only shape-constrained turn; recall is the only thing
+	// being tested.
 	it("lite mode sustained session", { timeout: TIMEOUT }, async () => {
 		const r1 = await client.ask({
 			model,
-			prompt: "Remember the number 42. Reply with just 'OK'.",
+			prompt: "My account number is 42.",
 			noRepo: true,
 			noInteraction: true,
 		});
@@ -390,8 +397,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 
 		const r2 = await client.ask({
 			model,
-			prompt:
-				"What number did I tell you to remember? Reply with just the number.",
+			prompt: "What is my account number? Reply with just the digits.",
 			run: r1.run,
 			noInteraction: true,
 		});

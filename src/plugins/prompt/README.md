@@ -22,15 +22,11 @@ context for every scheme — `prompt` included. There is no carve-out.
 An archived `prompt://N` does not appear in the user message at
 all: no tag, no body, no metadata.
 
-The model is told not to archive the active prompt via the tip in
-`instructions_105.md`:
-
-> * Don't accidentally set the current prompt to `archived`.
-
-If the model archives the prompt anyway, the run will visibly fail
-on the next turn (no `<prompt>` tag for the model to act on; the
-model emits "please provide a prompt to act upon" or similar
-confusion). That instructive failure mode is intentional —
+The model receives no instruction-side hint not to archive the
+active prompt. If it archives the prompt anyway, the run will
+visibly fail on the next turn (no `<prompt>` tag for the model to
+act on; the model emits "please provide a prompt to act upon" or
+similar confusion). That instructive failure mode is intentional —
 paradigm purity (archived means archived, no exceptions) over
 silent data-layer rescue.
 

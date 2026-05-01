@@ -1,0 +1,341 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+// biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
+import Set from "./set.js";
+
+// Minimal stub PluginContext: every wiring call is a captured no-op.
+function stubCore() {
+	const filters = new Map();
+	const events = new Map();
+	return {
+		registerScheme() {},
+		ensureTool() {},
+		on(name, fn) {
+			if (!events.has(name)) events.set(name, []);
+			events.get(name).push(fn);
+		},
+		filter(name, fn) {
+			if (!filters.has(name)) filters.set(name, []);
+			filters.get(name).push(fn);
+		},
+		hooks: {},
+		// Test helpers — not part of the real PluginContext API.
+		_get: (name) => filters.get(name) || [],
+		_event: (name) => events.get(name) || [],
+	};
+}
+
+function makeStore() {
+	const calls = [];
+	const entriesByPath = new Map();
+	const states = new Map();
+	const bodies = new Map();
+	return {
+		_calls: calls,
+		setEntry(path, entry) {
+			entriesByPath.set(path, entry);
+			if (entry.body !== undefined) bodies.set(path, entry.body);
+		},
+		setState(path, state) {
+			states.set(path, state);
+		},
+		async set(args) {
+			calls.push(args);
+			if (args.body !== undefined) bodies.set(args.path, args.body);
+		},
+		async getEntriesByPattern(_runId, pattern, _filter) {
+			if (entriesByPath.has(pattern))
+				return [{ path: pattern, ...entriesByPath.get(pattern) }];
+			return [];
+		},
+		async getBody(_runId, path) {
+			return bodies.has(path) ? bodies.get(path) : null;
+		},
+		async getState(_runId, path) {
+			return states.get(path) ?? null;
+		},
+	};
+}
+
+describe("Set plugin", () => {
+	describe("full (visible projection)", () => {
+		const plugin = new Set(stubCore());
+
+		it("renders just `# set <path>` when no merge/error", () => {
+			const out = plugin.full({ attributes: { path: "x.js" } });
+			assert.equal(out, "# set x.js");
+		});
+
+		it("uses entry.path when attrs.path missing", () => {
+			const out = plugin.full({ path: "from-entry", attributes: {} });
+			assert.match(out, /^# set from-entry/);
+		});
+
+		it("includes token delta when beforeTokens provided", () => {
+			const out = plugin.full({
+				attributes: { path: "x", beforeTokens: 10, afterTokens: 7 },
+			});
+			assert.match(out, /10→7 tokens/);
+		});
+
+		it("renders error block when attrs.error set", () => {
+			const out = plugin.full({
+				attributes: { path: "x", error: "bad pattern" },
+			});
+			assert.match(out, /bad pattern/);
+		});
+
+		it("appends merge body when present", () => {
+			const out = plugin.full({
+				attributes: { path: "x", merge: "<<<<<<< SEARCH" },
+			});
+			assert.match(out, /<<<<<<< SEARCH/);
+		});
+	});
+
+	describe("summary (compact projection)", () => {
+		const plugin = new Set(stubCore());
+
+		it("returns empty string when entry has no body", () => {
+			assert.equal(plugin.summary({ body: "" }), "");
+		});
+
+		it("preserves SEARCH/REPLACE blocks intact", () => {
+			const block = "<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE";
+			assert.equal(plugin.summary({ body: block }), block);
+		});
+
+		it("flattens whitespace and returns whole body when ≤80 chars", () => {
+			assert.equal(
+				plugin.summary({ body: "  hello\n\n  world  " }),
+				"hello world",
+			);
+		});
+
+		it("truncates long bodies to 77 chars + ellipsis", () => {
+			const body = "x".repeat(200);
+			const out = plugin.summary({ body });
+			assert.equal(out.length, 80);
+			assert.ok(out.endsWith("..."));
+		});
+	});
+
+	describe("handler", () => {
+		it("rejects invalid visibility on body-less set with validation outcome", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A//x",
+					resultPath: "log://turn_1/set/known%3A//x",
+					attributes: { path: "known://x", visibility: "weird" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			assert.equal(store._calls.length, 1);
+			assert.equal(store._calls[0].state, "failed");
+			assert.equal(store._calls[0].outcome, "validation");
+			assert.match(store._calls[0].body, /Invalid visibility/);
+		});
+
+		it("visibility-only set with no matches → not_found result", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A//missing",
+					resultPath: "log://turn_1/set/known%3A//missing",
+					attributes: { path: "known://missing", visibility: "archived" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const failed = store._calls.find((c) => c.state === "failed");
+			assert.ok(failed);
+			assert.equal(failed.outcome, "not_found");
+			assert.match(failed.body, /not found/);
+		});
+
+		it("visibility-only set on existing entry → updates visibility + summarizes", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("known://x", { body: "v" });
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A//x",
+					resultPath: "log://turn_1/set/known%3A//x",
+					attributes: { path: "known://x", visibility: "summarized" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const visUpdate = store._calls.find(
+				(c) => c.path === "known://x" && c.visibility === "summarized",
+			);
+			assert.ok(visUpdate);
+			const log = store._calls.find((c) => c.state === "resolved" && c.body);
+			assert.match(log.body, /set to summarized/);
+		});
+
+		it("ignores set with no path and no body (early return)", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/x",
+					resultPath: "log://turn_1/set/x",
+					attributes: {},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			assert.deepEqual(store._calls, []);
+		});
+
+		it("scheme write: stores resolved body + log entry with patch+merge", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "v2",
+					path: "log://turn_1/set/known%3A//x",
+					resultPath: "log://turn_1/set/known%3A//x",
+					attributes: { path: "known://x" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const target = store._calls.find(
+				(c) => c.path === "known://x" && c.body === "v2",
+			);
+			assert.ok(target);
+			assert.equal(target.visibility, "visible");
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/known%3A//x",
+			);
+			assert.ok(log.attributes.merge.includes("<<<<<<< SEARCH"));
+		});
+
+		it("file write (no scheme on path) issues a `proposed` log entry with patch", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "new content",
+					path: "log://turn_1/set/foo.js",
+					resultPath: "log://turn_1/set/foo.js",
+					attributes: { path: "src/foo.js" },
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/foo.js",
+			);
+			assert.ok(log);
+			assert.equal(log.state, "proposed");
+			assert.equal(log.attributes.path, "src/foo.js");
+			assert.match(log.attributes.merge, /<<<<<<< SEARCH/);
+		});
+	});
+
+	describe("filter wiring", () => {
+		it("registers proposal.accepting and proposal.content filters", () => {
+			const core = stubCore();
+			new Set(core);
+			assert.equal(core._get("proposal.accepting").length, 1);
+			assert.equal(core._get("proposal.content").length, 1);
+			assert.equal(core._get("instructions.toolDocs").length, 1);
+		});
+
+		it("registers handler/visible/summarized event handlers", () => {
+			const core = stubCore();
+			new Set(core);
+			assert.equal(core._event("handler").length, 1);
+			assert.equal(core._event("visible").length, 1);
+			assert.equal(core._event("summarized").length, 1);
+		});
+
+		it("instructions.toolDocs filter populates docsMap.set", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("instructions.toolDocs")[0];
+			const out = await fn({});
+			assert.equal(typeof out.set, "string");
+			assert.ok(out.set.length > 0);
+		});
+
+		it("vetoReadonly filter passes through when an earlier filter has a value", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("proposal.accepting")[0];
+			const existing = { allow: true };
+			const out = await fn(existing, { path: "log://turn_1/set/x" });
+			assert.strictEqual(out, existing);
+		});
+
+		it("vetoReadonly filter passes through for non-set proposals", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("proposal.accepting")[0];
+			const out = await fn(null, { path: "log://turn_1/get/x", attrs: {} });
+			assert.equal(out, null);
+		});
+
+		it("vetoReadonly filter blocks readonly file writes", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("proposal.accepting")[0];
+			const ctx = {
+				path: "log://turn_1/set/x",
+				attrs: { path: "src/locked.js" },
+				db: {
+					get_file_constraints: {
+						all: async () => [
+							{ pattern: "src/locked.js", visibility: "readonly" },
+						],
+					},
+				},
+				projectId: "p1",
+			};
+			const out = await fn(null, ctx);
+			assert.equal(out.allow, false);
+			assert.equal(out.outcome, "readonly");
+			assert.match(out.body, /readonly/);
+		});
+
+		it("preferExistingBody returns existing body when one exists", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("proposal.content")[0];
+			const out = await fn("default-body", {
+				path: "log://turn_1/set/x",
+				entries: { getBody: async () => "existing-body" },
+				runId: "r",
+			});
+			assert.equal(out, "existing-body");
+		});
+
+		it("preferExistingBody falls back to default when entry has no body", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("proposal.content")[0];
+			const out = await fn("default-body", {
+				path: "log://turn_1/set/x",
+				entries: { getBody: async () => null },
+				runId: "r",
+			});
+			assert.equal(out, "default-body");
+		});
+
+		it("preferExistingBody passes through for non-set proposals", async () => {
+			const core = stubCore();
+			new Set(core);
+			const fn = core._get("proposal.content")[0];
+			const out = await fn("default", {
+				path: "log://turn_1/get/x",
+				entries: {},
+			});
+			assert.equal(out, "default");
+		});
+	});
+});
