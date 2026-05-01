@@ -479,6 +479,13 @@ verified or explicitly recorded as wontfix here with rationale.
   the user's API key directly. The truth is in
   `usage.cost_details.upstream_inference_cost`. Telemetry uses that
   as a fallback so the run-summary line reflects real spend.
+- **Model-facing error messages: state desired behavior, not enforcement
+  mechanics.** The strike system, cycle detection, MAX_STRIKES, etc. are
+  internal — the model figures out the pressure from accumulating entries
+  in context, not from us narrating "this counts as a strike." When the
+  user dictates exact wording for a model-facing message, transcribe it
+  verbatim; don't pad it with rule explanations. A reminder reads as a
+  directive ("Attempt to proceed to next stage."), not as a rulebook.
 - **Attribute semantics must not split on context.** If `visibility=`
   means one thing on a state-entry tag (`<known>`) and another on an
   action-record tag (`<set>` in `<log>`), the model will confuse them
