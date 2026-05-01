@@ -11,7 +11,7 @@ describe("agent config", () => {
 		assert.equal(typeof config.MIN_CYCLES, "number");
 		assert.equal(typeof config.MAX_CYCLE_PERIOD, "number");
 		assert.equal(typeof config.FETCH_TIMEOUT, "number");
-		assert.equal(typeof config.RUN_TIMEOUT, "number");
+		assert.equal(typeof config.LOOP_TIMEOUT, "number");
 		assert.equal(typeof config.PLUGINS_LOAD_TIMEOUT, "number");
 		assert.equal(typeof config.LLM_MAX_BACKOFF, "number");
 	});

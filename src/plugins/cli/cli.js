@@ -59,13 +59,13 @@ export default class Cli {
 			}
 		}
 
-		// Watchdog; overridable via --RUMMY_RUN_TIMEOUT=<ms>. Drains
-		// active runs before exit so SQLite, turn slices, and
+		// Watchdog; overridable via --RUMMY_LOOP_TIMEOUT=<ms>. Drains
+		// the active loop before exit so SQLite, turn slices, and
 		// last_run.txt are durable on disk before the process dies —
 		// without this, harbor's outer asyncio.wait_for kills the
 		// docker exec mid-pipeline and the trial.log cp commands never
 		// run, leaving the post-mortem packet empty.
-		const timeoutMs = config.RUN_TIMEOUT;
+		const timeoutMs = config.LOOP_TIMEOUT;
 		const timer = setTimeout(async () => {
 			console.error(`rummy-cli: timed out after ${timeoutMs}ms — draining`);
 			try {

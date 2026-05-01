@@ -18,7 +18,7 @@ const REQUIRED = {
 	MAX_STRIKES: { env: "RUMMY_MAX_STRIKES", parse: Number },
 	MIN_CYCLES: { env: "RUMMY_MIN_CYCLES", parse: Number },
 	MAX_CYCLE_PERIOD: { env: "RUMMY_MAX_CYCLE_PERIOD", parse: Number },
-	RUN_TIMEOUT: { env: "RUMMY_RUN_TIMEOUT", parse: Number },
+	LOOP_TIMEOUT: { env: "RUMMY_LOOP_TIMEOUT", parse: Number },
 	PLUGINS_LOAD_TIMEOUT: { env: "RUMMY_PLUGINS_LOAD_TIMEOUT", parse: Number },
 	THINK: { env: "RUMMY_THINK", parse: parseBool, expected: "0|1|true|false" },
 };
