@@ -52,6 +52,7 @@ export default class AgentLoop {
 		const s = await this.#db.get_run_summary.get({ id: runId });
 		await hook.completed.emit({
 			projectId,
+			runId,
 			...out,
 			model: s.model,
 			turns: s.turns,

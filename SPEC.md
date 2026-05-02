@@ -1713,9 +1713,13 @@ local `node_modules` then global).
 
 | Var | Purpose |
 |-----|---------|
-| `RUMMY_SEARCH` | `brave` \| `searxng` |
+| `RUMMY_WEB_SEARCH_BACKEND` | `brave` \| `searxng` |
 | `BRAVE_API_KEY` | Brave Search API key |
-| `RUMMY_SEARXNG_URL` | SearXNG instance URL |
+| `RUMMY_WEB_SEARXNG_URL` | SearXNG instance URL |
+| `RUMMY_WEB_FETCH_TIMEOUT` | Playwright `page.goto` timeout (ms) |
+| `RUMMY_WEB_PLAYWRIGHT_WS` | Optional CDP endpoint for shared chromium |
+| `RUMMY_WEB_NO_SANDBOX` | `1` to drop chromium's user-namespace sandbox |
+| `RUMMY_WEB_CHROMIUM_HEAP_MB` | Cap chromium's V8 heap (MB) |
 
 **Testing:**
 
