@@ -108,14 +108,95 @@ Targeting the terminal-bench 2.0 leaderboard
 (https://www.tbench.ai/leaderboard/terminal-bench/2.0). Submission
 runs through Harbor (`harbor run --dataset terminal-bench@2.0 ...`),
 adapter in `possumtech/harbor` `add-rummy-agent`. Active model:
-`xfast = openrouter/x-ai/grok-4.1-fast` (non-reasoning + visible
-`<think>` via `RUMMY_THINK=1`). Recent harness improvements driven
-by tbench audit: path standardization (slugifier 80-char + 2048 DB
-ceiling), `RUMMY_ENTRY_SIZE_MAX` storage cap, soft-failure
-outcomes, stagnation pressure scoped to admin phases only, parser
+`xfast = xai/grok-4-1-fast-non-reasoning` (direct, with visible
+`<think>` via `RUMMY_THINK=1`).
+
+**First full discovery sweep landed 2026-05-01.**
+- Result dir: `test/tbench/results/2026-05-01T23-34-12-373Z_rummy_all/`
+- Score: **7 pass / 80 fail / 88 trials = 8.0%**
+- Cost: ~$20 (xAI direct)
+- Wall time: ~75 min at 15-way concurrency
+- Sysmon peaks: 17.5 GB host RAM, 5.3 GB swap, peak load 20.1, 2 OOM
+  events (both same container — caffe-cifar-10 chromium-renderer
+  cgroup-OOM, recoverable)
+
+Failure-mode breakdown (telemetry-finalized only, ~70 trials):
+- 60 status=200 claim-success / verifier-fail — **dominant pattern**
+- 9 status=499 (5 hit `RUMMY_MAX_LOOP_TURNS=99`, 2 strike-out, 2 misc)
+- 1 status=500 (`train-fasttext`, propagated dispatch error)
+- ~17 exfil-fail (in-flight when summary ran or drained mid-turn)
+
+Peer comparison (terminal-bench leaderboard, 2025-2026):
+- Top of board (frontier+mature harness): **75–82%** (Codex+GPT-5.5,
+  ForgeCode+Claude/GPT/Gemini, etc.)
+- Same fast-tier model class: Mini-SWE-Agent+GrokCodeFast 25.8%,
+  Terminus2+GrokCodeFast 14.2%
+- rummy is below the entry tier for our weight class.
+
+**Recent harness improvements landed in git history** driving this
+sweep: path standardization (slugifier 80-char + 2048 DB ceiling),
+`RUMMY_ENTRY_SIZE_MAX` storage cap, soft-failure outcomes,
+stagnation pressure scoped to admin phases via verdict-time check
+(NOT pre-fire — verified in 2026-05-01 e2e regression), parser
 warnings as soft (not strikes), spawn-abort exfil so mid-turn
-timeouts don't lose telemetry. Unit + integration green
-(887 + 243). e2e to be re-verified before the full submission run.
+timeouts don't lose telemetry, LLM-fetch-timeout → 504 strike
+instead of loop-level 500, xai.js fail-fast on malformed
+`XAI_BASE_URL`, harbor adapter `XAI_BASE_URL` override for sandbox
+self-containment. Unit + integration green (887 + 244). e2e green.
+
+## Audit Plan (Make-or-Break Discovery Review)
+
+The 8% score is below the entry tier for our model class. The 60-of-
+80 cluster in claim-success/verifier-fail is the dataset's only
+strong signal: a *concentrated* failure mode rather than uniform
+incapability suggests a specific harness-side blind spot, NOT
+generic model unfit-ness. Per
+[feedback_forensic_burden_of_proof](~/.claude/projects/-home-hyzen-repo-rummy-main/memory/feedback_forensic_burden_of_proof.md):
+default to "we let the model down" until we exhaust harness rescues.
+
+If the methodical review finds a **smoking gun** (a specific
+prompt phrase / protocol gap / tool ergonomic / context-assembly
+bug that recurs across N+ tasks and explains the cluster) — the
+project theory survives, we ship a fix in a $20 re-sweep and
+retest. If no smoking gun emerges across 88 packets, the theory
+is in real trouble.
+
+**What counts as a smoking gun (defined upfront):**
+- Specific prompt phrase causing systematic misbehavior across many tasks
+- Protocol path the model exploits (e.g. status=200 reachable
+  without confirm-step)
+- Tool ergonomics blocker (e.g. SEARCH/REPLACE shape model can't
+  reliably emit)
+- Context-assembly defect (e.g. `<set>` body invisible next turn)
+- Instruction that contradicts a worked example
+- Reproducible across multiple task types
+
+**What does NOT count** (these end inquiry instead of advancing it):
+- "Model is bad at task type X"
+- "Grok-4-fast is the wrong model"
+- "Tasks are too hard for this tier"
+
+**Audit artifacts** (all under `audit/`):
+- `audit/SWEEP_TEMPLATE.md` — per-task evaluation template, fields
+  grounded in 3-5 representative-task skim before formalization.
+- `audit/sweep/<task-name>.md` — one file per task, template
+  applied. 88 entries total. Each has a "what would have rescued
+  this run" field that forces forensic-burden-of-proof.
+- `audit/SWEEP.md` — index/dashboard pointing at per-task files,
+  with rolling failure-mode tallies.
+- `audit/SWEEPX.md` — cross-functional findings: smoking-gun
+  candidates with cross-task evidence, protocol gaps, instruction
+  drift, recurring tool ergonomics issues. Fields don't belong in
+  any one task's entry but emerge from the whole.
+
+**Scoping reality:** 88 tasks × deep template ≈ 2-3 honest sessions
+of work. Not single-session. Compactor-safe artifact paths above
+so context loss doesn't reset progress.
+
+**Next session:** sample 5 representative tasks (1 pass, 1 claim-
+success-fail, 1 MAX_LOOP_TURNS, 1 MAX_STRIKES, 1 status=500),
+draft `SWEEP_TEMPLATE.md` from observed categories, then begin
+methodical task-by-task fill of `audit/sweep/`.
 
 ## Open Items
 

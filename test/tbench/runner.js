@@ -70,6 +70,11 @@ const harborBin = existsSync(venvHarbor) ? venvHarbor : "harbor";
 // single-task analysis runs (where caching + clean logs matter);
 // override before a full sweep to parallelize the 89-task fan-out.
 const concurrency = process.env.RUMMY_TBENCH_CONCURRENCY ?? "1";
+// Per-container memory override (MiB). Bumps the cgroup limit above
+// what each task.yaml declares so chromium-renderer-heavy tasks don't
+// get OOM-killed at the 2 GiB default mid-run. Empty = no override
+// (use task-declared memory).
+const memoryMb = process.env.RUMMY_TBENCH_MEMORY_MB;
 const harborArgs = [
 	"run",
 	"--dataset",
@@ -83,6 +88,7 @@ const harborArgs = [
 	runDir,
 	"--n-concurrent",
 	concurrency,
+	...(memoryMb ? ["--override-memory-mb", memoryMb] : []),
 ];
 
 console.log(`harbor: ${harborBin} ${harborArgs.join(" ")}`);

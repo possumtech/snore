@@ -217,12 +217,22 @@ export default class Telemetry {
 			completion_tokens: numberOrZero(usage.completion_tokens),
 			reasoning_tokens: reasoningTokens,
 			total_tokens: numberOrZero(usage.total_tokens),
-			// usage.cost is what the relay BILLED us; it reads 0 when routed
-			// via BYOK (relay didn't bill — upstream charged our key directly).
-			// upstream_inference_cost is the true compute cost in either case.
+			// Cost surfaces under different field names by provider:
+			// - OpenRouter direct: `usage.cost` (USD, what the relay billed us)
+			// - OpenRouter BYOK: `usage.cost.upstream_inference_cost` (USD,
+			//   relay didn't bill — upstream charged our key directly, so
+			//   `usage.cost` is 0 and the true compute cost lives here).
+			// - xAI direct: `usage.cost_in_usd_ticks` where 1 tick = 10⁻¹⁰
+			//   USD (verified empirically: 11 uncached + 161 cached + 1
+			//   output tokens → 107,500 ticks → $0.00001075 at xAI's
+			//   $0.20/M input, $0.05/M cached, $0.50/M output rates).
+			//   Divide by 1e10 to land in USD alongside the others.
+			// All three normalized to USD; downstream summaries sum them
+			// as comparable dollars.
 			cost:
 				numberOrZero(usage.cost) ||
-				numberOrZero(usage.cost_details?.upstream_inference_cost),
+				numberOrZero(usage.cost_details?.upstream_inference_cost) ||
+				numberOrZero(usage.cost_in_usd_ticks) / 1e10,
 		});
 	}
 
