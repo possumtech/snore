@@ -144,6 +144,29 @@ instead of loop-level 500, xai.js fail-fast on malformed
 `XAI_BASE_URL`, harbor adapter `XAI_BASE_URL` override for sandbox
 self-containment. Unit + integration green (887 + 244). e2e green.
 
+**Post-sweep harness fixes (2026-05-02):**
+- `rummy.web` 2.3.5: `WebFetcher.kill()` fire-and-forget
+  `browser.close()` on abort. Wires `rummy.signal` through
+  `#armAbortKill` listener in `web.js`. Collapses in-flight
+  `page.goto` in <250ms when run aborts (was: blocks until the
+  per-call 600s timeout, so drain stalled past harbor's outer
+  SIGKILL and rummy.db / turns/ / last_run.txt never exfiled).
+- Harbor adapter `_DRAIN_BUFFER_SEC: 5 → 30`. The 5s window was
+  too tight for big-state runs (13+ turns, 75k+ tokens):
+  configure-git-webserver in the original sweep had drain fire
+  but not complete in time, so even after the rummy.web fix
+  the post-mortem packet was lost. 30s matches standard
+  graceful-shutdown windows; cost is <2% of even the shortest
+  900s task budget.
+- Rescue rerun of the 8 exfil-fails against 2.3.5 in flight
+  2026-05-02. So far: hf-model-inference flipped to PASS (was
+  exfil-fail in original sweep, masked a real reward=1);
+  pypi-server flipped 1→0 (original "pass" was incidental —
+  verifier ran on partial-state container before drain, real
+  telemetry now shows fail); configure-git-webserver still
+  exfil-failed under the 5s buffer it inherited at launch
+  (will retry under 30s).
+
 ## Audit Plan (Make-or-Break Discovery Review)
 
 The 8% score is below the entry tier for our model class. The 60-of-
@@ -199,6 +222,54 @@ draft `SWEEP_TEMPLATE.md` from observed categories, then begin
 methodical task-by-task fill of `audit/sweep/`.
 
 ## Open Items
+
+- [ ] **Single-turn token overflow on `train-fasttext`.** The only
+  task across 89 that hit `xAI 400 - "This model's maximum prompt
+  length is 2000000 but the request contains 4691073 tokens."`
+  Cumulative sweep tokens were normal (~16k/turn average); turn 27
+  alone sent 4.69M against the 2M cap. Two suspected root causes,
+  exactly one of which is true:
+  1. **Token-counter divergence.** `countTokens(body) = length /
+     RUMMY_TOKEN_DIVISOR` (default 4) systematically undercounts
+     vs xAI's tokenizer for whatever content was loaded that turn
+     (likely a large `<get>` response — binary, JSON, code-heavy).
+     Budget enforcement thought it was capping at 2M; actual
+     tokenization came in at 2.3x.
+  2. **Budget-enforcement escape path.** Something gets added to
+     the assembled packet *after* `budget.enforce()` runs (system
+     prompt assembly, post-enforcement plugin filters,
+     `assembly.user` 175-priority inserts). Enforce caps at 2M;
+     downstream insertion blows past it.
+
+  Triage path: open `audit/sweep/train-fasttext` rummy.db, replay
+  turn 27 — see what `<get>` or other source the model loaded that
+  exploded the count, then compare `countTokens` to xAI's reported
+  count for that body. Whichever diverges identifies the bug. ~1
+  hour of work, 1-line or 5-line fix depending on which.
+
+- [ ] **Retry the 5s-drain-buffer victims under 30s buffer.**
+  `configure-git-webserver` and `install-windows-3.11` exfil-failed
+  in the 2026-05-02 rescue rerun because they launched before the
+  harbor `_DRAIN_BUFFER_SEC: 5 → 30` bump landed. Both are
+  big-state runs that need >5s for tool-processing + sqlite
+  checkpoint to drain. The new 30s buffer is in the harbor adapter
+  but won't apply until the next harbor process spawns. Just
+  re-launch them: `source .xai.key && npm run test:tbench --
+  --task configure-git-webserver` and likewise for
+  install-windows-3.11. ~32 min wall to confirm both exfil cleanly.
+
+- [ ] **Diagnose `caffe-cifar-10` exfil failure (different shape).**
+  The 2026-05-02 rescue rerun didn't even produce a drain message
+  in `rummy.txt` — turn 24 cut off mid-execution. This is a
+  different pathology than the drain-too-tight cases. Original
+  sweep noted caffe-cifar-10 had a chromium-renderer cgroup-OOM
+  event (the only OOM in the sweep). Suspect chromium-OOM is
+  killing the agent process before its watchdog can fire.
+  Triage: either bound chromium memory usage in `WebFetcher` (give
+  it a `chromiumArgs: ["--memory-pressure-off",
+  "--max_old_space_size=…"]` hint or run with `--disable-dev-shm-usage`),
+  or surface the OOM as a recoverable strike rather than letting
+  the kernel kill our agent process.
 
 - [ ] **Continuation-forever in Distillation has no protocol-side
   cap.** Surfaced 2026-04-30 on `break-filter-js-from-html`
@@ -368,6 +439,30 @@ methodical task-by-task fill of `audit/sweep/`.
 
 - **AGENTS.md is shared memory.** Internal LLM memory is for
   overrides only. Append project observations here, not internally.
+- **Claude's shell carries a stale `XAI_API_KEY`. Source `.xai.key`
+  before every tbench launch (or anything that hits xAI).** The
+  user fixed `.bashrc`, but Claude's persistent shell session
+  pre-dates that fix and exported the old key. The shell value
+  supersedes `.env` in `process.env`, so node + the harbor adapter
+  forward the bad key to the docker container. xAI rejects with
+  `400 Incorrect API key provided: xa***8X`, every turn dies at
+  status=500, the run completes in ~60–90s with zero tokens, and
+  no fix under test gets exercised. The user has warned about
+  this repeatedly. Always launch via:
+  ```
+  source .xai.key && npm run test:tbench -- --task <name>
+  ```
+  `.xai.key` is a one-line `export XAI_API_KEY="..."` the user
+  maintains specifically for this purpose. Do not parse `.env`
+  manually — it's quoted and shell extraction strips quotes
+  inconsistently (xAI then rejects the quoted value as `"x***A"`).
+  The user has fixed `~/.bashrc` (line 130 exports the correct
+  key) but Claude Code's Bash subshells empirically do not pick
+  it up — the stale parent-process value still wins. If a future
+  Claude finds a reliable way to mutate its own environment to
+  pick up the bashrc value, great; until then, `source .xai.key`
+  is the known-working path. Do NOT claim the user "rejected"
+  shell-mutation options — they did not.
 - **Plugin extensibility is a promise, not an implementation detail.**
   Don't delete "unused" events.
 - **No fallbacks outside hedberg/XmlParser.** Biome enforces.
