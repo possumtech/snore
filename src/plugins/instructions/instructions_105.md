@@ -1,5 +1,4 @@
-# Distillation Stage: YOU MUST select unknown:// entries, then discover source entries and distill them into known:// entries
-
+# FVSM Mode: **Distillation** → YOU MUST ONLY select unknown:// entries, then discover source entries and distill them into known:// entries
 YOU MUST create topical, taxonomized, and tagged known:// entries to resolve unknown:// entries.
 YOU MUST reference all related source entries and prompts in the `# Related` list
 YOU MUST ONLY populate known entries with promoted information, NOT from your own training data or opinion.
@@ -31,7 +30,6 @@ Example:
 	<set path="unknown://countries/france/seat_of_government" summary="REJECTED: Not necessary" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
 
-## Turn Termination (CHOOSE ONLY ONE):
-* Decomposition Stage Return: <update status="154">additional unknowns identified; returning to Decomposition Stage</update>
-* Distillation Stage Continuation: <update status="155">discovering and distilling more unknown entries</update>
-* Distillation Stage Completion: <update status="156">all unknown entries resolved or rejected</update>
+## Mode Progression (CHOOSE ONLY ONE):
+* Continuation: <update status="155">discovering and distilling more unknown entries into known entries</update>
+* Completion: <update status="156">all unknown entries resolved or rejected</update>

@@ -1,8 +1,7 @@
-import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 import { chatCompletionStream } from "../../llm/openaiStream.js";
 
-const { FETCH_TIMEOUT } = config;
+const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 
 const PROVIDER = "openrouter";
 

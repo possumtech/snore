@@ -1,4 +1,3 @@
-import config from "../../agent/config.js";
 import ProjectAgent from "../../agent/ProjectAgent.js";
 import File from "../file/file.js";
 
@@ -65,7 +64,7 @@ export default class Cli {
 		// without this, harbor's outer asyncio.wait_for kills the
 		// docker exec mid-pipeline and the trial.log cp commands never
 		// run, leaving the post-mortem packet empty.
-		const timeoutMs = config.LOOP_TIMEOUT;
+		const timeoutMs = Number(process.env.RUMMY_LOOP_TIMEOUT);
 		const timer = setTimeout(async () => {
 			console.error(`rummy-cli: timed out after ${timeoutMs}ms — draining`);
 			try {

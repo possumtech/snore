@@ -1,7 +1,6 @@
-import config from "../../agent/config.js";
 import docs from "./thinkDoc.js";
 
-const { THINK } = config;
+const THINK = process.env.RUMMY_THINK === "1";
 
 export default class Think {
 	constructor(core) {

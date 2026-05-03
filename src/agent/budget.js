@@ -1,7 +1,6 @@
-import config from "./config.js";
 import { countTokens } from "./tokens.js";
 
-const CEILING_RATIO = config.BUDGET_CEILING;
+const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
 
 export function ceiling(contextSize) {
 	return Math.floor(contextSize * CEILING_RATIO);

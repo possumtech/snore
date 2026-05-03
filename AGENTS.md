@@ -466,6 +466,62 @@ methodical task-by-task fill of `audit/sweep/`.
 - **Plugin extensibility is a promise, not an implementation detail.**
   Don't delete "unused" events.
 - **No fallbacks outside hedberg/XmlParser.** Biome enforces.
+- **Configuration is the cascade. Period.** `.env.example` declares
+  every variable the code reads, with a usable default. `.env`,
+  profile overlays (`.env.tbench.<profile>`), and shell env override
+  it. The npm scripts load them with `--env-file-if-exists` so
+  every `process.env.X` read is already populated by the time it
+  runs. Honor this and there is nothing more to do.
+
+  The following shapes are FORBIDDEN. Each one assumes the cascade
+  is unreliable, which is the same as not having a cascade.
+
+  1. **No boot-time env validator.** `src/agent/config.js` was
+     deleted on purpose. Do not reintroduce a `REQUIRED` map, a
+     consolidated-error throw, or any "validate every var at module
+     load" pattern. If you find yourself drafting one, you have
+     already decided the cascade can't be trusted; re-read this
+     section instead.
+  2. **No per-module guards.** `if (!Number.isFinite(X)) throw`,
+     `if (!process.env.X) throw`, `assert(X, "must be set")` next
+     to a `Number(process.env.X)` read are forbidden. The cascade
+     guarantees presence; the guard guarantees nothing the cascade
+     doesn't already.
+  3. **No fallback constants.** `Number(process.env.X) || 4`,
+     `process.env.X ?? "default"`, `Number(X) || null` are
+     forbidden. The default belongs in `.env.example`. If the
+     cascade returns a missing value, the cascade is broken; fix
+     `.env.example`, not the read site.
+
+  **The only legitimate fix when a var read produces `undefined` /
+  NaN is to declare the var in `.env.example` with a sane default.**
+  Plug the hole once, where holes get plugged. Do not plug it three
+  times (declaration + validator + guard + fallback). The user has
+  named this anti-pattern: "belt and suspenders and elastic and
+  double sided tape." The recent gemma `<search>` crash —
+  `setTimeout: delay … Received NaN` — was caused by exactly one
+  bug: `RUMMY_WEB_FETCH_TIMEOUT` was missing from `.env.example`.
+  The instinctive plug-it-three-times response is the failure mode
+  this rule exists to prevent.
+
+  **Provider-conditional vars are the explicit exception.** API
+  keys (`XAI_API_KEY`, `OPENAI_API_KEY`, `BRAVE_API_KEY`, …) and
+  optional backend selectors (`RUMMY_WEB_SEARXNG_URL`,
+  `RUMMY_WEB_PLAYWRIGHT_WS`, `OLLAMA_BASE_URL`, …) only matter
+  when their provider is invoked. They stay as direct
+  `process.env.X` reads in their plugin and may throw at first
+  use when missing. They do NOT belong in `.env.example` as
+  required defaults; they're commented stubs at most.
+
+  **Feature-flag bools** (`RUMMY_NO_*`, `RUMMY_YOLO`,
+  `RUMMY_DEBUG`, `RUMMY_THINK`, `RUMMY_WEB_NO_SANDBOX`) use the
+  canonical `process.env.X === "1"` check — absence means off.
+  Don't invent `=== "true"` variants; if you see one, normalize
+  it to `=== "1"`.
+
+  **If you are about to add code to "make sure the env is set" —
+  STOP.** That is the rule's exact target. The cascade is the
+  contract. Trust it. If it's broken, fix the cascade.
 - **Read the DB first.** When a symptom gets reported, the answer
   is in the data, not in speculation.
 - **Decide, don't dawdle.** When naming or scope questions arise,

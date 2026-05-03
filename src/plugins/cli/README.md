@@ -29,9 +29,8 @@ preserves existing vars).
 |---|---|---|
 | `RUMMY_MODE` | `act` | `ask` or `act`. |
 
-`RUMMY_LOOP_TIMEOUT` is required at boot via `src/agent/config.js`;
-default lives in `.env.example`. Watchdog exits with code `124` on
-overflow.
+`RUMMY_LOOP_TIMEOUT` is declared in `.env.example` and read directly
+from `process.env`. Watchdog exits with code `124` on overflow.
 
 Per-run defaults (`RUMMY_YOLO`, `RUMMY_NO_REPO`, `RUMMY_NO_WEB`,
 `RUMMY_NO_INTERACTION`, `RUMMY_NO_PROPOSALS`) cascade through

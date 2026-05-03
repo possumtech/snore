@@ -1,9 +1,9 @@
-import config from "../../agent/config.js";
 import msg from "../../agent/messages.js";
 import { chatCompletionStream } from "../../llm/openaiStream.js";
 import { retryWithBackoff } from "../../llm/retry.js";
 
-const { FETCH_TIMEOUT, THINK } = config;
+const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
+const THINK = process.env.RUMMY_THINK === "1";
 
 const PROVIDER = "ollama";
 

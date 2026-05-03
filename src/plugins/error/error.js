@@ -1,7 +1,7 @@
-import config from "../../agent/config.js";
-
-const { MAX_STRIKES, MIN_CYCLES, MAX_CYCLE_PERIOD, STAGNATION_FREE_TURNS } =
-	config;
+const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
+const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
+const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
+const STAGNATION_FREE_TURNS = Number(process.env.RUMMY_STAGNATION_FREE_TURNS);
 
 const CONTRACT_REMINDER = "Missing update";
 // Failure outcomes that don't accumulate strikes — they're findings

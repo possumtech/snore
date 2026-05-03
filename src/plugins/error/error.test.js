@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import config from "../../agent/config.js";
 import createHooks from "../../hooks/Hooks.js";
 import PluginContext from "../../hooks/PluginContext.js";
 import ErrorPlugin from "./error.js";
 
-const { MAX_STRIKES, MIN_CYCLES } = config;
+const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
+const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 
 function makeCore() {
 	const hooks = createHooks();

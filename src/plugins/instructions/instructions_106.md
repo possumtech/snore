@@ -1,4 +1,4 @@
-# Demotion Stage: YOU MUST demote all source entries, prompts, and log events that are now distilled or no longer relevant
+# FVSM Mode: **Demotion** → YOU MUST ONLY demote all source entries, prompts, and log events that are distilled or no longer relevant
 
 Example:
 	<set path="prompt://2" summary="All information distilled into knowns" visibility="summarized"/>
@@ -15,8 +15,5 @@ Example:
 * You need room to think. Demote large prompts and source entries, then iterate them with <get path="..." line="N" limit="N"/> as necessary.
 * When demoting prompts, prefer "summarized" to "archived" to avoid losing necessary context.
 
-## Turn Termination (CHOOSE ONLY ONE):
-* Decomposition Stage Return: <update status="164">additional unknowns identified; returning to Decomposition Stage</update>
-* Distillation Stage Return: <update status="165">more unknowns remain; returning to Distillation Stage</update>
-* Demotion Stage Continuation: <update status="166">demoting more distilled or irrelevant entries, prompts, and log events</update>
-* Demotion Stage Completion: <update status="167">all unknowns resolved and demoted; ready for Deployment Stage</update>
+## Mode Completion: <update status="167">context relevance optimized</update>
+

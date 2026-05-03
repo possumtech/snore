@@ -3,10 +3,9 @@ import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import config from "../agent/config.js";
 import PluginContext from "../hooks/PluginContext.js";
 
-const { PLUGINS_LOAD_TIMEOUT } = config;
+const PLUGINS_LOAD_TIMEOUT = Number(process.env.RUMMY_PLUGINS_LOAD_TIMEOUT);
 
 let globalPrefix;
 function getGlobalPrefix() {

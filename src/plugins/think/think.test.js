@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import config from "../../agent/config.js";
 import Think from "./think.js";
+
+const THINK = process.env.RUMMY_THINK === "1";
 
 function makeCore() {
 	const events = {
@@ -49,7 +50,7 @@ describe("Think plugin", () => {
 		const docsFilter = core.events.filters.find(
 			(f) => f.name === "instructions.toolDocs",
 		);
-		if (config.THINK) {
+		if (THINK) {
 			assert.ok(docsFilter, "tooldoc filter should register when THINK truthy");
 			assert.equal(core.events.toolEnsured, 1);
 		} else {

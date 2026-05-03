@@ -1,4 +1,3 @@
-import config from "../agent/config.js";
 import msg from "../agent/messages.js";
 import {
 	ContextExceededError,
@@ -7,7 +6,8 @@ import {
 } from "./errors.js";
 import { retryClassified } from "./retry.js";
 
-const { LLM_DEADLINE, LLM_MAX_BACKOFF } = config;
+const LLM_DEADLINE = Number(process.env.RUMMY_LLM_DEADLINE);
+const LLM_MAX_BACKOFF = Number(process.env.RUMMY_LLM_MAX_BACKOFF);
 
 // Per-category retry policies. Gateway/server are bounded short because
 // upstream-down won't recover by waiting; warmup/rate_limit get the full
