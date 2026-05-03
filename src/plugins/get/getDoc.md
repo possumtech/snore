@@ -6,11 +6,8 @@ Example: <get path="src/app.js"/>
 Example: <get path="known://*">auth</get>
 <!-- Keyword recall: glob in path, search term in body. -->
 
-Example: <get path="src/**/*.js">authentication</get>
-<!-- Full pattern: recursive glob + content filter. -->
-
 Example: <get path="src/**/*.js" manifest>authentication</get>
-<!-- Full pattern: recursive glob + content filter. -->
+<!-- Bulk discovery: recursive glob + content filter + manifest — lists matches without promoting any. -->
 
 Example: <get tags="hydrology,karst" manifest/>
 <!-- Folksonomic recall: list entries whose summary tags include all listed terms. Optional path= scopes the search; default is **. -->

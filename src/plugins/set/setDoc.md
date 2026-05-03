@@ -3,6 +3,10 @@
 Example: <set path="known://project/milestones" visibility="summarized" summary="milestone,deadline,2026"/>
 <!-- Visibility control first — most unique capability of set. -->
 
+Example: <set path="known://countries/france/*" manifest/>
+<!-- Manifest before bulk: lists matches without performing the visibility flip, edit, or write. -->
+
+
 Example:
 	<set path="src/app.js">
 	<<<<<<< SEARCH

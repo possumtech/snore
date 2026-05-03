@@ -10,3 +10,6 @@ Example: <cp path="known://server/handler_main">src/main.c</cp>
 
 Example: <cp path="known://plan_*">known://archive_</cp>
 <!-- Glob batch copy across known entries. -->
+
+Example: <cp path="known://countries/france/*" manifest/>
+<!-- Manifest preview before glob batch copy. -->

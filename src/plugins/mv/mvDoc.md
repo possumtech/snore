@@ -8,3 +8,6 @@ Example: <mv path="src/old_name.js">src/new_name.js</mv>
 
 Example: <mv path="known://project/*" visibility="summarized"/>
 <!-- Batch visibility change via pattern. No destination = visibility in place. -->
+
+Example: <mv path="known://countries/france/*" manifest/>
+<!-- Manifest preview before glob rename or visibility batch. -->
