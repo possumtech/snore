@@ -400,40 +400,108 @@ I need to check the port.
 			assert.ok(commands[0].body.includes("<get"));
 		});
 
-		it("backticks inside <set> body suppress tag recognition (markdown docs about rummy)", () => {
-			// The opus failure mode: a deliverable body containing backticked
-			// tag examples used to confuse the orphan-close heuristic and
-			// silently truncate the body. Strict opacity + body-level backtick
-			// tracking keeps the whole markdown table inside the body.
+		it("HEREDOC body: <<EOF ... EOF preserves arbitrary content including </set> literals", () => {
 			const input = [
-				'<set path="OPUS_NOTES.md">',
-				"# How rummy commands look",
-				"",
-				"| Command | Example |",
-				"| --- | --- |",
-				"| `<env>` | `<env>git log --oneline -5</env>` |",
-				'| `<ask_user>` | `<ask_user question="Which approach?">` |',
-				'| `<mv>` | `<mv path="known://draft">known://final</mv>` |',
+				'<set path="docs.md"><<EOF',
+				"# Heading",
+				"Tag examples: <env>x</env>, <set path='y'>z</set>",
+				"Even </set> in prose is opaque inside heredoc.",
+				"EOF",
 				"</set>",
-				'<update status="200">notes written</update>',
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(
 				commands.length,
-				2,
-				"two commands: the set and the update",
+				1,
+				"single command, no premature close",
 			);
 			assert.strictEqual(commands[0].name, "set");
-			assert.strictEqual(commands[0].path, "OPUS_NOTES.md");
+			assert.strictEqual(commands[0].path, "docs.md");
+			assert.ok(
+				commands[0].body.includes("</set> in prose is opaque"),
+				"literal </set> inside heredoc is body content",
+			);
+			assert.ok(
+				commands[0].body.includes("<env>x</env>"),
+				"tag examples inside heredoc are body content",
+			);
+			assert.ok(
+				!commands[0].body.includes("EOF"),
+				"closer line is stripped from body",
+			);
+			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
+		});
+
+		it("HEREDOC: custom delimiter (model picks any [A-Za-z_]\\w*)", () => {
+			const input = [
+				'<set path="x.md"><<MARKER_42',
+				"content with EOF and END as words but they aren't the closer",
+				"MARKER_42",
+				"</set>",
+			].join("\n");
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 1);
+			assert.match(commands[0].body, /content with EOF and END/);
+		});
+
+		it("HEREDOC: compact closer (IDENT</set> on same line)", () => {
+			const input = [
+				'<set path="x.md"><<EOF',
+				"compact body",
+				"EOF</set>",
+			].join("\n");
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 1);
+			assert.strictEqual(commands[0].body, "compact body");
+		});
+
+		it("HEREDOC: dash form <<-EOF accepted (closer indentation tolerated)", () => {
+			const input = [
+				'<set path="x.md"><<-EOF',
+				"\tindented content",
+				"\tEOF",
+				"</set>",
+			].join("\n");
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 1);
+			assert.match(commands[0].body, /indented content/);
+		});
+
+		it("HEREDOC: quoted forms <<'EOF' and <<\"EOF\" accepted", () => {
+			for (const opener of ["<<'EOF'", '<<"EOF"']) {
+				const input = `<set path="x.md">${opener}\nbody\nEOF\n</set>`;
+				const { commands } = XmlParser.parse(input);
+				assert.strictEqual(commands.length, 1, `opener ${opener} parsed`);
+				assert.strictEqual(commands[0].body, "body");
+			}
+		});
+
+		it("HEREDOC opus-regression: markdown documentation table inside body", () => {
+			// Reproduction of the opus failure case using HEREDOC instead
+			// of bare body. The markdown table has unclosed `<ask_user>`
+			// and stray `</mv>` references; under HEREDOC opacity none of
+			// them are tokens.
+			const input = [
+				'<set path="OPUS_ANALYSIS.md"><<DOC',
+				"# rummy commands",
+				"| `<env/>` | `<env>git log</env>` |",
+				'| `<ask_user/>` | `<ask_user question="Which?">` |',
+				'| `<mv/>` | `<mv path="known://draft">known://final</mv>` |',
+				"DOC",
+				"</set>",
+				'<update status="200">notes written</update>',
+			].join("\n");
+			const { commands, warnings } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 2, "set + update");
+			assert.strictEqual(commands[0].path, "OPUS_ANALYSIS.md");
 			assert.ok(
 				commands[0].body.includes(
 					'<mv path="known://draft">known://final</mv>',
 				),
-				"full table preserved including the inline </mv> example",
+				"full table preserved in body",
 			);
-			assert.strictEqual(commands[1].name, "update");
 			assert.strictEqual(commands[1].body, "notes written");
-			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
+			assert.deepEqual(warnings, []);
 		});
 
 		it("normalizes native tool call format", () => {

@@ -1,6 +1,36 @@
 import { parseEditContent } from "../plugins/hedberg/edits.js";
 import { parseSed } from "../plugins/hedberg/sed.js";
 
+// Shell-style HEREDOC opener at the start of a `<set>` body. Models have
+// strong training prior for this shape: <<IDENT, <<-IDENT, <<'IDENT',
+// <<"IDENT". Returns positions for the inner content span and the
+// position after the closer line, or null. Only invoked for <set>.
+function matchHeredoc(s, pos) {
+	const slice = s.slice(pos);
+	// Allow leading whitespace before the opener (model may format the
+	// body with a newline after the open tag).
+	const lead = slice.match(/^\s*/);
+	const start = pos + lead[0].length;
+	const m = s.slice(start).match(/^<<-?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\n/);
+	if (!m) return null;
+	const ident = m[2];
+	const openerEnd = start + m[0].length;
+	const remaining = s.slice(openerEnd);
+	// Closer = newline + optional indent + IDENT, followed by either:
+	// whitespace + </set> (compact form), a newline (closer on own line),
+	// or end of input. Indent always allowed (forgiving — covers <<- form).
+	const escIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const closerRe = new RegExp(`\\n[\\t ]*${escIdent}(?=\\s*</set\\s*>|\\n|$)`);
+	const cm = remaining.match(closerRe);
+	if (!cm) return null;
+	return {
+		ident,
+		innerStart: openerEnd,
+		innerEnd: openerEnd + cm.index,
+		afterCloser: openerEnd + cm.index + cm[0].length,
+	};
+}
+
 const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
 export const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
@@ -24,6 +54,18 @@ function resolveCommand(name, a, rawBody) {
 
 		// Self-close / no-body: visibility/metadata op.
 		if (!trimmed) return { name, ...a, body: a.body || "" };
+
+		// HEREDOC body: extract inner content. Tag-like text, backticks,
+		// and SEARCH/REPLACE markers inside the heredoc are stored
+		// verbatim — opaque body shape for arbitrary content.
+		const heredoc = matchHeredoc(rawBody, 0);
+		if (heredoc) {
+			return {
+				name,
+				...a,
+				body: rawBody.slice(heredoc.innerStart, heredoc.innerEnd),
+			};
+		}
 
 		// Sed shorthand: `s/old/new/` (single block) or chained.
 		if (trimmed.startsWith("s/")) {
@@ -105,10 +147,16 @@ const WS = /\s/;
 //     `</foo>` inside a `<set>` body — are body content, not structural
 //     signals.
 //   - Backtick spans (`...`) and triple-backtick fences (```...```)
-//     suppress tag recognition both at OUTER level AND inside tool
-//     bodies. This is what lets a model write markdown documentation
-//     about rummy commands inside a `<set>` body without the backticked
-//     examples breaking the body's opacity.
+//     suppress tag recognition AT THE OUTER LEVEL ONLY (between tool
+//     calls). Documentation prose with backticked tag examples doesn't
+//     get parsed as commands. Inside tool bodies backticks are content;
+//     bodies that need opacity for tag-like content use HEREDOC, which
+//     has no false-positive failure modes (unlike inside-body backtick
+//     tracking, which would suppress closing tags on bodies with stray
+//     unbalanced backticks).
+//   - HEREDOC body shape (set only): `<set path="x"><<EOF\n...\nEOF\n</set>`
+//     makes the body span opaque. Closer can be IDENT alone on a line or
+//     IDENT</set> on the same line. Custom delimiter (any [A-Za-z_]\w*).
 //   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
 //     nested examples don't prematurely close the outer.
 //   - Unclosed openers capture body to EOF and emit a clear "Unclosed"
@@ -320,20 +368,18 @@ export default class XmlParser {
 	static #findBodyEnd(s, name, fromPos) {
 		let depth = 1;
 		let i = fromPos;
-		let inSingleBacktick = false;
-		let inTripleFence = false;
+		// HEREDOC bypass: when the body starts with a shell-style heredoc
+		// opener, jump past the matching closer. Tag recognition does not
+		// run inside the heredoc range — `</set>`, examples, anything is
+		// body content. HEREDOC is the principled opacity mechanism;
+		// inside-body backtick tracking would only create new failure
+		// modes (unbalanced backticks suppressing legitimate close tags).
+		if (name === "set") {
+			const heredoc = matchHeredoc(s, fromPos);
+			if (heredoc) i = heredoc.afterCloser;
+		}
 		while (i < s.length) {
-			if (s[i] === "`" && s[i + 1] === "`" && s[i + 2] === "`") {
-				inTripleFence = !inTripleFence;
-				i += 3;
-				continue;
-			}
-			if (s[i] === "`" && !inTripleFence) {
-				inSingleBacktick = !inSingleBacktick;
-				i++;
-				continue;
-			}
-			if (inSingleBacktick || inTripleFence || s[i] !== "<") {
+			if (s[i] !== "<") {
 				i++;
 				continue;
 			}

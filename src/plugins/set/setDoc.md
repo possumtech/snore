@@ -3,13 +3,14 @@
 Example: <set path="known://project/milestones" visibility="summarized" summary="milestone,deadline,2026"/>
 <!-- Visibility control first — most unique capability of set. -->
 
-Example: <set path="src/app.js">
-<<<<<<< SEARCH
-old text
-=======
-new text
->>>>>>> REPLACE
-</set>
+Example:
+	<set path="src/app.js">
+	<<<<<<< SEARCH
+	old text
+	=======
+	new text
+	>>>>>>> REPLACE
+	</set>
 <!-- SEARCH/REPLACE block — primary edit pattern for existing files. -->
 
 Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>
@@ -18,7 +19,11 @@ Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost do
 Example: <set path="example.md">Full file content here</set>
 <!-- Create: body contents are entire file. -->
 
-When a body contains tag-like markdown (e.g. examples of `<get>` or `<set>` syntax), wrap the examples in backticks. Backtick spans inside a body are treated as literal text and will not be parsed as tags.
-
-YOU MUST NOT use <sh></sh> or <env></env> to list, create, read, or edit files — use <get></get> and <set></set>
-<!-- Reinforces at the decision point — model reading setDoc for file ops sees the prohibition here, not just buried in shDoc/envDoc which it may not be reading. -->
+Example:
+	<set path="OPUS_NOTES.md"><<EOF
+	# Documentation about <set> and <get>
+	| `<env>` | `<env>git log</env>` |
+	Anything between the opener and EOF closer is content — including `</set>`.
+	EOF
+	</set>
+<!-- HEREDOC body for arbitrary content. Pick any `[A-Za-z_]\w*` delimiter; the model chooses one that won't appear in the content. Closer is the delimiter alone on a line. -->

@@ -5,7 +5,7 @@ import Policy from "./policy.js";
 // Capture the filters the plugin registers so we can call them directly.
 // Policy registers two: ask-mode at priority 1 (askFilter), delivery-mode
 // at priority 2 (deliveryFilter). The test mock returns both.
-function makeCore({ phase = 7 } = {}) {
+function makeCore({ phase = 7, errorEmits = null } = {}) {
 	const filters = [];
 	return {
 		filter(name, fn, priority) {
@@ -14,6 +14,13 @@ function makeCore({ phase = 7 } = {}) {
 		hooks: {
 			instructions: {
 				getCurrentPhase: async () => phase,
+			},
+			error: {
+				log: {
+					emit: async (payload) => {
+						if (errorEmits) errorEmits.push(payload);
+					},
+				},
 			},
 		},
 		getFilters: () => filters.toSorted((a, b) => a.priority - b.priority),
@@ -30,8 +37,8 @@ function entry(scheme, attrs = {}, body = "", path = `${scheme}://x`) {
 	};
 }
 
-function newFilter({ phase = 7 } = {}) {
-	const core = makeCore({ phase });
+function newFilter({ phase = 7, errorEmits = null } = {}) {
+	const core = makeCore({ phase, errorEmits });
 	new Policy(core);
 	const fs = core.getFilters();
 	// Compose both filters in registration order (ask first, then delivery).
@@ -172,15 +179,25 @@ describe("Policy plugin: enforceDeliveryMode filter (FVSM phase shield)", () => 
 	});
 
 	for (const phase of [4, 5, 6]) {
-		it(`phase ${phase}: file edit fails with "YOU MUST NOT deliver in current mode"`, async () => {
-			const filter = newFilter({ phase });
+		it(`phase ${phase}: file edit fails with "YOU MUST NOT deliver file modifications in the current mode" AND emits error.log so the rejection surfaces as <error>`, async () => {
+			const errorEmits = [];
+			const filter = newFilter({ phase, errorEmits });
 			const result = await filter(
 				entry("set", { path: "OC_RIVERS.md" }, "report content"),
-				{ mode: "act" },
+				{ mode: "act", store: {}, runId: 1, turn: 5, loopId: 1 },
 			);
 			assert.equal(result.state, "failed");
 			assert.equal(result.outcome, "permission");
-			assert.equal(result.body, "YOU MUST NOT deliver in current mode");
+			assert.equal(
+				result.body,
+				"YOU MUST NOT deliver file modifications in the current mode",
+			);
+			assert.equal(errorEmits.length, 1, "exactly one error.log emission");
+			assert.equal(
+				errorEmits[0].message,
+				"YOU MUST NOT deliver file modifications in the current mode",
+			);
+			assert.equal(errorEmits[0].status, 403);
 		});
 
 		it(`phase ${phase}: file rm fails`, async () => {
@@ -189,7 +206,10 @@ describe("Policy plugin: enforceDeliveryMode filter (FVSM phase shield)", () => 
 				mode: "act",
 			});
 			assert.equal(result.state, "failed");
-			assert.equal(result.body, "YOU MUST NOT deliver in current mode");
+			assert.equal(
+				result.body,
+				"YOU MUST NOT deliver file modifications in the current mode",
+			);
 		});
 
 		it(`phase ${phase}: schema entry write passes (unknown://, known:// always allowed)`, async () => {

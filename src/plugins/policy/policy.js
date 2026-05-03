@@ -69,6 +69,9 @@ export default class Policy {
 	// File modification (set body to file path, rm/mv/cp on file path) is
 	// disabled by default and enabled only in Delivery mode (FVSM phase 7).
 	// Schema entries (unknown://, known://, log://, …) are always allowed.
+	// Rejection surfaces as an <error> block (via error.log.emit) so the
+	// reason reaches the model's context regardless of how the failed
+	// operation entry itself renders.
 	async #enforceDeliveryMode(entry, ctx) {
 		if (!this.#isFileModification(entry)) return entry;
 		const phase = await this.#core.hooks.instructions.getCurrentPhase({
@@ -77,6 +80,16 @@ export default class Policy {
 			sequence: ctx.turn,
 		});
 		if (phase === 7) return entry;
-		return this.#fail(entry, "YOU MUST NOT deliver in current mode");
+		const message =
+			"YOU MUST NOT deliver file modifications in the current mode";
+		await this.#core.hooks.error.log.emit({
+			store: ctx.store,
+			runId: ctx.runId,
+			turn: ctx.turn,
+			loopId: ctx.loopId,
+			message,
+			status: 403,
+		});
+		return this.#fail(entry, message);
 	}
 }
