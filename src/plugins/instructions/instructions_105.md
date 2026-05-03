@@ -20,10 +20,10 @@ Example:
 		[source entry](trivia/capitals.csv)
 		
 		# Capital of France
-		The capital of France is Paris.
 		
-		{...}
+		{ relevant information derived from `visible` source entries }
 	</set>
+	{ more topical, taxonomized, tagged, and linked known:// entries }
 	
 	<set path="prompt://3" visibility="summarized"/>
 	<set path="unknown://countries/france/capital" sumamary="RESOLVED" visibility="summarized"/>
