@@ -1,5 +1,4 @@
 import { parseEditContent } from "../plugins/hedberg/edits.js";
-import { parseJsonEdit } from "../plugins/hedberg/normalize.js";
 import { parseSed } from "../plugins/hedberg/sed.js";
 
 const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
@@ -17,34 +16,22 @@ function resolveCommand(name, a, rawBody) {
 	const trimmed = rawBody.trim();
 
 	if (name === "set") {
-		const hasEdit =
-			/<{3,12} SEARCH/.test(trimmed) ||
-			/>{3,12} REPLACE/.test(trimmed) ||
-			(trimmed.includes("@@") &&
-				(trimmed.includes("\n-") || trimmed.includes("\n+"))) ||
-			trimmed.includes("<old_text>");
-		if (hasEdit) {
-			const blocks = parseEditContent(rawBody);
-			if (blocks.length > 0) {
-				return {
-					name,
-					path: a.path,
-					body: a.body,
-					manifest: a.manifest,
-					blocks,
-				};
-			}
-		}
-		const jsonEdit = parseJsonEdit(trimmed);
-		if (jsonEdit) {
-			return { name, path: a.path, ...jsonEdit };
-		}
+		// search/replace as attributes was a third edit shape that nothing
+		// in the protocol now teaches; strip them so they can't sneak past
+		// via the attribute spread on either branch below.
+		const { search: _s, replace: _r, ...rest } = a;
+		a = rest;
+
+		// Self-close / no-body: visibility/metadata op. Pass through.
+		if (!trimmed) return { name, ...a, body: a.body || "" };
+
+		// Sed shorthand: `s/old/new/` (single block) or chained.
 		if (trimmed.startsWith("s/")) {
 			const blocks = parseSed(trimmed);
 			if (blocks?.length === 1) {
 				return {
 					name,
-					path: a.path,
+					...a,
 					search: blocks[0].search,
 					replace: blocks[0].replace,
 					flags: blocks[0].flags,
@@ -52,31 +39,20 @@ function resolveCommand(name, a, rawBody) {
 				};
 			}
 			if (blocks?.length > 1) {
-				return { name, path: a.path, blocks };
+				return { name, ...a, blocks };
 			}
 		}
-		if (a.search) {
-			const replace = a.replace ?? trimmed;
-			return {
-				name,
-				path: a.path,
-				body: a.body,
-				manifest: a.manifest,
-				search: a.search,
-				replace,
-			};
+
+		// SEARCH/REPLACE blocks (edit + creation via empty SEARCH).
+		const blocks = parseEditContent(rawBody);
+		if (blocks.length > 0) {
+			return { name, ...a, blocks };
 		}
-		if (trimmed && a.body) {
-			return {
-				name,
-				path: a.path,
-				search: a.body,
-				replace: trimmed,
-				manifest: a.manifest,
-			};
-		}
-		const body = trimmed || a.body || "";
-		return { name, ...a, body };
+
+		// Malformed bodied <set>: not SEARCH/REPLACE, not sed. The handler
+		// surfaces this as an error so the model sees the protocol clearly
+		// and re-emits in the canonical shape next turn.
+		return { name, ...a, malformed: true, body: trimmed };
 	}
 
 	if (name === "update") {
@@ -117,23 +93,25 @@ const NAME_CHAR = /[a-zA-Z0-9_]/;
 const ATTR_KEY_CHAR = /[a-zA-Z0-9_:-]/;
 const WS = /\s/;
 
-// Recovery-tolerant tokenizer for rummy's closed set of tool tags.
+// Tokenizer for rummy's closed set of tool tags. Strict body opacity, no
+// silent recovery on orphan closes.
 //
 // Design contract:
 //   - Tool tags (<get>, <set>, <sh>, ...) are the only syntactic special tags.
 //     Any other "<...>" sequence in OUTER text is treated as literal text.
-//   - Inside a tool tag's body, content is OPAQUE: only the matching close
-//     tag is recognized. Body may contain regex (`(?<!`), generics (`Vec<u8>`),
-//     HTML, XML, heredocs, comparison operators — none of it affects parsing.
+//   - Inside a tool tag's body, content is OPAQUE: only the matching
+//     `</tagname>` close (depth-counted for same-name nesting) ends the
+//     body. Mismatched closes of OTHER tag names — `</env>`, `</mv>`,
+//     `</foo>` inside a `<set>` body — are body content, not structural
+//     signals. Markdown documentation about rummy commands inside a body
+//     stores verbatim instead of silently truncating.
 //   - Backtick spans (`...`) and triple-backtick fences (```...```) at the
 //     OUTER level neutralize tag-like content, mirroring the markdown
 //     convention that documentation about a tool isn't a tool call.
-//     Inside tool bodies this tracking does NOT apply (body opacity wins).
 //   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
 //     nested examples don't prematurely close the outer.
-//   - Recovery: unclosed openers capture body to EOF + emit a warning.
-//     Orphan closes at outer level become text, no warning (body opacity
-//     means models legitimately write `</set>` in prose / summaries).
+//   - Unclosed openers capture body to EOF and emit a clear "Unclosed"
+//     warning. The model sees the failure and corrects on the next turn.
 export default class XmlParser {
 	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS);
 
@@ -198,10 +176,6 @@ export default class XmlParser {
 			const body = s.slice(openerEnd, result.bodyEnd);
 			if (result.unclosed) {
 				warnings.push(`Unclosed <${name}> tag — content captured anyway`);
-			} else if (result.mismatchedCloseName) {
-				warnings.push(
-					`Mismatched </${result.mismatchedCloseName}> closing <${name}> — corrected to </${name}>`,
-				);
 			}
 			commands.push(resolveCommand(name, attrs, body));
 			i = result.afterClose;
@@ -327,14 +301,16 @@ export default class XmlParser {
 
 	// Scans body content from `fromPos` until the matching `</name>` closer,
 	// counting depth so same-name nested examples don't prematurely close.
-	// Returns { bodyEnd, afterClose, unclosed, mismatchedCloseName }.
+	// Returns { bodyEnd, afterClose, unclosed }.
 	//
-	// Mismatched-close recovery: if we encounter `</X>` where X != name and X
-	// is not a depth-counted nested tag, we use a balance heuristic to decide
-	// whether the orphan close was a typo (recover here) or legitimate body
-	// content (continue scanning). Specifically: count `</name>` minus
-	// `<name` in the rest of the string; if non-positive, no real close
-	// exists ahead and the orphan must be the intended close.
+	// Strict body opacity: only `</name>` (matching the open) and same-name
+	// nested opens affect parsing. Mismatched closes of OTHER tag names are
+	// body content, period. Models that emit prose containing `</env>`,
+	// `</mv>`, etc. inside a `<set>` body — typically markdown documenting
+	// rummy commands — get those characters stored verbatim instead of
+	// silently truncating the body. If the matching close never arrives,
+	// emit "Unclosed" so the model sees a clear failure and corrects on
+	// the next turn.
 	static #findBodyEnd(s, name, fromPos) {
 		let depth = 1;
 		let i = fromPos;
@@ -359,23 +335,6 @@ export default class XmlParser {
 					}
 					i = k + 1;
 					continue;
-				}
-
-				if (isCloseTag && closeName.length > 0) {
-					const rest = s.slice(k + 1);
-					const closesAhead = (
-						rest.match(new RegExp(`<\\/${name}\\b\\s*>`, "g")) || []
-					).length;
-					const opensAhead = (rest.match(new RegExp(`<${name}\\b`, "g")) || [])
-						.length;
-					if (closesAhead - opensAhead < 1) {
-						return {
-							bodyEnd: i,
-							afterClose: k + 1,
-							unclosed: false,
-							mismatchedCloseName: closeName,
-						};
-					}
 				}
 			}
 			const opener = XmlParser.#matchOpener(s, i);

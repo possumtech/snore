@@ -12,8 +12,7 @@ Example:
 	<set path="log://turn_3/get/**" visibility="archived"/>
 	<set path="log://turn_3/search/**" visibility="archived"/>
 
-* You need room to think. Demote large prompts and source entries, then iterate them with <get path="..." line="N" limit="N"/> as necessary.
-* When demoting prompts, prefer "summarized" to "archived" to avoid losing necessary context.
+YOU SHOULD demote large prompts and source entries, then iterate them with <get path="..." line="N" limit="N"/> as necessary.
+YOU SHOULD prefer "summarized" to "archived" to avoid losing necessary context when demoting recent prompts and logs.
 
 ## Mode Completion: <update status="167">context relevance optimized</update>
-

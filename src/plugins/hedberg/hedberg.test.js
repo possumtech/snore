@@ -14,7 +14,6 @@ describe("Hedberg plugin", () => {
 		assert.equal(typeof hooks.hedberg.replace, "function");
 		assert.equal(typeof hooks.hedberg.parseSed, "function");
 		assert.equal(typeof hooks.hedberg.parseEdits, "function");
-		assert.equal(typeof hooks.hedberg.parseJsonEdit, "function");
 		assert.equal(typeof hooks.hedberg.generatePatch, "function");
 	});
 

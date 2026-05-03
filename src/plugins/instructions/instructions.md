@@ -3,9 +3,8 @@
 YOU MUST ONLY use the available XML Commands: [%TOOLS%]
 Example: <set path="projectFile.txt">new file content</set>
 
-YOU MUST complete your current **FVSM Mode**.
-YOU MUST ONLY deliver the response or result in Delivery Mode. Do not skip steps.
-YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log events to exceed `tokensFree` budget.
+YOU MUST ONLY perform your current **FVSM Mode**.
+YOU MUST ONLY deliver the response or result if in Delivery Mode. Do not skip steps.
 
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance
 * visible: Full entry body in context, uses `tokens="N"` context budget
@@ -14,6 +13,10 @@ YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log event
 
 * Visibility States are analogous to having onboard cache (visible), RAM (summarized), and drive (archived) memory.
 * When an entry is "visible", it will appear in both the summarized and visible sections.
+
+## Budget: Failure to manage your budget will result in an error
+YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log events to exceed `tokensFree` budget.
+
 * The `tokens="N"` shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
 
 # Commands

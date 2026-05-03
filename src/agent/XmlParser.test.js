@@ -222,31 +222,6 @@ export default {};
 			assert.strictEqual(commands[0].to, "known://b");
 		});
 
-		it("parses set with search/replace attributes", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="src/*.js" search="localhost" replace="0.0.0.0"/>',
-			);
-			assert.strictEqual(commands[0].search, "localhost");
-			assert.strictEqual(commands[0].replace, "0.0.0.0");
-			assert.strictEqual(commands[0].path, "src/*.js");
-			assert.ok(!commands[0].blocks);
-		});
-
-		it("set: search attr with body as replace", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="config.js" search="3000">8080</set>',
-			);
-			assert.strictEqual(commands[0].search, "3000");
-			assert.strictEqual(commands[0].replace, "8080");
-		});
-
-		it("set: search attr with replace attr takes precedence over body", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="x.js" search="old" replace="new">ignored</set>',
-			);
-			assert.strictEqual(commands[0].replace, "new");
-		});
-
 		it("parses mv with from and to", () => {
 			const { commands } = XmlParser.parse(
 				'<mv path="known://env_vars" to=".env"/>',
@@ -372,53 +347,18 @@ I need to check the port.
 			assert.ok(unparsed.includes("I need to check the port"));
 		});
 
-		it("recovers from mismatched close tag (empty body)", () => {
+		it("orphan close of a different name is body content (strict opacity)", () => {
+			// `</unknown>` after `<rm ...>` is not a typo we recover from —
+			// it's body content. The rm body extends until matching `</rm>`
+			// or EOF; here EOF wins and a single command emerges with an
+			// Unclosed warning the model can correct on the next turn.
 			const input = `<rm path="unknown://foo"></unknown>
 <update>Starting research.</update>
 <search>Mitch Hedberg cultural impact</search>`;
 			const { commands, warnings } = XmlParser.parse(input);
-			assert.strictEqual(
-				commands.length,
-				3,
-				`expected 3 commands, got ${commands.length}: ${commands.map((c) => c.name)}`,
-			);
+			assert.strictEqual(commands.length, 1);
 			assert.strictEqual(commands[0].name, "rm");
-			assert.strictEqual(commands[1].name, "update");
-			assert.strictEqual(commands[2].name, "search");
-			assert.ok(
-				warnings.some(
-					(w) => w.includes("Unclosed") || w.includes("Mismatched"),
-				),
-			);
-		});
-
-		it("recovers from mismatched close tag (with body content)", () => {
-			const input =
-				`<set path="known://task_plan" summary="plan">- [x] find codename\n- [x] reply</set>
-<set path="known://project_info" summary="codename">The project codename is: phoenix</set>
-<rm path="unknown://project_codename"/>
-<update status="200">phoenix</update>`.replace(
-					"</set>\n<set",
-					"</update>\n<set",
-				);
-			const { commands, warnings } = XmlParser.parse(input);
-			assert.strictEqual(
-				commands.length,
-				4,
-				`expected 4 commands, got ${commands.length}: ${commands.map((c) => c.name)}`,
-			);
-			assert.strictEqual(commands[0].name, "set");
-			assert.strictEqual(commands[0].path, "known://task_plan");
-			assert.strictEqual(commands[1].name, "set");
-			assert.strictEqual(commands[1].path, "known://project_info");
-			assert.strictEqual(commands[2].name, "rm");
-			assert.strictEqual(commands[3].name, "update");
-			assert.strictEqual(commands[3].body, "phoenix");
-			assert.ok(
-				warnings.some(
-					(w) => w.includes("Mismatched") && w.includes("corrected"),
-				),
-			);
+			assert.ok(warnings.some((w) => w.includes("Unclosed")));
 		});
 
 		it("ignores tool tags inside markdown code spans", () => {
