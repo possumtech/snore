@@ -3,12 +3,7 @@
 * Free Play: In addition to Delivery, you may choose to Decompose more unknowns or Distill more knowns, as necessary.
 
 Example: creating deliverable
-	<set path="src/sum.js">
-<<<<<<< SEARCH
-=======
-console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));
->>>>>>> REPLACE
-	</set>
+	<set path="src/sum.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
 	<update status="177">writing deliverable</update>
 
 Example: confirming deliverable

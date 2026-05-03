@@ -14,8 +14,6 @@ Example:
 	<set path="trivia/capitals.csv" visibility="visible"/>
 
 	<set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
-<<<<<<< SEARCH
-=======
 		# Related
 		[trivia question](prompt://3)
 		[unknown resolving](unknown://countries/france/capital)
@@ -25,7 +23,6 @@ Example:
 		The capital of France is Paris.
 
 		{...}
->>>>>>> REPLACE
 	</set>
 
 	<set path="prompt://3" visibility="summarized"/>

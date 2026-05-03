@@ -105,24 +105,6 @@ export default class Set {
 		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 
-		// Bodied <set> arrived without a recognized edit shape. The parser
-		// flagged it; surface the protocol expectation so the model re-emits
-		// in the canonical form on the next turn instead of silently
-		// writing arbitrary body text.
-		if (attrs.malformed) {
-			await store.set({
-				runId,
-				turn,
-				loopId,
-				path: entry.resultPath,
-				body: `<set path="${attrs.path ?? "?"}"> body must be a SEARCH/REPLACE block (use empty SEARCH for new content) or sed (s/old/new/). See setDoc for examples.`,
-				state: "failed",
-				outcome: "validation",
-				attributes: { path: attrs.path },
-			});
-			return;
-		}
-
 		// Reject invalid visibility on body-less set; otherwise a typo silently wipes the body.
 		if (
 			!entry.body &&

@@ -110,7 +110,15 @@ new
 			assert.strictEqual(commands[0].blocks[0].replace, "new");
 		});
 
-		it("parses set for new file (empty-SEARCH creation form)", () => {
+		it("parses set with raw body (create / overwrite)", () => {
+			const input = '<set path="src/new.js">export default {};</set>';
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands[0].path, "src/new.js");
+			assert.strictEqual(commands[0].body, "export default {};");
+			assert.ok(!commands[0].blocks);
+		});
+
+		it("parses set for new file (empty-SEARCH form, optional)", () => {
 			const input = `<set path="src/new.js">
 <<<<<<< SEARCH
 =======
@@ -390,6 +398,42 @@ I need to check the port.
 			);
 			assert.strictEqual(commands[0].name, "set");
 			assert.ok(commands[0].body.includes("<get"));
+		});
+
+		it("backticks inside <set> body suppress tag recognition (markdown docs about rummy)", () => {
+			// The opus failure mode: a deliverable body containing backticked
+			// tag examples used to confuse the orphan-close heuristic and
+			// silently truncate the body. Strict opacity + body-level backtick
+			// tracking keeps the whole markdown table inside the body.
+			const input = [
+				'<set path="OPUS_NOTES.md">',
+				"# How rummy commands look",
+				"",
+				"| Command | Example |",
+				"| --- | --- |",
+				"| `<env>` | `<env>git log --oneline -5</env>` |",
+				'| `<ask_user>` | `<ask_user question="Which approach?">` |',
+				'| `<mv>` | `<mv path="known://draft">known://final</mv>` |',
+				"</set>",
+				'<update status="200">notes written</update>',
+			].join("\n");
+			const { commands, warnings } = XmlParser.parse(input);
+			assert.strictEqual(
+				commands.length,
+				2,
+				"two commands: the set and the update",
+			);
+			assert.strictEqual(commands[0].name, "set");
+			assert.strictEqual(commands[0].path, "OPUS_NOTES.md");
+			assert.ok(
+				commands[0].body.includes(
+					'<mv path="known://draft">known://final</mv>',
+				),
+				"full table preserved including the inline </mv> example",
+			);
+			assert.strictEqual(commands[1].name, "update");
+			assert.strictEqual(commands[1].body, "notes written");
+			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
 		});
 
 		it("normalizes native tool call format", () => {

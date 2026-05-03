@@ -16,13 +16,13 @@ function resolveCommand(name, a, rawBody) {
 	const trimmed = rawBody.trim();
 
 	if (name === "set") {
-		// search/replace as attributes was a third edit shape that nothing
-		// in the protocol now teaches; strip them so they can't sneak past
-		// via the attribute spread on either branch below.
+		// search/replace as attributes was an edit shape that nothing in
+		// the protocol now teaches; strip them so they can't sneak past
+		// via the attribute spread.
 		const { search: _s, replace: _r, ...rest } = a;
 		a = rest;
 
-		// Self-close / no-body: visibility/metadata op. Pass through.
+		// Self-close / no-body: visibility/metadata op.
 		if (!trimmed) return { name, ...a, body: a.body || "" };
 
 		// Sed shorthand: `s/old/new/` (single block) or chained.
@@ -43,16 +43,16 @@ function resolveCommand(name, a, rawBody) {
 			}
 		}
 
-		// SEARCH/REPLACE blocks (edit + creation via empty SEARCH).
+		// SEARCH/REPLACE blocks (edit existing content; empty SEARCH = create).
 		const blocks = parseEditContent(rawBody);
 		if (blocks.length > 0) {
 			return { name, ...a, blocks };
 		}
 
-		// Malformed bodied <set>: not SEARCH/REPLACE, not sed. The handler
-		// surfaces this as an error so the model sees the protocol clearly
-		// and re-emits in the canonical shape next turn.
-		return { name, ...a, malformed: true, body: trimmed };
+		// Raw body — direct create / overwrite. The most common shape for
+		// short scheme entries (unknown://, known://) and any deliverable
+		// where the model isn't editing pre-existing content.
+		return { name, ...a, body: trimmed };
 	}
 
 	if (name === "update") {
@@ -103,11 +103,12 @@ const WS = /\s/;
 //     `</tagname>` close (depth-counted for same-name nesting) ends the
 //     body. Mismatched closes of OTHER tag names — `</env>`, `</mv>`,
 //     `</foo>` inside a `<set>` body — are body content, not structural
-//     signals. Markdown documentation about rummy commands inside a body
-//     stores verbatim instead of silently truncating.
-//   - Backtick spans (`...`) and triple-backtick fences (```...```) at the
-//     OUTER level neutralize tag-like content, mirroring the markdown
-//     convention that documentation about a tool isn't a tool call.
+//     signals.
+//   - Backtick spans (`...`) and triple-backtick fences (```...```)
+//     suppress tag recognition both at OUTER level AND inside tool
+//     bodies. This is what lets a model write markdown documentation
+//     about rummy commands inside a `<set>` body without the backticked
+//     examples breaking the body's opacity.
 //   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
 //     nested examples don't prematurely close the outer.
 //   - Unclosed openers capture body to EOF and emit a clear "Unclosed"
@@ -305,17 +306,34 @@ export default class XmlParser {
 	//
 	// Strict body opacity: only `</name>` (matching the open) and same-name
 	// nested opens affect parsing. Mismatched closes of OTHER tag names are
-	// body content, period. Models that emit prose containing `</env>`,
-	// `</mv>`, etc. inside a `<set>` body — typically markdown documenting
-	// rummy commands — get those characters stored verbatim instead of
-	// silently truncating the body. If the matching close never arrives,
-	// emit "Unclosed" so the model sees a clear failure and corrects on
-	// the next turn.
+	// body content, period.
+	//
+	// Backtick fences (`…`, ```…```) inside the body suppress all tag
+	// recognition — a markdown table cell containing `<set>` examples
+	// stays as content, not interpreted as a nested tag. This matches
+	// the outer-level convention and is the load-bearing reason a model
+	// can write documentation about rummy commands inside a deliverable
+	// body without breaking parsing.
+	//
+	// If the matching close never arrives, emit "Unclosed" so the model
+	// sees a clear failure and corrects on the next turn.
 	static #findBodyEnd(s, name, fromPos) {
 		let depth = 1;
 		let i = fromPos;
+		let inSingleBacktick = false;
+		let inTripleFence = false;
 		while (i < s.length) {
-			if (s[i] !== "<") {
+			if (s[i] === "`" && s[i + 1] === "`" && s[i + 2] === "`") {
+				inTripleFence = !inTripleFence;
+				i += 3;
+				continue;
+			}
+			if (s[i] === "`" && !inTripleFence) {
+				inSingleBacktick = !inSingleBacktick;
+				i++;
+				continue;
+			}
+			if (inSingleBacktick || inTripleFence || s[i] !== "<") {
 				i++;
 				continue;
 			}
