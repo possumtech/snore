@@ -488,6 +488,73 @@ methodical task-by-task fill of `audit/sweep/`.
   shell-mutation options — they did not.
 - **Plugin extensibility is a promise, not an implementation detail.**
   Don't delete "unused" events.
+- **Instruction prose is signal-dense; respect the four registers.**
+  The ~350 lines of `src/plugins/instructions/*.md` and
+  `src/plugins/*/[a-z]*Doc.md` carry more behavioral weight than
+  tens of thousands of lines of code. Each line is a teaching
+  artifact the model encounters every turn for the run's lifetime.
+  Tokens here are not the same currency as tokens elsewhere; treat
+  every character as load-bearing.
+
+  Model-facing prose is a calibrated grammar with four shapes,
+  each carrying different weight:
+
+  - **`YOU MUST` / `YOU MUST NOT`** — the contract floor. Heaviest
+    weight; respected strongly. Reserve for actual contracts. Using
+    `YOU MUST` for prose-emphasis devalues the register and the
+    model rules-lawyers around it. Pair with an `Example:` wherever
+    possible — a solo `YOU MUST` is abstract and ambiguous.
+  - **`*` bullets** — affordance / permission tier. "You can use X
+    to do Y" tells the model a capability exists without imperative
+    weight. Right register for "this is one way" rather than "this
+    is the only way." Insufficient for hard contracts.
+  - **`Example: <tag/>`** — highest signal density per token.
+    Concrete syntax + semantics in one shot. Models pattern-match
+    examples more aggressively than they obey rules. The example
+    IS the contract from the model's view. Bad examples poison;
+    good examples compress multiple non-overlapping lessons. When
+    prose and example conflict, the example wins.
+  - **`{ ... }`** — compression tier. Placeholder semantics inside
+    an `Example:`. Lets you teach structure without spending tokens
+    on filler ("more topical knowns here," "direct answer," etc.).
+    Useless standalone; the description inside the braces does the
+    load-bearing work.
+
+  **Cross-cutting craft notes:**
+  - `YOU MUST` + `Example:` is the strongest combination (rule +
+    canonical demonstration).
+  - `*` + `Example:` is the standard shape for affordances ("you
+    can; here's what it looks like").
+  - Don't mix `*` with `YOU SHOULD` / `YOU MUST` on one line —
+    register collision; the bullet downgrades the imperative.
+  - `<!--` comments cost tokens. Keep them when they add semantic
+    information the model needs; cut them when they're human-facing
+    rationale or restatement of the example above.
+  - Every example path teaches taxonomy by example. Underscore-
+    prefix globs (`known://draft_*`, `known://temp_*`) and
+    single-level globs (`known://hydrology/*`) model lazy
+    folksonomy that the model imitates verbatim. Use hierarchical
+    slash-segmented paths (`known://countries/france/*`,
+    `known://geography/indiana/orange_county/*`) — the canonical
+    shape from `instructions_105.md`.
+
+  **Failure modes that signal register miscalibration:**
+  - `YOU MUST` everywhere → models start ignoring it.
+  - Examples that contradict surrounding prose → model follows
+    the example, ignores the prose. Always reconcile.
+  - Bullets carrying contracts → model treats contracts as optional.
+  - Lazy taxonomies in examples → model produces lazy taxonomies
+    in real entries. Examples are imitated literally.
+  - Repeated rules across multiple docs (preamble + tooldoc + mode)
+    are reinforcement, not waste — provided the rule is genuinely
+    contract-floor. Reinforcement at decision points is a feature.
+    But the same rule restated in different words within ONE doc
+    is dilution; pick the strongest phrasing and drop the rest.
+
+  Before adding ANY line to an instruction or tooldoc, ask: which
+  register is this? Is the register right for the level of
+  compulsion the protocol actually requires? Does it carry a lesson
+  the surrounding examples don't already carry?
 - **No fallbacks outside hedberg/XmlParser.** Biome enforces.
 - **Configuration is the cascade. Period.** `.env.example` declares
   every variable the code reads, with a usable default. `.env`,

@@ -1,9 +1,8 @@
 # FVSM Mode: **Distillation** → YOU MUST ONLY select unknown:// entries, then discover source entries and distill them into known:// entries
-YOU MUST discover and distill all relevant information into topical, taxonomized, tagged, and linked known:// entries.
 YOU MUST ONLY populate known entries with `visible` information, NOT from your own training data or opinion.
-YOU MUST link all related source entries and prompts in the `# Related` list
-YOU MUST check the `tokens="N"` of the source entries against the `tokensFree="N"` constraint before promoting entries.
+YOU MUST link all related source entries and prompts in the `# Related` list of every known.
 
+* Check tokens="N" against tokensFree="N" before promoting source entries.
 * You can use <get path="..." manifest/> to list paths and their token amounts for bulk operations without performing them.
 * You can use <get tags="..." manifest/> to recall entries by folksonomic summary tags when paths are forgotten.
 * You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.

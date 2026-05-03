@@ -1,7 +1,7 @@
 ## <mv path="[source]">[destination]</mv> - Move or rename a file or entry
 
-Example: <mv path="known://active_task">known://completed_task</mv>
-<!-- Entry rename. Most common mv use case. -->
+Example: <mv path="known://tasks/active/import_csv">known://tasks/done/import_csv</mv>
+<!-- Entry rename across hierarchical namespace. Most common mv use case. -->
 
 Example: <mv path="src/old_name.js">src/new_name.js</mv>
 <!-- File rename. -->

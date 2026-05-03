@@ -1,4 +1,4 @@
-# FVSM Mode: **Demotion** → YOU MUST ONLY demote all source entries, prompts, and log events that are distilled or no longer relevant in order to both free up the budget and maximize context relevance for the next mode.
+# FVSM Mode: **Demotion** → YOU MUST ONLY demote all source entries, prompts, and log events that are distilled or no longer relevant.
 
 Example:
 	<set path="log://turn_3/**" manifest/>
@@ -11,8 +11,7 @@ Example:
 	<set path="log://turn_1/**" visibility="archived"/>
 	<set path="log://turn_2/**" visibility="archived"/>
 	<set path="log://turn_3/set/**" visibility="archived"/>
-	<set path="log://turn_3/get/**" visibility="archived"/>
-	<set path="log://turn_3/search/**" visibility="archived"/>
+	{ more log://turn_3/{scheme}/** entries to archive as needed }
 
 YOU SHOULD demote large prompts and source entries, then iterate them with <get path="..." line="N" limit="N"/> as necessary.
 YOU SHOULD prefer "summarized" to "archived" to avoid losing necessary context when demoting recent prompts and logs.
