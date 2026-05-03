@@ -2,14 +2,21 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import Policy from "./policy.js";
 
-// Capture the filter the plugin registers so we can call it directly.
-function makeCore() {
-	let captured = null;
+// Capture the filters the plugin registers so we can call them directly.
+// Policy registers two: ask-mode at priority 1 (askFilter), delivery-mode
+// at priority 2 (deliveryFilter). The test mock returns both.
+function makeCore({ phase = 7 } = {}) {
+	const filters = [];
 	return {
-		filter(name, fn, _priority) {
-			if (name === "entry.recording") captured = fn;
+		filter(name, fn, priority) {
+			if (name === "entry.recording") filters.push({ fn, priority });
 		},
-		getFilter: () => captured,
+		hooks: {
+			instructions: {
+				getCurrentPhase: async () => phase,
+			},
+		},
+		getFilters: () => filters.toSorted((a, b) => a.priority - b.priority),
 	};
 }
 
@@ -23,10 +30,19 @@ function entry(scheme, attrs = {}, body = "", path = `${scheme}://x`) {
 	};
 }
 
-function newFilter() {
-	const core = makeCore();
+function newFilter({ phase = 7 } = {}) {
+	const core = makeCore({ phase });
 	new Policy(core);
-	return core.getFilter();
+	const fs = core.getFilters();
+	// Compose both filters in registration order (ask first, then delivery).
+	return async (e, ctx) => {
+		let out = e;
+		for (const { fn } of fs) {
+			out = await fn(out, ctx);
+			if (out.state === "failed") return out;
+		}
+		return out;
+	};
 }
 
 describe("Policy plugin: enforceAskMode filter", () => {
@@ -145,4 +161,53 @@ describe("Policy plugin: enforceAskMode filter", () => {
 			assert.strictEqual(result, e, `expected ${scheme} entry to pass through`);
 		}
 	});
+});
+
+describe("Policy plugin: enforceDeliveryMode filter (FVSM phase shield)", () => {
+	it("Delivery phase (7): file modification passes", async () => {
+		const filter = newFilter({ phase: 7 });
+		const e = entry("set", { path: "src/x.js" }, "new content");
+		const result = await filter(e, { mode: "act" });
+		assert.strictEqual(result, e);
+	});
+
+	for (const phase of [4, 5, 6]) {
+		it(`phase ${phase}: file edit fails with "YOU MUST NOT deliver in current mode"`, async () => {
+			const filter = newFilter({ phase });
+			const result = await filter(
+				entry("set", { path: "OC_RIVERS.md" }, "report content"),
+				{ mode: "act" },
+			);
+			assert.equal(result.state, "failed");
+			assert.equal(result.outcome, "permission");
+			assert.equal(result.body, "YOU MUST NOT deliver in current mode");
+		});
+
+		it(`phase ${phase}: file rm fails`, async () => {
+			const filter = newFilter({ phase });
+			const result = await filter(entry("rm", { path: "src/x.js" }), {
+				mode: "act",
+			});
+			assert.equal(result.state, "failed");
+			assert.equal(result.body, "YOU MUST NOT deliver in current mode");
+		});
+
+		it(`phase ${phase}: schema entry write passes (unknown://, known:// always allowed)`, async () => {
+			const filter = newFilter({ phase });
+			const e = entry("set", { path: "known://x" }, "factual content");
+			const result = await filter(e, { mode: "act" });
+			assert.strictEqual(result, e);
+		});
+
+		it(`phase ${phase}: visibility-only set on file path passes (no body)`, async () => {
+			const filter = newFilter({ phase });
+			const e = entry(
+				"set",
+				{ path: "OC_RIVERS.md", visibility: "archived" },
+				"",
+			);
+			const result = await filter(e, { mode: "act" });
+			assert.strictEqual(result, e);
+		});
+	}
 });

@@ -17,6 +17,8 @@ function makeStore(entries = []) {
 				attributes: attributes ?? null,
 			});
 		},
+		logPath: async (_runId, turn, scheme, path) =>
+			`log://turn_${turn}/${scheme}/${encodeURIComponent(path)}`,
 	};
 }
 
@@ -283,5 +285,149 @@ describe("Get partial read (line/limit)", () => {
 			false,
 			"store.get must not be called on partial read",
 		);
+	});
+});
+
+describe("Get manifest mode", () => {
+	const entries = [
+		{ path: "src/a.js", body: "...", tokens: 100, attributes: {} },
+		{ path: "src/b.js", body: "...", tokens: 250, attributes: {} },
+	];
+
+	it("manifest=true produces a MANIFEST-prefixed log listing without promoting", async () => {
+		const store = makeStore(entries);
+		const calls = [];
+		// Track store.get calls — manifest must NOT promote.
+		store.get = async (args) => calls.push(args);
+		const entry = {
+			attributes: { path: "src/*.js", manifest: "" },
+			resultPath: "get://result",
+		};
+		await plugin.handler(entry, makeRummy(store));
+		assert.equal(
+			calls.length,
+			0,
+			"manifest must not promote — store.get must not be called",
+		);
+		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
+		assert.ok(log, "wrote a log entry via storePatternResult");
+		assert.match(
+			log.body,
+			/^MANIFEST get path="src\/\*\.js": 2 matched \(350 tokens\)/,
+			"MANIFEST prefix, count, total tokens in header",
+		);
+		assert.ok(log.body.includes("src/a.js (100)"));
+		assert.ok(log.body.includes("src/b.js (250)"));
+	});
+});
+
+describe("Get tag filter (folksonomic recall)", () => {
+	const tagged = [
+		{
+			path: "known://hydrology/karst",
+			body: "...",
+			tokens: 100,
+			attributes: { summary: "hydrology,karst,indiana" },
+		},
+		{
+			path: "known://geography/borders",
+			body: "...",
+			tokens: 50,
+			attributes: { summary: "geography,counties" },
+		},
+		{
+			path: "known://hydrology/rivers",
+			body: "...",
+			tokens: 200,
+			attributes: JSON.stringify({ summary: "hydrology,rivers,indiana" }),
+		},
+	];
+
+	it("filters entries by all listed tags (AND semantics)", async () => {
+		const store = makeStore(tagged);
+		const entry = {
+			attributes: { tags: "hydrology,indiana" },
+			resultPath: "get://result",
+		};
+		await plugin.handler(entry, makeRummy(store));
+		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
+		assert.ok(log, "wrote a log entry");
+		assert.ok(
+			log.body.includes("known://hydrology/karst"),
+			"karst entry tagged hydrology+indiana matches",
+		);
+		assert.ok(
+			log.body.includes("known://hydrology/rivers"),
+			"rivers entry tagged hydrology+indiana matches",
+		);
+		assert.ok(
+			!log.body.includes("known://geography/borders"),
+			"borders entry tagged geography+counties does NOT match",
+		);
+	});
+
+	it("tag-only get defaults path to ** (no path attr required)", async () => {
+		const store = makeStore(tagged);
+		const entry = {
+			attributes: { tags: "hydrology" },
+			resultPath: "get://result",
+		};
+		await plugin.handler(entry, makeRummy(store));
+		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
+		assert.ok(log, "no missing-path failure");
+		assert.notEqual(log.state, "failed");
+	});
+
+	it("path + tags scopes the search to the path glob", async () => {
+		const store = makeStore(tagged);
+		const entry = {
+			attributes: { path: "known://hydrology/**", tags: "indiana" },
+			resultPath: "get://result",
+		};
+		await plugin.handler(entry, makeRummy(store));
+		// We mocked getEntriesByPattern to return ALL `tagged` regardless;
+		// the tag filter still narrows to the indiana-tagged subset.
+		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
+		assert.ok(log.body.includes("known://hydrology/karst"));
+		assert.ok(log.body.includes("known://hydrology/rivers"));
+		assert.ok(!log.body.includes("known://geography/borders"));
+	});
+
+	it("tags + manifest composes: MANIFEST listing of tag-filtered entries, no promotion", async () => {
+		const store = makeStore(tagged);
+		const calls = [];
+		store.get = async (args) => calls.push(args);
+		const entry = {
+			attributes: { tags: "hydrology,indiana", manifest: "" },
+			resultPath: "get://result",
+		};
+		await plugin.handler(entry, makeRummy(store));
+		assert.equal(calls.length, 0, "manifest must not promote");
+		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
+		assert.ok(log, "wrote a manifest log entry");
+		assert.match(
+			log.body,
+			/^MANIFEST get/,
+			"MANIFEST prefix present (orthogonal composition with tags)",
+		);
+		// Two of three tagged entries match hydrology+indiana; the third
+		// (geography/borders) is filtered out before manifest.
+		assert.match(log.body, /2 matched/, "tag filter narrowed to 2 entries");
+		assert.ok(log.body.includes("known://hydrology/karst"));
+		assert.ok(log.body.includes("known://hydrology/rivers"));
+		assert.ok(!log.body.includes("known://geography/borders"));
+	});
+
+	it("tag filter on stringified attributes works", async () => {
+		// The third entry has attributes as a JSON string (storage form);
+		// the filter must JSON.parse it before reading summary.
+		const store = makeStore([tagged[2]]);
+		const entry = {
+			attributes: { tags: "rivers,indiana" },
+			resultPath: "get://result",
+		};
+		await plugin.handler(entry, makeRummy(store));
+		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
+		assert.ok(log.body.includes("known://hydrology/rivers"));
 	});
 });

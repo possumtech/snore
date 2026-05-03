@@ -19,7 +19,10 @@ export default class Get {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const target = entry.attributes.path;
+		const tagsAttr = entry.attributes.tags;
+		// Tag-only get defaults path to "**" so the model can recall by
+		// folksonomic summary tags without remembering exact paths.
+		const target = entry.attributes.path || (tagsAttr ? "**" : null);
 		if (!target) {
 			await store.set({
 				runId,
@@ -35,7 +38,13 @@ export default class Get {
 		const normalized = Entries.normalizePath(target);
 		const bodyFilter = entry.attributes.body;
 		const manifest = entry.attributes.manifest !== undefined;
-		const isPattern = bodyFilter || normalized.includes("*");
+		const wantedTags = tagsAttr
+			? tagsAttr
+					.split(",")
+					.map((t) => t.trim().toLowerCase())
+					.filter(Boolean)
+			: null;
+		const isPattern = bodyFilter || normalized.includes("*") || !!wantedTags;
 
 		// Negative line = tail-from-end (line=-50 starts 50 from end).
 		const lineRaw = entry.attributes.line;
@@ -45,11 +54,23 @@ export default class Get {
 				? Math.max(1, parseInt(entry.attributes.limit, 10))
 				: null;
 
-		const matches = await store.getEntriesByPattern(
+		let matches = await store.getEntriesByPattern(
 			runId,
 			normalized,
 			bodyFilter,
 		);
+		if (wantedTags) {
+			matches = matches.filter((e) => {
+				if (!e.attributes) return false;
+				const attrs =
+					typeof e.attributes === "string"
+						? JSON.parse(e.attributes)
+						: e.attributes;
+				if (typeof attrs.summary !== "string") return false;
+				const summary = attrs.summary.toLowerCase();
+				return wantedTags.every((t) => summary.includes(t));
+			});
+		}
 
 		// Manifest: list matches + full-body token costs; no promotion.
 		if (manifest) {

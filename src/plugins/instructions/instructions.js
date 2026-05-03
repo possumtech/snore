@@ -59,6 +59,7 @@ export default class Instructions {
 			this.validateNavigation.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
+		core.hooks.instructions.getCurrentPhase = this.getCurrentPhase.bind(this);
 		core.filter("assembly.user", this.assembleInstructions.bind(this), 200);
 		new Protocol(core);
 	}
@@ -90,7 +91,7 @@ export default class Instructions {
 
 	// Reject illegal stage navigation; see plugin README.
 	async validateNavigation(status, rummy) {
-		const currentPhase = await this.#getCurrentPhase(rummy);
+		const currentPhase = await this.getCurrentPhase(rummy);
 		const nextPhase = phaseForStatus(status);
 		if (nextPhase > currentPhase + 1) {
 			return { ok: false, reason: "Illegal navigation attempt" };
@@ -107,10 +108,38 @@ export default class Instructions {
 				};
 			}
 		}
+		// Artifact gates: claiming Decomposition/Distillation completion
+		// requires the corresponding artifact actually exists in the run.
+		if (status === 145) {
+			const unknowns = await rummy.entries.getEntriesByPattern(
+				rummy.runId,
+				"unknown://**",
+				null,
+			);
+			if (unknowns.length === 0) {
+				return {
+					ok: false,
+					reason: "YOU MUST identify unknowns in current mode",
+				};
+			}
+		}
+		if (status === 156) {
+			const knowns = await rummy.entries.getEntriesByPattern(
+				rummy.runId,
+				"known://**",
+				null,
+			);
+			if (knowns.length === 0) {
+				return {
+					ok: false,
+					reason: "YOU MUST identify knowns in current mode",
+				};
+			}
+		}
 		return { ok: true };
 	}
 
-	async #getCurrentPhase(rummy) {
+	async getCurrentPhase(rummy) {
 		// `**` not `*`: update slugs may contain URL-encoded `/`.
 		const updates = await rummy.entries.getEntriesByPattern(
 			rummy.runId,

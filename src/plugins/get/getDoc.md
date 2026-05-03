@@ -12,6 +12,10 @@ Example: <get path="src/**/*.js">authentication</get>
 Example: <get path="src/**/*.js" manifest>authentication</get>
 <!-- Full pattern: recursive glob + content filter. -->
 
+Example: <get tags="hydrology,karst" manifest/>
+<!-- Folksonomic recall: list entries whose summary tags include all listed terms. Optional path= scopes the search; default is **. -->
+
+
 Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
 <!-- Partial read. Returns lines 644–723 without promoting. -->
 

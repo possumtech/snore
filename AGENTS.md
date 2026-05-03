@@ -223,6 +223,29 @@ methodical task-by-task fill of `audit/sweep/`.
 
 ## Open Items
 
+- [ ] **Pattern / bulk-operation presentation in toolDocs.** Across
+  multiple gemma + gpro runs, models use globs for visibility-batch
+  demotion (`<set path="log://turn_5/**" visibility="archived"/>`)
+  but rarely for *discovery* — they walk entry-by-entry instead of
+  reaching for `<get path="**" manifest>keyword</get>`. Three changes
+  worth landing once the gates above settle:
+  1. Promote pattern examples in `getDoc.md` / `setDoc.md` to the
+     top so they're in the model's first read, not after the
+     single-entry forms.
+  2. Add a "pattern idiom" line in `instructions_105.md` and
+     `_106.md` — these modes are where bulk ops pay off most. One
+     line each: "When inspecting many entries, prefer a pattern
+     (`**`, `unknown://*`) with `manifest` over per-entry gets."
+  3. Now that `<get tags="..."/>` exists, surface it in the FVSM
+     mode docs as the recall-by-folksonomy idiom — a worked example
+     in `instructions_105.md` showing tag-based source recall.
+
+  Defer until the shield landings + tag-search feature have a few
+  runs of dogfooding so we can see what the model still needs help
+  with vs. what it picks up naturally.
+
+
+
 - [ ] **Single-turn token overflow on `train-fasttext`.** The only
   task across 89 that hit `xAI 400 - "This model's maximum prompt
   length is 2000000 but the request contains 4691073 tokens."`

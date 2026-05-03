@@ -156,3 +156,73 @@ describe("instructions phase transition contract", () => {
 		assert.ok(out.includes(phaseFirstLine(4)));
 	});
 });
+
+describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
+	function makeRummy({ unknowns = 0, knowns = 0, currentStatus = null }) {
+		const updateRows = currentStatus
+			? [
+					{
+						path: "log://turn_1/update/stub",
+						attributes: { status: currentStatus },
+					},
+				]
+			: [];
+		return {
+			runId: 1,
+			sequence: 2,
+			entries: {
+				getEntriesByPattern: async (_runId, pattern) => {
+					if (pattern === "unknown://**")
+						return Array.from({ length: unknowns }, (_, i) => ({
+							path: `unknown://x${i}`,
+						}));
+					if (pattern === "known://**")
+						return Array.from({ length: knowns }, (_, i) => ({
+							path: `known://x${i}`,
+						}));
+					if (pattern === "log://*/update/**") return updateRows;
+					if (pattern === "prompt://*") return [];
+					return [];
+				},
+			},
+		};
+	}
+
+	it("shield 1: claiming 145 with zero unknowns is rejected", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			145,
+			makeRummy({ unknowns: 0 }),
+		);
+		assert.equal(result.ok, false);
+		assert.equal(result.reason, "YOU MUST identify unknowns in current mode");
+	});
+
+	it("shield 1: claiming 145 with at least one unknown passes", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			145,
+			makeRummy({ unknowns: 1 }),
+		);
+		assert.equal(result.ok, true);
+	});
+
+	it("shield 2: claiming 156 with zero knowns is rejected", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			156,
+			makeRummy({ knowns: 0, currentStatus: 145 }),
+		);
+		assert.equal(result.ok, false);
+		assert.equal(result.reason, "YOU MUST identify knowns in current mode");
+	});
+
+	it("shield 2: claiming 156 with at least one known passes", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			156,
+			makeRummy({ knowns: 1, currentStatus: 145 }),
+		);
+		assert.equal(result.ok, true);
+	});
+});
