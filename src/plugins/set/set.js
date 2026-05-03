@@ -460,7 +460,9 @@ export default class Set {
 				flags: attrs.flags,
 			});
 		}
-		if (attrs.blocks?.length > 0 && attrs.blocks[0].search === null) {
+		// Empty SEARCH section = creation form. Replace is the entire new
+		// body; no matching against existing content.
+		if (attrs.blocks?.length > 0 && !attrs.blocks[0].search) {
 			return {
 				patch: attrs.blocks[0].replace,
 				searchText: null,

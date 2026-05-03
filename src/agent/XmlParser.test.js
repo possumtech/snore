@@ -110,14 +110,15 @@ new
 			assert.strictEqual(commands[0].blocks[0].replace, "new");
 		});
 
-		it("parses set for new file (replace only)", () => {
+		it("parses set for new file (empty-SEARCH creation form)", () => {
 			const input = `<set path="src/new.js">
+<<<<<<< SEARCH
 =======
 export default {};
 >>>>>>> REPLACE
 </set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].blocks[0].search, null);
+			assert.strictEqual(commands[0].blocks[0].search, "");
 			assert.strictEqual(commands[0].blocks[0].replace, "export default {};");
 		});
 

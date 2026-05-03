@@ -67,30 +67,38 @@ new3
 		});
 	});
 
-	describe("Format 2: replace-only (no SEARCH header)", () => {
-		it("parses replace-only block when no merge-conflict found", () => {
-			const content = `=======
-new content
+	describe("Empty SEARCH (creation form)", () => {
+		it("parses block with empty SEARCH section as a create", () => {
+			const content = `<<<<<<< SEARCH
+=======
+new file contents
 >>>>>>> REPLACE`;
 			assert.deepEqual(parseEditContent(content), [
-				{ search: null, replace: "new content" },
+				{ search: "", replace: "new file contents" },
 			]);
 		});
 
-		it("merge-conflict precedence — replace-only ignored when format 1 matches", () => {
+		it("accepts a blank line between SEARCH and the separator", () => {
 			const content = `<<<<<<< SEARCH
-a
+
 =======
-A
->>>>>>> REPLACE
-=======
-orphan
+new file contents
 >>>>>>> REPLACE`;
-			const result = parseEditContent(content);
-			// Format 1 wins — second block is parsed by format 1 too if it matches.
-			assert.equal(result.length >= 1, true);
-			assert.equal(result[0].search, "a");
-			assert.equal(result[0].replace, "A");
+			assert.deepEqual(parseEditContent(content), [
+				{ search: "", replace: "new file contents" },
+			]);
+		});
+
+		it("multiline replace in creation form", () => {
+			const content = `<<<<<<< SEARCH
+=======
+line one
+line two
+line three
+>>>>>>> REPLACE`;
+			assert.deepEqual(parseEditContent(content), [
+				{ search: "", replace: "line one\nline two\nline three" },
+			]);
 		});
 	});
 });

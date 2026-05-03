@@ -14,6 +14,7 @@ Example:
 	<set path="trivia/capitals.csv" visibility="visible"/>
 
 	<set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
+<<<<<<< SEARCH
 =======
 		# Related
 		[trivia question](prompt://3)

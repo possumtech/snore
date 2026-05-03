@@ -13,11 +13,12 @@ new text
 <!-- Edit existing content: SEARCH/REPLACE block. -->
 
 Example: <set path="known://countries/france/capital" summary="countries,france,capital">
+<<<<<<< SEARCH
 =======
 What is the capital of France?
 >>>>>>> REPLACE
 </set>
-<!-- Create new content: empty SEARCH (omit the `<<<<<<< SEARCH` marker entirely; start the block at `=======`). The body becomes the entry. -->
+<!-- Create new content: empty SEARCH section (no lines between the SEARCH and `=======` markers). The REPLACE section becomes the entry. -->
 
 Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>
 <!-- Sed shorthand: chained s/old/new/ patterns. -->
