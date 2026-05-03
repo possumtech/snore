@@ -1,5 +1,5 @@
 # FVSM Mode: **Distillation** → YOU MUST ONLY select unknown:// entries, then discover source entries and distill them into known:// entries
-YOU MUST create topical, taxonomized, tagged, and linked known:// entries to resolve unknown:// entries.
+YOU MUST discover and distill all relevant information into topical, taxonomized, tagged, and linked known:// entries.
 YOU MUST ONLY populate known entries with `visible` information, NOT from your own training data or opinion.
 YOU MUST link all related source entries and prompts in the `# Related` list
 YOU MUST check the `tokens="N"` of the source entries against the `tokensFree="N"` constraint before promoting entries.
@@ -26,8 +26,8 @@ Example:
 	</set>
 	
 	<set path="prompt://3" visibility="summarized"/>
-	<set path="unknown://countries/france/capital" visibility="summarized"/>
-	<set path="unknown://countries/france/seat_of_government" summary="REJECTED: Not necessary" visibility="summarized"/>
+	<set path="unknown://countries/france/capital" sumamary="RESOLVED" visibility="summarized"/>
+	<set path="unknown://countries/france/seat_of_government" summary="REJECTED" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
 	
 	<update status="155">discovering the capital of France</update>
