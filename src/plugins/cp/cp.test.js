@@ -132,4 +132,43 @@ describe("Cp", () => {
 		);
 		assert.equal(store._calls.length, 0);
 	});
+
+	it("manifest: lists matched sources without copying", async () => {
+		const plugin = new Cp(stubCore());
+		const matches = [
+			{ path: "known://plan_a", scheme: "known", tokens: 80 },
+			{ path: "known://plan_b", scheme: "known", tokens: 120 },
+		];
+		const store = {
+			_calls: [],
+			async set(args) {
+				this._calls.push(args);
+			},
+			async getEntriesByPattern() {
+				return matches;
+			},
+			async getBody() {
+				throw new Error("manifest must not read source body");
+			},
+			async logPath(_r, t, s, p) {
+				return `log://turn_${t}/${s}/${encodeURIComponent(p)}`;
+			},
+		};
+		await plugin.handler(
+			{
+				attributes: {
+					path: "known://plan_*",
+					to: "known://archive_",
+					manifest: "",
+				},
+				resultPath: "cp://result",
+			},
+			{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+		);
+		const log = store._calls.find((c) => c.path?.startsWith("log://"));
+		assert.ok(log, "wrote a manifest log entry");
+		assert.match(log.body, /^MANIFEST cp path="known:\/\/plan_\*": 2 matched/);
+		assert.ok(log.body.includes("known://plan_a"));
+		assert.ok(log.body.includes("known://plan_b"));
+	});
 });

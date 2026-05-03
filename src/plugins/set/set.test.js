@@ -418,3 +418,111 @@ describe("Set plugin", () => {
 		});
 	});
 });
+
+describe("Set plugin: manifest is universal", () => {
+	function manifestStore(matches) {
+		const calls = [];
+		return {
+			_calls: calls,
+			async set(args) {
+				calls.push(args);
+			},
+			async getEntriesByPattern() {
+				return matches;
+			},
+			async getBody() {
+				throw new Error("manifest must not read source body");
+			},
+			async getState() {
+				return null;
+			},
+			async logPath(_r, t, s, p) {
+				return `log://turn_${t}/${s}/${encodeURIComponent(p)}`;
+			},
+		};
+	}
+	const matches = [
+		{ path: "known://hydrology/karst", scheme: "known", tokens: 100 },
+		{ path: "known://hydrology/rivers", scheme: "known", tokens: 200 },
+	];
+
+	const plugin = new Set(stubCore());
+	const rummy = (store) => ({
+		entries: store,
+		sequence: 1,
+		runId: "r",
+		loopId: "l",
+	});
+
+	it("manifest + visibility-pattern: lists matches without flipping visibility", async () => {
+		const store = manifestStore(matches);
+		await plugin.handler(
+			{
+				attributes: {
+					path: "known://hydrology/*",
+					visibility: "summarized",
+					manifest: "",
+				},
+				body: "",
+				resultPath: "set://result",
+			},
+			rummy(store),
+		);
+		const log = store._calls.find((c) => c.path?.startsWith("log://"));
+		assert.ok(log, "wrote a manifest log entry");
+		assert.match(log.body, /^MANIFEST set/);
+		assert.match(log.body, /2 matched/);
+		// No visibility-flip writes happened — only the manifest log entry.
+		const visibilityFlips = store._calls.filter(
+			(c) => c.visibility && c.path !== log.path,
+		);
+		assert.equal(
+			visibilityFlips.length,
+			0,
+			"manifest gate must run before visibility flip",
+		);
+	});
+
+	it("manifest + SEARCH/REPLACE edit: lists matches without applying edit", async () => {
+		const store = manifestStore(matches);
+		await plugin.handler(
+			{
+				attributes: {
+					path: "src/**/*.js",
+					manifest: "",
+					blocks: [{ search: "old", replace: "new" }],
+				},
+				body: "",
+				resultPath: "set://result",
+			},
+			rummy(store),
+		);
+		const log = store._calls.find((c) => c.path?.startsWith("log://"));
+		assert.ok(log, "manifest fires before edit branch");
+		assert.match(log.body, /^MANIFEST set/);
+	});
+
+	it("manifest + raw write body: lists matches without overwriting", async () => {
+		const store = manifestStore(matches);
+		await plugin.handler(
+			{
+				attributes: { path: "known://*", manifest: "" },
+				body: "would-be content",
+				resultPath: "set://result",
+			},
+			rummy(store),
+		);
+		const log = store._calls.find((c) => c.path?.startsWith("log://"));
+		assert.ok(log, "manifest fires before write-content branch");
+		assert.match(log.body, /^MANIFEST set/);
+		// No body writes to the matches happened.
+		const bodyWrites = store._calls.filter(
+			(c) => c.body === "would-be content",
+		);
+		assert.equal(
+			bodyWrites.length,
+			0,
+			"manifest must not write body content to any matches",
+		);
+	});
+});

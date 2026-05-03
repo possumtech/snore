@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./rmDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -62,6 +63,23 @@ export default class Rm {
 			normalized,
 			entry.attributes.body,
 		);
+
+		// Manifest: list what would be removed without performing the rm.
+		// Safety idiom for destructive bulk ops — the model can audit a
+		// glob's reach before committing to it.
+		if (entry.attributes.manifest !== undefined) {
+			await storePatternResult(
+				store,
+				runId,
+				turn,
+				"rm",
+				target,
+				entry.attributes.body,
+				matches,
+				{ manifest: true, loopId, attributes: { path: target } },
+			);
+			return;
+		}
 
 		if (matches.length === 0) {
 			await store.set({

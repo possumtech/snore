@@ -1,5 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { buildMerge } from "../hedberg/merge.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
 export default class Cp {
@@ -24,6 +25,17 @@ export default class Cp {
 		const visibility = VALID[entry.attributes.visibility]
 			? entry.attributes.visibility
 			: undefined;
+
+		// Manifest: list what would be copied without performing the cp.
+		if (entry.attributes.manifest !== undefined) {
+			const matches = await store.getEntriesByPattern(runId, path);
+			await storePatternResult(store, runId, turn, "cp", path, null, matches, {
+				manifest: true,
+				loopId,
+				attributes: { path, to },
+			});
+			return;
+		}
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;

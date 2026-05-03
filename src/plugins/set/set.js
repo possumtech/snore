@@ -125,6 +125,29 @@ export default class Set {
 			return;
 		}
 
+		// Manifest: universal preview gate. Fires before any operational
+		// branch so visibility flips, SEARCH/REPLACE edits, sed substitutions,
+		// pattern writes, and direct writes all support
+		// "list-without-doing" with the same flag.
+		if (attrs.manifest !== undefined && attrs.path) {
+			const matches = await store.getEntriesByPattern(
+				runId,
+				attrs.path,
+				attrs.body,
+			);
+			await storePatternResult(
+				store,
+				runId,
+				turn,
+				"set",
+				attrs.path,
+				attrs.body,
+				matches,
+				{ manifest: true, loopId, attributes: { path: attrs.path } },
+			);
+			return;
+		}
+
 		// Pure visibility/metadata change — no body content
 		if (!entry.body && visibilityAttr && attrs.path) {
 			const target = attrs.path;
@@ -178,24 +201,6 @@ export default class Set {
 		// Edit: sed patterns or SEARCH/REPLACE blocks
 		if (attrs.blocks || attrs.search != null) {
 			await this.#processEdit(rummy, entry, attrs);
-		} else if (attrs.manifest && attrs.path) {
-			// Manifest: list paths and token costs without performing the operation.
-			const matches = await store.getEntriesByPattern(
-				runId,
-				attrs.path,
-				attrs.body,
-			);
-			await storePatternResult(
-				store,
-				runId,
-				turn,
-				"set",
-				attrs.path,
-				attrs.body,
-				matches,
-				{ manifest: true, loopId },
-			);
-			return;
 		} else {
 			// Write content
 			const target = attrs.path;

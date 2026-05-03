@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -33,6 +34,17 @@ export default class Mv {
 		const visibility = VALID[entry.attributes.visibility]
 			? entry.attributes.visibility
 			: undefined;
+
+		// Manifest: list what would be affected without performing the mv.
+		if (entry.attributes.manifest !== undefined) {
+			const matches = await store.getEntriesByPattern(runId, path);
+			await storePatternResult(store, runId, turn, "mv", path, null, matches, {
+				manifest: true,
+				loopId,
+				attributes: { path, to },
+			});
+			return;
+		}
 
 		// Visibility-in-place: no destination, change visibility of matched entries
 		if (visibility && !to) {
