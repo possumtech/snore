@@ -10,25 +10,27 @@ YOU MUST check the `tokens="N"` of the source entries against the `tokensFree="N
 Example:
 	<get path="**" manifest>capital</get>
 	<get path="prompt://3" line="1" limit="100"/>
-
+	
 	<set path="trivia/capitals.csv" visibility="visible"/>
-
+	
 	<set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
 		# Related
 		[trivia question](prompt://3)
 		[unknown resolving](unknown://countries/france/capital)
 		[source entry](trivia/capitals.csv)
-
+		
 		# Capital of France
 		The capital of France is Paris.
-
+		
 		{...}
 	</set>
-
+	
 	<set path="prompt://3" visibility="summarized"/>
 	<set path="unknown://countries/france/capital" visibility="summarized"/>
 	<set path="unknown://countries/france/seat_of_government" summary="REJECTED: Not necessary" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
+	
+	<update status="155">discovering the capital of France</update>
 
 ## Mode Progression (CHOOSE ONLY ONE):
 * Continuation: <update status="155">discovering and distilling more unknown entries into known entries</update>
