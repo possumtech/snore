@@ -1,9 +1,9 @@
-# FVSM Mode: **Demotion** → YOU MUST ONLY demote all source entries, prompts, and log events that are distilled or no longer relevant
+# FVSM Mode: **Demotion** → YOU MUST ONLY demote all source entries, prompts, and log events that are distilled or no longer relevant in order to both free up the budget and maximize context relevance for the next mode.
 
 Example:
 	<set path="prompt://2" summary="All information distilled into knowns" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
-	<set path="unknown://countries/france/capital" visibility="summarized"/>
+	<set path="unknown://countries/france/capital" summary="RESOLVED: Discovered known" visibility="summarized"/>
 	<set path="unknown://countries/poland/capital" summary="REJECTED: Irrelevant" visibility="summarized"/>
 	<set path="https://en.wikipedia.org/wiki/Paris,_Texas" summary="REJECTED: Wrong Paris" visibility="summarized"/>
 	<set path="log://turn_1/**" visibility="archived"/>

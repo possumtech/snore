@@ -1,5 +1,7 @@
 # FVSM Mode: **Delivery** → Create (177) -> Confirm (177) -> Complete (200).
 
+* Free Play: In addition to Delivery, you may choose to Decompose more unknowns or Distill more knowns, as necessary.
+
 Example: creating deliverable
 	<set path="src/sum.js">console.log(process.argv.slice(2).reduce((a, b) => a + Number(b), 0));</set>
 	<update status="177">writing deliverable</update>

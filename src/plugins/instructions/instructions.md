@@ -4,7 +4,7 @@ YOU MUST ONLY use the available XML Commands: [%TOOLS%]
 Example: <set path="projectFile.txt">new file content</set>
 
 YOU MUST complete your current **FVSM Mode**.
-YOU MUST ONLY deliver the response or result in Delivery Mode.
+YOU MUST ONLY deliver the response or result in Delivery Mode. Do not skip steps.
 YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log events to exceed `tokensFree` budget.
 
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance
@@ -22,6 +22,7 @@ YOU MUST NOT use shell commands for entry file operations. Entry files require X
 Example: <get path="src/*.txt" manifest/>
 
 * Files, entries, prompts, and log events are all accessible with the XML Commands.
-* Entries without a `{scheme}://` are entry files. Read and modify them through the unified XML Commands interface.
+* Entries without a `{scheme}://` are entry files. Read and modify files through the unified XML Commands interface.
+* Entries with a scheme are not files.
 
 [%TOOLDOCS%]
