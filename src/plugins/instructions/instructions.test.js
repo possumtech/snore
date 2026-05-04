@@ -158,15 +158,24 @@ describe("instructions phase transition contract", () => {
 });
 
 describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
-	function makeRummy({ unknowns = 0, knowns = 0, currentStatus = null }) {
-		const updateRows = currentStatus
-			? [
-					{
-						path: "log://turn_1/update/stub",
-						attributes: { status: currentStatus },
-					},
-				]
-			: [];
+	function makeRummy({
+		unknowns = 0,
+		knowns = 0,
+		currentStatus = null,
+		updateRows: customUpdateRows = null,
+	}) {
+		const updateRows =
+			customUpdateRows != null
+				? customUpdateRows
+				: currentStatus
+					? [
+							{
+								path: "log://turn_1/update/stub",
+								state: "resolved",
+								attributes: { status: currentStatus },
+							},
+						]
+					: [];
 		return {
 			runId: 1,
 			sequence: 2,
@@ -224,5 +233,92 @@ describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
 			makeRummy({ knowns: 1, currentStatus: 145 }),
 		);
 		assert.equal(result.ok, true);
+	});
+});
+
+describe("getCurrentPhase: failed updates do not advance phase", () => {
+	// The disaster's root cause: a failed update (rejected by validateNavigation)
+	// was still picked up by getCurrentPhase as the latest status, so the next
+	// turn rendered the next-phase instructions even though the gate denied
+	// the transition. Filter on state="failed" to make rejection actually stick.
+	function makeRummyWithUpdates(updateRows) {
+		return {
+			runId: 1,
+			sequence: 5,
+			entries: {
+				getEntriesByPattern: async (_runId, pattern) => {
+					if (pattern === "log://*/update/**") return updateRows;
+					return [];
+				},
+			},
+		};
+	}
+
+	it("a single failed 145 update does not advance phase past 4", async () => {
+		const hooks = makeHooks();
+		const phase = await hooks.instructions.getCurrentPhase(
+			makeRummyWithUpdates([
+				{
+					path: "log://turn_1/update/stub",
+					state: "failed",
+					attributes: { status: 145 },
+				},
+			]),
+		);
+		assert.equal(phase, 4, "failed 145 must leave phase at Decomposition");
+	});
+
+	it("resolved 145 advances; subsequent failed 156 does not advance further", async () => {
+		const hooks = makeHooks();
+		const phase = await hooks.instructions.getCurrentPhase(
+			makeRummyWithUpdates([
+				{
+					path: "log://turn_1/update/stub",
+					state: "resolved",
+					attributes: { status: 145 },
+				},
+				{
+					path: "log://turn_2/update/stub",
+					state: "failed",
+					attributes: { status: 156 },
+				},
+			]),
+		);
+		assert.equal(phase, 5, "phase stays at Distillation; failed 156 ignored");
+	});
+
+	it("string-encoded attributes still honor failed state", async () => {
+		const hooks = makeHooks();
+		const phase = await hooks.instructions.getCurrentPhase(
+			makeRummyWithUpdates([
+				{
+					path: "log://turn_1/update/stub",
+					state: "failed",
+					attributes: JSON.stringify({ status: 145 }),
+				},
+			]),
+		);
+		assert.equal(phase, 4);
+	});
+});
+
+describe("instructions assembly: failed updates do not select instructions block", () => {
+	// Mirror of the getCurrentPhase regression at the assembly layer:
+	// latestUpdateStatusFromRows is what picks the <instructions> block
+	// rendered to the model each turn. A failed update there would render
+	// the next-phase instructions despite the gate rejection — exactly the
+	// disaster's failure mode.
+	it("renders Decomposition instructions when only update is a failed 145", async () => {
+		const out = await renderFor([
+			{
+				path: "log://turn_1/update/stub",
+				state: "failed",
+				attributes: JSON.stringify({ status: 145 }),
+			},
+		]);
+		assert.ok(
+			out.includes(phaseFirstLine(4)),
+			"failed 145 must keep Decomposition instructions in place",
+		);
 	});
 });

@@ -23,7 +23,7 @@ function phaseForStatus(status) {
 	return PHASES.includes(last) ? last : 4;
 }
 
-// Latest non-rejected update status from materialized rows.
+// Latest non-rejected, non-failed update status from materialized rows.
 function latestUpdateStatusFromRows(rows) {
 	let bestTurn = -1;
 	let bestStatus = null;
@@ -31,6 +31,7 @@ function latestUpdateStatusFromRows(rows) {
 		const m = TURN_FROM_PATH.exec(r.path);
 		if (!m) continue;
 		const turn = Number(m[1]);
+		if (r.state === "failed") continue;
 		const attrs =
 			typeof r.attributes === "string"
 				? JSON.parse(r.attributes)
@@ -153,6 +154,9 @@ export default class Instructions {
 			if (!m) continue;
 			const turn = Number(m[1]);
 			if (turn >= rummy.sequence) continue;
+			// Failed updates (e.g. shield rejection) MUST NOT advance the
+			// phase: the model's claim was denied, so the prior phase stands.
+			if (e.state === "failed") continue;
 			const attrs =
 				typeof e.attributes === "string"
 					? JSON.parse(e.attributes)

@@ -52,6 +52,16 @@ export default class Update {
 				outcome: "invalid_navigation",
 				attributes: { status },
 			});
+			// Surface the rejection as an <error> block — a failed update line
+			// alone is too low-prominence for the model to course-correct on.
+			await rummy.hooks.error.log.emit({
+				store,
+				runId,
+				turn,
+				loopId,
+				message: validation.reason,
+				status: 403,
+			});
 			return;
 		}
 		if (!isValidStatus(status)) {
