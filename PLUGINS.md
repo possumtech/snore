@@ -720,7 +720,7 @@ pure RPC plumbing shared across all streaming producers.
 | `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
 | `previous` | Assembly | Render `<previous>` loop history |
 | `performed` | Assembly | Render `<performed>` active loop work |
-| `prompt` | Assembly | Render `<prompt mode="ask\|act" tokensFree="N" tokenUsage="M">` tag |
+| `prompt` | Assembly | Render `<prompt tokensFree="N" tokenUsage="M">` tag (with `warn=` in ask mode) |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
 | `instructions` | Internal | Preamble + tool docs + persona assembly; exposes `hooks.instructions.resolveSystemPrompt` |
 | `file` | Internal | File entry projections and constraints (`scheme IS NULL`) |

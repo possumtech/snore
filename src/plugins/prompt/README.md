@@ -1,7 +1,7 @@
 # prompt {#prompt_plugin}
 
-Renders the `<prompt mode="ask|act">` tag at the end of the user message.
-Always present on every turn — the model always sees its task.
+Renders the `<prompt>` tag at the end of the user message. Always
+present on every turn — the model always sees its task.
 
 ## Registration
 
@@ -9,11 +9,13 @@ Always present on every turn — the model always sees its task.
 
 ## Behavior
 
-Finds the latest `prompt://` entry in the turn_context rows. The mode
-(`ask` or `act`) is stored in `attributes.mode`. Renders with `tools`
-attribute (available tool list) and optional `warn` attribute in ask
-mode. Falls back to the mode passed by the core if no prompt entry
-exists.
+Finds the latest `prompt://` entry in the turn_context rows. Renders
+with `commands` attribute (available tool list) and an optional
+`warn="File editing disallowed."` attribute when the loop's mode is
+`ask` (read from `attributes.mode` on the prompt entry, falling back
+to the type passed by the core). The mode itself is not rendered as
+a tag attribute — it would collide with the FVSM "Mode" terminology
+in the instructions block and the model conflates the two.
 
 ## Archived prompts disappear, by design
 

@@ -66,7 +66,7 @@ describe("Message assembly", () => {
 		await tdb.cleanup();
 	});
 
-	it("ask prompt renders as <prompt mode=ask> with tools", async () => {
+	it("ask prompt: warn signals file-edit prohibition; sh excluded from tools", async () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
@@ -78,8 +78,8 @@ describe("Message assembly", () => {
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(
-			user.content.includes('<prompt mode="ask"'),
-			"should have prompt tag with ask mode",
+			user.content.includes('warn="File editing disallowed."'),
+			"ask mode should surface warn attribute",
 		);
 		assert.ok(
 			user.content.includes("What is the port?"),
@@ -88,7 +88,7 @@ describe("Message assembly", () => {
 		assert.ok(!user.content.includes("sh,"), "ask tools should not include sh");
 	});
 
-	it("act prompt renders as <prompt mode=act> with sh tool", async () => {
+	it("act prompt: prompt tag rendered without warn", async () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
@@ -112,9 +112,10 @@ describe("Message assembly", () => {
 			hooks,
 		);
 		const user = messages.find((m) => m.role === "user");
+		assert.ok(user.content.includes("<prompt "), "prompt tag should render");
 		assert.ok(
-			user.content.includes('<prompt mode="act"'),
-			"should have prompt tag with act mode",
+			!user.content.includes("warn="),
+			"act mode should not emit a warn attribute",
 		);
 		// Tools list was moved out of the user message's <prompt> attribute
 		// — it's now advertised only via the system instructions' "XML Commands

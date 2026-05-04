@@ -135,7 +135,7 @@ describe("Prompt plugin", () => {
 				]),
 			);
 			assert.match(out, /^PRE/);
-			assert.match(out, /<prompt mode="ask"/);
+			assert.match(out, /<prompt /);
 			assert.match(out, /commands="get,set"/);
 			assert.match(out, />hello<\/prompt>/);
 		});
@@ -157,7 +157,7 @@ describe("Prompt plugin", () => {
 			assert.match(out, /warn="File editing disallowed."/);
 		});
 
-		it("falls back to ctx.type when prompt entry has no mode attribute", async () => {
+		it("falls back to ctx.type when prompt entry has no mode attribute (ask warn renders)", async () => {
 			const { hooks } = makeCore();
 			const out = await hooks.assembly.user.filter(
 				"",
@@ -174,7 +174,7 @@ describe("Prompt plugin", () => {
 					{ type: "ask" },
 				),
 			);
-			assert.match(out, /<prompt mode="ask"/);
+			assert.match(out, /warn="File editing disallowed\."/);
 		});
 
 		it('includes reverted="N" when prior turn had a 413 demotion', async () => {
@@ -220,7 +220,7 @@ describe("Prompt plugin", () => {
 		it("renders empty body and no path when no prompt entry exists", async () => {
 			const { hooks } = makeCore();
 			const out = await hooks.assembly.user.filter("", ctxWith([]));
-			assert.match(out, /<prompt mode="act"/);
+			assert.match(out, /<prompt /);
 			assert.equal(out.includes("path="), false);
 			assert.match(out, /><\/prompt>$/);
 		});

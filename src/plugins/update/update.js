@@ -57,7 +57,7 @@ export default class Update {
 		if (!isValidStatus(status)) {
 			entry.state = "failed";
 			entry.outcome = "invalid_status";
-			const message = `Invalid status ${status} on update — use 1xx to continue or 200 to conclude.`;
+			const message = `Invalid status`;
 			entry.body = message;
 			await store.set({
 				runId,

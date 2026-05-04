@@ -856,7 +856,7 @@ Two messages per turn. System = stable truth. User = active task.
         instructions_108.md, selected by the latest <update status="1XY">
         emission (instructions.js, assembly.user priority 250)
     </instructions>
-    <prompt mode="ask|act" tokenUsage="N" tokensFree="M">user prompt</prompt>
+    <prompt tokenUsage="N" tokensFree="M">user prompt</prompt>
 ```
 
 **System** = stable world state the model operates within (identity,
