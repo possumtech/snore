@@ -22,4 +22,4 @@ Example: <get path="sh://turn_3/npm_test_1" line="-50"/>
 Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200"/>
 <!-- URL partial read. When a page is too large to promote whole, read a slice. Pattern generalizes to every scheme. -->
 
-* Remember to <set path="..." visibility="summarize"/> when entries or log events are no longer relevant.
+* Remember to demote entries, log events, or line/limit log entries that are no longer relevant.

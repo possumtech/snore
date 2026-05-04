@@ -148,9 +148,12 @@ column):
   `RUMMY_MAX_LOOP_TURNS`.
 - `strike_abandon` — `status=499` AND an error body starts with
   `Abandoned after`.
-- `shield_0` / `shield_1` / `shield_2` / `shield_3` — error body
-  matched the corresponding shield's message (Decomposition-mode /
-  unknowns-required / knowns-required / Delivery-mode).
+- `gate_unknowns` / `gate_knowns` / `gate_demote` / `gate_delivery` —
+  error body matched the corresponding state-machine gate's
+  message: Decomposition advance requires ≥1 unknown / Distillation
+  advance requires ≥1 known / Demotion advance requires no visible
+  unknowns / Delivery is the only mode where file modifications are
+  permitted. See SPEC.md `#fvsm_state_machine`.
 - `reasoning_runaway_t<N>` — turn N had ≥8000 chars of
   `reasoning_content` AND zero productive emissions. Single-turn
   signal; the turn number tags which one.
@@ -167,8 +170,10 @@ column):
 
 - All claim-success/verifier-fails:
   `awk -F, '$2==0 && $3==200' index.csv`
-- All shield-3 hits:
-  `awk -F, '/shield_3/' index.csv`
+- All gate hits (any state-machine rejection):
+  `awk -F, '/gate_/' index.csv`
+- All Delivery-mode file-write rejections:
+  `awk -F, '/gate_delivery/' index.csv`
 - All runaway turns (with which turn):
   `awk -F, '/reasoning_runaway/' index.csv`
 - Open one task's digest: `cat <task-dir>/digest.md`
@@ -187,9 +192,45 @@ shells. Both write their own digests and indexes.
 
 ## Now
 
-1. `lint;unit;intg` sweep, address breakage.
-2. `e2e` sweep — expected difficult.
-3. Pivot terminal-bench from grok to local gemma.
+**State-machine refactor in flight.** The substrate has to be
+trustworthy before any benchmark or instruction work matters. See
+`SPEC.md #fvsm_state_machine` for the contract.
+
+The contract is four rules; everything else is concerns separate
+from the state machine:
+
+| Status | Mode advance | Gate |
+|---|---|---|
+| 145 | Decomposition → Distillation | unknowns ≥ 1 |
+| 156 | Distillation → Demotion | knowns ≥ 1 |
+| 167 | Demotion → Delivery | no visible unknowns |
+| —   | (any mode) | file modifications only when phase = 7 |
+
+Refactor scope:
+
+1. ✅ AGENTS.md cleanup (marker taxonomy uses gate names).
+2. ✅ AGENTS.md update (this section).
+3. SPEC.md — `#fvsm_state_machine` section: contract table +
+   reasoning. The single source of truth.
+4. Implementation:
+   - `validateNavigation` to the four-rule contract (add the
+     Demotion gate; keep the rest).
+   - Delete Shield 0 (`#enforceDecompositionMode`) from `policy.js`.
+     Keep Shield 3 (file-mod gate) and the ask-mode gate.
+   - On rejection in `update.js`, stop writing a phase-history
+     `log://turn_N/update/...` entry — emit `error.log` only.
+     This deletes the failed-update-skip patch in
+     `getCurrentPhase`.
+   - Strip per-mode allow-list prose from `instructions_104.md`
+     (Decomposition); reframe `instructions_106.md` to make the
+     Demotion contract ("no visible unknowns") explicit.
+5. Testing — integration + unit tests anchor to
+   `@fvsm_state_machine`. Drop Shield 0 tests. Add a Demotion
+   advance-gate test set.
+
+Once this lands, then: e2e sweep → pivot terminal-bench from grok
+to local gemma. Everything below is downstream of a working
+state machine.
 
 ## Open Items
 
@@ -236,26 +277,14 @@ shells. Both write their own digests and indexes.
   the OOM as a recoverable strike rather than letting the kernel
   kill us. General fix; not benchmark-specific.
 
-- [ ] **Continuation-forever in Distillation has no protocol-side
-  cap.** Surfaced 2026-04-30 on `break-filter-js-from-html`
-  (gemma): 21+ turns of `<update status="155">` with no advance.
-  The strike machinery only catches struck turns (turn-errors,
-  failed entries, missing-update). A model that productively emits
-  `<set known://...>` + `<update status="155">` every turn has no
-  internal stopping condition besides `RUMMY_MAX_LOOP_TURNS=99`.
-  The new `instructions_105.md` "rejected" termination is the
-  intent-side lever, but doesn't bound runaway distillation. Two
-  candidate fixes:
-  1. Turn-budget within stage: if streak of 155-without-progress
-     hits N, force-advance with a soft warning. Hard to define
-     "without progress" — model could be making progress between
-     unknowns even if it doesn't change knowns.
-  2. Cycle detection at `<update status>` level: if the same
-     update body fingerprint recurs, treat as a strike. Already
-     have detectCycle infrastructure in `error.js`; would extend
-     it to update-body fingerprints rather than turn fingerprints.
-
-  Discuss before fixing.
+- [ ] **Continuation-forever in Distillation.** Re-evaluate after
+  the state-machine refactor: the Demotion advance gate (no
+  visible unknowns) forces the model to either resolve or REJECT
+  every unknown before reaching Delivery, which closes most of the
+  155-forever paths at the protocol level. If runaway distillation
+  still surfaces post-refactor, cycle detection on `<update>` body
+  fingerprints (extending `error.js#detectCycle`) is the candidate
+  fix.
 
 - [ ] **System auto-pruning.** On loop boundary or when log size
   crosses threshold, archive `log://turn_{M}/**` where M < current -

@@ -23,7 +23,10 @@ function phaseForStatus(status) {
 	return PHASES.includes(last) ? last : 4;
 }
 
-// Latest non-rejected, non-failed update status from materialized rows.
+// Latest update status from materialized rows. Rejected updates do
+// not exist as phase-history entries (update.js emits error.log on
+// rejection but does not write a log://turn_N/update/... row), so
+// no state="failed" filter is needed here.
 function latestUpdateStatusFromRows(rows) {
 	let bestTurn = -1;
 	let bestStatus = null;
@@ -31,14 +34,12 @@ function latestUpdateStatusFromRows(rows) {
 		const m = TURN_FROM_PATH.exec(r.path);
 		if (!m) continue;
 		const turn = Number(m[1]);
-		if (r.state === "failed") continue;
 		const attrs =
 			typeof r.attributes === "string"
 				? JSON.parse(r.attributes)
 				: r.attributes;
 		const status = attrs?.status;
 		if (status == null) continue;
-		if (attrs?.rejected) continue;
 		if (turn > bestTurn || (turn === bestTurn && status > bestStatus)) {
 			bestTurn = turn;
 			bestStatus = status;
@@ -90,7 +91,8 @@ export default class Instructions {
 		});
 	}
 
-	// Reject illegal stage navigation; see plugin README.
+	// FVSM advance-gate enforcer. SPEC.md @fvsm_state_machine is the
+	// contract; this is the only place advance gates are checked.
 	async validateNavigation(status, rummy) {
 		const currentPhase = await this.getCurrentPhase(rummy);
 		const nextPhase = phaseForStatus(status);
@@ -109,8 +111,6 @@ export default class Instructions {
 				};
 			}
 		}
-		// Artifact gates: claiming Decomposition/Distillation completion
-		// requires the corresponding artifact actually exists in the run.
 		if (status === 145) {
 			const unknowns = await rummy.entries.getEntriesByPattern(
 				rummy.runId,
@@ -137,11 +137,30 @@ export default class Instructions {
 				};
 			}
 		}
+		if (status === 167) {
+			const unknowns = await rummy.entries.getEntriesByPattern(
+				rummy.runId,
+				"unknown://**",
+				null,
+			);
+			const stillVisible = unknowns.filter(
+				(u) => u.visibility === "visible",
+			).length;
+			if (stillVisible > 0) {
+				return {
+					ok: false,
+					reason: "YOU MUST demote all unknowns before Delivery",
+				};
+			}
+		}
 		return { ok: true };
 	}
 
 	async getCurrentPhase(rummy) {
 		// `**` not `*`: update slugs may contain URL-encoded `/`.
+		// Rejected updates are never written as phase-history entries
+		// (update.js emits error.log only); every row here is a
+		// successful advance claim.
 		const updates = await rummy.entries.getEntriesByPattern(
 			rummy.runId,
 			"log://*/update/**",
@@ -154,14 +173,10 @@ export default class Instructions {
 			if (!m) continue;
 			const turn = Number(m[1]);
 			if (turn >= rummy.sequence) continue;
-			// Failed updates (e.g. shield rejection) MUST NOT advance the
-			// phase: the model's claim was denied, so the prior phase stands.
-			if (e.state === "failed") continue;
 			const attrs =
 				typeof e.attributes === "string"
 					? JSON.parse(e.attributes)
 					: e.attributes;
-			if (attrs?.rejected) continue;
 			if (attrs?.status == null) continue;
 			if (turn > bestTurn) {
 				bestTurn = turn;

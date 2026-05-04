@@ -4,8 +4,7 @@ const TERMINAL_STATUSES = new Set([200, 204, 422, 500]);
 
 const CONTRACT_REMINDER = "Missing update";
 
-const EMPTY_RESPONSE_REMINDER =
-	"Response empty - Update with status 500 if unable to fulfill request.";
+const EMPTY_RESPONSE_REMINDER = "Response empty";
 
 function isValidStatus(status) {
 	if (TERMINAL_STATUSES.has(status)) return true;
@@ -38,22 +37,16 @@ export default class Update {
 			status,
 			rummy,
 		);
+		// Rejected advance attempts surface as <error> blocks only.
+		// Per SPEC.md @fvsm_state_machine: a rejected update is NOT
+		// recorded as a phase-history entry — getCurrentPhase keys off
+		// the most recent successful advance, so writing a failed row
+		// here would either lie about advancement or require a special-
+		// case skip downstream. Neither is the contract.
 		if (!validation.ok) {
 			entry.state = "failed";
 			entry.outcome = "invalid_navigation";
 			entry.body = validation.reason;
-			await store.set({
-				runId,
-				turn,
-				loopId,
-				path: entry.resultPath,
-				body: validation.reason,
-				state: "failed",
-				outcome: "invalid_navigation",
-				attributes: { status },
-			});
-			// Surface the rejection as an <error> block — a failed update line
-			// alone is too low-prominence for the model to course-correct on.
 			await rummy.hooks.error.log.emit({
 				store,
 				runId,
@@ -67,17 +60,15 @@ export default class Update {
 		if (!isValidStatus(status)) {
 			entry.state = "failed";
 			entry.outcome = "invalid_status";
-			const message = `Invalid status`;
+			const message = "Invalid status";
 			entry.body = message;
-			await store.set({
+			await rummy.hooks.error.log.emit({
+				store,
 				runId,
 				turn,
 				loopId,
-				path: entry.resultPath,
-				body: message,
-				state: "failed",
-				outcome: "invalid_status",
-				attributes: { status },
+				message,
+				status: 422,
 			});
 			return;
 		}

@@ -1,4 +1,4 @@
-# FVSM Mode: **Demotion** → YOU MUST ONLY demote all source entries, prompts, and log events that are distilled or no longer relevant.
+# FVSM Mode: **Demotion** → YOU MUST demote all unknown:// entries (RESOLVED, REJECTED, or archived) AND all source entries, prompts, and log events that are distilled or no longer relevant.
 
 Example:
 	<set path="log://turn_3/**" manifest/>
@@ -15,3 +15,5 @@ YOU SHOULD demote large prompts and source entries, then iterate them with <get 
 YOU SHOULD prefer "summarized" to "archived" to avoid losing necessary context if demoting recent prompts and logs.
 
 ## Mode Completion: <update status="167">context relevance optimized</update>
+
+Advance is gated: every `unknown://` entry must be `summarized` or `archived` before 167 is accepted.

@@ -28,17 +28,19 @@
  *   node test/tbench/digest.js <task-dir>            # single task
  *   node test/tbench/digest.js                       # latest sweep
  */
-import { DatabaseSync } from "node:sqlite";
+
 import {
 	closeSync,
 	existsSync,
+	mkdirSync,
 	openSync,
-	readFileSync,
 	readdirSync,
+	readFileSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -144,49 +146,46 @@ function summarize(text, n = 80) {
 	return `${flat.slice(0, n)}…`;
 }
 
+// Read all runs from a DB plus their per-run data. Tbench task DBs have
+// exactly one run; e2e TestDb DBs have many (one per test invocation).
+// The caller drives a per-run digest pass either way.
 function readDb(rummyDb) {
 	const db = new DatabaseSync(rummyDb, { readOnly: true });
 
-	const run = db.prepare("SELECT * FROM runs LIMIT 1").get();
-	const runId = run?.id;
+	const runs = db.prepare("SELECT * FROM runs ORDER BY id").all();
+	const turnsStmt = db.prepare(
+		`SELECT sequence, total_tokens, prompt_tokens, completion_tokens,
+		        cached_tokens, reasoning_tokens, reasoning_content
+		 FROM turns
+		 WHERE run_id = ?
+		 ORDER BY sequence`,
+	);
+	const logStmt = db.prepare(
+		`SELECT e.path, e.body, e.attributes, e.scheme,
+		        rv.state, rv.outcome, rv.visibility, rv.turn
+		 FROM entries e
+		 JOIN run_views rv ON rv.entry_id = e.id
+		 WHERE rv.run_id = ?
+		   AND e.path LIKE 'log://turn_%'
+		 ORDER BY e.id`,
+	);
+	const promptStmt = db.prepare(
+		`SELECT e.body
+		 FROM entries e
+		 JOIN run_views rv ON rv.entry_id = e.id
+		 WHERE rv.run_id = ? AND e.path = 'prompt://1'
+		 LIMIT 1`,
+	);
 
-	const turns = db
-		.prepare(
-			`SELECT sequence, total_tokens, prompt_tokens, completion_tokens,
-			        cached_tokens, reasoning_tokens, reasoning_content
-			 FROM turns
-			 WHERE run_id = ?
-			 ORDER BY sequence`,
-		)
-		.all(runId);
-
-	// All log entries (model emissions are recorded as log://turn_N/<action>/<slug>).
-	// Plus the run-state entries (unknown://, known://, file paths).
-	const logEntries = db
-		.prepare(
-			`SELECT e.path, e.body, e.attributes, e.scheme,
-			        rv.state, rv.outcome, rv.visibility, rv.turn
-			 FROM entries e
-			 JOIN run_views rv ON rv.entry_id = e.id
-			 WHERE rv.run_id = ?
-			   AND e.path LIKE 'log://turn_%'
-			 ORDER BY e.id`,
-		)
-		.all(runId);
-
-	const promptEntry = db
-		.prepare(
-			`SELECT e.body
-			 FROM entries e
-			 JOIN run_views rv ON rv.entry_id = e.id
-			 WHERE rv.run_id = ? AND e.path = 'prompt://1'
-			 LIMIT 1`,
-		)
-		.get(runId);
+	const perRun = runs.map((run) => ({
+		run,
+		turns: turnsStmt.all(run.id),
+		logEntries: logStmt.all(run.id),
+		prompt: promptStmt.get(run.id)?.body ?? null,
+	}));
 
 	db.close();
-
-	return { run, turns, logEntries, prompt: promptEntry?.body ?? null };
+	return perRun;
 }
 
 // Build per-turn rows: one entry per turn with its update + emissions + errors.
@@ -264,7 +263,8 @@ function classifyMarkers(reward, runSummary, turnRows) {
 	const markers = [];
 	const status = runSummary?.status ?? null;
 	if (reward === 1) markers.push("passed");
-	if (reward === 0 && status === 200) markers.push("claim_success_verifier_fail");
+	if (reward === 0 && status === 200)
+		markers.push("claim_success_verifier_fail");
 	if (status === 499 && turnRows.length >= MAX_LOOP_TURNS - 1) {
 		markers.push("max_loop_turns");
 	}
@@ -323,13 +323,21 @@ function renderError(err) {
 	return `  ✗ error: ${summarize(err.body, 100)}`;
 }
 
-function renderWaterfall(taskName, prompt, runSummary, reward, turnRows, markers) {
+function renderWaterfall(
+	taskName,
+	prompt,
+	runSummary,
+	reward,
+	turnRows,
+	markers,
+) {
 	const lines = [];
 	lines.push(`# ${taskName}`);
 	lines.push("");
 	const status = runSummary?.status ?? "?";
 	const totalTurns = runSummary?.turns ?? turnRows.length;
-	const cost = runSummary?.cost != null ? `$${runSummary.cost.toFixed(4)}` : "?";
+	const cost =
+		runSummary?.cost != null ? `$${runSummary.cost.toFixed(4)}` : "?";
 	const tokens = runSummary?.tokens
 		? `prompt=${runSummary.tokens.prompt} completion=${runSummary.tokens.completion} cached=${runSummary.tokens.cached}`
 		: "?";
@@ -426,61 +434,104 @@ function digestJson({
 	};
 }
 
+// Synthesize a run-summary from the DB for runs that lack the harbor-side
+// rummy.txt `__RUMMY_RUN_SUMMARY__` line (e2e tests, primarily). Token
+// counts come from the turns table; status from the runs table.
+function synthSummary(run, turnsRows) {
+	let prompt = 0;
+	let completion = 0;
+	let cached = 0;
+	let reasoning = 0;
+	for (const t of turnsRows) {
+		prompt += t.prompt_tokens || 0;
+		completion += t.completion_tokens || 0;
+		cached += t.cached_tokens || 0;
+		reasoning += t.reasoning_tokens || 0;
+	}
+	return {
+		status: run.status ?? null,
+		turns: turnsRows.length,
+		tokens: { prompt, completion, cached, reasoning },
+		cost: 0,
+		wallSeconds: null,
+	};
+}
+
 function processTask(taskDir) {
-	const taskName = taskDir.split("/").pop().replace(/__[A-Za-z0-9]+$/, "");
+	const taskName = taskDir
+		.split("/")
+		.pop()
+		.replace(/__[A-Za-z0-9]+$/, "");
 	const rummyDb = join(taskDir, "agent", "rummy.db");
 	if (!existsSync(rummyDb)) {
 		closeSync(openSync(join(taskDir, "digest_skipped"), "w"));
-		return {
-			task: taskName,
-			dir: taskDir,
-			reward: readReward(taskDir),
-			status: null,
-			turns: 0,
-			tokens: null,
-			cost: null,
-			wallSeconds: null,
-			markers: ["exfil_fail"],
-			prompt: null,
-			turnRows: [],
-		};
+		return [
+			{
+				task: taskName,
+				dir: taskDir,
+				reward: readReward(taskDir),
+				status: null,
+				turns: 0,
+				tokens: null,
+				cost: null,
+				wallSeconds: null,
+				markers: ["exfil_fail"],
+				prompt: null,
+				turnRows: [],
+			},
+		];
 	}
 
 	const reward = readReward(taskDir);
-	const runSummary = readRunSummary(taskDir);
-	const { turns, logEntries, prompt } = readDb(rummyDb);
-	const turnRows = buildTurns(turns, logEntries);
-	const markers = classifyMarkers(reward, runSummary, turnRows);
+	const harborSummary = readRunSummary(taskDir);
+	const perRun = readDb(rummyDb);
 
-	const waterfall = renderWaterfall(
-		taskName,
-		prompt,
-		runSummary,
-		reward,
-		turnRows,
-		markers,
-	);
-	writeFileSync(join(taskDir, "digest.md"), `${waterfall}\n`);
+	// Tbench DBs hold one run per task container; e2e TestDb DBs hold many
+	// (one per `it()` block). Single-run task dirs keep the legacy layout
+	// (digest.md alongside agent/); multi-run task dirs nest per-run output
+	// at <task>/<alias>/.
+	const multiRun = perRun.length > 1;
+	const out = [];
+	for (const { run, turns, logEntries, prompt } of perRun) {
+		const turnRows = buildTurns(turns, logEntries);
+		const runSummary =
+			!multiRun && harborSummary ? harborSummary : synthSummary(run, turns);
+		const markers = classifyMarkers(reward, runSummary, turnRows);
+		const runName = multiRun ? `${taskName}/${run.alias}` : taskName;
+		const outDir = multiRun ? join(taskDir, run.alias) : taskDir;
+		mkdirSync(outDir, { recursive: true });
 
-	const reasoning = renderReasoning(taskName, turnRows);
-	writeFileSync(join(taskDir, "reasoning.md"), `${reasoning}\n`);
-
-	const digest = digestJson({
-		taskName,
-		taskDir,
-		prompt,
-		runSummary,
-		reward,
-		turnRows,
-		markers,
-	});
-	writeFileSync(
-		join(taskDir, "digest.json"),
-		`${JSON.stringify(digest, null, 2)}\n`,
-	);
-
-	return digest;
+		const waterfall = renderWaterfall(
+			runName,
+			prompt,
+			runSummary,
+			reward,
+			turnRows,
+			markers,
+		);
+		writeFileSync(join(outDir, "digest.md"), `${waterfall}\n`);
+		writeFileSync(
+			join(outDir, "reasoning.md"),
+			`${renderReasoning(runName, turnRows)}\n`,
+		);
+		const digest = digestJson({
+			taskName: runName,
+			taskDir: outDir,
+			prompt,
+			runSummary,
+			reward,
+			turnRows,
+			markers,
+		});
+		writeFileSync(
+			join(outDir, "digest.json"),
+			`${JSON.stringify(digest, null, 2)}\n`,
+		);
+		out.push(digest);
+	}
+	return out;
 }
+
 
 function csvEscape(s) {
 	if (s == null) return "";
@@ -559,7 +610,10 @@ if (isTaskDir(entry)) {
 		} catch (err) {
 			console.error(`! ${relative(entry, td)}: ${err.message}`);
 			digests.push({
-				task: td.split("/").pop().replace(/__[A-Za-z0-9]+$/, ""),
+				task: td
+					.split("/")
+					.pop()
+					.replace(/__[A-Za-z0-9]+$/, ""),
 				dir: td,
 				reward: null,
 				status: null,

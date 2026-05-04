@@ -22,61 +22,44 @@ describe("Update", () => {
 	});
 });
 
-describe("Update.handler: validateNavigation rejection surfaces as <error>", () => {
-	// When validateNavigation rejects (shields 1/2 etc.), update.js must
-	// (a) record a failed entry on the result path so getCurrentPhase
-	// can recognize it as failed, AND (b) emit error.log so the rejection
-	// renders as an <error> block in the next turn's user packet —
-	// alone, the failed-update line is too low-prominence for the model
-	// to course-correct on. This mirrors policy.js shield 3.
-	function makeRummy(reason) {
+describe("Update.handler: validateNavigation rejection surfaces as <error> only", () => {
+	// Per SPEC.md @fvsm_state_machine: a rejected advance does NOT
+	// produce a phase-history entry. The only side effect on rejection
+	// is an error.log emission (status 403). getCurrentPhase reads
+	// only successful advances; recording a failed row would either
+	// lie about advancement or require a special-case skip downstream.
+
+	it("emits error.log with the rejection reason and status 403; writes no phase-history entry", async () => {
+		const plugin = new Update(NOOP_CORE);
 		const setCalls = [];
 		const errorEmits = [];
-		return {
-			rummy: {
-				runId: 7,
-				sequence: 3,
-				loopId: 11,
-				entries: {
-					set: async (payload) => {
-						setCalls.push(payload);
-					},
+		const rummy = {
+			runId: 7,
+			sequence: 3,
+			loopId: 11,
+			entries: {
+				set: async (payload) => setCalls.push(payload),
+			},
+			hooks: {
+				instructions: {
+					validateNavigation: async () => ({
+						ok: false,
+						reason: "YOU MUST identify unknowns in current mode",
+					}),
 				},
-				hooks: {
-					instructions: {
-						validateNavigation: async () => ({ ok: false, reason }),
-					},
-					error: {
-						log: {
-							emit: async (payload) => {
-								errorEmits.push(payload);
-							},
-						},
-					},
-				},
-				update: async () => {
-					throw new Error("update.update should not run on rejection");
+				error: {
+					log: { emit: async (payload) => errorEmits.push(payload) },
 				},
 			},
-			setCalls,
-			errorEmits,
+			update: async () => {
+				throw new Error("update.update should not run on rejection");
+			},
 		};
-	}
-
-	it("emits error.log with the rejection reason and status 403", async () => {
-		const plugin = new Update(NOOP_CORE);
-		const { rummy, errorEmits } = makeRummy(
-			"YOU MUST identify unknowns in current mode",
-		);
 		const entry = {
 			scheme: "update",
 			attributes: { status: 145 },
 			body: "prompt decomposed",
 			resultPath: "log://turn_3/update/stub",
-		};
-		// Provide store/turn/runId/loopId via the rummy's surface (handler uses them).
-		rummy.entries = {
-			set: async () => {},
 		};
 		await plugin.handler(entry, rummy);
 		assert.equal(errorEmits.length, 1, "exactly one error.log emission");
@@ -88,9 +71,12 @@ describe("Update.handler: validateNavigation rejection surfaces as <error>", () 
 		assert.equal(errorEmits[0].runId, 7);
 		assert.equal(errorEmits[0].turn, 3);
 		assert.equal(errorEmits[0].loopId, 11);
+		assert.equal(setCalls.length, 0, "no phase-history entry written");
+		assert.equal(entry.state, "failed");
+		assert.equal(entry.outcome, "invalid_navigation");
 	});
 
-	it("records the failed entry with state='failed' and outcome='invalid_navigation'", async () => {
+	it("invalid status (e.g. 999): emits error.log with status 422; writes no phase-history entry", async () => {
 		const plugin = new Update(NOOP_CORE);
 		const setCalls = [];
 		const errorEmits = [];
@@ -99,40 +85,33 @@ describe("Update.handler: validateNavigation rejection surfaces as <error>", () 
 			sequence: 3,
 			loopId: 11,
 			entries: {
-				set: async (payload) => {
-					setCalls.push(payload);
-				},
+				set: async (payload) => setCalls.push(payload),
 			},
 			hooks: {
 				instructions: {
-					validateNavigation: async () => ({
-						ok: false,
-						reason: "YOU MUST identify knowns in current mode",
-					}),
+					validateNavigation: async () => ({ ok: true }),
 				},
 				error: {
-					log: {
-						emit: async (payload) => errorEmits.push(payload),
-					},
+					log: { emit: async (payload) => errorEmits.push(payload) },
 				},
 			},
 		};
 		const entry = {
 			scheme: "update",
-			attributes: { status: 156 },
-			body: "all known",
+			attributes: { status: 999 },
+			body: "garbage",
 			resultPath: "log://turn_3/update/stub",
 		};
 		await plugin.handler(entry, rummy);
-		assert.equal(setCalls.length, 1, "exactly one entry recorded");
-		assert.equal(setCalls[0].state, "failed");
-		assert.equal(setCalls[0].outcome, "invalid_navigation");
-		assert.equal(setCalls[0].attributes.status, 156);
+		assert.equal(errorEmits.length, 1);
+		assert.equal(errorEmits[0].message, "Invalid status");
+		assert.equal(errorEmits[0].status, 422);
+		assert.equal(setCalls.length, 0, "no phase-history entry written");
 		assert.equal(entry.state, "failed");
-		assert.equal(entry.outcome, "invalid_navigation");
+		assert.equal(entry.outcome, "invalid_status");
 	});
 
-	it("on success: validateNavigation passes → update.update runs, no error emitted", async () => {
+	it("on success: validateNavigation passes → rummy.update runs, no error emitted", async () => {
 		const plugin = new Update(NOOP_CORE);
 		const errorEmits = [];
 		let updateCalled = false;

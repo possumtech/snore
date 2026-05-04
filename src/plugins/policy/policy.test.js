@@ -170,101 +170,6 @@ describe("Policy plugin: enforceAskMode filter", () => {
 	});
 });
 
-describe("Policy plugin: enforceDecompositionMode filter (FVSM phase 4 shield)", () => {
-	// Shield 0: Decomposition is the entry phase. Only unknown:// writes,
-	// the <unknown> tag, <think>, and <update> are permitted. Investigation
-	// (<get>, <env>, <search>, <sh>) and known:// writes belong to
-	// Distillation. Without this gate, a model can search-first then
-	// pivot to "the answer is X" without ever decomposing.
-
-	for (const allowedScheme of ["unknown", "update", "think"]) {
-		it(`phase 4: <${allowedScheme}> passes`, async () => {
-			const filter = newFilter({ phase: 4 });
-			const e = entry(allowedScheme);
-			const result = await filter(e, { mode: "act" });
-			assert.strictEqual(result, e);
-		});
-	}
-
-	it("phase 4: <set path='unknown://...'> passes", async () => {
-		const filter = newFilter({ phase: 4 });
-		const e = entry("set", { path: "unknown://x" }, "what is x?");
-		const result = await filter(e, { mode: "act" });
-		assert.strictEqual(result, e);
-	});
-
-	for (const blockedScheme of [
-		"get",
-		"env",
-		"search",
-		"sh",
-		"rm",
-		"mv",
-		"cp",
-	]) {
-		it(`phase 4: <${blockedScheme}> is rejected with error.log emission`, async () => {
-			const errorEmits = [];
-			const filter = newFilter({ phase: 4, errorEmits });
-			const result = await filter(entry(blockedScheme, { path: "anything" }), {
-				mode: "act",
-				store: {},
-				runId: 1,
-				turn: 5,
-				loopId: 1,
-			});
-			assert.equal(result.state, "failed");
-			assert.equal(result.outcome, "permission");
-			assert.equal(
-				result.body,
-				"YOU MUST ONLY define unknowns in current mode",
-			);
-			assert.equal(errorEmits.length, 1);
-			assert.equal(
-				errorEmits[0].message,
-				"YOU MUST ONLY define unknowns in current mode",
-			);
-			assert.equal(errorEmits[0].status, 403);
-		});
-	}
-
-	it("phase 4: <set path='known://...'> is rejected (knowns belong to Distillation)", async () => {
-		const errorEmits = [];
-		const filter = newFilter({ phase: 4, errorEmits });
-		const result = await filter(
-			entry("set", { path: "known://x" }, "factual content"),
-			{ mode: "act", store: {}, runId: 1, turn: 5, loopId: 1 },
-		);
-		assert.equal(result.state, "failed");
-		assert.equal(result.body, "YOU MUST ONLY define unknowns in current mode");
-		assert.equal(errorEmits.length, 1);
-	});
-
-	it("phase 4: <set path='src/foo.js'> file write is rejected", async () => {
-		const errorEmits = [];
-		const filter = newFilter({ phase: 4, errorEmits });
-		const result = await filter(entry("set", { path: "src/foo.js" }, "code"), {
-			mode: "act",
-			store: {},
-			runId: 1,
-			turn: 5,
-			loopId: 1,
-		});
-		assert.equal(result.state, "failed");
-		// Shield 0 fires before shield 3 (delivery): message is the
-		// Decomposition message, not the delivery message.
-		assert.equal(result.body, "YOU MUST ONLY define unknowns in current mode");
-	});
-
-	for (const passPhase of [5, 6, 7]) {
-		it(`phase ${passPhase}: <get> passes (shield 0 only fires in phase 4)`, async () => {
-			const filter = newFilter({ phase: passPhase });
-			const e = entry("get", { path: "anything" });
-			const result = await filter(e, { mode: "act" });
-			assert.strictEqual(result, e);
-		});
-	}
-});
-
 describe("Policy plugin: enforceDeliveryMode filter (FVSM phase shield)", () => {
 	it("Delivery phase (7): file modification passes", async () => {
 		const filter = newFilter({ phase: 7 });
@@ -273,22 +178,7 @@ describe("Policy plugin: enforceDeliveryMode filter (FVSM phase shield)", () => 
 		assert.strictEqual(result, e);
 	});
 
-	// Phase 4 cases: Shield 0 (Decomposition) is narrower than Shield 3
-	// (Delivery) — it fires first and rejects with the narrower message.
-	// Knowns and file-visibility ops, fine in 5/6, are rejected in 4.
-	it("phase 4: file edit fails via Shield 0 with the Decomposition message", async () => {
-		const errorEmits = [];
-		const filter = newFilter({ phase: 4, errorEmits });
-		const result = await filter(
-			entry("set", { path: "OC_RIVERS.md" }, "report content"),
-			{ mode: "act", store: {}, runId: 1, turn: 5, loopId: 1 },
-		);
-		assert.equal(result.state, "failed");
-		assert.equal(result.outcome, "permission");
-		assert.equal(result.body, "YOU MUST ONLY define unknowns in current mode");
-	});
-
-	for (const phase of [5, 6]) {
+	for (const phase of [4, 5, 6]) {
 		it(`phase ${phase}: file edit fails with "YOU MUST NOT deliver file modifications in the current mode" AND emits error.log so the rejection surfaces as <error>`, async () => {
 			const errorEmits = [];
 			const filter = newFilter({ phase, errorEmits });

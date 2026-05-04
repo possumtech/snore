@@ -1,4 +1,5 @@
-# FVSM Mode: **Distillation** → YOU MUST ONLY identify and discover relevant source entries, then distill them into topical, taxonomized, tagged, and linked known:// entries that are relevant to unknown:// questions.
+# FVSM Mode: **Distillation** → YOU MUST ONLY identify and discover relevant source entries, then distill them into topical, taxonomized, tagged, and linked known:// entries.
+
 YOU MUST ONLY populate known entries with `visible` information, NOT from your own training data or opinion.
 YOU MUST link all related source entries, prompts, and unknowns in the `# Related` list of every known.
 
@@ -13,7 +14,7 @@ Example:
 	
 	<set path="trivia/capitals.csv" visibility="visible"/>
 	
-	<set path="known://countries/france/capital" summary="countries,france,capital,geography,trivia">
+	<set path="known://trivia/geography/capitals" summary="countries,france,capital,geography,trivia">
 		# Related
 		[trivia question](prompt://3)
 		[unknown resolving](unknown://countries/france/capital)
@@ -33,5 +34,5 @@ Example:
 	<update status="155">discovering the capital of France</update>
 
 ## Mode Progression (CHOOSE ONLY ONE):
-* Continuation: <update status="155">discovering and distilling more unknown entries into topical known entries</update>
+* Continuation: <update status="155">discovering and distilling more unknowns into topical known entries</update>
 * Completion: <update status="156">all unknown entries resolved or rejected</update>

@@ -380,6 +380,93 @@ are enforced by `trg_run_state_transition` (see initial migration):
 All terminal states (200/500/499) allow transition back to running.
 Runs are long-lived.
 
+### FVSM State Machine {#fvsm_state_machine}
+
+The Folksonomic Visibility State Machine governs how a single loop
+walks from a fresh prompt to a delivered answer. There are four
+modes; advancement between them is gated by simple existence/absence
+checks against the run's current entries. The model emits a 1XY
+status to claim advancement; the engine validates the claim against
+the gate; if the gate fails the engine rejects and the prior mode
+stands.
+
+**The contract is exactly four rules. Nothing else.**
+
+| Status | Transition | Advance gate | Rejection message |
+|---|---|---|---|
+| 145 | Decomposition (4) → Distillation (5) | `unknown://**` count ≥ 1 | YOU MUST identify unknowns in current mode |
+| 156 | Distillation (5) → Demotion (6) | `known://**` count ≥ 1 | YOU MUST identify knowns in current mode |
+| 167 | Demotion (6) → Delivery (7) | `unknown://**` with visibility=`visible` count = 0 | YOU MUST demote all unknowns before Delivery |
+| —   | (any phase) | file modifications (bare-path `<set body>`, `<rm>`, `<mv>`, `<cp>` to bare-path) require phase = 7 | YOU MUST NOT deliver file modifications in the current mode |
+
+The 1XY routing rule: the last digit of any non-200 status is the
+next mode the model is requesting. `200` is terminal; valid only
+when phase = 7.
+
+**Status routing.** `145` requests advance from phase 4 to phase 5
+(`X=4` is current, `Y=5` is next). `155` is a continuation update
+within Distillation — the model says "still distilling, more to do"
+without claiming completion. Only the completion statuses (`145`,
+`156`, `167`, `200`) are advance attempts and pass through the
+gates above. Continuation statuses (`155`, `144`, `166`, `177`)
+do not.
+
+**What the gates check, and what they do not.**
+
+The gates check *current run state* — not historical sums, not the
+model's claim body. A 156 with body "all unknowns resolved" is
+accepted iff at least one `known://` exists; the truthfulness of
+the claim is the model's responsibility. The Demotion gate is the
+contract's correctness check on this — if the model lied about
+resolving unknowns at 156, the surviving unknowns block 167 and
+force the model to either mark them RESOLVED/REJECTED or actually
+resolve them.
+
+**On rejection.** A failed advance produces an `<error>` block
+visible to the model on the next turn (via `error.log.emit`,
+status 403). The model's emitted update is NOT recorded as a
+phase-history entry — the prior phase's most recent successful
+update is what `getCurrentPhase` returns. The model is free to try
+again next turn with a corrected emission.
+
+**What is explicitly not in the state machine.**
+
+- Per-mode action allow-lists. There is no code-level enforcement
+  that "Decomposition only permits `<set unknown://>` and
+  `<update>`." If a model emits a `<search>` in Decomposition,
+  the search runs; the model still cannot leave Decomposition
+  without producing an unknown. Mode-appropriate behavior is
+  taught by `instructions_10N.md` prose, not enforced by shields.
+- Mode-body validity. A 177 update with body "searching for X" is
+  a mode-status mismatch but is not rejected — the model is
+  expected to learn from the rendered context that it's in Delivery.
+- Run-cumulative artifact counts. The gates check current-state
+  views (`run_views`); they don't sum across turns or factor in
+  archived entries.
+- Strike-streak / cycle / stagnation detection. These live in
+  `src/plugins/error/error.js` as a separate runaway-detection
+  concern; they share no state with the FVSM gates.
+
+**Code surface.**
+
+- `src/plugins/instructions/instructions.js` —
+  `validateNavigation(status, rummy)` is the single gate
+  enforcer. `getCurrentPhase(rummy)` returns the latest
+  successful (state ≠ failed, attrs.rejected ≠ true) update's
+  phase from the run's update history.
+- `src/plugins/policy/policy.js` —
+  `#enforceDeliveryMode` is the file-modification gate (the
+  fourth rule). The ask-mode filter (`#enforceAskMode`) is
+  orthogonal capability gating, separate from FVSM.
+- `src/plugins/update/update.js` — calls
+  `validateNavigation` and emits `error.log` on rejection. Does
+  NOT write a phase-history entry on rejection.
+
+**Test anchoring.** Every test that asserts FVSM behavior
+references `@fvsm_state_machine`. See `test/integration/` for
+the gate tests; see `src/plugins/instructions/instructions.test.js`
+for the unit tests.
+
 ### Loops Table {#loops_table}
 
 The loops table IS the prompt queue. Each `ask`/`act` creates a loop.

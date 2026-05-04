@@ -157,25 +157,23 @@ describe("instructions phase transition contract", () => {
 	});
 });
 
-describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
+describe("validateNavigation: FVSM advance gates (@fvsm_state_machine)", () => {
+	// SPEC.md @fvsm_state_machine — the four-rule contract.
 	function makeRummy({
 		unknowns = 0,
+		visibleUnknowns = 0,
 		knowns = 0,
 		currentStatus = null,
-		updateRows: customUpdateRows = null,
 	}) {
-		const updateRows =
-			customUpdateRows != null
-				? customUpdateRows
-				: currentStatus
-					? [
-							{
-								path: "log://turn_1/update/stub",
-								state: "resolved",
-								attributes: { status: currentStatus },
-							},
-						]
-					: [];
+		const updateRows = currentStatus
+			? [
+					{
+						path: "log://turn_1/update/stub",
+						state: "resolved",
+						attributes: { status: currentStatus },
+					},
+				]
+			: [];
 		return {
 			runId: 1,
 			sequence: 2,
@@ -184,6 +182,7 @@ describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
 					if (pattern === "unknown://**")
 						return Array.from({ length: unknowns }, (_, i) => ({
 							path: `unknown://x${i}`,
+							visibility: i < visibleUnknowns ? "visible" : "summarized",
 						}));
 					if (pattern === "known://**")
 						return Array.from({ length: knowns }, (_, i) => ({
@@ -197,7 +196,7 @@ describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
 		};
 	}
 
-	it("shield 1: claiming 145 with zero unknowns is rejected", async () => {
+	it("145 (Decomposition → Distillation): rejected with zero unknowns", async () => {
 		const hooks = makeHooks();
 		const result = await hooks.instructions.validateNavigation(
 			145,
@@ -207,7 +206,7 @@ describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
 		assert.equal(result.reason, "YOU MUST identify unknowns in current mode");
 	});
 
-	it("shield 1: claiming 145 with at least one unknown passes", async () => {
+	it("145: passes with ≥1 unknown", async () => {
 		const hooks = makeHooks();
 		const result = await hooks.instructions.validateNavigation(
 			145,
@@ -216,7 +215,7 @@ describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
 		assert.equal(result.ok, true);
 	});
 
-	it("shield 2: claiming 156 with zero knowns is rejected", async () => {
+	it("156 (Distillation → Demotion): rejected with zero knowns", async () => {
 		const hooks = makeHooks();
 		const result = await hooks.instructions.validateNavigation(
 			156,
@@ -226,21 +225,83 @@ describe("validateNavigation: artifact gates (shields 1 + 2)", () => {
 		assert.equal(result.reason, "YOU MUST identify knowns in current mode");
 	});
 
-	it("shield 2: claiming 156 with at least one known passes", async () => {
+	it("156: passes with ≥1 known (regardless of unknowns; Demotion will police them)", async () => {
 		const hooks = makeHooks();
 		const result = await hooks.instructions.validateNavigation(
 			156,
-			makeRummy({ knowns: 1, currentStatus: 145 }),
+			makeRummy({
+				unknowns: 3,
+				visibleUnknowns: 3,
+				knowns: 1,
+				currentStatus: 145,
+			}),
 		);
 		assert.equal(result.ok, true);
 	});
+
+	it("167 (Demotion → Delivery): rejected when any unknown remains visible", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			167,
+			makeRummy({
+				unknowns: 3,
+				visibleUnknowns: 1,
+				knowns: 2,
+				currentStatus: 156,
+			}),
+		);
+		assert.equal(result.ok, false);
+		assert.equal(result.reason, "YOU MUST demote all unknowns before Delivery");
+	});
+
+	it("167: passes when no unknown is visible (all summarized/archived)", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			167,
+			makeRummy({
+				unknowns: 3,
+				visibleUnknowns: 0,
+				knowns: 2,
+				currentStatus: 156,
+			}),
+		);
+		assert.equal(result.ok, true);
+	});
+
+	it("167: passes when no unknowns exist at all", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			167,
+			makeRummy({ unknowns: 0, knowns: 2, currentStatus: 156 }),
+		);
+		assert.equal(result.ok, true);
+	});
+
+	it("200 (Delivery completion): rejected when phase ≠ 7", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			200,
+			makeRummy({ knowns: 1, currentStatus: 145 }),
+		);
+		assert.equal(result.ok, false);
+	});
+
+	it("Illegal jump (e.g. 167 from phase 4) is rejected", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			167,
+			makeRummy({}),
+		);
+		assert.equal(result.ok, false);
+		assert.equal(result.reason, "Illegal navigation attempt");
+	});
 });
 
-describe("getCurrentPhase: failed updates do not advance phase", () => {
-	// The disaster's root cause: a failed update (rejected by validateNavigation)
-	// was still picked up by getCurrentPhase as the latest status, so the next
-	// turn rendered the next-phase instructions even though the gate denied
-	// the transition. Filter on state="failed" to make rejection actually stick.
+describe("getCurrentPhase: reads only successful advances", () => {
+	// Per SPEC.md @fvsm_state_machine, rejected advance attempts are
+	// not written as phase-history entries (update.js emits error.log
+	// only). getCurrentPhase therefore needs no failed-state filter —
+	// every row in `log://*/update/**` is a successful advance.
 	function makeRummyWithUpdates(updateRows) {
 		return {
 			runId: 1,
@@ -254,21 +315,7 @@ describe("getCurrentPhase: failed updates do not advance phase", () => {
 		};
 	}
 
-	it("a single failed 145 update does not advance phase past 4", async () => {
-		const hooks = makeHooks();
-		const phase = await hooks.instructions.getCurrentPhase(
-			makeRummyWithUpdates([
-				{
-					path: "log://turn_1/update/stub",
-					state: "failed",
-					attributes: { status: 145 },
-				},
-			]),
-		);
-		assert.equal(phase, 4, "failed 145 must leave phase at Decomposition");
-	});
-
-	it("resolved 145 advances; subsequent failed 156 does not advance further", async () => {
+	it("returns the phase of the most recent successful advance", async () => {
 		const hooks = makeHooks();
 		const phase = await hooks.instructions.getCurrentPhase(
 			makeRummyWithUpdates([
@@ -279,46 +326,19 @@ describe("getCurrentPhase: failed updates do not advance phase", () => {
 				},
 				{
 					path: "log://turn_2/update/stub",
-					state: "failed",
+					state: "resolved",
 					attributes: { status: 156 },
 				},
 			]),
 		);
-		assert.equal(phase, 5, "phase stays at Distillation; failed 156 ignored");
+		assert.equal(phase, 6);
 	});
 
-	it("string-encoded attributes still honor failed state", async () => {
+	it("returns Decomposition (4) when no advances have happened", async () => {
 		const hooks = makeHooks();
 		const phase = await hooks.instructions.getCurrentPhase(
-			makeRummyWithUpdates([
-				{
-					path: "log://turn_1/update/stub",
-					state: "failed",
-					attributes: JSON.stringify({ status: 145 }),
-				},
-			]),
+			makeRummyWithUpdates([]),
 		);
 		assert.equal(phase, 4);
-	});
-});
-
-describe("instructions assembly: failed updates do not select instructions block", () => {
-	// Mirror of the getCurrentPhase regression at the assembly layer:
-	// latestUpdateStatusFromRows is what picks the <instructions> block
-	// rendered to the model each turn. A failed update there would render
-	// the next-phase instructions despite the gate rejection — exactly the
-	// disaster's failure mode.
-	it("renders Decomposition instructions when only update is a failed 145", async () => {
-		const out = await renderFor([
-			{
-				path: "log://turn_1/update/stub",
-				state: "failed",
-				attributes: JSON.stringify({ status: 145 }),
-			},
-		]);
-		assert.ok(
-			out.includes(phaseFirstLine(4)),
-			"failed 145 must keep Decomposition instructions in place",
-		);
 	});
 });

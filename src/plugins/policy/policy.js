@@ -5,13 +5,6 @@ export default class Policy {
 
 	constructor(core) {
 		this.#core = core;
-		// Decomposition is narrowest — runs first so its message wins when
-		// multiple shields would reject the same emission.
-		core.filter(
-			"entry.recording",
-			this.#enforceDecompositionMode.bind(this),
-			0,
-		);
 		core.filter("entry.recording", this.#enforceAskMode.bind(this), 1);
 		core.filter("entry.recording", this.#enforceDeliveryMode.bind(this), 2);
 	}
@@ -73,52 +66,13 @@ export default class Policy {
 		return entry;
 	}
 
-	// File modification (set body to file path, rm/mv/cp on file path) is
-	// disabled by default and enabled only in Delivery mode (FVSM phase 7).
-	// Schema entries (unknown://, known://, log://, …) are always allowed.
-	// Rejection surfaces as an <error> block (via error.log.emit) so the
-	// reason reaches the model's context regardless of how the failed
-	// operation entry itself renders.
-	// Decomposition (FVSM phase 4) is the entry phase: the model surveys
-	// the prompt and registers its unknowns, nothing else. Investigation
-	// (<get>, <env>, <search>, <sh>) and known:// writes belong to
-	// Distillation. Without this gate, a model can search-first then
-	// pivot to "the answer is X" without ever decomposing — the
-	// "discipline collapse" mode the FVSM exists to prevent.
-	async #enforceDecompositionMode(entry, ctx) {
-		const phase = await this.#core.hooks.instructions.getCurrentPhase({
-			entries: ctx.store,
-			runId: ctx.runId,
-			sequence: ctx.turn,
-		});
-		if (phase !== 4) return entry;
-		if (this.#isDecompositionPermitted(entry)) return entry;
-		const message = "YOU MUST ONLY define unknowns in current mode";
-		await this.#core.hooks.error.log.emit({
-			store: ctx.store,
-			runId: ctx.runId,
-			turn: ctx.turn,
-			loopId: ctx.loopId,
-			message,
-			status: 403,
-		});
-		return this.#fail(entry, message);
-	}
-
-	#isDecompositionPermitted(entry) {
-		if (entry.scheme === "unknown") return true;
-		if (entry.scheme === "update") return true;
-		if (entry.scheme === "think") return true;
-		if (
-			entry.scheme === "set" &&
-			typeof entry.attributes?.path === "string" &&
-			entry.attributes.path.startsWith("unknown://")
-		) {
-			return true;
-		}
-		return false;
-	}
-
+	// File modification (bare-path `<set body>`, `<rm>`, `<mv>`, `<cp>`
+	// to bare-path) is the high-blast-radius operation; only Delivery
+	// (FVSM phase 7) permits it. Schema entries (unknown://, known://,
+	// log://, …) are always allowed. Rejection surfaces as an <error>
+	// block via error.log.emit so the reason reaches the model's
+	// context regardless of how the failed operation entry renders.
+	// SPEC.md @fvsm_state_machine documents this as the fourth rule.
 	async #enforceDeliveryMode(entry, ctx) {
 		if (!this.#isFileModification(entry)) return entry;
 		const phase = await this.#core.hooks.instructions.getCurrentPhase({

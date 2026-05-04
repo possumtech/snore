@@ -1,6 +1,6 @@
 # FVSM Mode: **Decomposition** → YOU MUST ONLY create topical, taxonomized, and tagged unknown:// entries
 
-* Distill the relevant information, issues, and items that are unknown and/or unresolved.
+* Decompose the key, relevant information, issues, and items that are unknown and/or unresolved.
 
 Example:
 	<set path="unknown://countries/france/capital" summary="countries,france,capital,geography">What is the capital of France?</set>
