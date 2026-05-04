@@ -107,13 +107,24 @@ constant name → delete.
 
 ---
 
-## Sweep analysis (tbench digests)
+## Sweep analysis (tbench + e2e + integration digests)
 
-Every tbench sweep auto-emits a deterministic analysis layer at the
-end of the run (driven by `test/tbench/digest.js`, called from
-`runner.js` post-sweep). Re-runnable with
-`node test/tbench/digest.js <sweep-dir>` — read-only derivative of
-the rummy.db / rummy.txt / verifier-reward sources, idempotent.
+Both `npm run test:tbench:*` and `npm run test:e2e` auto-emit a
+deterministic analysis layer at the end of the run (driven by
+`test/tbench/digest.js`). Re-runnable with
+`node test/tbench/digest.js <dir>` — read-only derivative of the
+rummy.db / rummy.txt / verifier-reward sources, idempotent.
+
+**Where to look:**
+- `test/tbench/results/<sweep>/...` for tbench (one run per task dir)
+- `/tmp/rummy_test_diag/<suite>_<ts>/...` for e2e/integration (one
+  TestDb per suite; many runs per DB; per-run digests at
+  `<task>/<alias>/`)
+
+The digest tool detects single-run vs multi-run DBs automatically
+and emits the appropriate layout — single-run (tbench) writes
+`digest.md` directly in the task dir; multi-run (e2e) nests at
+`<task>/<alias>/`.
 
 **Per-task artifacts** (in each task dir, alongside `agent/`,
 `verifier/`):

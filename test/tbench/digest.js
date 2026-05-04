@@ -532,7 +532,6 @@ function processTask(taskDir) {
 	return out;
 }
 
-
 function csvEscape(s) {
 	if (s == null) return "";
 	const str = String(s);
@@ -595,8 +594,10 @@ if (!existsSync(entry)) {
 }
 
 if (isTaskDir(entry)) {
-	const digest = processTask(entry);
-	console.log(`wrote digest for ${digest.task}: ${digest.markers.join(", ")}`);
+	const digests = processTask(entry);
+	for (const d of digests) {
+		console.log(`wrote digest for ${d.task}: ${d.markers.join(", ")}`);
+	}
 } else {
 	const taskDirs = findTaskDirs(entry);
 	if (taskDirs.length === 0) {
@@ -606,7 +607,7 @@ if (isTaskDir(entry)) {
 	const digests = [];
 	for (const td of taskDirs) {
 		try {
-			digests.push(processTask(td));
+			digests.push(...processTask(td));
 		} catch (err) {
 			console.error(`! ${relative(entry, td)}: ${err.message}`);
 			digests.push({
@@ -629,6 +630,6 @@ if (isTaskDir(entry)) {
 	}
 	writeIndex(entry, digests);
 	console.log(
-		`wrote ${digests.length} task digests + index.csv → ${entry}/index.csv`,
+		`wrote ${digests.length} digests + index.csv → ${entry}/index.csv`,
 	);
 }
