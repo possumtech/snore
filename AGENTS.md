@@ -258,7 +258,7 @@ state machine.
      `_106.md` — these modes are where bulk ops pay off most. One
      line each: "When inspecting many entries, prefer a pattern
      (`**`, `unknown://*`) with `manifest` over per-entry gets."
-  3. Now that `<get tags="..."/>` exists, surface it in the FVSM
+  3. Now that `<get summary="..."/>` exists, surface it in the FVSM
      mode docs as the recall-by-folksonomy idiom — a worked example
      in `instructions_105.md` showing tag-based source recall.
 

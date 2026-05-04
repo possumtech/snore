@@ -19,10 +19,12 @@ export default class Get {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const tagsAttr = entry.attributes.tags;
-		// Tag-only get defaults path to "**" so the model can recall by
+		// Search-by-summary: same `summary` attribute that <set> writes
+		// onto entries. Same name on both ends — no in/out semantic split.
+		const summaryAttr = entry.attributes.summary;
+		// Summary-only get defaults path to "**" so the model can recall by
 		// folksonomic summary tags without remembering exact paths.
-		const target = entry.attributes.path || (tagsAttr ? "**" : null);
+		const target = entry.attributes.path || (summaryAttr ? "**" : null);
 		if (!target) {
 			await store.set({
 				runId,
@@ -38,8 +40,8 @@ export default class Get {
 		const normalized = Entries.normalizePath(target);
 		const bodyFilter = entry.attributes.body;
 		const manifest = entry.attributes.manifest !== undefined;
-		const wantedTags = tagsAttr
-			? tagsAttr
+		const wantedTags = summaryAttr
+			? summaryAttr
 					.split(",")
 					.map((t) => t.trim().toLowerCase())
 					.filter(Boolean)

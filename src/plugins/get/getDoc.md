@@ -9,8 +9,8 @@ Example: <get path="known://*">auth</get>
 Example: <get path="src/**/*.js" manifest>authentication</get>
 <!-- Bulk discovery: recursive glob + content filter + manifest — lists matches without promoting any. -->
 
-Example: <get tags="hydrology,karst" manifest/>
-<!-- Folksonomic recall: list entries whose summary tags include all listed terms. Optional path= scopes the search; default is **. -->
+Example: <get path="**/*.{js,ts}" summary="hydrology" manifest/>
+<!-- Folksonomic recall: list entries whose stored `summary` tags include all listed terms. Same `summary` attribute that <set> writes. Path glob (with brace expansion) scopes the search; default is **. -->
 
 
 Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>

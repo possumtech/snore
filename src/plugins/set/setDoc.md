@@ -20,8 +20,8 @@ Example:
 Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>
 <!-- Sed syntax: chained s/old/new/ patterns with semicolons. -->
 
-Example: <set path="example.md">Full file content here</set>
-<!-- Create: body contents are entire file. -->
+Example: <set path="example.md" visibility="summarized" summary="example,docs">Full file content here</set>
+<!-- Create: body is the entire file. visibility and summary are independent attributes — they don't replace the body. -->
 
 Example:
 	<set path="OPUS_NOTES.md"><<EOF

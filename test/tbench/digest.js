@@ -287,14 +287,16 @@ function classifyMarkers(reward, runSummary, turnRows) {
 		for (const err of row.errors) {
 			const body = err.body || "";
 			if (body.startsWith("Abandoned after")) strikeAbandon = true;
-			if (body.includes("YOU MUST ONLY define unknowns"))
-				shieldHits.add("shield_0");
-			else if (body.includes("YOU MUST identify unknowns"))
-				shieldHits.add("shield_1");
+			// Gate names match SPEC.md @fvsm_state_machine and AGENTS.md
+			// "Sweep analysis" marker taxonomy.
+			if (body.includes("YOU MUST identify unknowns"))
+				shieldHits.add("gate_unknowns");
 			else if (body.includes("YOU MUST identify knowns"))
-				shieldHits.add("shield_2");
+				shieldHits.add("gate_knowns");
+			else if (body.includes("YOU MUST demote all unknowns"))
+				shieldHits.add("gate_demote");
 			else if (body.includes("YOU MUST NOT deliver file modifications"))
-				shieldHits.add("shield_3");
+				shieldHits.add("gate_delivery");
 			if (body.startsWith("Unclosed") || body.includes("Tool call limit")) {
 				parserWarn = true;
 			}

@@ -346,7 +346,7 @@ describe("Get tag filter (folksonomic recall)", () => {
 	it("filters entries by all listed tags (AND semantics)", async () => {
 		const store = makeStore(tagged);
 		const entry = {
-			attributes: { tags: "hydrology,indiana" },
+			attributes: { summary: "hydrology,indiana" },
 			resultPath: "get://result",
 		};
 		await plugin.handler(entry, makeRummy(store));
@@ -369,7 +369,7 @@ describe("Get tag filter (folksonomic recall)", () => {
 	it("tag-only get defaults path to ** (no path attr required)", async () => {
 		const store = makeStore(tagged);
 		const entry = {
-			attributes: { tags: "hydrology" },
+			attributes: { summary: "hydrology" },
 			resultPath: "get://result",
 		};
 		await plugin.handler(entry, makeRummy(store));
@@ -381,7 +381,7 @@ describe("Get tag filter (folksonomic recall)", () => {
 	it("path + tags scopes the search to the path glob", async () => {
 		const store = makeStore(tagged);
 		const entry = {
-			attributes: { path: "known://hydrology/**", tags: "indiana" },
+			attributes: { path: "known://hydrology/**", summary: "indiana" },
 			resultPath: "get://result",
 		};
 		await plugin.handler(entry, makeRummy(store));
@@ -398,7 +398,7 @@ describe("Get tag filter (folksonomic recall)", () => {
 		const calls = [];
 		store.get = async (args) => calls.push(args);
 		const entry = {
-			attributes: { tags: "hydrology,indiana", manifest: "" },
+			attributes: { summary: "hydrology,indiana", manifest: "" },
 			resultPath: "get://result",
 		};
 		await plugin.handler(entry, makeRummy(store));
@@ -423,7 +423,7 @@ describe("Get tag filter (folksonomic recall)", () => {
 		// the filter must JSON.parse it before reading summary.
 		const store = makeStore([tagged[2]]);
 		const entry = {
-			attributes: { tags: "rivers,indiana" },
+			attributes: { summary: "rivers,indiana" },
 			resultPath: "get://result",
 		};
 		await plugin.handler(entry, makeRummy(store));

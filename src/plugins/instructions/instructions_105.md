@@ -5,7 +5,7 @@ YOU MUST link all related source entries, prompts, and unknowns in the `# Relate
 
 * Check tokens="N" against tokensFree="N" before promoting source entries.
 * You can use <get path="..." manifest/> to list paths and their token amounts for bulk operations without performing them.
-* You can use <get tags="..." manifest/> to recall entries by folksonomic summary tags when paths are forgotten.
+* You can use <get summary="..." manifest/> to recall entries by folksonomic summary tags when paths are forgotten.
 * You can use <get path="..." line="X" limit="Y"/> to read subsets of entries that would exceed your `tokensFree` budget.
 
 Example:
