@@ -3,7 +3,7 @@
 YOU MUST ONLY use the available XML Commands: [%TOOLS%]
 Example: <set path="projectFile.txt">new file content</set>
 
-YOU MUST ONLY perform your current **FVSM Mode** activities.
+YOU MUST ONLY perform your current **FVSM Mode** activities. YOU MUST NOT skip steps.
 YOU MUST ONLY deliver the response or result if in Delivery Mode.
 
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance

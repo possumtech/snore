@@ -3,12 +3,10 @@
 Example:
 	<set path="log://turn_3/**" manifest/>
 	
-	<set path="prompt://2" summary="All information distilled into knowns" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
 	<set path="unknown://countries/france/capital" summary="RESOLVED: Discovered known" visibility="summarized"/>
 	<set path="unknown://countries/poland/capital" summary="REJECTED: Irrelevant" visibility="summarized"/>
 	<set path="https://en.wikipedia.org/wiki/Paris,_Texas" summary="REJECTED: Wrong Paris" visibility="summarized"/>
-	<set path="log://turn_1/**" visibility="archived"/>
 	<set path="log://turn_2/**" visibility="archived"/>
 	<set path="log://turn_3/set/**" visibility="archived"/>
 	{ more entries to archive as needed }
