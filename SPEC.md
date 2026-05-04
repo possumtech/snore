@@ -692,44 +692,43 @@ plumbing for the attribute and the rummy-context payload enrichment
 on `proposal.pending`. Feature logic stays in
 `src/plugins/yolo/yolo.js`.
 
-### Repo Overview {#repo_overview}
+### Project Manifest {#project_manifest}
 
-The `rummy.repo` plugin maintains a single `repo://overview` entry per
-run, regenerated on every scan, that gives the model a navigable map
-of the project. It is the entry-point for code-aware runs — files
-themselves default to `archived` so a 5000-file repo doesn't dump
-hundreds of thousands of tokens into context before any work happens.
+The `rummy.repo` plugin writes a single `log://turn_0/repo/manifest` entry
+once per run — a flat snapshot of every project file with its token
+cost. It gives the model orientation at run start without burning
+prefix-cache on a turn-keyed regeneration. Files themselves default
+to `archived` so a 5000-file repo doesn't dump hundreds of thousands
+of tokens into context before any work happens.
 
 **Entry contract.**
 
-- Path: `repo://overview` (scheme `repo`, category `data`,
-  `model_visible: 1`)
-- Visibility: `visible` (the navigation map is always in context)
-- Body: a markdown structure containing the project root, file count,
-  root-level files, top-level directories with file counts,
-  active/readonly constraints, and a navigation legend showing the
-  promote/demote idioms.
-- Visible projection: full body.
-- Summarized projection: first ~12 lines + a truncation marker, so a
-  model can demote it once it has the layout memorized.
+- Path: `log://turn_0/repo/manifest` (log scheme; turn-0 marks "before
+  any model turn"). One entry per run, written once.
+- Visibility: `visible` at write; demotable like any log entry.
+- Body: a flat list of `* <relative-path> - <N> tokens` lines, one
+  per file, sorted by path. No headers, no directory aggregation, no
+  constraints, no navigation legend — those are the model's business
+  to derive from the list itself or from tooldocs.
+
+**Stale by design.** The manifest is a turn-0 snapshot; it does not
+update mid-run. Authoritative current state lives in the per-file
+entries (mtime/hash-driven, change-only writes). The model can
+`<get path="**" preview/>` for a fresh listing if it suspects
+staleness.
 
 **File default visibility flip.**
 
 `FileScanner` registers each tracked file at `archived` by default
 (was `summarized`). Files with `constraint=active` still register at
-`visible`. The model uses `repo://overview` to discover paths, then
+`visible`. The model uses the manifest to discover paths, then
 promotes individual files via `<get path=...>` (visible, full body)
 or whole subtrees via `<set path=".../**" visibility="summarized"/>`
 (skim mode, symbols only).
 
-**Bounded cost.** The overview body is constant-ish in size regardless
-of repo size: root files capped, directory counts aggregated, no per-
-file symbol enumeration. The token cost in context stays roughly
-flat from a 30-file project to a 50,000-file monorepo.
-
 **Disabled when noRepo.** Setting `noRepo: true` on a run skips the
-scan entirely; no `repo://overview` is created and no file entries
-are registered. Behaviour identical to pre-plugin runs.
+scan entirely; no manifest is created and no file entries are
+registered. Behaviour identical to pre-plugin runs.
 
 ### Streaming Entries {#streaming_entries}
 
