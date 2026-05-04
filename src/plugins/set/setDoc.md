@@ -3,6 +3,12 @@
 Example: <set path="known://project/milestones" visibility="summarized" summary="milestone,deadline,2026"/>
 <!-- Visibility control first — most unique capability of set. -->
 
+Example: <set path="log://turn_3/**" visibility="archived"/>
+<!-- Bulk visibility op: applies to every entry matching the glob. Pattern works on any scheme. -->
+
+Example: <set path="log://turn_[1-3]/**" visibility="archived"/>
+<!-- Character class [1-3]: archive turns 1, 2, AND 3 in one op. Useful for cleaning a recent burst of logs. -->
+
 Example: <set path="known://countries/france/*" manifest/>
 <!-- Manifest before bulk: lists matches without performing the visibility flip, edit, or write. -->
 

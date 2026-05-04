@@ -12,6 +12,14 @@ Example: <get path="src/**/*.js" manifest>authentication</get>
 Example: <get path="**/*.{js,ts}" summary="hydrology" manifest/>
 <!-- Folksonomic recall: list entries whose stored `summary` tags include all listed terms. Same `summary` attribute that <set> writes. Path glob (with brace expansion) scopes the search; default is **. -->
 
+Example: <get path="unknown://**" manifest/>
+<!-- Inventory unfinished work without promoting. Recursive scheme glob applies to any scheme: known://, log://, prompt://, etc. -->
+
+Example: <get path="src/**/!(*.test).js" manifest>auth</get>
+<!-- Negation: !(pattern) excludes matches. Combine with body filter to find "auth in source files but not tests." -->
+
+Example: <get path="prompt://1"/>
+<!-- Recall a specific prior prompt by number. Useful in multi-prompt runs to re-read what was originally asked. -->
 
 Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
 <!-- Partial read. Returns lines 644–723 without promoting. -->
