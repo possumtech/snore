@@ -1,13 +1,11 @@
-# AGENTS: Planning & Progress
+# AGENTS: Lessons, Practices, Todos
 
-> **SESSION BOOTSTRAP — READ ME FIRST.** This file is the only
-> cross-session ground truth. Before touching code: read the standing
-> rules, the "Where We Are" paragraph, and any open "Ongoing
-> Development Conversation" entries. Cross-reference SPEC.md §0 for
-> the contract and PLUGINS.md §7 for the events/filters surface.
-> **Append to "Ongoing Development Conversation" as you work** —
-> decisions made, rules restated, choices deferred. The next session's
-> coherence depends on it.
+> **SESSION BOOTSTRAP — READ ME FIRST.** Cross-session ground truth.
+> Before touching code: read the standing rules, the "Now" block, and
+> any open "Ongoing Development Conversation" entries. Cross-reference
+> SPEC.md §0 for the contract and PLUGINS.md §7 for the events/filters
+> surface. **This file is not a trophy room** — store lessons,
+> practices, and todos. Achievement narrative belongs in git history.
 
 > **Standing rules that override anything else:**
 > - **No fallbacks outside `src/plugins/hedberg/*` and `src/agent/XmlParser.js`.**
@@ -40,6 +38,13 @@
 >   memory (`~/.claude/projects/...`). Project-specific facts live
 >   here where everyone can see them and the next session can read
 >   them. Internal memory is for user-wide preferences only.
+> - **Benchmark integrity.** rummy is a general agent that happens
+>   to perform well at whatever task it's pointed at — never tuned
+>   for a specific benchmark. No benchmark-specific prompts,
+>   heuristics, or tools. Pre-flight task selection must be a
+>   representative cross-section, never cherry-picked for likely
+>   passes. Bridge adapters (e.g. `harbor`'s `rummy.py`) stay
+>   vanilla — protocol bridges, not benchmark boosters.
 
 > **Instructions discipline (when touching `src/plugins/instructions/instructions.md`
 > or any `instructions_10N.md` phase file):**
@@ -102,124 +107,11 @@ constant name → delete.
 
 ---
 
-## Where We Are
+## Now
 
-Targeting the terminal-bench 2.0 leaderboard
-(https://www.tbench.ai/leaderboard/terminal-bench/2.0). Submission
-runs through Harbor (`harbor run --dataset terminal-bench@2.0 ...`),
-adapter in `possumtech/harbor` `add-rummy-agent`. Active model:
-`xfast = xai/grok-4-1-fast-non-reasoning` (direct, with visible
-`<think>` via `RUMMY_THINK=1`).
-
-**First full discovery sweep landed 2026-05-01.**
-- Result dir: `test/tbench/results/2026-05-01T23-34-12-373Z_rummy_all/`
-- Score: **7 pass / 80 fail / 88 trials = 8.0%**
-- Cost: ~$20 (xAI direct)
-- Wall time: ~75 min at 15-way concurrency
-- Sysmon peaks: 17.5 GB host RAM, 5.3 GB swap, peak load 20.1, 2 OOM
-  events (both same container — caffe-cifar-10 chromium-renderer
-  cgroup-OOM, recoverable)
-
-Failure-mode breakdown (telemetry-finalized only, ~70 trials):
-- 60 status=200 claim-success / verifier-fail — **dominant pattern**
-- 9 status=499 (5 hit `RUMMY_MAX_LOOP_TURNS=99`, 2 strike-out, 2 misc)
-- 1 status=500 (`train-fasttext`, propagated dispatch error)
-- ~17 exfil-fail (in-flight when summary ran or drained mid-turn)
-
-Peer comparison (terminal-bench leaderboard, 2025-2026):
-- Top of board (frontier+mature harness): **75–82%** (Codex+GPT-5.5,
-  ForgeCode+Claude/GPT/Gemini, etc.)
-- Same fast-tier model class: Mini-SWE-Agent+GrokCodeFast 25.8%,
-  Terminus2+GrokCodeFast 14.2%
-- rummy is below the entry tier for our weight class.
-
-**Recent harness improvements landed in git history** driving this
-sweep: path standardization (slugifier 80-char + 2048 DB ceiling),
-`RUMMY_ENTRY_SIZE_MAX` storage cap, soft-failure outcomes,
-stagnation pressure scoped to admin phases via verdict-time check
-(NOT pre-fire — verified in 2026-05-01 e2e regression), parser
-warnings as soft (not strikes), spawn-abort exfil so mid-turn
-timeouts don't lose telemetry, LLM-fetch-timeout → 504 strike
-instead of loop-level 500, xai.js fail-fast on malformed
-`XAI_BASE_URL`, harbor adapter `XAI_BASE_URL` override for sandbox
-self-containment. Unit + integration green (887 + 244). e2e green.
-
-**Post-sweep harness fixes (2026-05-02):**
-- `rummy.web` 2.3.5: `WebFetcher.kill()` fire-and-forget
-  `browser.close()` on abort. Wires `rummy.signal` through
-  `#armAbortKill` listener in `web.js`. Collapses in-flight
-  `page.goto` in <250ms when run aborts (was: blocks until the
-  per-call 600s timeout, so drain stalled past harbor's outer
-  SIGKILL and rummy.db / turns/ / last_run.txt never exfiled).
-- Harbor adapter `_DRAIN_BUFFER_SEC: 5 → 30`. The 5s window was
-  too tight for big-state runs (13+ turns, 75k+ tokens):
-  configure-git-webserver in the original sweep had drain fire
-  but not complete in time, so even after the rummy.web fix
-  the post-mortem packet was lost. 30s matches standard
-  graceful-shutdown windows; cost is <2% of even the shortest
-  900s task budget.
-- Rescue rerun of the 8 exfil-fails against 2.3.5 in flight
-  2026-05-02. So far: hf-model-inference flipped to PASS (was
-  exfil-fail in original sweep, masked a real reward=1);
-  pypi-server flipped 1→0 (original "pass" was incidental —
-  verifier ran on partial-state container before drain, real
-  telemetry now shows fail); configure-git-webserver still
-  exfil-failed under the 5s buffer it inherited at launch
-  (will retry under 30s).
-
-## Audit Plan (Make-or-Break Discovery Review)
-
-The 8% score is below the entry tier for our model class. The 60-of-
-80 cluster in claim-success/verifier-fail is the dataset's only
-strong signal: a *concentrated* failure mode rather than uniform
-incapability suggests a specific harness-side blind spot, NOT
-generic model unfit-ness. Per
-[feedback_forensic_burden_of_proof](~/.claude/projects/-home-hyzen-repo-rummy-main/memory/feedback_forensic_burden_of_proof.md):
-default to "we let the model down" until we exhaust harness rescues.
-
-If the methodical review finds a **smoking gun** (a specific
-prompt phrase / protocol gap / tool ergonomic / context-assembly
-bug that recurs across N+ tasks and explains the cluster) — the
-project theory survives, we ship a fix in a $20 re-sweep and
-retest. If no smoking gun emerges across 88 packets, the theory
-is in real trouble.
-
-**What counts as a smoking gun (defined upfront):**
-- Specific prompt phrase causing systematic misbehavior across many tasks
-- Protocol path the model exploits (e.g. status=200 reachable
-  without confirm-step)
-- Tool ergonomics blocker (e.g. SEARCH/REPLACE shape model can't
-  reliably emit)
-- Context-assembly defect (e.g. `<set>` body invisible next turn)
-- Instruction that contradicts a worked example
-- Reproducible across multiple task types
-
-**What does NOT count** (these end inquiry instead of advancing it):
-- "Model is bad at task type X"
-- "Grok-4-fast is the wrong model"
-- "Tasks are too hard for this tier"
-
-**Audit artifacts** (all under `audit/`):
-- `audit/SWEEP_TEMPLATE.md` — per-task evaluation template, fields
-  grounded in 3-5 representative-task skim before formalization.
-- `audit/sweep/<task-name>.md` — one file per task, template
-  applied. 88 entries total. Each has a "what would have rescued
-  this run" field that forces forensic-burden-of-proof.
-- `audit/SWEEP.md` — index/dashboard pointing at per-task files,
-  with rolling failure-mode tallies.
-- `audit/SWEEPX.md` — cross-functional findings: smoking-gun
-  candidates with cross-task evidence, protocol gaps, instruction
-  drift, recurring tool ergonomics issues. Fields don't belong in
-  any one task's entry but emerge from the whole.
-
-**Scoping reality:** 88 tasks × deep template ≈ 2-3 honest sessions
-of work. Not single-session. Compactor-safe artifact paths above
-so context loss doesn't reset progress.
-
-**Next session:** sample 5 representative tasks (1 pass, 1 claim-
-success-fail, 1 MAX_LOOP_TURNS, 1 MAX_STRIKES, 1 status=500),
-draft `SWEEP_TEMPLATE.md` from observed categories, then begin
-methodical task-by-task fill of `audit/sweep/`.
+1. `lint;unit;intg` sweep, address breakage.
+2. `e2e` sweep — expected difficult.
+3. Pivot terminal-bench from grok to local gemma.
 
 ## Open Items
 
@@ -240,59 +132,31 @@ methodical task-by-task fill of `audit/sweep/`.
      mode docs as the recall-by-folksonomy idiom — a worked example
      in `instructions_105.md` showing tag-based source recall.
 
-  Defer until the shield landings + tag-search feature have a few
-  runs of dogfooding so we can see what the model still needs help
-  with vs. what it picks up naturally.
-
-
-
-- [ ] **Single-turn token overflow on `train-fasttext`.** The only
-  task across 89 that hit `xAI 400 - "This model's maximum prompt
-  length is 2000000 but the request contains 4691073 tokens."`
-  Cumulative sweep tokens were normal (~16k/turn average); turn 27
-  alone sent 4.69M against the 2M cap. Two suspected root causes,
-  exactly one of which is true:
+- [ ] **Single-turn budget escape.** A run was observed sending
+  ~2.3× the configured budget cap in a single turn. Two candidate
+  causes, exactly one true:
   1. **Token-counter divergence.** `countTokens(body) = length /
-     RUMMY_TOKEN_DIVISOR` (default 4) systematically undercounts
-     vs xAI's tokenizer for whatever content was loaded that turn
-     (likely a large `<get>` response — binary, JSON, code-heavy).
-     Budget enforcement thought it was capping at 2M; actual
-     tokenization came in at 2.3x.
-  2. **Budget-enforcement escape path.** Something gets added to
-     the assembled packet *after* `budget.enforce()` runs (system
+     RUMMY_TOKEN_DIVISOR` undercounts vs the upstream tokenizer
+     for content that's binary/JSON/code-heavy. Budget enforcement
+     thought it was capping at N; actual tokenization came in
+     above.
+  2. **Budget-enforcement escape path.** Content gets added to the
+     assembled packet *after* `budget.enforce()` runs (system
      prompt assembly, post-enforcement plugin filters,
-     `assembly.user` 175-priority inserts). Enforce caps at 2M;
+     `assembly.user` 175-priority inserts). Enforce caps at N;
      downstream insertion blows past it.
 
-  Triage path: open `audit/sweep/train-fasttext` rummy.db, replay
-  turn 27 — see what `<get>` or other source the model loaded that
-  exploded the count, then compare `countTokens` to xAI's reported
-  count for that body. Whichever diverges identifies the bug. ~1
-  hour of work, 1-line or 5-line fix depending on which.
+  Triage: replay the turn, compare `countTokens` to provider's
+  reported count for the loaded body. Whichever diverges identifies
+  the bug.
 
-- [ ] **Retry the 5s-drain-buffer victims under 30s buffer.**
-  `configure-git-webserver` and `install-windows-3.11` exfil-failed
-  in the 2026-05-02 rescue rerun because they launched before the
-  harbor `_DRAIN_BUFFER_SEC: 5 → 30` bump landed. Both are
-  big-state runs that need >5s for tool-processing + sqlite
-  checkpoint to drain. The new 30s buffer is in the harbor adapter
-  but won't apply until the next harbor process spawns. Just
-  re-launch them: `source .xai.key && npm run test:tbench --
-  --task configure-git-webserver` and likewise for
-  install-windows-3.11. ~32 min wall to confirm both exfil cleanly.
-
-- [ ] **Diagnose `caffe-cifar-10` exfil failure (different shape).**
-  The 2026-05-02 rescue rerun didn't even produce a drain message
-  in `rummy.txt` — turn 24 cut off mid-execution. This is a
-  different pathology than the drain-too-tight cases. Original
-  sweep noted caffe-cifar-10 had a chromium-renderer cgroup-OOM
-  event (the only OOM in the sweep). Suspect chromium-OOM is
-  killing the agent process before its watchdog can fire.
-  Triage: either bound chromium memory usage in `WebFetcher` (give
-  it a `chromiumArgs: ["--memory-pressure-off",
-  "--max_old_space_size=…"]` hint or run with `--disable-dev-shm-usage`),
-  or surface the OOM as a recoverable strike rather than letting
-  the kernel kill our agent process.
+- [ ] **Chromium cgroup-OOM kills agent before watchdog fires.**
+  Surfaced in tbench `caffe-cifar-10` — chromium-renderer OOM
+  killed the agent process before drain could exfil. Triage: bound
+  chromium memory usage in `WebFetcher` (`--memory-pressure-off`,
+  `--max_old_space_size`, or `--disable-dev-shm-usage`), or surface
+  the OOM as a recoverable strike rather than letting the kernel
+  kill us. General fix; not benchmark-specific.
 
 - [ ] **Continuation-forever in Distillation has no protocol-side
   cap.** Surfaced 2026-04-30 on `break-filter-js-from-html`
@@ -878,79 +742,3 @@ session and work the batch.
   the model should reason about its working memory; tooldoc examples
   should reflect the new shape.
 
-### terminal-bench 2.0 / Harbor wiring (2026-04-27, in flight)
-
-**Goal.** Land rummy on the terminal-bench 2.0 leaderboard
-(https://www.tbench.ai/leaderboard/terminal-bench/2.0). Submission
-runs via Harbor (`harbor run --dataset terminal-bench@2.0 ...`),
-not the legacy `terminal-bench` repo's `installed_agents/`.
-Comparison: **rummy+grok vs codex+grok**, same model both sides,
-harness-only delta. Cost-bound to ~$30–90 by avoiding the GPT-5.5
-re-run (cite the public leaderboard number for that). User is fine
-publishing negative results.
-
-**Locked decisions.**
-- Model alias: `xfast` = `openrouter/x-ai/grok-4.1-fast` via
-  OpenRouter BYOK (`OPENROUTER_API_KEY`). Non-reasoning + visible
-  `<think>` (`RUMMY_THINK=1`); see `feedback_fcrm_scope` for why
-  this is harness-correct rather than model-tuned.
-- CLI client: in-process, `src/plugins/cli/` plugin + bin (faster/
-  simpler than subprocess+WebSocket, uses ProjectAgent directly
-  via boot.completed hook).
-- Env-var-everywhere: all config uses `RUMMY_*` prefix; CLI flags
-  1:1 with env names (`--RUMMY_YOLO=1`, `--RUMMY_PROMPT="..."`).
-  Profile cascade via Node's `--env-file-if-exists=.env.tbench`.
-- 5-second `_DRAIN_BUFFER_SEC` in the harbor adapter: harbor injects
-  `RUMMY_LOOP_TIMEOUT = (agent_timeout - 5s)`; rummy-cli drains and
-  exits cleanly within that window so SQLite, `turns/`, and
-  `last_run.txt` are durable on disk before harbor's outer
-  `asyncio.wait_for` SIGKILLs the docker exec. The agent does not
-  lose 5s of working time — harbor would have killed it anyway;
-  the buffer just makes the post-mortem packet survive. Document
-  this in the submission writeup so reviewers don't read it as
-  early-quitting.
-- Test scaffolding lives in `test/tbench/`, mirrors `test/swe/`.
-
-**Status.** Mechanics + adapter wired in `possumtech/harbor`
-`add-rummy-agent`. Audit-driven harness improvements (path
-standardization, entry-size cap, soft-failure outcomes, stagnation
-scoping, parser-warnings-as-soft, spawn-abort exfil) landed in git
-history.
-
-**Next steps:**
-1. e2e green-check.
-2. Full 89-task eval on `xfast`.
-3. Package + submit to HuggingFace leaderboard.
-4. (optional) PR rummy adapter upstream to `laude-institute/harbor`.
-5. Codex+grok comparison run (only if reviewers ask for the
-   harness-only-delta framing — otherwise rummy submission stands
-   on its own number).
-
-**Spirit clause (load-bearing):**
-- Goal is harness analysis + general improvement, not a leaderboard
-  number. Any tbench-driven change must be a *general* improvement
-  benefiting any agent task — no benchmark-specific prompts,
-  heuristics, or tools. Pitch must remain "rummy is a general agent
-  that just happens to perform well at tbench," not "rummy is tuned
-  for tbench."
-- Pre-flight task selection must be a representative cross-section,
-  never cherry-picked for likely passes.
-- The harbor adapter (`rummy.py`) stays vanilla — it's a protocol
-  bridge, not a benchmark booster.
-
-**Risks / open questions:**
-- Codex's Harbor adapter may not accept `openrouter/x-ai/grok-*`
-  cleanly (Codex is OpenAI-tuned). Pre-flight resolves.
-- Inside Harbor's docker sandbox, rummy's `<sh>`+YOLO flow needs
-  to work robustly. YOLO landed but unproven at tbench scale.
-- `RUMMY_MAX_LOOP_TURNS` is per-loop only (no per-run cap), so the
-  default 99 is fine for tbench. Re-evaluate if per-loop drift
-  becomes a problem.
-
-**Story angles for the writeup:**
-- "Same model, different harness — rummy beat / lost to Codex by X
-  points." Cleanest harness-contribution claim.
-- Caveat: Codex is OpenAI's harness, sandbagged off-distribution
-  on grok. Document, don't hide.
-- Cite leaderboard's published 82.0% Codex+GPT-5.5 number for
-  context, no re-run on our side.
