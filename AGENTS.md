@@ -107,6 +107,84 @@ constant name → delete.
 
 ---
 
+## Sweep analysis (tbench digests)
+
+Every tbench sweep auto-emits a deterministic analysis layer at the
+end of the run (driven by `test/tbench/digest.js`, called from
+`runner.js` post-sweep). Re-runnable with
+`node test/tbench/digest.js <sweep-dir>` — read-only derivative of
+the rummy.db / rummy.txt / verifier-reward sources, idempotent.
+
+**Per-task artifacts** (in each task dir, alongside `agent/`,
+`verifier/`):
+
+- `digest.md` — header (status / reward / turns / cost / tokens) +
+  marker list + per-turn waterfall (`T<N>: <status> "<update body>"`
+  with indented `  ← <action> <target>` emission lines and
+  `  ✗ error:` lines). Scan target: get the shape of a run in one
+  screen. Failed emissions tagged `✗ [<outcome>]`.
+- `digest.json` — same data, machine-queryable. Use for `jq` /
+  cross-task aggregation.
+- `reasoning.md` — per-turn `reasoning_content` bracketed by
+  `## Turn <N>` headers. Drill-down anchor: when the waterfall
+  raises a question (e.g., "what was the reasoning on turn 8?"),
+  grep `^## Turn 8` here and read the body.
+- `digest_skipped` — empty file, written when `agent/rummy.db` is
+  absent (exfil-fail). Tells future passes "we tried, no data."
+
+**Sweep-wide artifact** (at sweep root):
+
+- `index.csv` — one row per task: `task,reward,status,turns,
+  prompt_tokens,completion_tokens,cached_tokens,cost,wall_seconds,
+  markers`. Standard triage front door.
+
+**Marker taxonomy** (auto-classified, semicolon-joined in `markers`
+column):
+
+- `passed` — `reward=1`.
+- `claim_success_verifier_fail` — `reward=0` AND `status=200`. The
+  dominant failure pattern in the 2026-05-01 sweep.
+- `max_loop_turns` — `status=499` AND turn count near
+  `RUMMY_MAX_LOOP_TURNS`.
+- `strike_abandon` — `status=499` AND an error body starts with
+  `Abandoned after`.
+- `shield_0` / `shield_1` / `shield_2` / `shield_3` — error body
+  matched the corresponding shield's message (Decomposition-mode /
+  unknowns-required / knowns-required / Delivery-mode).
+- `reasoning_runaway_t<N>` — turn N had ≥8000 chars of
+  `reasoning_content` AND zero productive emissions. Single-turn
+  signal; the turn number tags which one.
+- `parser_warning` — error body starts with `Unclosed` or contains
+  `Tool call limit`.
+- `context_overflow` — `status=413`.
+- `dispatch_500` — `status=500`.
+- `exfil_fail` — no `__RUMMY_RUN_SUMMARY__` line in `rummy.txt` and
+  no rummy.db. Run died before drain; container-side post-mortem
+  needed.
+- `digest_failed` — digest.js threw on this task. Investigate.
+
+**Standard triage queries** (assume `cd <sweep-dir>` first):
+
+- All claim-success/verifier-fails:
+  `awk -F, '$2==0 && $3==200' index.csv`
+- All shield-3 hits:
+  `awk -F, '/shield_3/' index.csv`
+- All runaway turns (with which turn):
+  `awk -F, '/reasoning_runaway/' index.csv`
+- Open one task's digest: `cat <task-dir>/digest.md`
+- Reasoning on a specific turn:
+  `awk '/^## Turn 8$/,/^## Turn /' <task-dir>/reasoning.md`
+- Cross-task error grep:
+  `grep -rh "✗ error:" */digest.md | sort | uniq -c | sort -rn`
+
+**Output-dir control.** `test/tbench/runner.js` accepts `--out
+<path>` (CLI) or `RUMMY_TBENCH_OUT_DIR` (env) to override the
+default timestamped path under `test/tbench/results/`. Used for
+parallel runs landing in named dirs:
+`npm run test:tbench:gemma -- --out audit/gemma_1` and
+`npm run test:tbench:xfast -- --out audit/xfast_1` in separate
+shells. Both write their own digests and indexes.
+
 ## Now
 
 1. `lint;unit;intg` sweep, address breakage.

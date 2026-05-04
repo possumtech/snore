@@ -29,6 +29,11 @@ const { values: args } = parseArgs({
 		agent: { type: "string", default: "rummy" },
 		model: { type: "string" },
 		dataset: { type: "string" },
+		// Override the per-run output directory. CLI > env > default.
+		// Relative paths resolve against the project root (cwd at npm-script
+		// invocation); absolute paths are used as-is. Used to land sweeps
+		// in named locations like `audit/gemma_1` for parallel runs.
+		out: { type: "string" },
 	},
 	strict: true,
 });
@@ -53,10 +58,23 @@ if (!dataset || !model) {
 	process.exit(2);
 }
 
-mkdirSync(RESULTS_DIR, { recursive: true });
-const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const runSlug = args.task ?? "all";
-const runDir = join(RESULTS_DIR, `${stamp}_${args.agent}_${runSlug}`);
+// Resolve the per-run output directory: --out > RUMMY_TBENCH_OUT_DIR
+// > timestamped default under test/tbench/results. Relative paths
+// resolve against the cwd at invocation (the project root, since
+// npm scripts run there). Absolute paths used as-is.
+const projectRoot = join(__dirname, "..", "..");
+const overrideOut = args.out ?? process.env.RUMMY_TBENCH_OUT_DIR;
+let runDir;
+if (overrideOut) {
+	runDir = overrideOut.startsWith("/")
+		? overrideOut
+		: join(projectRoot, overrideOut);
+} else {
+	mkdirSync(RESULTS_DIR, { recursive: true });
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const runSlug = args.task ?? "all";
+	runDir = join(RESULTS_DIR, `${stamp}_${args.agent}_${runSlug}`);
+}
 mkdirSync(runDir, { recursive: true });
 const logPath = join(runDir, "harbor.log");
 const logStream = createWriteStream(logPath);
@@ -164,5 +182,13 @@ child.on("close", (code) => {
 	console.log(`\nharbor exited code=${code}`);
 	console.log(`wall time: ${wallHuman}`);
 	console.log(`results: ${runDir}`);
-	process.exit(code === null ? 1 : code);
+
+	// Auto-build per-task digests + sweep-wide index.csv. Read-only
+	// derivative of rummy.db + rummy.txt + verifier/reward.txt; safe
+	// to re-run with `node test/tbench/digest.js <sweep-dir>`.
+	const digestScript = join(__dirname, "digest.js");
+	const digestProc = spawn("node", [digestScript, runDir], {
+		stdio: "inherit",
+	});
+	digestProc.on("close", () => process.exit(code === null ? 1 : code));
 });
