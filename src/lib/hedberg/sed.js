@@ -31,7 +31,23 @@ export function parseSed(input) {
 	while (remaining.startsWith(prefix)) {
 		const { parts, escaped } = splitSed(remaining.slice(2), delim);
 		if (parts.length < 2) break;
-		const flags = (parts[2] || "").match(/^[gimsv]*/)?.[0] || "";
+
+		// Extract flags from the start of the trailing parts; allow an
+		// optional chain after (whitespace/semicolons + next `s{delim}`).
+		// Anything else means the sed expression is malformed — usually
+		// an unescaped delimiter inside SEARCH or REPLACE that caused the
+		// split to over-tokenize. Refuse rather than silently mis-apply.
+		const trailer = parts.slice(2).join(delim);
+		const flagsMatch = trailer.match(/^([gimsv]*)([\s\S]*)$/);
+		const flags = flagsMatch[1];
+		const afterFlags = flagsMatch[2].replace(/^[\s;]+/, "");
+
+		if (afterFlags && !afterFlags.startsWith(prefix)) {
+			throw new Error(
+				`Malformed sed: extra content after ${prefix}SEARCH${delim}REPLACE${delim}FLAGS — likely an unescaped '${delim}' inside SEARCH or REPLACE. Use a different delimiter (e.g., s|old|new|g or s,old,new,g) or escape with \\${delim}.`,
+			);
+		}
+
 		const unesc = (s) => s.replaceAll(escaped, delim);
 		blocks.push({
 			search: unesc(parts[0]),
@@ -39,9 +55,8 @@ export function parseSed(input) {
 			flags,
 			sed: true,
 		});
-		const rest = parts.slice(2).join(delim);
-		const next = rest.indexOf(prefix);
-		remaining = next >= 0 ? rest.slice(next) : "";
+
+		remaining = afterFlags || "";
 	}
 
 	if (blocks.length === 0) return null;

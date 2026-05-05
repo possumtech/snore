@@ -125,6 +125,25 @@ export default class Set {
 			return;
 		}
 
+		// Refuse parse-error edits (e.g., malformed sed). Without this the
+		// XmlParser would have either silently produced a corrupted edit
+		// or fallen through to body-replace, overwriting the target with
+		// the literal sed text. Surfacing the error gives the model a
+		// concrete signal it can adapt to.
+		if (attrs.error) {
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: entry.resultPath,
+				body: attrs.error,
+				state: "failed",
+				outcome: "validation",
+				attributes: { path: attrs.path, error: attrs.error },
+			});
+			return;
+		}
+
 		// Manifest: universal preview gate. Fires before any operational
 		// branch so visibility flips, SEARCH/REPLACE edits, sed substitutions,
 		// pattern writes, and direct writes all support

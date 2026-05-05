@@ -67,9 +67,20 @@ function resolveCommand(name, a, rawBody) {
 			};
 		}
 
-		// Sed shorthand: `s/old/new/` (single block) or chained.
-		if (trimmed.startsWith("s/")) {
-			const blocks = parseSed(trimmed);
+		// Sed shorthand: `s/old/new/`, `s|old|new|`, `s,old,new,`, or chained.
+		// Gate matches any non-alphanumeric delimiter, mirroring parseSed.
+		// On malformed sed (e.g., unescaped delimiter inside SEARCH or
+		// REPLACE), parseSed throws — surface it as a parse error so set's
+		// handler fails the entry rather than silently applying a corrupted
+		// edit, or worse, falling through to body-replace and overwriting
+		// the target with the literal sed text.
+		if (/^s[^\w\s]/.test(trimmed)) {
+			let blocks;
+			try {
+				blocks = parseSed(trimmed);
+			} catch (err) {
+				return { name, ...a, error: err.message };
+			}
 			if (blocks?.length === 1) {
 				return {
 					name,

@@ -46,5 +46,6 @@ Example:
 * Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
 * Use `<get summary="..." manifest/>` to recall entries by summary tags when paths are forgotten.
 * Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.
+* When sed SEARCH/REPLACE contains `/` (e.g., paths like `./executable`), use an alternative delimiter — `s,old,new,g` or `s|old|new|g`. `s/` on path-flavored content over-tokenizes and the engine will refuse the edit.
 
 YOU MUST terminate your turn with <update status="{102|200}">{ direct answer or one-line summary }</update> (<= 80 chars)

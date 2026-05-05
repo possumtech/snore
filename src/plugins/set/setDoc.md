@@ -16,6 +16,9 @@ Example: <set path="known://countries/france/*" manifest/>
 Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>
 <!-- Sed: single-line substitutions, chain with semicolons. Reach for this first for plan checkmarks, config flips, word swaps — the SEARCH text is short and explicitly bounded by the slashes, so it can't accidentally match a partial line. -->
 
+Example: <set path="src/api.js">s,baseUrl = "/api/v1",baseUrl = "/api/v2",g</set>
+<!-- Alternative delimiters: `s,...,...,g` or `s|...|...|g` when SEARCH or REPLACE contains `/`. The first unescaped delimiter ends each part, so `s/path/to/x/y/z/g` is ambiguous — pick a delimiter that doesn't appear in your content. -->
+
 Example:
 	<set path="src/app.js">
 	<<<<<<< SEARCH

@@ -51,4 +51,24 @@ describe("parseSed", () => {
 	it("returns null when the s expression is unterminated (no second delim)", () => {
 		assert.equal(parseSed("s/foo"), null);
 	});
+
+	it("throws on malformed sed (unescaped delimiter in SEARCH/REPLACE)", () => {
+		// `./executable` contains `/`; the sed parser sees `/` as the
+		// delimiter, so the SEARCH gets truncated at the first internal
+		// slash. Refuse rather than silently corrupt the target.
+		assert.throws(
+			() => parseSed("s/- [ ] Run `./executable`/- [x] Run `./executable`/g"),
+			/Malformed sed/,
+		);
+	});
+
+	it("alternative delimiters allow content containing `/`", () => {
+		const blocks = parseSed(
+			"s,- [ ] Run `./executable`,- [x] Run `./executable`,g",
+		);
+		assert.equal(blocks.length, 1);
+		assert.equal(blocks[0].search, "- [ ] Run `./executable`");
+		assert.equal(blocks[0].replace, "- [x] Run `./executable`");
+		assert.equal(blocks[0].flags, "g");
+	});
 });
