@@ -18,11 +18,15 @@ export function logPathToDataBase(logPath) {
 	return `${m[2]}://turn_${m[1]}/${m[3]}`;
 }
 
-// env/sh stdout/stderr summary projection: header with line range + last
-// TAIL_LINES of body. The header tells the model exactly which slice is
-// shown so it can issue <get line="N" limit="M"/> for the rest without
-// re-running the command.
-export function streamSummary(label, entry, TAIL_LINES = 12) {
+// env/sh stdout/stderr summary projection: lesser of MAX_LINES lines or
+// MAX_CHARS characters from the tail of the body. The line cap is the
+// natural unit when the program emits text; the character cap protects
+// against unbounded growth from output that has few or no newlines —
+// e.g. terminal-control programs (cmatrix, htop) emit megabyte-scale
+// streams of ANSI escape codes that split into a single "line." The
+// header tells the model what slice it's seeing so it can <get line="N"
+// limit="M"/> for the rest without re-running the command.
+export function streamSummary(label, entry, MAX_LINES = 20, MAX_CHARS = 480) {
 	if (!entry.body) return "";
 	const { body, attributes } = entry;
 	const command = attributes.command;
@@ -32,13 +36,22 @@ export function streamSummary(label, entry, TAIL_LINES = 12) {
 		? body.slice(0, -1).split("\n")
 		: body.split("\n");
 	const total = lines.length;
-	if (total <= TAIL_LINES) {
-		return `# ${label} ${command} (${channel}, ${total}L)\n${body}`;
+	const lineTail =
+		total <= MAX_LINES
+			? body
+			: lines.slice(-MAX_LINES).join("\n") + (trailingNewline ? "\n" : "");
+	const charCapped = lineTail.length > MAX_CHARS;
+	const tail = charCapped ? lineTail.slice(-MAX_CHARS) : lineTail;
+	let header;
+	if (charCapped) {
+		header = `# ${label} ${command} (${channel}, tail ${MAX_CHARS} of ${body.length} chars; <get line="1" limit="N"/> for head)`;
+	} else if (total <= MAX_LINES) {
+		header = `# ${label} ${command} (${channel}, ${total}L)`;
+	} else {
+		const startLine = total - MAX_LINES + 1;
+		header = `# ${label} ${command} (${channel}, lines ${startLine} through ${total} of ${total}; <get line="1" limit="N"/> for head)`;
 	}
-	const startLine = total - TAIL_LINES + 1;
-	const tail =
-		lines.slice(-TAIL_LINES).join("\n") + (trailingNewline ? "\n" : "");
-	return `# ${label} ${command} (${channel}, tail L${startLine}-${total}/${total}; <get line="1" limit="N"/> for head)\n${tail}`;
+	return `${header}\n${tail}`;
 }
 
 // Pattern-result log entry shared by get/set/store/rm.

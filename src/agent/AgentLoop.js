@@ -503,16 +503,25 @@ export default class AgentLoop {
 				});
 				if (verdict.continue) continue;
 
-				// Verdict says terminate — but if we have streaming
-				// children still in flight (e.g., a slow `<env>./executable`
-				// the model fired-and-forgot), drain them and force one
-				// more turn. SPEC #streaming_entries: the agent gets a
-				// chance to react to async completions even after it has
-				// already emitted a 200. Honors signal.aborted as the
-				// hard kill — if abort is in flight, don't extend.
-				if (!signal.aborted && pendingChildren && pendingChildren.size > 0) {
+				// Verdict says terminate — but if status=200 (model said
+				// done cleanly) and streaming children are still in flight
+				// (e.g., a slow `<env>./executable` the model fired-and-
+				// forgot), drain them and force one more turn so the agent
+				// can react to async completions. SPEC #streaming_entries.
+				//
+				// Other terminal statuses (499 abandoned, 413 overflow,
+				// 500 error) skip the hold — the run is being killed for
+				// cause; one more turn just delays cleanup with the same
+				// failed loop the model couldn't recover from. abort
+				// always skips.
+				if (
+					!signal.aborted &&
+					verdict.status === 200 &&
+					pendingChildren &&
+					pendingChildren.size > 0
+				) {
 					console.error(
-						`[LOOP] ${currentAlias} iter=${loopIteration} verdict-terminate held: ${pendingChildren.size} children pending — draining and forcing one more turn`,
+						`[LOOP] ${currentAlias} iter=${loopIteration} verdict-terminate (200) held: ${pendingChildren.size} children pending — draining and forcing one more turn`,
 					);
 					await Promise.allSettled([...pendingChildren]);
 					continue;

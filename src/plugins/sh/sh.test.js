@@ -31,15 +31,15 @@ describe("Sh", () => {
 		assert.ok(out.endsWith("file1\nfile2\n"));
 	});
 
-	it("summary keeps last 12 lines and reports range", () => {
+	it("summary keeps last 20 lines and reports range", () => {
 		const lines = Array.from({ length: 50 }, (_, i) => `line${i + 1}`);
 		const out = plugin.summary({
 			attributes: { command: "rg foo", channel: 1 },
 			body: `${lines.join("\n")}\n`,
 		});
-		assert.match(out, /tail L39-50\/50/);
+		assert.match(out, /lines 31 through 50 of 50/);
 		assert.ok(out.includes("line50"));
-		assert.ok(out.includes("line39"));
-		assert.ok(!out.includes("line38"));
+		assert.ok(out.includes("line31"));
+		assert.ok(!out.includes("line30"));
 	});
 });

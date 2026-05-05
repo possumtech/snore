@@ -1,10 +1,22 @@
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
+// Hard ceiling on a plugin's `summarized` projection. The summarized
+// view exists so the budget plugin can keep many entries in context
+// cheaply; an oversize summary defeats the entire point and can flood
+// context (the cmatrix pathology: 4.77M-char body, no newlines, plugin
+// returned the full body because line-cap didn't bite). System-level
+// enforcement protects against any plugin's failure to honor the cap.
+// Truncation is plain `slice(0, N)` — model-facing prose already warns
+// not to trust summarized data verbatim, so we don't owe character-
+// boundary correctness here.
+const MAX_SUMMARIZED_CHARS = 500;
+
 // Rebuild turn_context from v_model_context and assemble messages.
 export default async function materializeContext({
 	db,
 	hooks,
+	entries,
 	runId,
 	loopId,
 	turn,
@@ -37,10 +49,28 @@ export default async function materializeContext({
 			...baseEntry,
 			visibility: "visible",
 		});
-		const summarizedProjection = await hooks.tools.view(projectionKey, {
+		const rawSummarizedProjection = await hooks.tools.view(projectionKey, {
 			...baseEntry,
 			visibility: "summarized",
 		});
+		let summarizedProjection = rawSummarizedProjection;
+		if (
+			typeof summarizedProjection === "string" &&
+			summarizedProjection.length > MAX_SUMMARIZED_CHARS
+		) {
+			summarizedProjection = summarizedProjection.slice(
+				0,
+				MAX_SUMMARIZED_CHARS,
+			);
+			await hooks.error.log.emit({
+				store: entries,
+				runId,
+				turn,
+				loopId,
+				message: `${row.path} summarized projection overflow`,
+				soft: true,
+			});
+		}
 		const vTokens = countTokens(visibleProjection);
 		const sTokens = countTokens(summarizedProjection);
 		const vLines = countLines(visibleProjection);

@@ -95,8 +95,8 @@ describe("streamSummary", () => {
 			attributes: { command: "ls", channel: 1 },
 		};
 		const out = streamSummary("env", entry, 5);
-		// Header should mention tail L26-30/30 + the get-line hint.
-		assert.match(out, /tail L26-30\/30/);
+		// Header should mention "lines 26 through 30 of 30" + the get-line hint.
+		assert.match(out, /lines 26 through 30 of 30/);
 		assert.match(out, /<get line="1"/);
 		// Last 5 lines present in body.
 		for (const i of [26, 27, 28, 29, 30]) {
@@ -106,6 +106,22 @@ describe("streamSummary", () => {
 		for (const i of [1, 5, 25]) {
 			assert.doesNotMatch(out, new RegExp(`L${i}\\n`));
 		}
+	});
+
+	it("char-caps when body has few or no newlines (handles ANSI escape streams)", () => {
+		// Single-line body that exceeds MAX_CHARS (default 480).
+		const giant = "x".repeat(5000);
+		const entry = {
+			body: giant,
+			attributes: { command: "cmatrix", channel: 1 },
+		};
+		const out = streamSummary("env", entry);
+		// Header should mention "tail 480 of 5000 chars".
+		assert.match(out, /tail 480 of 5000 chars/);
+		assert.match(out, /<get line="1"/);
+		// Output body should be exactly the last 480 chars, not more.
+		const bodyPart = out.split("\n").slice(1).join("\n");
+		assert.equal(bodyPart.length, 480, "body capped at 480 chars");
 	});
 
 	it("preserves trailing newline in tail when body had one", () => {
