@@ -82,7 +82,7 @@ describe("ContextAssembler", () => {
 			);
 		});
 
-		it("instructions+prompt lead the user message; dynamic state blocks trail", async () => {
+		it("user message is a sandwich: prompt → state → instructions → budget", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -110,17 +110,28 @@ describe("ContextAssembler", () => {
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				rows,
-				{ systemPrompt: "sys" },
+				{ systemPrompt: "sys", contextSize: 32768 },
 				hooks,
 			);
 
 			const user = messages[1].content;
-			const instructionsPos = user.indexOf("<instructions>");
 			const promptPos = user.indexOf("<prompt");
 			const logPos = user.indexOf("<log>");
-			assert.ok(instructionsPos >= 0, "instructions present");
-			assert.ok(promptPos > instructionsPos, "prompt after instructions");
-			assert.ok(logPos > promptPos, "log (dynamic) after prompt (static)");
+			const instructionsPos = user.indexOf("<instructions>");
+			const budgetPos = user.indexOf("<budget");
+			assert.ok(promptPos >= 0, "prompt present");
+			assert.ok(
+				logPos > promptPos,
+				"log (dynamic) after prompt (static front)",
+			);
+			assert.ok(
+				instructionsPos > logPos,
+				"instructions after dynamic state blocks",
+			);
+			assert.ok(
+				budgetPos > instructionsPos,
+				"budget last (after instructions)",
+			);
 		});
 
 		it("unifies all logging entries across loops into a single <log> block", async () => {

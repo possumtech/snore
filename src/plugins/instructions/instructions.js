@@ -6,10 +6,12 @@ const baseInstructions = readFileSync(
 	"utf8",
 );
 
-// Tight, non-modal reminder rendered at the front of the user message
-// (`assembly.user` priority 25, immediately ahead of prompt's 30) so the
-// static instructions+prompt prefix sits adjacent to the cache-stable
-// system framing — dynamic state (summarized/visible/log/budget) trails.
+// Tight, non-modal reminder rendered LATE in the user message
+// (`assembly.user` priority 165, between unknowns at 150 and budget at
+// 175) so the rules sit adjacent to the action site — recency keeps the
+// per-turn discipline warm. The user message is a sandwich: prompt at
+// front (cacheable across turns of a run), state in the middle, rules
+// then budget at the back.
 const userInstructions = readFileSync(
 	new URL("./instructions-user.md", import.meta.url),
 	"utf8",
@@ -28,7 +30,7 @@ export default class Instructions {
 			this.resolveSystemPrompt.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
-		core.filter("assembly.user", this.assembleInstructions.bind(this), 25);
+		core.filter("assembly.user", this.assembleInstructions.bind(this), 165);
 		new Protocol(core);
 	}
 

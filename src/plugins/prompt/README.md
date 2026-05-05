@@ -1,13 +1,15 @@
 # prompt {#prompt_plugin}
 
-Renders the `<prompt>` tag near the front of the user message,
-right after `<instructions>`. Always present on every turn — the
-model always sees its task.
+Renders the `<prompt>` tag at the front of the user message —
+the model sees its task first, then the dynamic state blocks,
+then the late-bound rules and budget. Always present on every
+turn.
 
 ## Registration
 
-- **Filter**: `assembly.user` at priority 30 (after `<instructions>`
-  at 25, before all dynamic state blocks)
+- **Filter**: `assembly.user` at priority 30 (front of user
+  message, before all dynamic state and the `<instructions>`
+  block at 165)
 
 ## Behavior
 

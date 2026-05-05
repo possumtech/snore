@@ -13,11 +13,12 @@ phase directive so prompt caching holds across turns within a run.
   with `{ persona, toolSet }` attributes.
 - **Filter**: `instructions.toolDocs` — gathers docs from all tool
   plugins into a docsMap.
-- **Filter**: `assembly.user` (priority 25) — renders
-  `instructions-user.md` as `<instructions>` at the front of the
-  user message, immediately ahead of `<prompt>` (priority 30), so
-  the static instructions+prompt prefix sits adjacent to the
-  cache-stable system framing.
+- **Filter**: `assembly.user` (priority 165) — renders
+  `instructions-user.md` as `<instructions>` late in the user
+  message, between `<unknowns>` (150) and `<budget>` (175). The
+  user message is a sandwich: `<prompt>` (30) leads for cache
+  stability, dynamic state fills the middle, then rules and
+  budget close out so the action site sees them with recency.
 
 ## Files
 
@@ -53,9 +54,11 @@ strikes.
 
 - System message includes the base template + tool docs + persona.
   Identical bytes every turn within a run → cache-stable.
-- User message includes `<instructions>` at priority 25 — same
-  bytes every turn (no phase keying); cacheable along with the
-  prompt that follows at priority 30.
+- User message includes `<instructions>` at priority 165 — same
+  bytes every turn (no phase keying), but placed AFTER the dynamic
+  state blocks so it can't extend the per-turn cache prefix. The
+  cache-stable prefix is system + prompt (~2K tokens); recency on
+  the rules at the action site is the trade.
 
 If you add a per-turn-dynamic piece to `instructions.md` by mistake,
 the system prompt changes every turn and the cache prefix collapses.
