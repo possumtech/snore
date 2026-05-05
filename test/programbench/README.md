@@ -35,11 +35,15 @@ Three surfaces, in increasing detail:
    `watch ls workspace/` shows source files appearing as the model
    writes them.
 3. **Per-run digest** — the DB is pinned at
-   `results/<run-id>/<task>/rummy.db`. Run
-   `npm run dev:digest results/<run-id>/<task>/rummy.db` for the
-   curated digest (waterfall, reasoning, token totals incl. cache
-   hit rate). Re-run anytime — it backs up the live DB via
+   `results/<run-id>/<task>/rummy_programbench.db`. Run
+   `npm run dev:digest results/<run-id>/<task>/rummy_programbench.db`
+   for the curated digest (waterfall, reasoning, token totals incl.
+   cache hit rate). Re-run anytime — it backs up the live DB via
    `sqlite3 .backup` so it doesn't lock against the writer.
+
+After the run, the DB is folded into the workspace and shipped
+inside `submission.tar.gz` itself — anyone who downloads the
+submission can replay the full reasoning trace.
 
 ## Eval
 

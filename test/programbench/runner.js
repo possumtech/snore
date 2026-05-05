@@ -1,12 +1,15 @@
 /**
  * ProgramBench runner for Rummy. Single-task end-to-end:
  *   1. Pull `programbench/<task>:task_cleanroom` if missing.
- *   2. Extract /workspace into a scratch project root, preserving the
- *      executable's no-read permission.
- *   3. Run rummy-cli (act mode, noWeb, gemma) against the scratch dir
- *      with a task-shaped prompt.
- *   4. After the agent finishes, tar the produced sources into
- *      `submission.tar.gz` (input artifacts excluded).
+ *   2. Extract /workspace into a scratch project root, preserving
+ *      the executable's no-read permission.
+ *   3. Run rummy-cli (act mode, noWeb, gemma) against the scratch
+ *      dir with a task-shaped prompt.
+ *   4. After the agent finishes, fold the run's `rummy.db` into the
+ *      workspace and tar everything except the executable (which
+ *      the eval rebuilds) and `.git` (clean stub). The submission
+ *      includes the audit trail so a public reviewer can replay
+ *      the agent's reasoning, not just inspect its output.
  *
  * Deviation from canonical mini-swe-agent harness: the agent runs on
  * host, not inside the cleanroom container, and operates the scratch
@@ -121,6 +124,25 @@ async function listProducedFiles() {
 	return all.filter((name) => !exclude.has(name));
 }
 
+async function foldDbIntoWorkspace() {
+	// Copy rummy_programbench.db into the workspace so the submission
+	// tar contains the agent's full reasoning trace alongside the
+	// produced codebase. Public reviewers can `npm run dev:digest`
+	// against the extracted DB to see every turn the agent took.
+	const srcDb = join(runDir, "rummy_programbench.db");
+	if (!existsSync(srcDb)) return;
+	const dstDb = join(scratchDir, "rummy_programbench.db");
+	// Use sqlite3 .backup so the copy is consistent even if the writer
+	// hasn't fully flushed WAL (matches dev:digest's pattern).
+	try {
+		execFileSync("sqlite3", [srcDb, `.backup ${dstDb}`], { stdio: "pipe" });
+	} catch {
+		// Fallback to plain copy if sqlite3 is unavailable; WAL may be
+		// missed but the main DB still has most data.
+		await fs.copyFile(srcDb, dstDb);
+	}
+}
+
 async function tarSubmission() {
 	const produced = await listProducedFiles();
 	if (produced.length === 0) {
@@ -142,9 +164,11 @@ async function runAgent() {
 		RUMMY_MODE: "act",
 		RUMMY_NO_WEB: "1",
 		RUMMY_YOLO: "1",
-		// Per-run DB so `npm run dev:digest <path>` works mid-run for
-		// turn-by-turn observation without colliding with other runs.
-		RUMMY_DB_PATH: join(runDir, "rummy.db"),
+		// Per-run DB pinned to the run dir so `npm run dev:digest <path>`
+		// works mid-run for turn-by-turn observation, and so the file
+		// can be folded into the submission tar after the run for a
+		// fully-transparent record of the agent's reasoning trace.
+		RUMMY_DB_PATH: join(runDir, "rummy_programbench.db"),
 		// Project surface: docs + data only. The executable is excluded
 		// from ingestion (perms `---x--x--x` would fail file reads); the
 		// model probes its behavior via `<sh>./executable …` instead.
@@ -168,5 +192,6 @@ await extractWorkspace();
 console.error(`workspace ready at ${scratchDir}`);
 const exitCode = await runAgent();
 console.error(`rummy exited with code ${exitCode}`);
+await foldDbIntoWorkspace();
 await tarSubmission();
 process.exit(exitCode);
