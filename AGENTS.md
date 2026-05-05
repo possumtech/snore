@@ -23,6 +23,12 @@
 > - **The user is right until the DB proves otherwise.** When a
 >   symptom gets reported, read `rummy_dev.db` first, don't guess,
 >   don't blame the environment, don't defer to the next demo.
+> - **Read `rummy_dev.db` via the digest, not via raw SQL.** Run
+>   `npm run dev:digest` (writes `digest.md`, `digest.json`,
+>   `reasoning.md` to `/tmp/rummy_dev_digest/`) and read the curated
+>   artifacts. Direct SQL spelunking encourages half-engaged review
+>   and hallucinated patterns. The same digest pipeline that powers
+>   tbench analysis works on the dev DB; use it.
 > - **Integration and e2e tests are 1:1 with SPEC.md's snake_case
 >   anchor system.** Every SPEC.md heading carries an explicit
 >   `{#snake_case_id}` anchor. Every anchor has at least one
@@ -159,12 +165,6 @@ column):
   `RUMMY_MAX_LOOP_TURNS`.
 - `strike_abandon` — `status=499` AND an error body starts with
   `Abandoned after`.
-- `gate_unknowns` / `gate_knowns` / `gate_demote` / `gate_delivery` —
-  error body matched the corresponding state-machine gate's
-  message: Decomposition advance requires ≥1 unknown / Distillation
-  advance requires ≥1 known / Demotion advance requires no visible
-  unknowns / Delivery is the only mode where file modifications are
-  permitted. See SPEC.md `#fvsm_state_machine`.
 - `reasoning_runaway_t<N>` — turn N had ≥8000 chars of
   `reasoning_content` AND zero productive emissions. Single-turn
   signal; the turn number tags which one.
@@ -181,10 +181,6 @@ column):
 
 - All claim-success/verifier-fails:
   `awk -F, '$2==0 && $3==200' index.csv`
-- All gate hits (any state-machine rejection):
-  `awk -F, '/gate_/' index.csv`
-- All Delivery-mode file-write rejections:
-  `awk -F, '/gate_delivery/' index.csv`
 - All runaway turns (with which turn):
   `awk -F, '/reasoning_runaway/' index.csv`
 - Open one task's digest: `cat <task-dir>/digest.md`
@@ -203,48 +199,29 @@ shells. Both write their own digests and indexes.
 
 ## Now
 
-**Compartmentalization + modularization refactor.** The plugin
-architecture (PLUGINS.md) promises clean boundaries that the
-implementation only partly delivers. Tighten what we have before
-extending it, so future plugins compose against a real contract,
-not a partially-honored one.
+**The contract is lean.** The engine enforces three things via the
+strike system: budget overflow, repetition (cycle detection), and
+per-turn `<update>` inclusion. Plus the ask-mode shield (run-mode
+permission, separate concern). Everything else is the model's
+responsibility, taught via the model-facing prose.
 
-The principle: **plugins should perform their activities through
-general interfaces with the core, not through bespoke calls into
-core internals or other plugins' state.** The standing rule
-"plugin extensibility is a promise, not an implementation detail"
-applies to *core's relationship with plugins* the same way it
-applies to plugins' relationship with each other.
+Implementation, tests, SPEC.md, AGENTS.md aligned. Lint clean.
+880 unit, 245 integration, 101 spec anchors × 44 test files.
 
-Original motivating symptoms (now resolved by Phase 2): budget
-enforcement was a plugin but core (`TurnExecutor`) called into it
-directly via `budget.enforce` / `budget.postDispatch` instead of
-subscribing it to the generic event surface every other plugin
-uses. Same shape showed up with `error.verdict` (now
-`turn.verdict.filter`) and was investigated for `AgentLoop`
-run-state emission (verdict: not a real seam — see Phase 2 below).
-`instructions.validateNavigation` was kept as a documented
-load-bearing exception (see PLUGINS.md `#plugins_architectural_exceptions`).
+The model-facing teaching surface (`instructions-system.md`,
+`instructions-user.md`, `updateDoc.md`) does NOT contain
+engine-refusal claims that need correcting — the prose already
+states the workflow as the model's responsibility.
 
-### Phase 1 — Audit
+**Open items unblocked by the cleanup:**
 
-- [x] **Catalog cross-coupling.** Done. Findings folded into
-  Phase 2 below + the load-bearing exceptions block.
-- [x] **Document the orchestration layer.** Done. PLUGINS.md
-  `#plugins_turn_pipeline` updated to cover all hooks observed
-  in TurnExecutor (added `instructions.resolveSystemPrompt`,
-  `llm.reasoning`, parser-warning emissions). Each `call`-shape
-  hook is annotated ⚠ (load-bearing) or ✗ (refactor candidate).
-  Run/Loop Lifecycle table updated to include `error.verdict`.
-- [x] **Define acceptance criteria + document load-bearing
-  exceptions in PLUGINS.md.** Done. PLUGINS.md
-  `#plugins_architectural_exceptions` lists the five principled
-  deviations with their load-bearing reasons. Acceptance criteria
-  for "plugin uses a general interface" are implicit in the
-  legend ("anything else that looks like a direct named call into
-  a plugin is a seam, not an exception").
+- Pivot terminal-bench from grok to local gemma.
+- Tooldoc example weight measurement (CC-13).
+- `unknown://env/...` example proposal — sacred-prompt territory; awaiting user direction.
+- Sudden-death turn warning — calibration-relevant once baseline numbers exist.
+- Demo / e2e / bench runs to validate the lean contract.
 
-### Phase 1 findings — load-bearing exceptions (keep, document)
+### Architectural exceptions (keep, document)
 
 These are deliberate paradigm deviations with real justification.
 None should be refactored; all should be named in PLUGINS.md so
@@ -253,8 +230,7 @@ they aren't mistaken for ceremony by the next session.
 - **`hooks.instructions.resolveSystemPrompt`** — single-owner
   cache-stability concern. The system prompt is *deliberately* not
   a filter chain because multiple participants would defeat
-  prefix-cache reasoning (see "Static base in system, phase-
-  specific in user" in instructions discipline above).
+  prefix-cache reasoning.
 - **`hooks.update.resolve`** — single-owner with synchronous
   return value. Caller needs `{ summaryText, updateText }` back;
   events emit but don't return; only the update plugin knows
@@ -267,124 +243,26 @@ they aren't mistaken for ceremony by the next session.
 - **CLI / RPC importing `ProjectAgent` / `RummyContext` directly**
   — these are *transport* plugins, not action plugins. Their job
   is to bridge external interfaces to the agent; the import is
-  what makes them transports. Worth naming "transport plugin" as
-  a distinct category in PLUGINS.md.
+  what makes them transports.
 
-### Phase 2 — Refactor (after Phase 1 docs land)
+### Refactor candidates (deferred)
 
-- [x] **Recategorize `src/plugins/hedberg/` → `src/lib/hedberg/`.**
-  Done. Library lives at `src/lib/hedberg/`; a thin plugin shim
-  remains at `src/plugins/hedberg/hedberg.js` to expose
-  `core.hooks.hedberg` for external plugins (rummy.repo,
-  rummy.web) that can't reach into rummy/main internals via
-  direct import. Audit had underestimated this — internal plugins
-  use direct imports, external plugins use the hook namespace.
-  Both paths now documented in PLUGINS.md `#plugins_hedberg`.
-  Updated biome.json + biome/no-fallbacks.grit to reflect the new
-  path. Backwards seam in `src/agent/XmlParser.js` resolved (it
-  imports from `src/lib/`, not from a plugin).
-- [x] **Verdict hook cleanup.** Done. `error.verdict` direct call
-  replaced with `turn.verdict` filter chain (declared in
-  `Hooks.js`; error plugin subscribes via
-  `core.filter("turn.verdict", ...)`). AgentLoop now calls
-  `hooks.turn.verdict.filter({ continue: true }, ctx)`. Future
-  voters (cycle detection from a separate plugin, budget overflow
-  termination, runaway-on-context-grow) can join the chain
-  without touching error.js or AgentLoop. PLUGINS.md
-  Run/Loop Lifecycle table updated.
-- [x] **Budget plugin reaches core via events, not direct calls.**
-  Done. New hooks `turn.beforeDispatch` (filter) + `turn.dispatched`
-  (event) declared in `Hooks.js`; budget subscribes via
-  `core.filter("turn.beforeDispatch", ...)` + `core.on("turn.dispatched", ...)`.
-  TurnExecutor calls
-  `hooks.turn.beforeDispatch.filter({ ...packet, ok, overflow }, { rummy, ctx })`
-  (with `ok=false` short-circuiting dispatch) and
-  `hooks.turn.dispatched.emit({ contextSize, ctx, rummy })`.
-  Filter chain on the dispatch packet means future plugins can
-  trim, re-order, or annotate without touching budget.js or
-  TurnExecutor. PLUGINS.md Turn Pipeline table + Budget hooks
-  reference updated. The "budget stuff in Turn Context module"
-  pain point is gone — TurnExecutor no longer names the plugin.
-- [x] **Move `src/agent/budget.js` math into the budget plugin.**
-  Done. `ceiling`, `measureMessages`, `measureRows`, `computeBudget`
-  now live in `src/plugins/budget/budget.js` next to `overflowBody`.
-  `src/agent/budget.js` and its sibling `.test.js` deleted; cases
-  merged into the plugin's test file. No behavior change; 909/909
-  unit + 245/245 integration green.
-- [x] **Investigate `materializeContext` re-run in budget.** Done.
-  Two re-runs, two stories: (1) Pre-LLM Prompt Demotion was a real
-  leak — replaced full `materializeContext` with in-place
-  `vBody→sBody` swap on the prompt row + `ContextAssembler`-only
-  re-assembly (rows already carry both projections from the first
-  materialize). Saves a `clear_turn_context` + `v_model_context`
-  query + N×`tools.view` projections + N inserts. (2) Post-dispatch
-  re-materialize is legitimate cost projection (next-turn packet
-  estimate; entries written during dispatch need projecting), kept
-  as-is. PLUGINS.md Budget section reframes both spots — the
-  assembler is budget's measurement instrument, not a responsibility
-  leak. 909/909 unit + 245/245 integration green.
-- [ ] **`XmlParser` extraction → parser plugin.** With a generic
+- **`XmlParser` extraction → parser plugin.** With a generic
   `parser.parse` hook in TurnExecutor. Multi-format input becomes
   possible (native tool-calls, JSON shapes, thinking-channel
-  formats) without forking core. Note: hedberg recategorization
-  (above) eliminates the backwards-seam motivation, so this is
-  now optional/lower-priority — drive by "do we actually need
+  formats) without forking core. Drive by "do we actually need
   multi-format input?" rather than by seam pressure.
-- [x] **AgentLoop run-state emission → lifecycle plugin.** Examined;
-  not a real seam. The original premise — that `run/changed`
-  notification belongs elsewhere — was misdiagnosed: `run/changed`
-  is the **wire** notification sent from `ClientConnection.js:69`
-  on the generic `entry.changed` event. AgentLoop never emits it.
-  All AgentLoop emissions (`run.created`, `loop.started/completed`,
-  `ask/act.started/completed`, `run.step.completed`,
-  `turn.verdict`, `proposal.*`, `error.log`) already route through
-  generic event/filter hooks. The remaining direct writes
-  (`#setRunStatus`, `#writeRunEntry`, `db.create_run`) are core
-  orchestration — manifesting the run as a queryable system entity
-  is what AgentLoop is for. Relocating to a "lifecycle plugin"
-  would hide the coupling, not remove it.
-
-### Phase 1 findings — investigate during orchestration mapping
-
 - **`file/` plugin reached by 3 other plugins** (rpc, set, cli).
   Cross-plugin direct imports, classification unclear without
-  reading the file plugin's role. Tag for orchestration phase.
-
-### Phase 3 — Resume e2e troubleshooting + instruction iteration
-
-- [ ] **e2e sweep + analysis under post-refactor architecture.**
-  Plumbing first; model alignment after. Doing it the other way
-  duplicates work: any prose tweaks made now would be re-evaluated
-  against a different architecture.
-- [ ] Pivot terminal-bench from grok to local gemma (deferred from
-  prior "Now").
-- [ ] **Tooldoc example weight (CC-13).** Calibration measurement,
-  not a refactor. System prompt is ~6KB / ~2K tokens, ~5.5KB of
-  which is tool docs (10 tools × 5+ examples). Strong models
-  pattern-match from one example; weaker models benefit from more.
-  Measure same prompts with 2-example vs 5-example tooldocs against
-  grok and gemma; decide whether the example density earns its cost.
-- [ ] **`unknown://env/...` example in instructions_104.md.** Add a
-  second Decomposition-stage example demonstrating env-sanity
-  unknowns (e.g. `unknown://env/node_runtime` — "What node version
-  is available?") alongside the existing trivia example. Three-stage
-  continuity: catch in Decomposition → resolve via `<env>` in
-  Distillation → re-verify in Deployment. Helps weak models avoid
-  skipping environment checks. Sacred-prompt territory — discuss
-  namespace and exact wording before any edit lands.
-- [ ] **Sudden-death turn warning.** On the last turn of
-  `RUMMY_MAX_LOOP_TURNS`, surface a notice to the model so it closes
-  cleanly rather than getting capped mid-thought. Calibration-relevant
-  (gemma's last-turn behavior under pressure). Land once we have
-  baseline numbers to compare against.
+  reading the file plugin's role.
 
 ### Spirit clause
 
-This refactor's goal is to **reduce complexity by manifesting
-ideals already described**, not to extend the architecture with
-new features. Each move should make the codebase smaller and the
-contract crisper. If a proposed extraction adds a hop without
-separating concerns, it's ceremony — drop it.
+Reduce complexity by manifesting ideals already described, not by
+extending the architecture with new features. Each move should
+make the codebase smaller and the contract crisper. If a proposed
+extraction adds a hop without separating concerns, it's ceremony
+— drop it.
 
 ## Open Items
 
@@ -405,15 +283,6 @@ separating concerns, it's ceremony — drop it.
   Triage: replay the turn, compare `countTokens` to provider's
   reported count for the loaded body. Whichever diverges identifies
   the bug.
-
-- [ ] **Continuation-forever in Distillation.** Re-evaluate after
-  the state-machine refactor: the Demotion advance gate (no
-  visible unknowns) forces the model to either resolve or REJECT
-  every unknown before reaching Delivery, which closes most of the
-  155-forever paths at the protocol level. If runaway distillation
-  still surfaces post-refactor, cycle detection on `<update>` body
-  fingerprints (extending `error.js#detectCycle`) is the candidate
-  fix.
 
 - [ ] **System auto-pruning.** On loop boundary or when log size
   crosses threshold, archive `log://turn_{M}/**` where M < current -
@@ -439,17 +308,15 @@ separating concerns, it's ceremony — drop it.
 
 ## Lessons (keep these pinned; don't let future sessions forget)
 
-- **State machine for model workflow choreography is a known failure
-  mode.** Trust the engine (entries + visibility + budget + tools) plus
-  teaching (`instructions.md` + tooldocs). Workflow stages get
-  re-imagined as fixed-shape enforcement; they end up as overhead the
-  model misreads as exclusive permissions ("I am in Distillation, I
-  must only identify and discover" — observed in hydrology 2026-05-05,
-  with the model literally reading a mode constraint as forbidding the
-  demote action). Collapsed FVSM 4D → single-status-coherence
-  ({200 + visible-unknowns check}) on 2026-05-05; protocol is now
-  "decompose, then resolve and deliver" with the model self-pacing,
-  enforced only by the delivery coherence invariant.
+- **The contract is lean.** The engine enforces three things via
+  the strike system: budget overflow, repetition (cycle detection),
+  and per-turn `<update>` inclusion. Plus the ask-mode shield (run
+  permissions, separate from workflow). Everything else is the
+  model's responsibility, taught via `instructions-system.md`,
+  `instructions-user.md`, and tooldocs. Don't add engine-side
+  enforcement to police model workflow — it gets re-imagined as
+  fixed-shape choreography that the model misreads as exclusive
+  permissions, and weak models bounce off it instead of doing work.
 - **AGENTS.md is shared memory.** Internal LLM memory is for
   overrides only. Append project observations here, not internally.
 - **Claude's shell carries a stale `XAI_API_KEY`. Source `.xai.key`
@@ -526,7 +393,7 @@ separating concerns, it's ceremony — drop it.
     folksonomy that the model imitates verbatim. Use hierarchical
     slash-segmented paths (`known://countries/france/*`,
     `known://geography/indiana/orange_county/*`) — the canonical
-    shape from `instructions_105.md`.
+    shape.
 
   **Failure modes that signal register miscalibration:**
   - `YOU MUST` everywhere → models start ignoring it.
@@ -653,11 +520,9 @@ separating concerns, it's ceremony — drop it.
   syntax mistake as an audit trigger before treating it as a model
   capability problem.
 - **Unknown spamming is real.** Weak models can emit 90+ visible
-  unknowns in a single Decomposition pass on a fact-heavy ingest.
-  The state machine then has to grind every one through
-  Distillation+Demotion before reaching Deployment. Front-loaded
-  over-decomposition is a documented failure mode, not a baseline
-  to accept.
+  unknowns up front on a fact-heavy ingest, then lose turns
+  grinding through them. Front-loaded over-decomposition is a
+  documented failure mode, not a baseline to accept.
 - **When a model misbehaves, audit the test prompt against the
   documented protocol first.** Don't theorize about model
   non-determinism or harness bugs until you've verified the prompt
@@ -687,9 +552,8 @@ separating concerns, it's ceremony — drop it.
   construction. Either widen the assertion to `[200, 499]` (or
   whichever set is legitimate for the test's intent) or move the
   test to `test/live/` where stricter outcome verification is the
-  whole point. The protocol-as-state-machine guarantees terminal
-  reachability, not deterministic success. (Source: CC-8c in the
-  E2E audit; seen in `persona_fork` 3rd subtest pre-session.)
+  whole point. The engine guarantees terminal reachability, not
+  deterministic success.
 - **Output rendered inside a tag the model also emits as input gets
   reproduced as input.** rummy.web's search log entry rendered
   under `<search>` (the same tag the model emits as a tool call)
@@ -724,7 +588,7 @@ separating concerns, it's ceremony — drop it.
   carve-out for archived prompts at the visibility layer (CTE 1)
   but not at the body-projection layer (CTE 2), silently zeroing
   the prompt body even though the row passed through. Symptom: the
-  model in Deployment Stage saw `<prompt>...</prompt>` with an
+  model on its delivery turn saw `<prompt>...</prompt>` with an
   empty body and emitted "please provide a prompt to act upon"
   instead of answering. When you add a carve-out at one stage of a
   multi-stage view or pipeline, audit every downstream stage that
@@ -739,9 +603,9 @@ separating concerns, it's ceremony — drop it.
   turn, so a block that mutates frequently kills cache for
   everything below it. Current order: `<summarized>` (slow) →
   `<visible>` (per-turn unchanged unless promote/demote) → `<log>`
-  (appends per turn) → `<unknowns>` → `<instructions>` (per phase)
+  (appends per turn) → `<unknowns>` → `<instructions>` (per turn)
   → `<budget>` (recomputed) → `<prompt>` (run-stable, conventionally
-  last). The system message stays fully stable post-bifurcation.
+  last). The system message stays fully stable.
   Don't reorder blocks without considering the cache impact at the
   bottom of the order.
 - **Wire-body literals masquerade as config-driven defaults.** The
@@ -800,8 +664,7 @@ separating concerns, it's ceremony — drop it.
   takes a `soft` flag; soft entries land state="resolved" and
   skip turnErrors++. Wired only at TurnExecutor's parser-warnings
   loop. Missing-update / no-actionable-tags / dispatch crashes /
-  context-exceeded all stay strike-eligible — those are real
-  FCRM-compliance signals.
+  context-exceeded all stay strike-eligible.
 - **Verifier-mutation impulse is a benchmark-integrity threat
   separate from cheating-via-search.** Grok on
   `break-filter-js-from-html` (smoke 2026-04-30) emitted
@@ -853,7 +716,7 @@ session and work the batch.
   Explanation-side fix.
 - **CC-12a — `sh`/`env` MUST-clause repetition.** 6 negatives for
   2 binary distinctions. Tooldoc cleanup.
-- **PF-2 — Persona_fork Decomposition stage.** Doesn't recognize
+- **PF-2 — Persona_fork run start.** Doesn't recognize
   fork-inherited knowns; weak models confabulate new unknowns.
   Likely instruction-side.
 - **`repo://overview` file-op regression.** Open Item filed; the

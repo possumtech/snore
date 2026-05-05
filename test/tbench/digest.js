@@ -47,9 +47,33 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const RESULTS_DIR = join(__dirname, "results");
 
 const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS) || 99;
-// Reasoning-runaway threshold: a turn with this much reasoning AND no
-// productive emissions is a strong runaway signal. Tunable.
+// Reasoning-runaway thresholds:
+//  - REASONING_RUNAWAY_CHARS: heavy reasoning AND zero output = stuck.
+//  - REASONING_REPEAT_THRESHOLD: a run of this many identical consecutive
+//    non-empty lines in reasoning is a degenerate token-loop, even if
+//    the model managed to squeeze out an emission afterward. Catches the
+//    "model loops the same bullet 150 times then emits a search" shape
+//    that the chars+empty-emissions check misses.
 const REASONING_RUNAWAY_CHARS = 8000;
+const REASONING_REPEAT_THRESHOLD = 10;
+
+// Longest run of identical consecutive non-empty lines.
+function maxConsecutiveRepeats(text) {
+	if (!text) return 0;
+	const lines = text.split("\n").map((l) => l.trim());
+	let maxRun = 0;
+	let currentRun = 1;
+	for (let i = 1; i < lines.length; i++) {
+		if (lines[i] && lines[i] === lines[i - 1]) {
+			currentRun++;
+		} else {
+			if (currentRun > maxRun) maxRun = currentRun;
+			currentRun = 1;
+		}
+	}
+	if (currentRun > maxRun) maxRun = currentRun;
+	return maxRun;
+}
 
 function isTaskDir(dir) {
 	return existsSync(join(dir, "agent", "rummy.db"));
@@ -273,35 +297,31 @@ function classifyMarkers(reward, runSummary, turnRows) {
 
 	let strikeAbandon = false;
 	let runawayTurn = null;
-	const shieldHits = new Set();
 	let parserWarn = false;
 	for (const row of turnRows) {
-		// Reasoning runaway: heavy reasoning, no productive emissions.
-		if (
+		// Reasoning runaway, two shapes:
+		//  - heavy reasoning + zero output (the model never emerged), or
+		//  - a long run of identical consecutive lines in reasoning (the
+		//    model token-looped, even if it eventually squeezed out an
+		//    emission). Either fires the marker.
+		const stuck =
 			row.reasoningChars >= REASONING_RUNAWAY_CHARS &&
 			row.emissions.length === 0 &&
-			!row.update
-		) {
+			!row.update;
+		const repetitive =
+			maxConsecutiveRepeats(row.reasoning) >= REASONING_REPEAT_THRESHOLD;
+		if (stuck || repetitive) {
 			runawayTurn = row.turn;
 		}
 		for (const err of row.errors) {
 			const body = err.body || "";
 			if (body.startsWith("Abandoned after")) strikeAbandon = true;
-			// Delivery coherence gate — fires when the model attempts a
-			// file modification or emits <update status="200"> while any
-			// `unknown://` is still visible. Single shield in the protocol.
-			if (
-				body.includes("YOU MUST NOT deliver while unknowns remain visible") ||
-				body.startsWith("Cannot deliver:")
-			)
-				shieldHits.add("gate_delivery");
 			if (body.startsWith("Unclosed") || body.includes("Tool call limit")) {
 				parserWarn = true;
 			}
 		}
 	}
 	if (strikeAbandon) markers.push("strike_abandon");
-	for (const m of [...shieldHits].sort()) markers.push(m);
 	if (runawayTurn != null) markers.push(`reasoning_runaway_t${runawayTurn}`);
 	if (parserWarn) markers.push("parser_warning");
 	if (!runSummary) markers.push("exfil_fail");

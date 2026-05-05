@@ -37,10 +37,8 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 	const turnsHome = join(__dirname, "turns", `hydro_${stamp}`);
 
 	before(async () => {
-		// Use the default RUMMY_MAX_LOOP_TURNS (99). Capping low short-circuits
-		// the guardrail-bouncing the state machine is designed for: weak
-		// models succeed by repeatedly hitting the protocol's edges until
-		// they converge.
+		// Use the default RUMMY_MAX_LOOP_TURNS (99). Capping low denies
+		// weak models the room they need to converge on the deliverable.
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.mkdir(turnsHome, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");

@@ -27,7 +27,18 @@ describe("slugify", () => {
 
 	it("encodes URL-unsafe characters within segments", () => {
 		assert.equal(slugify("What's the capital?"), "What's_the_capital%3F");
-		assert.equal(slugify("known://auth_flow"), "known%3A/auth_flow");
+	});
+
+	it("replaces scheme separator '://' with '___' so it round-trips and never decodes to a misleading single-slash path", () => {
+		assert.equal(slugify("known://auth_flow"), "known___auth_flow");
+		assert.equal(
+			slugify("unknown://geography/indiana/orange_county"),
+			"unknown___geography/indiana/orange_county",
+		);
+		assert.equal(
+			slugify("https://example.com/page"),
+			"https___example.com/page",
+		);
 	});
 
 	it("drops empty segments from leading/trailing/double separators", () => {

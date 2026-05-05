@@ -2,9 +2,19 @@ import { readFileSync } from "node:fs";
 import Protocol from "./protocol.js";
 
 const baseInstructions = readFileSync(
-	new URL("./instructions.md", import.meta.url),
+	new URL("./instructions-system.md", import.meta.url),
 	"utf8",
 );
+
+// Tight, non-modal reminder rendered into the user message right before
+// the prompt (`assembly.user` priority 200, immediately ahead of
+// prompt's 225). Keeps the workflow arc + per-turn discipline warm in
+// the model's working memory at the action site, separate from the
+// cache-stable system-prompt framing.
+const userInstructions = readFileSync(
+	new URL("./instructions-user.md", import.meta.url),
+	"utf8",
+).trim();
 
 const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\/update\//;
 
@@ -19,7 +29,14 @@ export default class Instructions {
 			this.resolveSystemPrompt.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
+		core.filter("assembly.user", this.assembleInstructions.bind(this), 200);
 		new Protocol(core);
+	}
+
+	// Render the user-side reminder right before the prompt block. Single
+	// file, no mode keying — same content every turn.
+	assembleInstructions(content, _ctx) {
+		return `${content}<instructions>\n${userInstructions}\n</instructions>\n`;
 	}
 
 	// Project instructions://system through the visible view; called once per turn.

@@ -50,9 +50,7 @@ describe("E2E: yolo mode auto-resolves and self-executes (@yolo_mode)", {
 	before(async () => {
 		await fs.mkdir(projectRoot, { recursive: true });
 		// Plant a data file with facts so the prompt is research-shaped
-		// (matches the harness's Definition→Discovery research bias)
-		// rather than direct-action. Direct-action prompts fight the
-		// state machine and gemma loses turns to internal debate.
+		// rather than direct-action.
 		await fs.writeFile(
 			join(projectRoot, "data.txt"),
 			`${["name=ada", "language=python", "version=3.11"].join("\n")}\n`,

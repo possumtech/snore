@@ -380,47 +380,6 @@ are enforced by `trg_run_state_transition` (see initial migration):
 All terminal states (200/500/499) allow transition back to running.
 Runs are long-lived.
 
-### FVSM State Machine {#fvsm_state_machine}
-
-The engine has one terminal status: `200`. To emit it, all `unknown://`
-entries must be summarized (RESOLVED or REJECTED) and all prior prompts
-must be summarized. The model decomposes unknowns at run start, resolves
-them into knowns, demotes resolved unknowns and irrelevant sources, and
-emits `<update status="200">` when done.
-
-There are no advance gates and no modes; the model self-paces. The
-coherence invariant is enforced at delivery, not in workflow stages.
-Every other turn emits `<update>{summary}</update>` with no status —
-the per-turn beat that records what the model just did.
-
-**Coherence checks (the only enforcement teeth):**
-
-- `<update status="200">` is rejected if any `unknown://` is still
-  visible, or any prior prompt is still visible. The model receives an
-  `<error>` block (status 403) and the run continues.
-- File modifications (bare-path `<set body>`, `<rm>`, `<mv>`,
-  `<cp>` to bare-path) are rejected by the same condition: any
-  `unknown://` still visible blocks the write. Same shield, same
-  message, fired at proposal time rather than delivery time.
-
-The teaching of *what* to do (decompose, distill, demote, deliver) lives
-in `instructions.md` (the framework) and in the unknown / known / update
-tooldocs. The engine doesn't choreograph the workflow; the model does.
-
-**Code surface.**
-
-- `src/plugins/update/update.js` — `<update status="200">` handler;
-  fires the coherence check before resolving the entry.
-- `src/plugins/policy/policy.js` — `#enforceDeliveryMode` shields
-  file modifications via the same coherence check.
-- `src/plugins/instructions/instructions.js` — assembles the system
-  prompt (framework + tooldocs); no mode-keyed rendering.
-
-**Test anchoring.** See `src/plugins/update/update.test.js` for the
-coherence-check unit tests; `src/plugins/policy/policy.test.js` for
-the file-modification shield tests; `test/integration/` for end-to-end
-delivery flow.
-
 ### Loops Table {#loops_table}
 
 The loops table IS the prompt queue. Each `ask`/`act` creates a loop.

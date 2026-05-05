@@ -14,8 +14,8 @@ with `commands` attribute (available tool list) and an optional
 `warn="File editing disallowed."` attribute when the loop's mode is
 `ask` (read from `attributes.mode` on the prompt entry, falling back
 to the type passed by the core). The mode itself is not rendered as
-a tag attribute — it would collide with the FVSM "Mode" terminology
-in the instructions block and the model conflates the two.
+a tag attribute — the warn copy carries the only model-relevant
+consequence.
 
 ## Archived prompts disappear, by design
 

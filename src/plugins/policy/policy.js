@@ -6,31 +6,10 @@ export default class Policy {
 	constructor(core) {
 		this.#core = core;
 		core.filter("entry.recording", this.#enforceAskMode.bind(this), 1);
-		core.filter("entry.recording", this.#enforceDeliveryMode.bind(this), 2);
 	}
 
-	// Mark the entry failed without destroying its body. The body is the
-	// model's recorded intent — what it tried — and stays intact so the
-	// model can reflect on its own action when reading the log later.
-	// The rejection reason lives in a separate `log://turn_N/error/...`
-	// entry emitted by the caller via `hooks.error.log.emit`.
 	#fail(entry) {
 		return { ...entry, state: "failed", outcome: "permission" };
-	}
-
-	#isFileModification(entry) {
-		if (entry.scheme === "set" && entry.attributes?.path) {
-			const scheme = Entries.scheme(entry.attributes.path);
-			if (scheme === null && entry.body) return true;
-		}
-		if (entry.scheme === "rm") {
-			const pathAttr = entry.attributes?.path || entry.path;
-			if (Entries.scheme(pathAttr) === null) return true;
-		}
-		if (entry.scheme === "mv" || entry.scheme === "cp") {
-			if (Entries.scheme(entry.attributes?.to) === null) return true;
-		}
-		return false;
 	}
 
 	async #enforceAskMode(entry, ctx) {
@@ -58,37 +37,6 @@ export default class Policy {
 		}
 
 		if (!message) return entry;
-		await this.#core.hooks.error.log.emit({
-			store: ctx.store,
-			runId: ctx.runId,
-			turn: ctx.turn,
-			loopId: ctx.loopId,
-			message,
-			status: 403,
-		});
-		return this.#fail(entry);
-	}
-
-	// File modification (bare-path `<set body>`, `<rm>`, `<mv>`, `<cp>`
-	// to bare-path) is the high-blast-radius operation; only allowed
-	// when no `unknown://` entry is still visible. Schema entries
-	// (unknown://, known://, log://, …) are always allowed. The check
-	// mirrors the `<update status="200">` coherence gate in update.js:
-	// "you can't deliver while you have things you said you don't know."
-	// Rejection surfaces as an <error> block via error.log.emit so the
-	// reason reaches the model's context regardless of how the failed
-	// operation entry renders.
-	async #enforceDeliveryMode(entry, ctx) {
-		if (!this.#isFileModification(entry)) return entry;
-		const unknowns = await ctx.store.getEntriesByPattern(
-			ctx.runId,
-			"unknown://**",
-			null,
-		);
-		const visibleUnknowns = unknowns.filter((u) => u.visibility === "visible");
-		if (visibleUnknowns.length === 0) return entry;
-		const message =
-			"YOU MUST NOT deliver while unknowns remain visible. Demote them (RESOLVED or REJECTED) first.";
 		await this.#core.hooks.error.log.emit({
 			store: ctx.store,
 			runId: ctx.runId,

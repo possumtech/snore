@@ -1,17 +1,25 @@
-## <update>{one-line summary of this turn's work}</update> - Report turn status
+## <update status="N">{ direct answer or one-line summary }</update> - Turn termination
 
-YOU MUST conclude every turn with one (and only one) <update></update>.
-YOU MUST keep the body to <= 80 characters.
+YOU MUST conclude every turn with one (and only one) <update status="N"></update>.
+YOU MUST keep the update body to <= 80 characters.
+YOU MUST use status 102 for continuation and 200 for final delivery.
 
-Example: <update>distilled three unknowns into known://trivia/geography/capitals</update>
-Example: <update>searching the watershed dataset for management area names</update>
+Example:
+	{ demote irrelevant source entries and log entries }
+	<set path="known://plan">s/- [ ] Distill geography unknowns/- [x] Distill geography unknowns/g</set>
+	<update status="102">distilled three unknowns into known://trivia/geography/capitals</update>
 
-## Completion: <update status="200">{deliverable summary or direct answer}</update>
+Example:
+	{ demote irrelevant source entries and log entries }
+	<set path="known://plan">s/- [ ] Discover watershed information/- [x] Discover watershed information/g</set>
+	<update status="102">searching the watershed dataset for management area names</update>
 
-To end the run, emit `<update status="200">`. The body is the final deliverable summary or the direct answer to the prompt.
+Example:
+	{ demote irrelevant source entries and log entries }
+	<set path="known://plan">s/- [ ] Deliver direct answer/- [x] Deliver direct answer/g</set>
+	<update status="200">Paris</update>
 
-Example: <update status="200">Paris</update>
-Example: <update status="200">OC_RIVERS.md created with three sections covering rivers, watersheds, and karst features.</update>
-
-* The engine refuses `<update status="200">` while any `unknown://` entry is still visible. Demote them all (RESOLVED or REJECTED) before delivering.
-* The engine also refuses delivery while any prior prompt is still visible — demote prompts you're done with.
+Example:
+	{ demote irrelevant source entries and log entries }
+	<set path="known://plan">s/- [ ] Delivered OC_RIVERS.md/- [x] Delivered OC_RIVERS.md/g</set>
+	<update status="200">Paris</update>

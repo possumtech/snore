@@ -58,7 +58,7 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 
 	before(async () => {
 		// Default RUMMY_MAX_LOOP_TURNS; TIMEOUT bounds wall-clock. Artificial
-		// caps starve the state machine of room to bounce.
+		// caps don't leave the model room to recover from bounce-offs.
 		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(join(projectRoot, "seed.md"), "# Seed\n");
 		const { execSync } = await import("node:child_process");

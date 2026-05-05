@@ -116,9 +116,8 @@ export default class TestDb {
 		// If DB is in a temp directory, persist to diag and delete.
 		// Layout matches the tbench task-dir shape so test/tbench/digest.js
 		// can process the captured DB the same way it processes a task
-		// container's `agent/rummy.db`. See SPEC.md @fvsm_state_machine
-		// triage flow + AGENTS.md "Sweep analysis" section.
-		// If DB is in a results directory (createAt), leave it in place.
+		// container's `agent/rummy.db`. See AGENTS.md "Sweep analysis"
+		// section. If DB is in a results directory (createAt), leave it in place.
 		const inTmp = this.dbPath.startsWith(tmpdir());
 		if (inTmp) {
 			const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);

@@ -24,73 +24,7 @@ export default class Update {
 	}
 
 	async handler(entry, rummy) {
-		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const status = entry.attributes?.status;
-
-		// Only 200 has terminal meaning. Any other status (or none) is a
-		// continuation update — accepted unconditionally.
-		if (status === 200) {
-			const reason = await this.#deliveryCoherenceCheck(rummy);
-			if (reason) {
-				entry.state = "failed";
-				entry.outcome = "incoherent_delivery";
-				entry.body = reason;
-				await rummy.hooks.error.log.emit({
-					store,
-					runId,
-					turn,
-					loopId,
-					message: reason,
-					status: 403,
-				});
-				return;
-			}
-		}
-
-		await rummy.update(entry.body, { status });
-	}
-
-	// 200 is the only terminal status; the engine refuses it while any
-	// `unknown://` is visible (the model said it doesn't know X; can't
-	// claim done with X still unresolved) or any prior prompt is visible
-	// (legacy delivery integrity check). Returns the rejection reason or
-	// null if coherent.
-	async #deliveryCoherenceCheck(rummy) {
-		const { entries: store, runId } = rummy;
-		const unknowns = await store.getEntriesByPattern(
-			runId,
-			"unknown://**",
-			null,
-		);
-		const visibleUnknowns = unknowns.filter((u) => u.visibility === "visible");
-		if (visibleUnknowns.length > 0) {
-			return `Cannot deliver: ${visibleUnknowns.length} unknown(s) still visible. Demote them (RESOLVED or REJECTED) first.`;
-		}
-		const visiblePriorPrompts = await this.#countVisiblePriorPrompts(rummy);
-		if (visiblePriorPrompts > 0) {
-			return `Cannot deliver: ${visiblePriorPrompts} prior prompt(s) still visible. Demote them first.`;
-		}
-		return null;
-	}
-
-	async #countVisiblePriorPrompts(rummy) {
-		const prompts = await rummy.entries.getEntriesByPattern(
-			rummy.runId,
-			"prompt://*",
-			null,
-		);
-		const visible = prompts.filter((p) => p.visibility === "visible");
-		if (visible.length === 0) return 0;
-		// Exclude the latest prompt; only PRIOR prompts trigger the gate.
-		let maxNum = -1;
-		for (const p of visible) {
-			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
-			if (m && Number(m[1]) > maxNum) maxNum = Number(m[1]);
-		}
-		return visible.filter((p) => {
-			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
-			return !m || Number(m[1]) !== maxNum;
-		}).length;
+		await rummy.update(entry.body, { status: entry.attributes?.status });
 	}
 
 	async resolve({ recorded, content, runId, turn, loopId, rummy }) {

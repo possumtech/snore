@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import Policy from "./policy.js";
 
-// Capture the filters the plugin registers so we can call them directly.
-// Policy registers two: ask-mode at priority 1, delivery-mode at priority 2.
+// Capture the filter the plugin registers so we can call it directly.
 function makeCore({ errorEmits = null } = {}) {
 	const filters = [];
 	return {
@@ -33,25 +32,15 @@ function entry(scheme, attrs = {}, body = "", path = `${scheme}://x`) {
 	};
 }
 
-// Stand-in for the Entries store; only `getEntriesByPattern` is consulted by the
-// delivery-mode shield, and only against `unknown://**`.
-function makeStore({ visibleUnknowns = 0 } = {}) {
-	return {
-		getEntriesByPattern: async (_runId, pattern) => {
-			if (pattern !== "unknown://**") return [];
-			return Array.from({ length: visibleUnknowns }, (_, i) => ({
-				path: `unknown://x${i}`,
-				visibility: "visible",
-			}));
-		},
-	};
+// Stand-in for the Entries store; ask-mode shield consults nothing on it.
+function makeStore() {
+	return {};
 }
 
 function newFilter({ errorEmits = null } = {}) {
 	const core = makeCore({ errorEmits });
 	new Policy(core);
 	const fs = core.getFilters();
-	// Compose both filters in registration order (ask first, then delivery).
 	return async (e, ctx) => {
 		let out = e;
 		for (const { fn } of fs) {
@@ -244,96 +233,4 @@ describe("Policy plugin: enforceAskMode filter", () => {
 			assert.strictEqual(result, e, `expected ${scheme} entry to pass through`);
 		}
 	});
-});
-
-describe("Policy plugin: enforceDeliveryMode filter (delivery coherence shield) (@fvsm_state_machine)", () => {
-	it("no visible unknowns: file modification passes", async () => {
-		const filter = newFilter();
-		const e = entry("set", { path: "src/x.js" }, "new content");
-		const result = await filter(e, {
-			mode: "act",
-			store: makeStore({ visibleUnknowns: 0 }),
-			runId: 1,
-			turn: 5,
-			loopId: 1,
-		});
-		assert.strictEqual(result, e);
-	});
-
-	for (const visibleUnknowns of [1, 3]) {
-		it(`${visibleUnknowns} visible unknown(s): file edit fails with the delivery coherence message; original body preserved`, async () => {
-			const errorEmits = [];
-			const filter = newFilter({ errorEmits });
-			const result = await filter(
-				entry("set", { path: "OC_RIVERS.md" }, "report content"),
-				{
-					mode: "act",
-					store: makeStore({ visibleUnknowns }),
-					runId: 1,
-					turn: 5,
-					loopId: 1,
-				},
-			);
-			assert.equal(result.state, "failed");
-			assert.equal(result.outcome, "permission");
-			assert.equal(
-				result.body,
-				"report content",
-				"original body preserved so the model can reflect on what it tried",
-			);
-			assert.equal(errorEmits.length, 1, "exactly one error.log emission");
-			assert.equal(
-				errorEmits[0].message,
-				"YOU MUST NOT deliver while unknowns remain visible. Demote them (RESOLVED or REJECTED) first.",
-			);
-			assert.equal(errorEmits[0].status, 403);
-		});
-
-		it(`${visibleUnknowns} visible unknown(s): file rm fails`, async () => {
-			const errorEmits = [];
-			const filter = newFilter({ errorEmits });
-			const result = await filter(entry("rm", { path: "src/x.js" }), {
-				mode: "act",
-				store: makeStore({ visibleUnknowns }),
-				runId: 1,
-				turn: 5,
-				loopId: 1,
-			});
-			assert.equal(result.state, "failed");
-			assert.match(
-				errorEmits[0].message,
-				/YOU MUST NOT deliver while unknowns remain visible/,
-			);
-		});
-
-		it(`${visibleUnknowns} visible unknown(s): known:// schema entry write passes (schema entries are not file mods)`, async () => {
-			const filter = newFilter();
-			const e = entry("set", { path: "known://x" }, "factual content");
-			const result = await filter(e, {
-				mode: "act",
-				store: makeStore({ visibleUnknowns }),
-				runId: 1,
-				turn: 5,
-				loopId: 1,
-			});
-			assert.strictEqual(result, e);
-		});
-
-		it(`${visibleUnknowns} visible unknown(s): visibility-only set on file path passes (no body)`, async () => {
-			const filter = newFilter();
-			const e = entry(
-				"set",
-				{ path: "OC_RIVERS.md", visibility: "archived" },
-				"",
-			);
-			const result = await filter(e, {
-				mode: "act",
-				store: makeStore({ visibleUnknowns }),
-				runId: 1,
-				turn: 5,
-				loopId: 1,
-			});
-			assert.strictEqual(result, e);
-		});
-	}
 });

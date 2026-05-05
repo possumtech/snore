@@ -1,5 +1,3 @@
-import docs from "./unknownDoc.js";
-
 export default class Unknown {
 	constructor(core) {
 		core.ensureTool();
@@ -10,15 +8,9 @@ export default class Unknown {
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
 		core.filter("assembly.user", this.assembleUnknowns.bind(this), 150);
-		core.filter("instructions.toolDocs", async (docsMap) => {
-			docsMap.unknown = docs;
-			return docsMap;
-		});
 		// Hidden from the advertised tool list — the model writes unknowns
-		// via <set path="unknown://..."/> rather than emitting <unknown> as
-		// a free-standing tool. Putting `<unknown/>` in the tool list would
-		// invite direct invocation, which we don't want. The tooldoc above
-		// still renders so the unknown:// scheme lifecycle is taught.
+		// via <set path="unknown://..."/>. The unknown:// scheme lifecycle
+		// is taught in instructions-user.md, not in a separate tooldoc.
 		core.markHidden();
 	}
 
