@@ -358,6 +358,25 @@ they aren't mistaken for ceremony by the next session.
   against a different architecture.
 - [ ] Pivot terminal-bench from grok to local gemma (deferred from
   prior "Now").
+- [ ] **Tooldoc example weight (CC-13).** Calibration measurement,
+  not a refactor. System prompt is ~6KB / ~2K tokens, ~5.5KB of
+  which is tool docs (10 tools × 5+ examples). Strong models
+  pattern-match from one example; weaker models benefit from more.
+  Measure same prompts with 2-example vs 5-example tooldocs against
+  grok and gemma; decide whether the example density earns its cost.
+- [ ] **`unknown://env/...` example in instructions_104.md.** Add a
+  second Decomposition-stage example demonstrating env-sanity
+  unknowns (e.g. `unknown://env/node_runtime` — "What node version
+  is available?") alongside the existing trivia example. Three-stage
+  continuity: catch in Decomposition → resolve via `<env>` in
+  Distillation → re-verify in Deployment. Helps weak models avoid
+  skipping environment checks. Sacred-prompt territory — discuss
+  namespace and exact wording before any edit lands.
+- [ ] **Sudden-death turn warning.** On the last turn of
+  `RUMMY_MAX_LOOP_TURNS`, surface a notice to the model so it closes
+  cleanly rather than getting capped mid-thought. Calibration-relevant
+  (gemma's last-turn behavior under pressure). Land once we have
+  baseline numbers to compare against.
 
 ### Spirit clause
 
@@ -387,14 +406,6 @@ separating concerns, it's ceremony — drop it.
   reported count for the loaded body. Whichever diverges identifies
   the bug.
 
-- [ ] **Chromium cgroup-OOM kills agent before watchdog fires.**
-  Surfaced in tbench `caffe-cifar-10` — chromium-renderer OOM
-  killed the agent process before drain could exfil. Triage: bound
-  chromium memory usage in `WebFetcher` (`--memory-pressure-off`,
-  `--max_old_space_size`, or `--disable-dev-shm-usage`), or surface
-  the OOM as a recoverable strike rather than letting the kernel
-  kill us. General fix; not benchmark-specific.
-
 - [ ] **Continuation-forever in Distillation.** Re-evaluate after
   the state-machine refactor: the Demotion advance gate (no
   visible unknowns) forces the model to either resolve or REJECT
@@ -409,61 +420,6 @@ separating concerns, it's ceremony — drop it.
   `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
   requiring model intervention.
 
-- [ ] **rummy.nvim migration to pulse + query.** The server side is
-  done — the typed `run/state` / `run/progress` / `run/proposal`
-  notifications are gone (deleted 2026-04-28). `rummy.nvim` still
-  consumes the legacy notifications and must be migrated to the new
-  contract documented in `CLIENT_INTERFACE.md`: subscribe to
-  `run/changed`, track last-seen entry id per run, call
-  `getEntries(run, { since, pattern })` to reconcile, and drive UI
-  from the entry stream. Substantial lua refactor across
-  `dispatch.lua`, `state.lua`, `statusline.lua`, `diff.lua`, plus
-  tests. Cannot be validated from this repo — drive from the nvim
-  side. Until migrated, `rummy.nvim` will not function against a
-  current server.
-
-- [ ] **Headless nvim e2e test.** A test that spins up a headless
-  nvim against the server and asserts the statusline renders
-  correctly for a known run would catch contract drift at the wire
-  layer. Especially valuable now that nvim is consuming the entry
-  stream directly — any change to `getEntries` shape or `run/changed`
-  cadence is a silent break otherwise.
-
-- [ ] **Render empty user-message section blocks for cache stability.**
-  Today rummy renders sections (`<log>`, `<summarized>`, `<visible>`,
-  `<unknowns>`) only when they have content. Result: any turn that
-  adds the first entry of a category — or removes the last — *changes
-  the byte at that position* in the user message and invalidates
-  the prefix cache from there forward. Empirically traced in the
-  passing gemma regex-log run on 2026-04-29: T1→T2 cliff at the
-  first `<log>` block, T2→T3 cliff at the first `<summarized>`
-  block, T3→T4 cliff when log entries were demoted out. Mitigation:
-  always render the section structure (e.g., `<summarized></summarized>`
-  even when empty); content APPENDS into stable shapes. Cost:
-  ~20 tokens per empty section per turn. Win: deeper prefix cache
-  on structurally-stable user messages. Worth doing once we have
-  baseline numbers to A/B against.
-
-- [ ] **`unknown://env/...` example in instructions_104.md.** Add a
-  second Decomposition-stage example demonstrating env-sanity
-  unknowns (e.g. `unknown://env/node_runtime` — "What node version
-  is available on this system?") alongside the existing trivia
-  example. Rationale: catch runtime/dependency assumptions in
-  Decomposition, resolve in Distillation via `<env>`, and re-verify
-  in Deployment via the _107 example. Same pattern, three-stage
-  continuity. Helps weak models avoid skipping environment checks
-  before producing deliverables. Discuss namespace
-  (`unknown://env/...`?) and exact wording before landing — keep
-  abstract enough to generalize beyond Node.
-
-- [ ] **Tooldoc example weight.** (CC-13 in the audit.) System prompt
-  is ~6KB / ~2K tokens, of which ~5.5KB is tool docs (10 tools × 5+
-  examples each). Strong models pattern-match tools from one example;
-  weaker models benefit from multiple. Worth measuring same prompts
-  with 2-example vs 5-example tooldocs against grok and gemma to
-  see if the example density is earning its cost. Benchmark, not a
-  fix — frame as a measurement task.
-
 - [ ] **resolveCommand `||` empty-string conflation.**
   `src/agent/XmlParser.js` `resolveCommand` uses chains like
   `a.path || trimmed || null` for path/command/options/etc. Empty
@@ -473,61 +429,6 @@ separating concerns, it's ceremony — drop it.
   but the pattern is fallback-shaped and worth a `??` pass when a
   real caller surfaces the distinction. Cross-tool sweep, not a
   one-liner.
-
-- [ ] **Sudden-death turn warning.** On the last turn of
-  `RUMMY_MAX_LOOP_TURNS`, surface an error/notice to the model giving
-  it a heads-up that it's on its sudden-death turn — close cleanly
-  rather than getting capped mid-thought. Implementation deferred;
-  this is a reminder.
-
-- [ ] **Zero-downtime model swaps on `gemma.possumtech.com`.** Today
-  a model swap on the prod endpoint produces a measurable window of
-  Cloudflare 502s (origin unreachable) followed by `503 "Loading
-  model"` (origin alive, model not yet warm). Observed during e2e
-  validation on 2026-04-29: one test passed in 84 s, the next chewed
-  300 s of retry budget on 502/503 before timing out. A public
-  benchmark service can't be trusted to retry through this kind of
-  window, so it's launch-blocking infrastructure work — `gemma.possumtech.com`
-  is the launch endpoint. Three real fixes (pick one or layer):
-  (a) blue/green `llama-server` pair behind the proxy — load new
-  model on standby, atomic upstream flip, drain old; (b) origin
-  health-gate at the proxy — `llama-server` reports not-ready until
-  `/v1/models` returns 200, proxy surfaces honest `Retry-After`
-  instead of letting Cloudflare 502 the gap; (c) operator
-  discipline — never swap models during external benchmark windows.
-  (a) is the launch-grade answer. Outside this repo (proxy / server
-  config) but pinned here so it doesn't get folded into "we'll
-  handle it in retry" — retry is the bandage, this is the wound.
-  Cross-ref: `src/llm/retry.js` classification refactor landed
-  2026-04-29.
-
-- [ ] **Streaming-pipeline integrity from `llama-server` to
-  Cloudflare.** Even with rummy doing SSE on its side, the full
-  end-to-end stream depends on the origin proxy and `llama-server`
-  preserving streaming behavior. Two concerns to verify on the
-  prod box, both infra-side (no rummy code change):
-  (a) **Origin proxy buffering.** Whatever fronts `llama-server`
-  (nginx, Caddy, etc.) must pass `text/event-stream` through
-  unbuffered. Nginx specifically needs `proxy_buffering off` and
-  `proxy_http_version 1.1` on the upstream block; otherwise it
-  accumulates SSE chunks until its buffer fills, defeating
-  streaming end-to-end and turning fast-token streams into
-  batched responses (which exposes us to Cloudflare's TTFB cap on
-  long completions). Cheap to verify, free to fix if wrong.
-  (b) **Heartbeat during cold-start prompt-eval silence.** When
-  the model is parsing a large prompt before generating its first
-  token, no bytes flow on the stream — and Cloudflare's free-tier
-  TTFB cap is ~100s. A 32K-token prompt at ~500 tok/s prompt-eval
-  gets close to that ceiling. The standard SSE-comment heartbeat
-  (`:keep-alive\n\n` every 5–15s during silence) resets the TTFB
-  timer. Either find the right `llama-server` flag (if there is
-  one), or run a tiny heartbeat-injecting sidecar between
-  `llama-server` and Cloudflare. Our consumer (`openaiStream.js`)
-  already tolerates SSE comments — they're skipped in the parse
-  loop — so this is purely a producer-side fix. Sibling to the
-  blue/green Open Item; both protect different lanes of the same
-  failure surface.
-
 
 ## Scope Discipline
 
