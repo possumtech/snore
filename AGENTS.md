@@ -574,13 +574,13 @@ separating concerns, it's ceremony — drop it.
   this rule exists to prevent.
 
   **Provider-conditional vars are the explicit exception.** API
-  keys (`XAI_API_KEY`, `OPENAI_API_KEY`, `BRAVE_API_KEY`, …) and
-  optional backend selectors (`RUMMY_WEB_SEARXNG_URL`,
-  `RUMMY_WEB_PLAYWRIGHT_WS`, `OLLAMA_BASE_URL`, …) only matter
-  when their provider is invoked. They stay as direct
-  `process.env.X` reads in their plugin and may throw at first
-  use when missing. They do NOT belong in `.env.example` as
-  required defaults; they're commented stubs at most.
+  keys (`XAI_API_KEY`, `OPENAI_API_KEY`, …) and optional backend
+  selectors (`RUMMY_WEB_SEARXNG_URL`, `RUMMY_WEB_PLAYWRIGHT_WS`,
+  `OLLAMA_BASE_URL`, …) only matter when their provider is
+  invoked. They stay as direct `process.env.X` reads in their
+  plugin and may throw at first use when missing. They do NOT
+  belong in `.env.example` as required defaults; they're commented
+  stubs at most.
 
   **Feature-flag bools** (`RUMMY_NO_*`, `RUMMY_YOLO`,
   `RUMMY_DEBUG`, `RUMMY_THINK`, `RUMMY_WEB_NO_SANDBOX`) use the

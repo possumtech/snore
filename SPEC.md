@@ -1800,9 +1800,7 @@ local `node_modules` then global).
 
 | Var | Purpose |
 |-----|---------|
-| `RUMMY_WEB_SEARCH_BACKEND` | `brave` \| `searxng` |
-| `BRAVE_API_KEY` | Brave Search API key |
-| `RUMMY_WEB_SEARXNG_URL` | SearXNG instance URL |
+| `RUMMY_WEB_SEARXNG_URL` | SearXNG instance URL (SearXNG federates Brave / DuckDuckGo / Wikipedia / etc. upstream and normalizes the responses) |
 | `RUMMY_WEB_FETCH_TIMEOUT` | Playwright `page.goto` timeout (ms) |
 | `RUMMY_WEB_PLAYWRIGHT_WS` | Optional CDP endpoint for shared chromium |
 | `RUMMY_WEB_NO_SANDBOX` | `1` to drop chromium's user-namespace sandbox |
