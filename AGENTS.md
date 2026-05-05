@@ -52,24 +52,20 @@
 >   passes. Bridge adapters (e.g. `harbor`'s `rummy.py`) stay
 >   vanilla — protocol bridges, not benchmark boosters.
 
-> **Instructions discipline (when touching `src/plugins/instructions/instructions.md`
-> or any `instructions_10N.md` phase file):**
+> **Instructions discipline (when touching `instructions-system.md`
+> or `instructions-user.md`):**
 > - **Brief.** Every token is paid every turn. Cut before expanding.
-> - **Show, don't tell.** Examples teach better than prescriptions. A
->   three-line worked example beats ten lines of "you must / you should".
-> - **Mind the trade-offs both within and between tools the model must
->   succeed with.** Instructions that optimize one tool can sabotage
->   another. The model's context budget is one zero-sum pool shared
->   across `<get>`, `<set>`, `<rm>`, `<search>`, `<update>`, `<sh>`,
->   `<ask_user>`. Adding a rule that helps one can cost another its
->   oxygen.
-> - **Static base in system, phase-specific in user.** The base
->   template (`instructions.md`) is part of the system prompt — it
->   must stay stable across turns within a run so prompt caching
->   holds. The phase-specific `instructions_10N.md` files render as
->   `<instructions>` in the user message (dynamic by design).
->   Anything that would change mid-run belongs in the phase files,
->   never the base template.
+> - **Show, don't tell.** A three-line worked example beats ten
+>   lines of "you must / you should".
+> - **Cross-tool trade-offs.** The model's context is one zero-sum
+>   pool across `<get>`, `<set>`, `<rm>`, `<search>`, `<update>`,
+>   `<sh>`, `<ask_user>`. A rule that helps one can starve another.
+> - **System-stable, user-static.** `instructions-system.md` (with
+>   `[%TOOLS%]` / `[%TOOLDOCS%]` expansions) is the cacheable system
+>   prompt — must stay byte-identical across turns within a run.
+>   `instructions-user.md` renders as `<instructions>` at user
+>   priority 165 (sandwich tail) — same bytes every turn, no phase
+>   keying.
 
 > **Guiding principles (enshrined):**
 >
@@ -102,8 +98,8 @@
 | Plugin's behavior, internal design, helper rationale | `src/plugins/<name>/README.md` |
 | Plugin extension surface (events / filters) | `PLUGINS.md` §7 |
 | Model-facing guidance at the decision point | `src/plugins/<name>/<name>Doc.js` (tooldoc) |
-| Cross-cutting model identity / global rules | `instructions.md` (sacred — touched only on explicit approval) |
-| Phase-specific model guidance | `instructions_10N.md` |
+| Cross-cutting model identity / global rules | `instructions-system.md` (sacred — touched only on explicit approval) |
+| Per-turn imperative reminders | `instructions-user.md` (sacred) |
 | Project state, standing rules, in-flight threads | `AGENTS.md` |
 
 Per-comment decision flow when sweeping source: says *what* → delete;
@@ -206,12 +202,31 @@ permission, separate concern). Everything else is the model's
 responsibility, taught via the model-facing prose.
 
 Implementation, tests, SPEC.md, AGENTS.md aligned. Lint clean.
-880 unit, 245 integration, 101 spec anchors × 44 test files.
+880 unit, 245 integration, 31/31 e2e (sandwich run), 101 spec
+anchors × 44 test files.
 
-The model-facing teaching surface (`instructions-system.md`,
-`instructions-user.md`, `updateDoc.md`) does NOT contain
-engine-refusal claims that need correcting — the prose already
-states the workflow as the model's responsibility.
+**Packet ordering — locked in (sandwich):** the user message is
+ordered `<prompt>` (priority 30, front, cacheable) → dynamic state
+blocks `<summarized>` / `<visible>` / `<log>` / `<unknowns>` (50–150)
+→ `<instructions>` (165, late so the rules sit at the action site
+for recency) → `<budget>` (175, last). The system message is
+unchanged — instructions-system.md + tool docs, fully cacheable
+across all runs. The sandwich exists because front-loaded ordering
+(instructions first for max cache) regressed `act_no_completion`
+in e2e: the model lost the discipline to emit terminal `<update>`
+when "YOU MUST update with status=200" was buried 3K tokens before
+the action site. Sandwich restored 31/31 pass at the cost of cache
+hit rate. **Why:** recency at the action site beats cache savings
+when the action depends on remembering a rule. **How to apply:**
+when adding a new `assembly.user` filter, slot it by purpose —
+static reference (manual, quick-ref) goes near `<prompt>` for
+cache; per-turn discipline reminders go near `<instructions>` for
+recency; live accounting goes after `<budget>`.
+
+**Server context size: 64K** (`gemma.possumtech.com` /props
+reports `n_ctx: 65536`, build `b199-82209ef`). Doubled from 32K
+sometime today. Budget plugin reads `contextSize` from runtime
+queries; no hardcoded literals to update.
 
 **Open items unblocked by the cleanup:**
 
@@ -219,7 +234,7 @@ states the workflow as the model's responsibility.
 - Tooldoc example weight measurement (CC-13).
 - `unknown://env/...` example proposal — sacred-prompt territory; awaiting user direction.
 - Sudden-death turn warning — calibration-relevant once baseline numbers exist.
-- Demo / e2e / bench runs to validate the lean contract.
+- ProgramBench integration (see Open Items).
 
 ### Architectural exceptions (keep, document)
 
@@ -265,6 +280,40 @@ extraction adds a hop without separating concerns, it's ceremony
 — drop it.
 
 ## Open Items
+
+- [ ] **ProgramBench integration.** Adapter for facebookresearch/
+  ProgramBench (200 tasks: rebuild a complete codebase from a
+  compiled binary + docs, no internet, evaluated against per-task
+  behavioral test suites totaling 248K tests). Layout mirrors
+  `test/tbench/` — Docker per task (`programbench/<task>:task_cleanroom`),
+  rummy runs inside the cleanroom in `act` mode with `noWeb` (the
+  benchmark forbids internet — it's the contract, not a config),
+  output codebase tarred to `submission.tar.gz`. Eval is one
+  `uv run programbench eval <run-dir>` shellout. Server is now
+  64K which makes the "fit in tight context" pitch viable on
+  smaller tasks (jq, cmatrix, zoxide). Start with the smallest
+  task to validate the loop end-to-end before sweeping. Notes:
+  - Rummy lives in cleanroom via bind-mount initially (faster
+    iteration than baking an image); document the deviation.
+  - Each task likely needs `RUMMY_MAX_LOOP_TURNS` raised — these
+    are multi-hour reconstructions, not 4-turn answers.
+  - Test blob downloads from HuggingFace happen at eval time;
+    pre-sync via `uv run programbench blob sync` if disk allows.
+
+- [ ] **Cache eviction anomaly with sandwich ordering.** Sandwich
+  e2e showed cache hitting only on turn 2 of multi-turn runs —
+  turns 3+ report `cached=0` despite system+prompt being
+  byte-identical across all turns. Aggregate hit rate dropped
+  from 61.4% (front-loaded) to 14.9% (sandwich) — much larger
+  than the design predicts (~400 tokens/turn delta vs observed
+  ~1900 tokens/turn delta). Possibly llama-server's `cache_reuse`
+  threshold giving up when the cacheable prefix is shorter
+  (~1900 tok system+prompt vs ~2400 tok system+instructions+prompt
+  in front-loaded). Investigate via `/props` for `cache_reuse`
+  setting, slot state across turns, or whether some other request
+  (proposal handshake? telemetry?) is hitting the slot mid-run
+  and evicting. Not blocking ProgramBench — but if recoverable,
+  could nearly 4x effective cache.
 
 - [ ] **Single-turn budget escape.** A run was observed sending
   ~2.3× the configured budget cap in a single turn. Two candidate
@@ -317,234 +366,90 @@ extraction adds a hop without separating concerns, it's ceremony
   enforcement to police model workflow — it gets re-imagined as
   fixed-shape choreography that the model misreads as exclusive
   permissions, and weak models bounce off it instead of doing work.
-- **AGENTS.md is shared memory.** Internal LLM memory is for
-  overrides only. Append project observations here, not internally.
-- **Claude's shell carries a stale `XAI_API_KEY`. Source `.xai.key`
-  before every tbench launch (or anything that hits xAI).** The
-  user fixed `.bashrc`, but Claude's persistent shell session
-  pre-dates that fix and exported the old key. The shell value
-  supersedes `.env` in `process.env`, so node + the harbor adapter
-  forward the bad key to the docker container. xAI rejects with
-  `400 Incorrect API key provided: xa***8X`, every turn dies at
-  status=500, the run completes in ~60–90s with zero tokens, and
-  no fix under test gets exercised. The user has warned about
-  this repeatedly. Always launch via:
-  ```
-  source .xai.key && npm run test:tbench -- --task <name>
-  ```
+- **`source .xai.key` before any xAI-touching launch.** Claude's
+  Bash subshells inherit a stale `XAI_API_KEY` from a pre-fix shell
+  session; `.bashrc` fix doesn't propagate to existing subshells.
+  Symptom: every turn dies at 500 with `400 Incorrect API key`.
   `.xai.key` is a one-line `export XAI_API_KEY="..."` the user
-  maintains specifically for this purpose. Do not parse `.env`
-  manually — it's quoted and shell extraction strips quotes
-  inconsistently (xAI then rejects the quoted value as `"x***A"`).
-  The user has fixed `~/.bashrc` (line 130 exports the correct
-  key) but Claude Code's Bash subshells empirically do not pick
-  it up — the stale parent-process value still wins. If a future
-  Claude finds a reliable way to mutate its own environment to
-  pick up the bashrc value, great; until then, `source .xai.key`
-  is the known-working path. Do NOT claim the user "rejected"
-  shell-mutation options — they did not.
-- **Plugin extensibility is a promise, not an implementation detail.**
-  Don't delete "unused" events.
-- **Instruction prose is signal-dense; respect the four registers.**
-  The ~350 lines of `src/plugins/instructions/*.md` and
-  `src/plugins/*/[a-z]*Doc.md` carry more behavioral weight than
-  tens of thousands of lines of code. Each line is a teaching
-  artifact the model encounters every turn for the run's lifetime.
-  Tokens here are not the same currency as tokens elsewhere; treat
-  every character as load-bearing.
+  maintains for this. Don't parse `.env` manually — quoted values
+  get mangled.
+- **Plugin extensibility is a promise.** Don't delete "unused"
+  events from `Hooks.js` — they're the extension surface.
+- **Instruction prose is a four-register grammar. Respect it.**
+  Every line is paid every turn — treat as load-bearing.
+  - **`YOU MUST` / `YOU MUST NOT`** — contract floor. Reserve for
+    actual contracts; overuse devalues. Pair with `Example:`.
+  - **`*` bullets** — affordances ("you can"). Insufficient for
+    contracts.
+  - **`Example: <tag/>`** — highest signal density. Models
+    pattern-match examples over prose; if they conflict, the
+    example wins. Bad examples poison.
+  - **`{ ... }`** — placeholder semantics inside Example:.
+    Description inside the braces does the work.
 
-  Model-facing prose is a calibrated grammar with four shapes,
-  each carrying different weight:
+  Failure-mode signals: `YOU MUST` everywhere → ignored. Examples
+  contradicting prose → example wins. Lazy taxonomies in examples
+  (`known://temp_*`, `known://hydrology/*`) → model imitates
+  literally; use hierarchical paths
+  (`known://geography/indiana/orange_county/*`). Cross-doc
+  repetition of the same rule is reinforcement; same rule restated
+  in different words within one doc is dilution.
 
-  - **`YOU MUST` / `YOU MUST NOT`** — the contract floor. Heaviest
-    weight; respected strongly. Reserve for actual contracts. Using
-    `YOU MUST` for prose-emphasis devalues the register and the
-    model rules-lawyers around it. Pair with an `Example:` wherever
-    possible — a solo `YOU MUST` is abstract and ambiguous.
-  - **`*` bullets** — affordance / permission tier. "You can use X
-    to do Y" tells the model a capability exists without imperative
-    weight. Right register for "this is one way" rather than "this
-    is the only way." Insufficient for hard contracts.
-  - **`Example: <tag/>`** — highest signal density per token.
-    Concrete syntax + semantics in one shot. Models pattern-match
-    examples more aggressively than they obey rules. The example
-    IS the contract from the model's view. Bad examples poison;
-    good examples compress multiple non-overlapping lessons. When
-    prose and example conflict, the example wins.
-  - **`{ ... }`** — compression tier. Placeholder semantics inside
-    an `Example:`. Lets you teach structure without spending tokens
-    on filler ("more topical knowns here," "direct answer," etc.).
-    Useless standalone; the description inside the braces does the
-    load-bearing work.
+- **Configuration is the cascade.** `.env.example` declares every
+  var with a sane default; `.env` and profile overlays
+  (`.env.tbench.<profile>`) override; shell wins. npm scripts load
+  via `--env-file-if-exists`. **Forbidden:** boot-time validators,
+  per-module guards (`if (!process.env.X) throw`), fallback
+  constants (`Number(X) || 4`, `?? "default"`). When a read
+  produces undefined/NaN, the fix is `.env.example`, not the read
+  site. **Exceptions:** provider API keys (`XAI_API_KEY`,
+  `OPENAI_API_KEY`) and optional backend selectors stay as direct
+  reads, throw at first use. Feature-flag bools use
+  `process.env.X === "1"` exactly — never `=== "true"`.
 
-  **Cross-cutting craft notes:**
-  - `YOU MUST` + `Example:` is the strongest combination (rule +
-    canonical demonstration).
-  - `*` + `Example:` is the standard shape for affordances ("you
-    can; here's what it looks like").
-  - Don't mix `*` with `YOU SHOULD` / `YOU MUST` on one line —
-    register collision; the bullet downgrades the imperative.
-  - `<!--` comments cost tokens. Keep them when they add semantic
-    information the model needs; cut them when they're human-facing
-    rationale or restatement of the example above.
-  - Every example path teaches taxonomy by example. Underscore-
-    prefix globs (`known://draft_*`, `known://temp_*`) and
-    single-level globs (`known://hydrology/*`) model lazy
-    folksonomy that the model imitates verbatim. Use hierarchical
-    slash-segmented paths (`known://countries/france/*`,
-    `known://geography/indiana/orange_county/*`) — the canonical
-    shape.
-
-  **Failure modes that signal register miscalibration:**
-  - `YOU MUST` everywhere → models start ignoring it.
-  - Examples that contradict surrounding prose → model follows
-    the example, ignores the prose. Always reconcile.
-  - Bullets carrying contracts → model treats contracts as optional.
-  - Lazy taxonomies in examples → model produces lazy taxonomies
-    in real entries. Examples are imitated literally.
-  - Repeated rules across multiple docs (preamble + tooldoc + mode)
-    are reinforcement, not waste — provided the rule is genuinely
-    contract-floor. Reinforcement at decision points is a feature.
-    But the same rule restated in different words within ONE doc
-    is dilution; pick the strongest phrasing and drop the rest.
-
-  Before adding ANY line to an instruction or tooldoc, ask: which
-  register is this? Is the register right for the level of
-  compulsion the protocol actually requires? Does it carry a lesson
-  the surrounding examples don't already carry?
-- **No fallbacks outside hedberg/XmlParser.** Biome enforces.
-- **Configuration is the cascade. Period.** `.env.example` declares
-  every variable the code reads, with a usable default. `.env`,
-  profile overlays (`.env.tbench.<profile>`), and shell env override
-  it. The npm scripts load them with `--env-file-if-exists` so
-  every `process.env.X` read is already populated by the time it
-  runs. Honor this and there is nothing more to do.
-
-  The following shapes are FORBIDDEN. Each one assumes the cascade
-  is unreliable, which is the same as not having a cascade.
-
-  1. **No boot-time env validator.** `src/agent/config.js` was
-     deleted on purpose. Do not reintroduce a `REQUIRED` map, a
-     consolidated-error throw, or any "validate every var at module
-     load" pattern. If you find yourself drafting one, you have
-     already decided the cascade can't be trusted; re-read this
-     section instead.
-  2. **No per-module guards.** `if (!Number.isFinite(X)) throw`,
-     `if (!process.env.X) throw`, `assert(X, "must be set")` next
-     to a `Number(process.env.X)` read are forbidden. The cascade
-     guarantees presence; the guard guarantees nothing the cascade
-     doesn't already.
-  3. **No fallback constants.** `Number(process.env.X) || 4`,
-     `process.env.X ?? "default"`, `Number(X) || null` are
-     forbidden. The default belongs in `.env.example`. If the
-     cascade returns a missing value, the cascade is broken; fix
-     `.env.example`, not the read site.
-
-  **The only legitimate fix when a var read produces `undefined` /
-  NaN is to declare the var in `.env.example` with a sane default.**
-  Plug the hole once, where holes get plugged. Do not plug it three
-  times (declaration + validator + guard + fallback). The user has
-  named this anti-pattern: "belt and suspenders and elastic and
-  double sided tape." The recent gemma `<search>` crash —
-  `setTimeout: delay … Received NaN` — was caused by exactly one
-  bug: `RUMMY_WEB_FETCH_TIMEOUT` was missing from `.env.example`.
-  The instinctive plug-it-three-times response is the failure mode
-  this rule exists to prevent.
-
-  **Provider-conditional vars are the explicit exception.** API
-  keys (`XAI_API_KEY`, `OPENAI_API_KEY`, …) and optional backend
-  selectors (`RUMMY_WEB_SEARXNG_URL`, `RUMMY_WEB_PLAYWRIGHT_WS`,
-  `OLLAMA_BASE_URL`, …) only matter when their provider is
-  invoked. They stay as direct `process.env.X` reads in their
-  plugin and may throw at first use when missing. They do NOT
-  belong in `.env.example` as required defaults; they're commented
-  stubs at most.
-
-  **Feature-flag bools** (`RUMMY_NO_*`, `RUMMY_YOLO`,
-  `RUMMY_DEBUG`, `RUMMY_THINK`, `RUMMY_WEB_NO_SANDBOX`) use the
-  canonical `process.env.X === "1"` check — absence means off.
-  Don't invent `=== "true"` variants; if you see one, normalize
-  it to `=== "1"`.
-
-  **If you are about to add code to "make sure the env is set" —
-  STOP.** That is the rule's exact target. The cascade is the
-  contract. Trust it. If it's broken, fix the cascade.
-- **Read the DB first.** When a symptom gets reported, the answer
-  is in the data, not in speculation.
 - **Decide, don't dawdle.** When naming or scope questions arise,
-  either resolve them in-session or ask the user — don't defer
-  them silently to a "follow-up pass" that never happens.
-- **The codebase is the codebase.** Don't compartmentalize by
-  "prior model's code vs my code" when auditing. If you're
-  touching it, it's yours now.
-- **OpenRouter routing can flip mid-session.** Observed during regex-log
-  pre-flight: turns 1–3 routed `is_byok: false` (relay-funded), turns 4–5
-  flipped to `is_byok: true` (BYOK). Different upstream pools mean
-  different cache state — saw cache hit drop 99% → 2% across the flip
-  with bit-identical system prompt and append-only user content. This
-  is OpenRouter behavior, not a rummy design issue. For clean
-  latency/caching analysis, route direct (`xai/grok-4-1-fast-reasoning`)
-  rather than via OpenRouter (`openrouter/x-ai/grok-4.1-fast`).
-  Reserve OpenRouter for the final leaderboard-comparison run where
-  matching the leaderboard's upstream matters; document which routing
-  was used in the writeup.
-- **Cost reporting under BYOK.** OpenRouter's `usage.cost` reads `0`
-  when routed via BYOK — the relay didn't bill, the upstream charged
-  the user's API key directly. The truth is in
-  `usage.cost_details.upstream_inference_cost`. Telemetry uses that
-  as a fallback so the run-summary line reflects real spend.
-- **Model-facing error messages: state desired behavior, not enforcement
-  mechanics.** The strike system, cycle detection, MAX_STRIKES, etc. are
-  internal — the model figures out the pressure from accumulating entries
-  in context, not from us narrating "this counts as a strike." When the
-  user dictates exact wording for a model-facing message, transcribe it
-  verbatim; don't pad it with rule explanations. A reminder reads as a
-  directive ("Attempt to proceed to next stage."), not as a rulebook.
-- **Attribute semantics must not split on context.** If `visibility=`
-  means one thing on a state-entry tag (`<known>`) and another on an
-  action-record tag (`<set>` in `<log>`), the model will confuse them
-  and re-emit actions trying to "fix" phantom state. Any attribute
-  rendered in the packet must mean the same thing wherever it
-  appears.
+  resolve them in-session or ask the user — don't defer to a
+  "follow-up pass" that never happens.
+- **OpenRouter cache state is unreliable.** Routing flips mid-
+  session (`is_byok: false → true`); cache hit can drop 99→2%
+  across the flip on bit-identical prefix. For latency/caching
+  analysis route direct (`xai/grok-4-1-fast-reasoning`); reserve
+  OpenRouter for leaderboard-comparison runs where matching the
+  leaderboard's upstream matters.
+- **Cost under BYOK.** OpenRouter `usage.cost` reads 0 when BYOK
+  — real spend is in `usage.cost_details.upstream_inference_cost`.
+  Telemetry uses that as fallback.
+- **Model-facing messages state desired behavior, not enforcement
+  mechanics.** Strike system / cycle detection / MAX_STRIKES are
+  internal — the model figures out pressure from accumulating
+  entries, not from narration. Reminders read as directives, not
+  rulebooks. When the user dictates wording, transcribe verbatim.
+- **Attribute semantics must not split on context.** `visibility=`
+  on a state tag (`<known>`) vs an action tag (`<set>` in `<log>`)
+  must mean the same thing — otherwise the model re-emits actions
+  to "fix" phantom state.
 - **Time-indexed vs topic-indexed paths.** Log entries are time-
-  indexed — path encodes turn. State entries (knowns, files,
-  unknowns) are topic-indexed — path encodes identity, turn is
-  metadata. The rule: if the entry's identity is WHEN, turn goes in
-  the path. If identity is WHAT, turn is an attribute.
-- **When the model emits malformed XML or "wrong" syntax, scan
-  `instructions.md`, `instructions_10N.md`, and `*Doc.md` for that
-  exact pattern first.** Models reproduce what they see modeled.
-  "Unclosed `<set>`" or "wrong attribute name" has been our fault
-  more than once — an example with a typo, an inconsistent attribute
-  spelling, an unbalanced tag in a code block. Treat the model's
-  syntax mistake as an audit trigger before treating it as a model
-  capability problem.
-- **Unknown spamming is real.** Weak models can emit 90+ visible
-  unknowns up front on a fact-heavy ingest, then lose turns
-  grinding through them. Front-loaded over-decomposition is a
-  documented failure mode, not a baseline to accept.
-- **When a model misbehaves, audit the test prompt against the
-  documented protocol first.** Don't theorize about model
-  non-determinism or harness bugs until you've verified the prompt
-  isn't asking the model to violate a documented rule. A prompt that
-  says "run `ls` via `<sh>`" violates `shDoc.md`'s "use `<env>` for
-  read-only commands" rule, and a small model that obeys the docs
-  will struggle. The "small model is flaky" interpretation is almost
-  always a prompt smell.
-- **Reasoning-runaway is a model pathology, not an instruction
-  failure.** Small models can spiral inside `reasoning_content` —
-  planning the same action over and over, never emitting it,
-  burning completion tokens until the response truncates. The
-  model isn't forgetting that XML tags execute; it's stuck. No
-  instruction edit reaches a model in this state. The framework's
-  answer is the strike-streak watchdog: a single empty-emission
-  turn fires a strike, the next productive turn resets, and
-  sustained runaways accumulate to abandon. Observed and recovered
-  cleanly in the 2026-04-28 demo run (turn 7 = 34K reasoning, 0
-  emissions; turn 8 productive; run completed at 200). Don't add
-  forward-looking coaching for the runaway state — analyze upstream
-  instead (what was the model facing on the turn *before* it
-  spiraled?).
+  indexed (path encodes turn). State entries (knowns, files,
+  unknowns) are topic-indexed (path encodes identity, turn is
+  metadata). If identity is WHEN, turn goes in the path; if WHAT,
+  turn is an attribute.
+- **Malformed XML from the model = audit our examples first.**
+  Models reproduce what they see. "Unclosed `<set>`" / "wrong
+  attribute name" has often been a typo or unbalanced tag in our
+  own instruction examples.
+- **Unknown spamming is real.** Weak models emit 90+ visible
+  unknowns up front on fact-heavy ingest, then grind. Front-loaded
+  over-decomposition is a failure mode, not a baseline.
+- **Prompt smell trumps "flaky model."** When a small model
+  misbehaves, verify the prompt isn't asking it to violate a
+  documented rule (e.g., "run `ls` via `<sh>`" against shDoc's
+  "use `<env>` for read-only"). The "model is flaky" framing is
+  usually a prompt audit failure.
+- **Reasoning-runaway is a model pathology.** Small models spiral
+  inside `reasoning_content` — same action planned forever, no
+  emission. No instruction edit reaches the stuck state; the
+  strike-streak watchdog handles it. Don't coach for the runaway
+  state — analyze the turn *before* the spiral.
 - **Stochastic agentic tests should accept the engine's terminal
   set, not just success.** Identical prompts on identical models
   can land 200 or 499 depending on the decision tree the model
@@ -554,143 +459,67 @@ extraction adds a hop without separating concerns, it's ceremony
   test to `test/live/` where stricter outcome verification is the
   whole point. The engine guarantees terminal reachability, not
   deterministic success.
-- **Output rendered inside a tag the model also emits as input gets
-  reproduced as input.** rummy.web's search log entry rendered
-  under `<search>` (the same tag the model emits as a tool call)
-  with a body of `URL — title (N tokens)` lines. Weak gemma
-  reading prior search-result blocks then emitted NEW `<search>`
-  queries with that same line shape inside — confusing output for
-  input. Fixed by switching the body to a markdown bullet list
-  (`* URL — title (N tokens)`); the leading `*` is the
-  load-bearing signal that this is prose output, not a query the
-  model would type. Tag-shaped fixes (whether a new tag like
-  `<hit>` or an existing scheme tag like `<https>`) are also at
-  risk of being reproduced as tool calls — markdown bullets are
-  the unambiguous choice. General rule: when an action's log
-  entry shares its wrapper with the input tag, the body must use
-  a marker (markdown bullet, indent, prose) the model has no
-  training-prior to emit as a tool.
-- **State transitions don't mint new entry ids; since-based pulse
-  filters miss them.** `AuditClient` originally used `since:
-  lastSeen` to filter `getEntries` for new proposed entries on
-  every `run/changed` pulse. But proposals are *materialized* by a
-  plugin hook that rewrites the existing run_view row in place
-  (state: resolved → proposed) — the entry id doesn't change.
-  Result: the auto-resolver's first snapshot saw the entry as
-  resolved, advanced lastSeen past it, and every subsequent pulse
-  filtered it out. The proposal sat unresolved forever; tests
-  hung. Fix shape: drop the since-based optimization for state-
-  sensitive scans, full-scan + dedupe via a resolved-set. Lesson:
-  any client tracking state changes via `since: id` filters needs
-  to think about whether state transitions allocate new ids.
-- **Multi-CTE views need carve-outs mirrored at every stage that
-  processes the affected column.** `v_model_context` had a
-  carve-out for archived prompts at the visibility layer (CTE 1)
-  but not at the body-projection layer (CTE 2), silently zeroing
-  the prompt body even though the row passed through. Symptom: the
-  model on its delivery turn saw `<prompt>...</prompt>` with an
-  empty body and emitted "please provide a prompt to act upon"
-  instead of answering. When you add a carve-out at one stage of a
-  multi-stage view or pipeline, audit every downstream stage that
-  touches the same data — partial carve-outs are worse than no
-  carve-out because the entry's *presence* is preserved while its
-  *content* silently vanishes. Pin with an integration test at
-  every layer, not just the entry layer.
-- **Block ordering matters for prefix caching.** Within the user
-  message, blocks are ordered slowest-mutating-first (top) to
-  fastest-mutating-last (bottom). This isn't aesthetic — KV cache
-  reuse extends through the longest prefix that matches the prior
-  turn, so a block that mutates frequently kills cache for
-  everything below it. Current order: `<summarized>` (slow) →
-  `<visible>` (per-turn unchanged unless promote/demote) → `<log>`
-  (appends per turn) → `<unknowns>` → `<instructions>` (per turn)
-  → `<budget>` (recomputed) → `<prompt>` (run-stable, conventionally
-  last). The system message stays fully stable.
-  Don't reorder blocks without considering the cache impact at the
-  bottom of the order.
-- **Wire-body literals masquerade as config-driven defaults.** The
-  provider plugins (`openai.js`, `ollama.js`, `openrouter.js`) hardcoded
-  `think: true` / `include_reasoning: true` for weeks while
-  `src/agent/config.js` declared `RUMMY_THINK` and `.env.example`
-  defaulted it to `1`. The flag was unused; the literal was
-  load-bearing. Symptoms presented as "gemma reasoning-runaway" — a
-  documented model pathology — and the strike-streak watchdog
-  cleanly recovered, so the harness bug hid behind a model story.
-  A reasoning-capable model (grok-fast-reasoning) would have
-  absorbed the forced reasoning and still produced output, masking
-  the bug from any non-gemma benchmark. Lesson: when a model
-  exhibits a documented pathology, **read the actual wire body**
-  before classifying. A literal `true` in plugin source that
-  ignores its config knob is the most expensive kind of bug —
-  every prior benchmark number on the affected provider is
-  potentially compromised. Cross-ref: TBENCH_AUDIT.md
-  `@audit_task_regex_log_smoke_1`, the audit's first STRUCTURAL
-  finding (2026-04-30).
-- **Models reach for tools we never advertised.** Gemma 4 IT has a
-  deep CoT training prior — it emits `<think>...</think>` even
-  when the harness doesn't advertise the `<think>` command and no
-  prompt content references it. Verified post-RUMMY_THINK=0 fix
-  via `regex-log` smoke #2: zero `think` tokens in the system
-  prompt, model still emitted `<think>` blocks across all 5 turns.
-  The think plugin already absorbs this gracefully (scheme
-  registers unconditionally; tool handler conditional on `THINK`;
-  reasoning-merge filter folds `<think>` bodies into
-  reasoning_content for telemetry regardless), so the parser
-  doesn't trip and the entries land cleanly. But: extended
-  CoT-in-content blows past n_ctx the same way server-side
-  reasoning would. Mitigations are model-side (chat template
-  tweaks, sampler/stop tokens, swap to a non-reasoning gemma
-  variant) — not harness-side. Document the observation; expect
-  it on every gemma run.
-- **`reasoning_tokens` in turns table is a misleading metric.**
-  Llama-server (gemma) populates `reasoning_content` via the chat
-  template's split, but doesn't break out a separate
-  `reasoning_tokens` counter in the OpenAI-compatible usage
-  block — everything bundles into `completion_tokens`. So
-  `turns.reasoning_tokens=0` does NOT mean "the model didn't
-  reason." Verify reasoning capture by reading `reasoning://N`
-  entry sizes (rummy.web's openaiStream captures the
-  `delta.reasoning_content` chunks correctly into entries),
-  not by the per-turn token counter. Earlier audit framing
-  cited the counter as fix-verification; that framing is
-  retracted (TBENCH_AUDIT.md retraction note 2026-04-30).
-- **Parser warnings should be soft, not strikes.** Recoverable
-  XML pathology (mismatched closing tag, unclosed tag with
-  content captured) is exactly that: recovered. The parser fixed
-  it, the turn's productive emissions survive. Counting parser
-  warnings as strike-eligible (state="failed" via
-  error.log.emit) punishes the model for sloppy syntax the
-  framework already handled. Fix landed 2026-04-30: error.log
-  takes a `soft` flag; soft entries land state="resolved" and
-  skip turnErrors++. Wired only at TurnExecutor's parser-warnings
-  loop. Missing-update / no-actionable-tags / dispatch crashes /
-  context-exceeded all stay strike-eligible.
-- **Verifier-mutation impulse is a benchmark-integrity threat
-  separate from cheating-via-search.** Grok on
-  `break-filter-js-from-html` (smoke 2026-04-30) emitted
-  `<set known://fix/test_outputs.py>` documenting how to PATCH
-  the test_outputs.py verifier — including swapping `/tests/`
-  for `/app/`. The `known://` scope kept it informational, but
-  if the model had emitted `<set path="test_outputs.py">` the
-  current set proposal-accept gate would have allowed the
-  write (file_constraints declared the test file as `add`,
-  not `readonly`). Mitigated via harbor adapter excluding
-  `test_*.py` / `*_test.py` / `tests/*` from the project-files find,
-  so verifier source isn't ingested as entries — the model
-  runs the verifier via `<sh>` to check itself, but doesn't
-  see its source as something to engage with. Distinct from
-  the web-search "look up the answer" risk; both want
-  separate treatment in the audit writeup.
-- **Tbench task containers span multiple Ubuntu base versions.**
-  Surfaced by gpt2-codegolf (Ubuntu Noble 24.04, t64-renamed
-  libs) vs break-filter-js-from-html (Jammy 22.04, non-t64).
-  Apt package names diverge across the t64 transition. Single
-  fixed install list breaks one or the other. Fix shape: split
-  the install into stable names (work everywhere) + a
-  t64-or-fallback chain for the renamed packages
-  (libatk1.0-0t64 || libatk1.0-0, etc.). Lesson: don't assume
-  homogeneous base images across a benchmark dataset; tbench
-  authors compose images independently.
+- **Output inside an input-shaped tag gets reproduced as input.**
+  When a log entry's wrapper matches the model's tool-call tag
+  (`<search>` etc.), the body must lead with a marker the model
+  won't emit as a tool — markdown bullets work. Don't render
+  search results as `URL — title` lines under `<search>`; render
+  as `* URL — title`.
+- **State transitions don't mint new entry ids.** `since:
+  lastSeen` filters miss state changes (resolved → proposed
+  rewrites the row in place). Any client tracking state via
+  `since: id` needs full-scan + dedupe via resolved-set, not
+  optimization-by-id-watermark.
+- **Multi-stage view carve-outs must mirror at every stage.** A
+  carve-out at the visibility CTE without one at the
+  body-projection CTE preserves the row but zeros the body
+  silently — strictly worse than no carve-out. Pin with
+  integration tests at every layer.
+- **Block ordering is a cache-vs-recency trade.** User message
+  current order (sandwich): `<prompt>` (30, front, cacheable
+  across turns of a run) → dynamic state `<summarized>` /
+  `<visible>` / `<log>` / `<unknowns>` (50–150) → `<instructions>`
+  (165, late so rules sit at the action site) → `<budget>` (175,
+  last). Front-loaded ordering (instructions+prompt at front)
+  cached more (~61% vs ~15%) but lost discipline tests in e2e —
+  the model forgot to emit terminal `<update>` when the rule was
+  3K tokens upstream of the action. Don't reorder priorities
+  without considering both effects.
+- **Read the wire body, not the config.** Provider plugins once
+  hardcoded `think: true` / `include_reasoning: true` while a
+  config knob suggested otherwise. Symptom: "gemma
+  reasoning-runaway." The harness bug hid behind a model-pathology
+  story for weeks. When a model exhibits a documented pathology,
+  read the actual outgoing request body before classifying.
+- **Gemma emits `<think>` we never advertised.** Deep CoT
+  training prior; emits `<think>...</think>` regardless of whether
+  the harness advertises it. The think plugin absorbs it
+  gracefully (scheme always registered, handler conditional on
+  `RUMMY_THINK`, reasoning-merge filter folds bodies into
+  reasoning_content). Mitigations are model-side
+  (chat-template / sampler / stop-token / variant swap) — not
+  harness-side.
+- **`turns.reasoning_tokens=0` is not "no reasoning."** Llama-server
+  bundles reasoning into `completion_tokens` rather than splitting.
+  Verify reasoning capture via `reasoning://N` entry sizes, not
+  the per-turn counter.
+- **Parser warnings are soft, not strikes.** Recoverable XML
+  pathology that the parser handled doesn't penalize. `error.log`
+  takes a `soft` flag; soft entries land `resolved` and skip
+  `turnErrors++`. Missing-update / no-actionable-tags / dispatch
+  crashes / context-exceeded stay strike-eligible.
+- **Verifier-mutation impulse is a real benchmark-integrity
+  threat.** Models can emit `<set>` against test files documenting
+  how to patch the verifier. Tbench harbor adapter excludes
+  `test_*.py` / `*_test.py` / `tests/*` from project-files ingest;
+  the verifier is run via `<sh>` but its source isn't an entry the
+  model engages with. Mirror this carve-out for any benchmark
+  where the agent has filesystem write access to test code.
+- **Benchmark task containers are heterogeneous.** Tbench: tasks
+  span Ubuntu Jammy (22.04) and Noble (24.04, t64-renamed libs).
+  Apt package names diverge across the t64 transition. Use stable
+  names + `pkg-t64 || pkg` fallback chains. Don't assume
+  homogeneous base images across a benchmark dataset.
 
 ## Ongoing Development Conversation (ALERT: LLM APPEND CONVERSATIONAL FEEDBACK HERE)
 
@@ -704,30 +533,20 @@ the diff already records.*
 
 ### Instruction-side findings (gathering for a focused session)
 
-Sacred prompts (`prompt.ask.md`, `prompt.act.md`,
-`instructions.md`, `instructions_10N.md`, `*Doc.md`) get edited
-together in a single deliberate pass, never piecemeal. As the audit
-surfaces instruction-side issues, append here. When the list feels
-saturated, request explicit go for a focused instruction-edit
-session and work the batch.
+Sacred prompts (`instructions-system.md`, `instructions-user.md`,
+`*Doc.md`) get edited together in a single deliberate pass, never
+piecemeal. Append issues here; when saturated, request explicit
+go for a focused instruction-edit session.
 
 - **CC-8a — Reasoning-vs-emission gap.** Model plans actions in
   `reasoning_content`, doesn't emit them. Cross-test pattern.
-  Explanation-side fix.
 - **CC-12a — `sh`/`env` MUST-clause repetition.** 6 negatives for
-  2 binary distinctions. Tooldoc cleanup.
-- **PF-2 — Persona_fork run start.** Doesn't recognize
+  2 binary distinctions; tooldoc cleanup.
+- **PF-2 — Persona_fork run start** doesn't recognize
   fork-inherited knowns; weak models confabulate new unknowns.
-  Likely instruction-side.
-- **`repo://overview` file-op regression.** Open Item filed; the
-  fix is partly packet-shape (system) and partly instruction-side
-  (teach the model how to navigate the overview / when to expand).
-  Cross-reference once packet-shape decision lands.
-- **`<summarized>` / `<visible>` packet split — model orientation.**
-  Tooldocs need to teach: summary lines live in `<summarized>` (your
-  identity-keyed map of what exists); full bodies live in `<visible>`
-  (your current working set). Promote `<get>`s a summarized entry into
-  `<visible>`. Demote drops it back. The structural split changes how
-  the model should reason about its working memory; tooldoc examples
-  should reflect the new shape.
+- **`<summarized>` / `<visible>` packet split.** Tooldocs need to
+  teach the working-memory model: summary lines live in
+  `<summarized>` (identity-keyed map); full bodies live in
+  `<visible>` (current working set). Promote/demote moves entries
+  between them.
 
