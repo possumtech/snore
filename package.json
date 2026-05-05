@@ -62,7 +62,7 @@
 		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*",
 		"test:demo": "node --env-file-if-exists=.env.example --env-file-if-exists=.env bin/demo.js",
 		"test:spec": "node test/spec-coverage.js",
-		"dev:digest": "bash -c 'DB=\"${1:-rummy_dev.db}\"; OUT=\"/tmp/rummy_dev_digest\"; rm -rf \"$OUT\" && mkdir -p \"$OUT/agent\" && cp \"$DB\" \"$OUT/agent/rummy.db\" && node test/tbench/digest.js \"$OUT/\" && echo && echo \"Digest:    $OUT/digest.md\" && echo \"Reasoning: $OUT/reasoning.md\"' --"
+		"dev:digest": "bash -c 'DB=\"${1:-rummy_dev.db}\"; OUT=\"/tmp/rummy_dev_digest\"; rm -rf \"$OUT\" && mkdir -p \"$OUT/agent\" && sqlite3 \"$DB\" \".backup $OUT/agent/rummy.db\" && node test/tbench/digest.js \"$OUT/\" && echo && echo \"Digest:    $OUT/digest.md\" && echo \"Reasoning: $OUT/reasoning.md\"' --"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

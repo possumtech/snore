@@ -1,11 +1,13 @@
 # prompt {#prompt_plugin}
 
-Renders the `<prompt>` tag at the end of the user message. Always
-present on every turn — the model always sees its task.
+Renders the `<prompt>` tag near the front of the user message,
+right after `<instructions>`. Always present on every turn — the
+model always sees its task.
 
 ## Registration
 
-- **Filter**: `assembly.user` at priority 300 (always last)
+- **Filter**: `assembly.user` at priority 30 (after `<instructions>`
+  at 25, before all dynamic state blocks)
 
 ## Behavior
 

@@ -82,7 +82,7 @@ describe("ContextAssembler", () => {
 			);
 		});
 
-		it("prompt always appears last in user message", async () => {
+		it("instructions+prompt lead the user message; dynamic state blocks trail", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -115,10 +115,12 @@ describe("ContextAssembler", () => {
 			);
 
 			const user = messages[1].content;
-			const logPos = user.indexOf("<log>");
+			const instructionsPos = user.indexOf("<instructions>");
 			const promptPos = user.indexOf("<prompt");
-			assert.ok(logPos < promptPos, "log before prompt");
-			assert.ok(user.endsWith("</prompt>"), "prompt is last");
+			const logPos = user.indexOf("<log>");
+			assert.ok(instructionsPos >= 0, "instructions present");
+			assert.ok(promptPos > instructionsPos, "prompt after instructions");
+			assert.ok(logPos > promptPos, "log (dynamic) after prompt (static)");
 		});
 
 		it("unifies all logging entries across loops into a single <log> block", async () => {

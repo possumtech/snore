@@ -12,7 +12,7 @@ Example:
 	- [ ] Discover key, relevant information
 	- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
 	- [ ] Define the answer or solution
-	- [ ] Determine the validitiy of the answer or solution
+	- [ ] Determine the validity of the answer or solution (and fix if failing)
 	- [ ] Deliver
 	</set>
 	

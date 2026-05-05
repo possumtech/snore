@@ -13,10 +13,11 @@ phase directive so prompt caching holds across turns within a run.
   with `{ persona, toolSet }` attributes.
 - **Filter**: `instructions.toolDocs` — gathers docs from all tool
   plugins into a docsMap.
-- **Filter**: `assembly.user` (priority 250) — renders the current
-  phase's `instructions_10N.md` as `<instructions>` immediately
-  before `<prompt>`. Phase selected from the latest `<update status>`
-  emission in this turn's row set.
+- **Filter**: `assembly.user` (priority 25) — renders
+  `instructions-user.md` as `<instructions>` at the front of the
+  user message, immediately ahead of `<prompt>` (priority 30), so
+  the static instructions+prompt prefix sits adjacent to the
+  cache-stable system framing.
 
 ## Files
 
@@ -52,8 +53,9 @@ strikes.
 
 - System message includes the base template + tool docs + persona.
   Identical bytes every turn within a run → cache-stable.
-- User message includes `<instructions>` at priority 250 — changes
-  as the phase advances, which is expected cache-turnover territory.
+- User message includes `<instructions>` at priority 25 — same
+  bytes every turn (no phase keying); cacheable along with the
+  prompt that follows at priority 30.
 
 If you add a per-turn-dynamic piece to `instructions.md` by mistake,
 the system prompt changes every turn and the cache prefix collapses.

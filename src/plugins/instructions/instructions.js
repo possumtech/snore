@@ -6,11 +6,10 @@ const baseInstructions = readFileSync(
 	"utf8",
 );
 
-// Tight, non-modal reminder rendered into the user message right before
-// the prompt (`assembly.user` priority 200, immediately ahead of
-// prompt's 225). Keeps the workflow arc + per-turn discipline warm in
-// the model's working memory at the action site, separate from the
-// cache-stable system-prompt framing.
+// Tight, non-modal reminder rendered at the front of the user message
+// (`assembly.user` priority 25, immediately ahead of prompt's 30) so the
+// static instructions+prompt prefix sits adjacent to the cache-stable
+// system framing — dynamic state (summarized/visible/log/budget) trails.
 const userInstructions = readFileSync(
 	new URL("./instructions-user.md", import.meta.url),
 	"utf8",
@@ -29,7 +28,7 @@ export default class Instructions {
 			this.resolveSystemPrompt.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
-		core.filter("assembly.user", this.assembleInstructions.bind(this), 200);
+		core.filter("assembly.user", this.assembleInstructions.bind(this), 25);
 		new Protocol(core);
 	}
 
