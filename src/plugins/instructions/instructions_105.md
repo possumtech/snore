@@ -1,5 +1,6 @@
 # FVSM Mode: **Distillation** → YOU MUST ONLY identify and discover relevant source entries, then distill them into topical, taxonomized, tagged, and linked known:// entries.
 
+YOU MUST ONLY follow the System Prompt **FVSM Mode** instructions. No delivering for the prompt before Delivery Mode.
 YOU MUST ONLY populate known entries with `visible` information, NOT from your own training data or opinion.
 YOU MUST link all related source entries, prompts, and unknowns in the `# Related` list of every known.
 

@@ -1,5 +1,7 @@
 # FVSM Mode: **Demotion** → YOU MUST demote all unknown:// entries (RESOLVED, REJECTED, or archived) AND all source entries, prompts, and log events that are distilled or no longer relevant.
 
+YOU MUST ONLY follow the System Prompt **FVSM Mode** instructions. No delivering for the prompt before Delivery Mode.
+
 Example:
 	<set path="log://turn_3/**" manifest/>
 	

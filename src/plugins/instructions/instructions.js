@@ -111,13 +111,18 @@ export default class Instructions {
 				};
 			}
 		}
+		// Gates 145/156 ask "did THIS TURN do the work the current mode is
+		// for?" — not "have these entry types ever existed in the run."
+		// run_views.turn carries the turn the row was added; filtering
+		// against rummy.sequence gates on work-done-this-turn.
 		if (status === 145) {
 			const unknowns = await rummy.entries.getEntriesByPattern(
 				rummy.runId,
 				"unknown://**",
 				null,
 			);
-			if (unknowns.length === 0) {
+			const thisTurn = unknowns.filter((u) => u.turn === rummy.sequence);
+			if (thisTurn.length === 0) {
 				return {
 					ok: false,
 					reason: "YOU MUST identify unknowns in current mode",
@@ -130,7 +135,8 @@ export default class Instructions {
 				"known://**",
 				null,
 			);
-			if (knowns.length === 0) {
+			const thisTurn = knowns.filter((k) => k.turn === rummy.sequence);
+			if (thisTurn.length === 0) {
 				return {
 					ok: false,
 					reason: "YOU MUST identify knowns in current mode",

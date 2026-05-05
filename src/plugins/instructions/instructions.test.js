@@ -159,11 +159,17 @@ describe("instructions phase transition contract", () => {
 
 describe("validateNavigation: FVSM advance gates (@fvsm_state_machine)", () => {
 	// SPEC.md @fvsm_state_machine — the four-rule contract.
+	// `unknowns` / `knowns` default to "written this turn" (turn === sequence)
+	// to exercise the accept path; staleTurn lets a test seed a stale-from-prior-
+	// turn row without anything-this-turn for the reject path.
+	const SEQUENCE = 2;
 	function makeRummy({
 		unknowns = 0,
 		visibleUnknowns = 0,
 		knowns = 0,
 		currentStatus = null,
+		staleUnknownTurn = null,
+		staleKnownTurn = null,
 	}) {
 		const updateRows = currentStatus
 			? [
@@ -174,20 +180,32 @@ describe("validateNavigation: FVSM advance gates (@fvsm_state_machine)", () => {
 					},
 				]
 			: [];
+		const unknownRows = Array.from({ length: unknowns }, (_, i) => ({
+			path: `unknown://x${i}`,
+			visibility: i < visibleUnknowns ? "visible" : "summarized",
+			turn: SEQUENCE,
+		}));
+		if (staleUnknownTurn != null) {
+			unknownRows.push({
+				path: "unknown://stale",
+				visibility: "visible",
+				turn: staleUnknownTurn,
+			});
+		}
+		const knownRows = Array.from({ length: knowns }, (_, i) => ({
+			path: `known://x${i}`,
+			turn: SEQUENCE,
+		}));
+		if (staleKnownTurn != null) {
+			knownRows.push({ path: "known://stale", turn: staleKnownTurn });
+		}
 		return {
 			runId: 1,
-			sequence: 2,
+			sequence: SEQUENCE,
 			entries: {
 				getEntriesByPattern: async (_runId, pattern) => {
-					if (pattern === "unknown://**")
-						return Array.from({ length: unknowns }, (_, i) => ({
-							path: `unknown://x${i}`,
-							visibility: i < visibleUnknowns ? "visible" : "summarized",
-						}));
-					if (pattern === "known://**")
-						return Array.from({ length: knowns }, (_, i) => ({
-							path: `known://x${i}`,
-						}));
+					if (pattern === "unknown://**") return unknownRows;
+					if (pattern === "known://**") return knownRows;
 					if (pattern === "log://*/update/**") return updateRows;
 					if (pattern === "prompt://*") return [];
 					return [];
@@ -206,13 +224,23 @@ describe("validateNavigation: FVSM advance gates (@fvsm_state_machine)", () => {
 		assert.equal(result.reason, "YOU MUST identify unknowns in current mode");
 	});
 
-	it("145: passes with ≥1 unknown", async () => {
+	it("145: passes with ≥1 unknown written THIS TURN", async () => {
 		const hooks = makeHooks();
 		const result = await hooks.instructions.validateNavigation(
 			145,
 			makeRummy({ unknowns: 1 }),
 		);
 		assert.equal(result.ok, true);
+	});
+
+	it("145: rejected when only stale unknowns from prior turns exist (current-turn gate)", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			145,
+			makeRummy({ unknowns: 0, staleUnknownTurn: 1 }),
+		);
+		assert.equal(result.ok, false);
+		assert.equal(result.reason, "YOU MUST identify unknowns in current mode");
 	});
 
 	it("156 (Distillation → Demotion): rejected with zero knowns", async () => {
@@ -225,7 +253,7 @@ describe("validateNavigation: FVSM advance gates (@fvsm_state_machine)", () => {
 		assert.equal(result.reason, "YOU MUST identify knowns in current mode");
 	});
 
-	it("156: passes with ≥1 known (regardless of unknowns; Demotion will police them)", async () => {
+	it("156: passes with ≥1 known written THIS TURN (regardless of unknowns; Demotion will police them)", async () => {
 		const hooks = makeHooks();
 		const result = await hooks.instructions.validateNavigation(
 			156,
@@ -237,6 +265,21 @@ describe("validateNavigation: FVSM advance gates (@fvsm_state_machine)", () => {
 			}),
 		);
 		assert.equal(result.ok, true);
+	});
+
+	it("156: rejected when only stale knowns from prior turns exist (current-turn gate)", async () => {
+		const hooks = makeHooks();
+		const result = await hooks.instructions.validateNavigation(
+			156,
+			makeRummy({
+				unknowns: 1,
+				knowns: 0,
+				staleKnownTurn: 1,
+				currentStatus: 145,
+			}),
+		);
+		assert.equal(result.ok, false);
+		assert.equal(result.reason, "YOU MUST identify knowns in current mode");
 	});
 
 	it("167 (Demotion → Delivery): rejected when any unknown remains visible", async () => {

@@ -56,10 +56,10 @@ describe("FVSM phase gates (@fvsm_state_machine)", () => {
 		});
 	}
 
-	async function seedUnknown(slug, { visibility = "visible" } = {}) {
+	async function seedUnknown(slug, { turn = 1, visibility = "visible" } = {}) {
 		await store.set({
 			runId: RUN_ID,
-			turn: 1,
+			turn,
 			path: `unknown://${slug}`,
 			body: "x",
 			state: "resolved",
@@ -67,17 +67,17 @@ describe("FVSM phase gates (@fvsm_state_machine)", () => {
 		});
 	}
 
-	async function seedKnown(slug) {
+	async function seedKnown(slug, { turn = 1 } = {}) {
 		await store.set({
 			runId: RUN_ID,
-			turn: 1,
+			turn,
 			path: `known://${slug}`,
 			body: "x",
 			state: "resolved",
 		});
 	}
 
-	describe("145 gate: Decomposition → Distillation requires unknowns ≥ 1", () => {
+	describe("145 gate: Decomposition → Distillation requires unknowns written THIS TURN", () => {
 		it("rejects when zero unknowns exist", async () => {
 			const result = await tdb.hooks.instructions.validateNavigation(
 				145,
@@ -87,17 +87,31 @@ describe("FVSM phase gates (@fvsm_state_machine)", () => {
 			assert.equal(result.reason, "YOU MUST identify unknowns in current mode");
 		});
 
-		it("accepts when at least one unknown exists", async () => {
-			await seedUnknown("a");
+		it("accepts when an unknown is written THIS TURN", async () => {
+			await seedUnknown("a", { turn: 2 });
 			const result = await tdb.hooks.instructions.validateNavigation(
 				145,
 				rummyBag(2),
 			);
 			assert.equal(result.ok, true);
 		});
+
+		it("rejects when only stale unknowns from prior turns exist (current-turn gate, not run-aggregate)", async () => {
+			// The gate must distinguish "this turn did the decomposition work"
+			// from "any unknown ever existed in this run." A model that emits
+			// 145 on turn 5 with only a turn-1 leftover unknown has done no
+			// decomposition this turn — the gate must reject.
+			await seedUnknown("from_turn_1", { turn: 1 });
+			const result = await tdb.hooks.instructions.validateNavigation(
+				145,
+				rummyBag(5),
+			);
+			assert.equal(result.ok, false);
+			assert.equal(result.reason, "YOU MUST identify unknowns in current mode");
+		});
 	});
 
-	describe("156 gate: Distillation → Demotion requires knowns ≥ 1", () => {
+	describe("156 gate: Distillation → Demotion requires knowns written THIS TURN", () => {
 		it("rejects when zero knowns exist (after a successful 145)", async () => {
 			await seedPhaseHistory(1, 145);
 			await seedUnknown("a");
@@ -109,15 +123,30 @@ describe("FVSM phase gates (@fvsm_state_machine)", () => {
 			assert.equal(result.reason, "YOU MUST identify knowns in current mode");
 		});
 
-		it("accepts when at least one known exists", async () => {
+		it("accepts when a known is written THIS TURN", async () => {
 			await seedPhaseHistory(1, 145);
 			await seedUnknown("a");
-			await seedKnown("k");
+			await seedKnown("k", { turn: 2 });
 			const result = await tdb.hooks.instructions.validateNavigation(
 				156,
 				rummyBag(2),
 			);
 			assert.equal(result.ok, true);
+		});
+
+		it("rejects when only stale knowns from prior turns exist (current-turn gate, not run-aggregate)", async () => {
+			// Same shape as 145: a model emitting 156 on turn 5 with a
+			// turn-2 leftover known has done no distillation this turn.
+			await seedPhaseHistory(1, 145);
+			await seedPhaseHistory(2, 155);
+			await seedUnknown("a", { turn: 1 });
+			await seedKnown("from_turn_2", { turn: 2 });
+			const result = await tdb.hooks.instructions.validateNavigation(
+				156,
+				rummyBag(5),
+			);
+			assert.equal(result.ok, false);
+			assert.equal(result.reason, "YOU MUST identify knowns in current mode");
 		});
 	});
 

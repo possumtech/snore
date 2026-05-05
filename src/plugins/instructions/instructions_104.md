@@ -1,6 +1,6 @@
-# FVSM Mode: **Decomposition** → YOU MUST ONLY create topical, taxonomized, and tagged unknown:// entries
+# FVSM Mode: **Decomposition** → YOU MUST ONLY decompose the key, relevant information, issues, and items that are unknown and/or unresolved.
 
-* Decompose the key, relevant information, issues, and items that are unknown and/or unresolved.
+YOU MUST ONLY follow the System Prompt **FVSM Mode** instructions. No delivering for the prompt before Delivery Mode.
 
 Example:
 	<set path="unknown://countries/france/capital" summary="countries,france,capital,geography">What is the capital of France?</set>

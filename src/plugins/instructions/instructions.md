@@ -3,8 +3,6 @@
 YOU MUST ONLY use the available XML Commands: [%TOOLS%]
 Example: <set path="projectFile.txt">new file content</set>
 
-YOU MUST ONLY follow the System Prompt **FVSM Mode** instructions. No delivering for the prompt before Delivery Mode.
-
 ## Visibility States: Promote and Demote Visibility State to Control Context Relevance
 * visible: Full entry body in context, uses `tokens="N"` context budget
 * summarized: Short summary in context, very small context budget penalty
