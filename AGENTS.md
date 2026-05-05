@@ -281,22 +281,27 @@ extraction adds a hop without separating concerns, it's ceremony
 
 ## Open Items
 
-- [ ] **ProgramBench integration.** Adapter for facebookresearch/
-  ProgramBench (200 tasks: rebuild a complete codebase from a
-  compiled binary + docs, no internet, evaluated against per-task
-  behavioral test suites totaling 248K tests). Layout mirrors
-  `test/tbench/` — Docker per task (`programbench/<task>:task_cleanroom`),
-  rummy runs inside the cleanroom in `act` mode with `noWeb` (the
-  benchmark forbids internet — it's the contract, not a config),
-  output codebase tarred to `submission.tar.gz`. Eval is one
-  `uv run programbench eval <run-dir>` shellout. Server is now
-  64K which makes the "fit in tight context" pitch viable on
-  smaller tasks (jq, cmatrix, zoxide). Start with the smallest
-  task to validate the loop end-to-end before sweeping. Notes:
+- [ ] **ProgramBench integration follow-ups.** First end-to-end
+  cmatrix run validated streaming + heredoc + completion-log
+  lifecycle (T8: model self-bounded `timeout 1 ./executable`;
+  close-handler wrote terminal log entry + stream-channel state
+  cleanly; strike streak handled a 2-turn ANSI-regurgitation
+  spiral; recovered on T12). Outstanding tweaks before sweep:
+  - **Move DB out of run dir.** Currently `<run-id>/<task>/rummy_programbench.db`
+    sits as a sibling of `workspace/`. Project-root file ops can't
+    see it but `<sh>cd ..</sh>` could. Adopt tbench's `agent/`
+    convention: `<run-id>/<task>/agent/rummy_programbench.db`,
+    workspace at `<run-id>/<task>/workspace/`. Update `dev:digest`
+    path docs accordingly.
+  - **Raise `RUMMY_MAX_LOOP_TURNS` for ProgramBench profile.**
+    Default 99 is sized for tbench / lme answers; full-codebase
+    reconstruction needs hundreds. Set ~500 in a profile env file
+    (e.g. `.env.programbench`) so tbench/lme aren't affected.
+  - Each task likely needs RUMMY_LOOP_TIMEOUT raised too —
+    multi-hour reconstructions vs the default 60min watchdog.
   - Rummy lives in cleanroom via bind-mount initially (faster
-    iteration than baking an image); document the deviation.
-  - Each task likely needs `RUMMY_MAX_LOOP_TURNS` raised — these
-    are multi-hour reconstructions, not 4-turn answers.
+    iteration than baking an image); deviation documented in
+    `test/programbench/README.md`.
   - Test blob downloads from HuggingFace happen at eval time;
     pre-sync via `uv run programbench blob sync` if disk allows.
 

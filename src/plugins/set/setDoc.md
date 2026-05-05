@@ -13,6 +13,9 @@ Example: <set path="known://countries/france/*" manifest/>
 <!-- Manifest before bulk: lists matches without performing the visibility flip, edit, or write. -->
 
 
+Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>
+<!-- Sed: single-line substitutions, chain with semicolons. Reach for this first for plan checkmarks, config flips, word swaps — the SEARCH text is short and explicitly bounded by the slashes, so it can't accidentally match a partial line. -->
+
 Example:
 	<set path="src/app.js">
 	<<<<<<< SEARCH
@@ -21,10 +24,8 @@ Example:
 	new text
 	>>>>>>> REPLACE
 	</set>
-<!-- SEARCH/REPLACE block — primary edit pattern for existing files. -->
+<!-- SEARCH/REPLACE: multi-line edits where you want to anchor against surrounding context. The SEARCH block must match the existing body literally (whitespace, punctuation, and all). -->
 
-Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/We're almost done/We're done./g;</set>
-<!-- Sed syntax: chained s/old/new/ patterns with semicolons. -->
 
 Example: <set path="example.md" visibility="summarized" summary="example,docs">Full file content here</set>
 <!-- Create: body is the entire file. visibility and summary are independent attributes — they don't replace the body. -->
