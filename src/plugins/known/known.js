@@ -1,5 +1,6 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
+import docs from "./knownDoc.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
 
@@ -8,13 +9,19 @@ export default class Known {
 
 	constructor(core) {
 		this.#core = core;
+		core.ensureTool();
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
 		core.filter("assembly.user", this.assembleSummarized.bind(this), 50);
 		core.filter("assembly.user", this.assembleVisible.bind(this), 75);
-		// Hidden tool: written via <set path="known://...">; handler tolerates direct <known>.
+		core.filter("instructions.toolDocs", async (docsMap) => {
+			docsMap.known = docs;
+			return docsMap;
+		});
+		// Hidden from the advertised tool list — written via <set path="known://...">.
+		// Tooldoc above still renders so the known:// scheme lifecycle is taught.
 		core.markHidden();
 	}
 

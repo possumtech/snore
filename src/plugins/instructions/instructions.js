@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import Protocol from "./protocol.js";
 
 const baseInstructions = readFileSync(
@@ -6,47 +6,7 @@ const baseInstructions = readFileSync(
 	"utf8",
 );
 
-// 1XY phase routing; see plugin README.
-const PHASES = [4, 5, 6, 7, 8, 9];
-const phaseInstructions = Object.fromEntries(
-	PHASES.flatMap((p) => {
-		const url = new URL(`./instructions_10${p}.md`, import.meta.url);
-		return existsSync(url) ? [[p, readFileSync(url, "utf8").trim()]] : [];
-	}),
-);
 const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\/update\//;
-
-function phaseForStatus(status) {
-	if (status == null) return 4;
-	if (status === 200) return 7;
-	const last = status % 10;
-	return PHASES.includes(last) ? last : 4;
-}
-
-// Latest update status from materialized rows. Rejected updates do
-// not exist as phase-history entries (update.js emits error.log on
-// rejection but does not write a log://turn_N/update/... row), so
-// no state="failed" filter is needed here.
-function latestUpdateStatusFromRows(rows) {
-	let bestTurn = -1;
-	let bestStatus = null;
-	for (const r of rows) {
-		const m = TURN_FROM_PATH.exec(r.path);
-		if (!m) continue;
-		const turn = Number(m[1]);
-		const attrs =
-			typeof r.attributes === "string"
-				? JSON.parse(r.attributes)
-				: r.attributes;
-		const status = attrs?.status;
-		if (status == null) continue;
-		if (turn > bestTurn || (turn === bestTurn && status > bestStatus)) {
-			bestTurn = turn;
-			bestStatus = status;
-		}
-	}
-	return bestStatus;
-}
 
 export default class Instructions {
 	#core;
@@ -57,12 +17,8 @@ export default class Instructions {
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.hooks.instructions.resolveSystemPrompt =
 			this.resolveSystemPrompt.bind(this);
-		core.hooks.instructions.validateNavigation =
-			this.validateNavigation.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
-		core.hooks.instructions.getCurrentPhase = this.getCurrentPhase.bind(this);
-		core.filter("assembly.user", this.assembleInstructions.bind(this), 200);
 		new Protocol(core);
 	}
 
@@ -91,108 +47,8 @@ export default class Instructions {
 		});
 	}
 
-	// FVSM advance-gate enforcer. SPEC.md @fvsm_state_machine is the
-	// contract; this is the only place advance gates are checked.
-	async validateNavigation(status, rummy) {
-		const currentPhase = await this.getCurrentPhase(rummy);
-		const nextPhase = phaseForStatus(status);
-		if (nextPhase > currentPhase + 1) {
-			return { ok: false, reason: "Illegal navigation attempt" };
-		}
-		if (status === 200 && currentPhase !== 7) {
-			return { ok: false, reason: "Illegal navigation attempt" };
-		}
-		if (nextPhase === 7) {
-			const visible = await this.#countVisiblePriorPrompts(rummy);
-			if (visible > 0) {
-				return {
-					ok: false,
-					reason: `Illegal navigation attempt: ${visible} visible prior prompts`,
-				};
-			}
-		}
-		// Gates 145/156 ask "did THIS TURN do the work the current mode is
-		// for?" — not "have these entry types ever existed in the run."
-		// run_views.turn carries the turn the row was added; filtering
-		// against rummy.sequence gates on work-done-this-turn.
-		if (status === 145) {
-			const unknowns = await rummy.entries.getEntriesByPattern(
-				rummy.runId,
-				"unknown://**",
-				null,
-			);
-			const thisTurn = unknowns.filter((u) => u.turn === rummy.sequence);
-			if (thisTurn.length === 0) {
-				return {
-					ok: false,
-					reason: "YOU MUST identify unknowns in current mode",
-				};
-			}
-		}
-		if (status === 156) {
-			const knowns = await rummy.entries.getEntriesByPattern(
-				rummy.runId,
-				"known://**",
-				null,
-			);
-			const thisTurn = knowns.filter((k) => k.turn === rummy.sequence);
-			if (thisTurn.length === 0) {
-				return {
-					ok: false,
-					reason: "YOU MUST identify knowns in current mode",
-				};
-			}
-		}
-		if (status === 167) {
-			const unknowns = await rummy.entries.getEntriesByPattern(
-				rummy.runId,
-				"unknown://**",
-				null,
-			);
-			const stillVisible = unknowns.filter(
-				(u) => u.visibility === "visible",
-			).length;
-			if (stillVisible > 0) {
-				return {
-					ok: false,
-					reason: "YOU MUST demote all unknowns before Delivery",
-				};
-			}
-		}
-		return { ok: true };
-	}
-
-	async getCurrentPhase(rummy) {
-		// `**` not `*`: update slugs may contain URL-encoded `/`.
-		// Rejected updates are never written as phase-history entries
-		// (update.js emits error.log only); every row here is a
-		// successful advance claim.
-		const updates = await rummy.entries.getEntriesByPattern(
-			rummy.runId,
-			"log://*/update/**",
-			null,
-		);
-		let bestTurn = -1;
-		let bestStatus = null;
-		for (const e of updates) {
-			const m = TURN_FROM_PATH.exec(e.path);
-			if (!m) continue;
-			const turn = Number(m[1]);
-			if (turn >= rummy.sequence) continue;
-			const attrs =
-				typeof e.attributes === "string"
-					? JSON.parse(e.attributes)
-					: e.attributes;
-			if (attrs?.status == null) continue;
-			if (turn > bestTurn) {
-				bestTurn = turn;
-				bestStatus = attrs.status;
-			}
-		}
-		return phaseForStatus(bestStatus);
-	}
-
-	// Latest phase-7 success (status=200); state-machine knowledge lives here, not AgentLoop.
+	// Latest terminal update (status=200) — used by cli.js to print the
+	// run's final answer. State-machine knowledge lives here, not AgentLoop.
 	findLatestSummary(logEntries) {
 		return logEntries
 			.filter((e) => {
@@ -206,33 +62,12 @@ export default class Instructions {
 			.at(-1);
 	}
 
-	async #countVisiblePriorPrompts(rummy) {
-		const prompts = await rummy.entries.getEntriesByPattern(
-			rummy.runId,
-			"prompt://*",
-			null,
-		);
-		const visible = prompts.filter((p) => p.visibility === "visible");
-		if (visible.length === 0) return 0;
-		// Exclude the latest prompt; only PRIOR prompts trigger demote-before-Deployment.
-		let maxNum = -1;
-		for (const p of visible) {
-			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
-			if (m && Number(m[1]) > maxNum) maxNum = Number(m[1]);
-		}
-		return visible.filter((p) => {
-			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
-			return !m || Number(m[1]) !== maxNum;
-		}).length;
-	}
-
 	async onTurnStarted({ rummy }) {
 		const { entries: store, sequence: turn, runId } = rummy;
 		const runRow = await store.getRun(runId);
 		const toolSet = rummy.toolSet
 			? [...rummy.toolSet]
 			: this.#core.hooks.tools.names;
-		// instructions://system stays cache-stable; phase selection at assembly.user.
 		await store.set({
 			runId,
 			turn,
@@ -256,11 +91,16 @@ export default class Instructions {
 			{},
 			{ toolSet: activeTools },
 		);
-		const sorted = this.#core.hooks.tools.advertisedNames.filter((n) =>
+		// Tools list shown to the model — advertised only.
+		const advertised = this.#core.hooks.tools.advertisedNames.filter((n) =>
 			activeTools.has(n),
 		);
-		const tools = sorted.map((n) => `<${n}/>`).join(", ");
-		const docsText = sorted
+		const tools = advertised.map((n) => `<${n}/>`).join(", ");
+		// Tooldoc render — every registered tool with a doc, advertised or
+		// hidden. Hidden tools (unknown, known) don't appear in the list
+		// but their scheme lifecycle still needs teaching.
+		const all = this.#core.hooks.tools.names.filter((n) => activeTools.has(n));
+		const docsText = all
 			.filter((key) => toolDocs[key])
 			.map((key) => toolDocs[key])
 			.join("\n\n");
@@ -269,13 +109,5 @@ export default class Instructions {
 			.replace("[%TOOLDOCS%]", docsText);
 		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;
-	}
-
-	// Render <instructions> for current phase; absent phase file → no block.
-	assembleInstructions(content, ctx) {
-		const status = latestUpdateStatusFromRows(ctx.rows);
-		const step = phaseInstructions[phaseForStatus(status)];
-		if (!step) return content;
-		return `${content}<instructions>\n${step}\n</instructions>\n`;
 	}
 }

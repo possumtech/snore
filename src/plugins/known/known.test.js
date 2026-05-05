@@ -5,6 +5,7 @@ import Known from "./known.js";
 describe("Known", () => {
 	const plugin = new Known({
 		registerScheme() {},
+		ensureTool() {},
 		on() {},
 		filter() {},
 		markHidden() {},

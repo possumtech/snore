@@ -287,16 +287,12 @@ function classifyMarkers(reward, runSummary, turnRows) {
 		for (const err of row.errors) {
 			const body = err.body || "";
 			if (body.startsWith("Abandoned after")) strikeAbandon = true;
-			// Gate names match SPEC.md @fvsm_state_machine and AGENTS.md
-			// "Sweep analysis" marker taxonomy.
-			if (body.includes("YOU MUST identify unknowns"))
-				shieldHits.add("gate_unknowns");
-			else if (body.includes("YOU MUST identify knowns"))
-				shieldHits.add("gate_knowns");
-			else if (body.includes("YOU MUST demote all unknowns"))
-				shieldHits.add("gate_demote");
-			else if (
-				body.includes("YOU MUST NOT attempt to deliver before Delivery Mode")
+			// Delivery coherence gate — fires when the model attempts a
+			// file modification or emits <update status="200"> while any
+			// `unknown://` is still visible. Single shield in the protocol.
+			if (
+				body.includes("YOU MUST NOT deliver while unknowns remain visible") ||
+				body.startsWith("Cannot deliver:")
 			)
 				shieldHits.add("gate_delivery");
 			if (body.startsWith("Unclosed") || body.includes("Tool call limit")) {

@@ -70,21 +70,25 @@ export default class Policy {
 	}
 
 	// File modification (bare-path `<set body>`, `<rm>`, `<mv>`, `<cp>`
-	// to bare-path) is the high-blast-radius operation; only Delivery
-	// (FVSM phase 7) permits it. Schema entries (unknown://, known://,
-	// log://, …) are always allowed. Rejection surfaces as an <error>
-	// block via error.log.emit so the reason reaches the model's
-	// context regardless of how the failed operation entry renders.
-	// SPEC.md @fvsm_state_machine documents this as the fourth rule.
+	// to bare-path) is the high-blast-radius operation; only allowed
+	// when no `unknown://` entry is still visible. Schema entries
+	// (unknown://, known://, log://, …) are always allowed. The check
+	// mirrors the `<update status="200">` coherence gate in update.js:
+	// "you can't deliver while you have things you said you don't know."
+	// Rejection surfaces as an <error> block via error.log.emit so the
+	// reason reaches the model's context regardless of how the failed
+	// operation entry renders.
 	async #enforceDeliveryMode(entry, ctx) {
 		if (!this.#isFileModification(entry)) return entry;
-		const phase = await this.#core.hooks.instructions.getCurrentPhase({
-			entries: ctx.store,
-			runId: ctx.runId,
-			sequence: ctx.turn,
-		});
-		if (phase === 7) return entry;
-		const message = "YOU MUST NOT attempt to deliver before Delivery Mode";
+		const unknowns = await ctx.store.getEntriesByPattern(
+			ctx.runId,
+			"unknown://**",
+			null,
+		);
+		const visibleUnknowns = unknowns.filter((u) => u.visibility === "visible");
+		if (visibleUnknowns.length === 0) return entry;
+		const message =
+			"YOU MUST NOT deliver while unknowns remain visible. Demote them (RESOLVED or REJECTED) first.";
 		await this.#core.hooks.error.log.emit({
 			store: ctx.store,
 			runId: ctx.runId,

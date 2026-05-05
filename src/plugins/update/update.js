@@ -1,15 +1,8 @@
 import docs from "./updateDoc.js";
 
-const TERMINAL_STATUSES = new Set([200, 204, 422, 500]);
-
 const CONTRACT_REMINDER = "Missing update";
 
 const EMPTY_RESPONSE_REMINDER = "Response empty";
-
-function isValidStatus(status) {
-	if (TERMINAL_STATUSES.has(status)) return true;
-	return Number.isInteger(status) && status >= 100 && status < 200;
-}
 
 export default class Update {
 	#core;
@@ -32,54 +25,79 @@ export default class Update {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const status = entry.attributes?.status ?? 102;
-		const validation = await rummy.hooks.instructions.validateNavigation(
-			status,
-			rummy,
-		);
-		// Rejected advance attempts surface as <error> blocks only.
-		// Per SPEC.md @fvsm_state_machine: a rejected update is NOT
-		// recorded as a phase-history entry — getCurrentPhase keys off
-		// the most recent successful advance, so writing a failed row
-		// here would either lie about advancement or require a special-
-		// case skip downstream. Neither is the contract.
-		if (!validation.ok) {
-			entry.state = "failed";
-			entry.outcome = "invalid_navigation";
-			entry.body = validation.reason;
-			await rummy.hooks.error.log.emit({
-				store,
-				runId,
-				turn,
-				loopId,
-				message: validation.reason,
-				status: 403,
-			});
-			return;
+		const status = entry.attributes?.status;
+
+		// Only 200 has terminal meaning. Any other status (or none) is a
+		// continuation update — accepted unconditionally.
+		if (status === 200) {
+			const reason = await this.#deliveryCoherenceCheck(rummy);
+			if (reason) {
+				entry.state = "failed";
+				entry.outcome = "incoherent_delivery";
+				entry.body = reason;
+				await rummy.hooks.error.log.emit({
+					store,
+					runId,
+					turn,
+					loopId,
+					message: reason,
+					status: 403,
+				});
+				return;
+			}
 		}
-		if (!isValidStatus(status)) {
-			entry.state = "failed";
-			entry.outcome = "invalid_status";
-			const message = "Invalid status";
-			entry.body = message;
-			await rummy.hooks.error.log.emit({
-				store,
-				runId,
-				turn,
-				loopId,
-				message,
-				status: 422,
-			});
-			return;
-		}
+
 		await rummy.update(entry.body, { status });
+	}
+
+	// 200 is the only terminal status; the engine refuses it while any
+	// `unknown://` is visible (the model said it doesn't know X; can't
+	// claim done with X still unresolved) or any prior prompt is visible
+	// (legacy delivery integrity check). Returns the rejection reason or
+	// null if coherent.
+	async #deliveryCoherenceCheck(rummy) {
+		const { entries: store, runId } = rummy;
+		const unknowns = await store.getEntriesByPattern(
+			runId,
+			"unknown://**",
+			null,
+		);
+		const visibleUnknowns = unknowns.filter((u) => u.visibility === "visible");
+		if (visibleUnknowns.length > 0) {
+			return `Cannot deliver: ${visibleUnknowns.length} unknown(s) still visible. Demote them (RESOLVED or REJECTED) first.`;
+		}
+		const visiblePriorPrompts = await this.#countVisiblePriorPrompts(rummy);
+		if (visiblePriorPrompts > 0) {
+			return `Cannot deliver: ${visiblePriorPrompts} prior prompt(s) still visible. Demote them first.`;
+		}
+		return null;
+	}
+
+	async #countVisiblePriorPrompts(rummy) {
+		const prompts = await rummy.entries.getEntriesByPattern(
+			rummy.runId,
+			"prompt://*",
+			null,
+		);
+		const visible = prompts.filter((p) => p.visibility === "visible");
+		if (visible.length === 0) return 0;
+		// Exclude the latest prompt; only PRIOR prompts trigger the gate.
+		let maxNum = -1;
+		for (const p of visible) {
+			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
+			if (m && Number(m[1]) > maxNum) maxNum = Number(m[1]);
+		}
+		return visible.filter((p) => {
+			const m = /^prompt:\/\/(\d+)$/.exec(p.path);
+			return !m || Number(m[1]) !== maxNum;
+		}).length;
 	}
 
 	async resolve({ recorded, content, runId, turn, loopId, rummy }) {
 		const entry = recorded.findLast((e) => e.scheme === "update");
-		const status = entry?.attributes?.status ?? 102;
+		const status = entry?.attributes?.status;
 		const failed = entry?.state === "failed";
-		const isTerminal = TERMINAL_STATUSES.has(status) && !failed;
+		const isTerminal = status === 200 && !failed;
 		let summaryText = null;
 		let updateText = null;
 		if (entry?.body && !failed) {

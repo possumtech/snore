@@ -439,6 +439,17 @@ separating concerns, it's ceremony — drop it.
 
 ## Lessons (keep these pinned; don't let future sessions forget)
 
+- **State machine for model workflow choreography is a known failure
+  mode.** Trust the engine (entries + visibility + budget + tools) plus
+  teaching (`instructions.md` + tooldocs). Workflow stages get
+  re-imagined as fixed-shape enforcement; they end up as overhead the
+  model misreads as exclusive permissions ("I am in Distillation, I
+  must only identify and discover" — observed in hydrology 2026-05-05,
+  with the model literally reading a mode constraint as forbidding the
+  demote action). Collapsed FVSM 4D → single-status-coherence
+  ({200 + visible-unknowns check}) on 2026-05-05; protocol is now
+  "decompose, then resolve and deliver" with the model self-pacing,
+  enforced only by the delivery coherence invariant.
 - **AGENTS.md is shared memory.** Internal LLM memory is for
   overrides only. Append project observations here, not internally.
 - **Claude's shell carries a stale `XAI_API_KEY`. Source `.xai.key`

@@ -1,26 +1,11 @@
 const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
-const STAGNATION_FREE_TURNS = Number(process.env.RUMMY_STAGNATION_FREE_TURNS);
 
 const CONTRACT_REMINDER = "Missing update";
 // Failure outcomes that don't accumulate strikes — they're findings
 // the model adapts to, not contract violations. See verdict() for usage.
 const SOFT_FAILURE_OUTCOMES = new Set(["not_found", "conflict"]);
-// Stagnation pressure applies only to the admin phases — Decomposition
-// (defining unknowns) and Demotion (archiving irrelevants). Staying
-// long there is genuinely stuck. Distillation (5) and Deployment (7)
-// are work phases where grinding on a hard sub-problem is legitimate;
-// the strike system must not punish that.
-const STAGNATION_PHASES = new Set([4, 6]);
-const PHASES = [4, 5, 6, 7, 8, 9];
-
-function phaseForStatus(status) {
-	if (status == null) return 4;
-	if (status === 200) return 7;
-	const last = status % 10;
-	return PHASES.includes(last) ? last : 4;
-}
 
 function fingerprint(entry) {
 	const parts = Object.keys(entry.attributes)
@@ -78,12 +63,6 @@ export default class ErrorPlugin {
 			streak: 0,
 			history: [],
 			turnErrors: 0,
-			// FCRM starts at Decomposition (phase 4) by convention. Seeding
-			// here so a loop's first turn-with-no-update doesn't get an
-			// undefined-phase free pass — a model that never emits an
-			// update at all should still accumulate Decomposition stagnation.
-			currentPhase: 4,
-			phaseTurnCount: 0,
 		});
 	}
 
@@ -94,19 +73,6 @@ export default class ErrorPlugin {
 	#onTurnStarted({ rummy }) {
 		const state = this.#loopState.get(rummy.loopId);
 		state.turnErrors = 0;
-		// Stagnation pressure (admin-phase repeat counter) moved to
-		// #verdict so the model's actual emission decides whether it
-		// advanced. Pre-firing at turn-start computed phase from the
-		// PRIOR turn (`currentPhase()` skips the in-flight turn) and
-		// punished the model for staying-put even when the model
-		// emitted a phase-advance update on the very same turn —
-		// striking through to MAX_STRIKES and blocking the rescue
-		// branch from honoring the advance. Verified pathology:
-		// 2026-05-01 e2e lite-mode test, gemma turns 14-17 (model
-		// emitted status=167 advance on turn 17 but the strike streak
-		// from prior pre-fires already hit 3 → 499 abandon). Locked
-		// in via FCRM scope rule: penalize what the model actually
-		// did, not what the harness predicted it would do.
 	}
 
 	async #onErrorLog({
@@ -147,7 +113,7 @@ export default class ErrorPlugin {
 
 	async #verdict(
 		_currentVerdict,
-		{ store, runId, turn, loopId, recorded, summaryText },
+		{ store, runId, loopId, recorded, summaryText, turn: _turn },
 	) {
 		// _currentVerdict is the upstream filter's result. Today this is
 		// the only voter so it's always { continue: true }. When other
@@ -155,36 +121,6 @@ export default class ErrorPlugin {
 		// continue=false; this implementation could honor that via an
 		// early return. Left noop for now to preserve current semantics.
 		const state = this.#loopState.get(loopId);
-
-		// Per-stage stagnation pressure: admin-phase turns 1–3 are free,
-		// each turn after that fires a 408 strike via error.log. Phase
-		// is computed from THIS turn's recorded update — the model's
-		// own emission decides whether it advanced. A turn with no
-		// update inherits the prior phase (model didn't communicate).
-		const updateEntry = recorded.findLast((e) => e.scheme === "update");
-		const updateStatus = updateEntry?.attributes?.status;
-		const newPhase =
-			updateStatus == null ? state.currentPhase : phaseForStatus(updateStatus);
-		if (newPhase === state.currentPhase) {
-			state.phaseTurnCount++;
-		} else {
-			state.currentPhase = newPhase;
-			state.phaseTurnCount = 1;
-		}
-		if (
-			STAGNATION_PHASES.has(newPhase) &&
-			state.phaseTurnCount > STAGNATION_FREE_TURNS
-		) {
-			await this.#core.hooks.error.log.emit({
-				store,
-				runId,
-				turn,
-				loopId,
-				message: `${state.phaseTurnCount} turns in current stage. Attempt to proceed to next stage.`,
-				status: 408,
-				attributes: { stagnation: true, phase: newPhase },
-			});
-		}
 
 		let cycleReason = null;
 		// Empty turns share a blank fingerprint; intentional.
