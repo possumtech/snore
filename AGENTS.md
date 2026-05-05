@@ -8,7 +8,7 @@
 > practices, and todos. Achievement narrative belongs in git history.
 
 > **Standing rules that override anything else:**
-> - **No fallbacks outside `src/plugins/hedberg/*` and `src/agent/XmlParser.js`.**
+> - **No fallbacks outside `src/lib/hedberg/*` and `src/agent/XmlParser.js`.**
 >   Not `|| 0`, not `?? null`, not `|| ""`. Boundaries validate;
 >   interiors crash on contract violation. `biome/no-fallbacks.grit`
 >   enforces — if it complains, fix the contract, not the rule.
@@ -203,64 +203,171 @@ shells. Both write their own digests and indexes.
 
 ## Now
 
-**State-machine refactor in flight.** The substrate has to be
-trustworthy before any benchmark or instruction work matters. See
-`SPEC.md #fvsm_state_machine` for the contract.
+**Compartmentalization + modularization refactor.** The plugin
+architecture (PLUGINS.md) promises clean boundaries that the
+implementation only partly delivers. Tighten what we have before
+extending it, so future plugins compose against a real contract,
+not a partially-honored one.
 
-The contract is four rules; everything else is concerns separate
-from the state machine:
+The principle: **plugins should perform their activities through
+general interfaces with the core, not through bespoke calls into
+core internals or other plugins' state.** The standing rule
+"plugin extensibility is a promise, not an implementation detail"
+applies to *core's relationship with plugins* the same way it
+applies to plugins' relationship with each other.
 
-| Status | Mode advance | Gate |
-|---|---|---|
-| 145 | Decomposition → Distillation | unknowns ≥ 1 |
-| 156 | Distillation → Demotion | knowns ≥ 1 |
-| 167 | Demotion → Delivery | no visible unknowns |
-| —   | (any mode) | file modifications only when phase = 7 |
+Original motivating symptoms (now resolved by Phase 2): budget
+enforcement was a plugin but core (`TurnExecutor`) called into it
+directly via `budget.enforce` / `budget.postDispatch` instead of
+subscribing it to the generic event surface every other plugin
+uses. Same shape showed up with `error.verdict` (now
+`turn.verdict.filter`) and was investigated for `AgentLoop`
+run-state emission (verdict: not a real seam — see Phase 2 below).
+`instructions.validateNavigation` was kept as a documented
+load-bearing exception (see PLUGINS.md `#plugins_architectural_exceptions`).
 
-Refactor scope:
+### Phase 1 — Audit
 
-1. ✅ AGENTS.md cleanup (marker taxonomy uses gate names).
-2. ✅ AGENTS.md update (this section).
-3. SPEC.md — `#fvsm_state_machine` section: contract table +
-   reasoning. The single source of truth.
-4. Implementation:
-   - `validateNavigation` to the four-rule contract (add the
-     Demotion gate; keep the rest).
-   - Delete Shield 0 (`#enforceDecompositionMode`) from `policy.js`.
-     Keep Shield 3 (file-mod gate) and the ask-mode gate.
-   - On rejection in `update.js`, stop writing a phase-history
-     `log://turn_N/update/...` entry — emit `error.log` only.
-     This deletes the failed-update-skip patch in
-     `getCurrentPhase`.
-   - Strip per-mode allow-list prose from `instructions_104.md`
-     (Decomposition); reframe `instructions_106.md` to make the
-     Demotion contract ("no visible unknowns") explicit.
-5. Testing — integration + unit tests anchor to
-   `@fvsm_state_machine`. Drop Shield 0 tests. Add a Demotion
-   advance-gate test set.
+- [x] **Catalog cross-coupling.** Done. Findings folded into
+  Phase 2 below + the load-bearing exceptions block.
+- [x] **Document the orchestration layer.** Done. PLUGINS.md
+  `#plugins_turn_pipeline` updated to cover all hooks observed
+  in TurnExecutor (added `instructions.resolveSystemPrompt`,
+  `llm.reasoning`, parser-warning emissions). Each `call`-shape
+  hook is annotated ⚠ (load-bearing) or ✗ (refactor candidate).
+  Run/Loop Lifecycle table updated to include `error.verdict`.
+- [x] **Define acceptance criteria + document load-bearing
+  exceptions in PLUGINS.md.** Done. PLUGINS.md
+  `#plugins_architectural_exceptions` lists the five principled
+  deviations with their load-bearing reasons. Acceptance criteria
+  for "plugin uses a general interface" are implicit in the
+  legend ("anything else that looks like a direct named call into
+  a plugin is a seam, not an exception").
 
-Once this lands, then: e2e sweep → pivot terminal-bench from grok
-to local gemma. Everything below is downstream of a working
-state machine.
+### Phase 1 findings — load-bearing exceptions (keep, document)
+
+These are deliberate paradigm deviations with real justification.
+None should be refactored; all should be named in PLUGINS.md so
+they aren't mistaken for ceremony by the next session.
+
+- **`hooks.instructions.resolveSystemPrompt`** — single-owner
+  cache-stability concern. The system prompt is *deliberately* not
+  a filter chain because multiple participants would defeat
+  prefix-cache reasoning (see "Static base in system, phase-
+  specific in user" in instructions discipline above).
+- **`hooks.update.resolve`** — single-owner with synchronous
+  return value. Caller needs `{ summaryText, updateText }` back;
+  events emit but don't return; only the update plugin knows
+  terminal-vs-continuation status semantics.
+- **`Entries.scheme(path)` / `Entries.normalizePath(path)` static
+  imports across plugins** — pure utility statics. Routing through
+  hooks would be ceremony for zero capability gain.
+- **`countTokens`, `stateToStatus` utility imports** — same shape:
+  stateless utility functions, fine to import.
+- **CLI / RPC importing `ProjectAgent` / `RummyContext` directly**
+  — these are *transport* plugins, not action plugins. Their job
+  is to bridge external interfaces to the agent; the import is
+  what makes them transports. Worth naming "transport plugin" as
+  a distinct category in PLUGINS.md.
+
+### Phase 2 — Refactor (after Phase 1 docs land)
+
+- [x] **Recategorize `src/plugins/hedberg/` → `src/lib/hedberg/`.**
+  Done. Library lives at `src/lib/hedberg/`; a thin plugin shim
+  remains at `src/plugins/hedberg/hedberg.js` to expose
+  `core.hooks.hedberg` for external plugins (rummy.repo,
+  rummy.web) that can't reach into rummy/main internals via
+  direct import. Audit had underestimated this — internal plugins
+  use direct imports, external plugins use the hook namespace.
+  Both paths now documented in PLUGINS.md `#plugins_hedberg`.
+  Updated biome.json + biome/no-fallbacks.grit to reflect the new
+  path. Backwards seam in `src/agent/XmlParser.js` resolved (it
+  imports from `src/lib/`, not from a plugin).
+- [x] **Verdict hook cleanup.** Done. `error.verdict` direct call
+  replaced with `turn.verdict` filter chain (declared in
+  `Hooks.js`; error plugin subscribes via
+  `core.filter("turn.verdict", ...)`). AgentLoop now calls
+  `hooks.turn.verdict.filter({ continue: true }, ctx)`. Future
+  voters (cycle detection from a separate plugin, budget overflow
+  termination, runaway-on-context-grow) can join the chain
+  without touching error.js or AgentLoop. PLUGINS.md
+  Run/Loop Lifecycle table updated.
+- [x] **Budget plugin reaches core via events, not direct calls.**
+  Done. New hooks `turn.beforeDispatch` (filter) + `turn.dispatched`
+  (event) declared in `Hooks.js`; budget subscribes via
+  `core.filter("turn.beforeDispatch", ...)` + `core.on("turn.dispatched", ...)`.
+  TurnExecutor calls
+  `hooks.turn.beforeDispatch.filter({ ...packet, ok, overflow }, { rummy, ctx })`
+  (with `ok=false` short-circuiting dispatch) and
+  `hooks.turn.dispatched.emit({ contextSize, ctx, rummy })`.
+  Filter chain on the dispatch packet means future plugins can
+  trim, re-order, or annotate without touching budget.js or
+  TurnExecutor. PLUGINS.md Turn Pipeline table + Budget hooks
+  reference updated. The "budget stuff in Turn Context module"
+  pain point is gone — TurnExecutor no longer names the plugin.
+- [x] **Move `src/agent/budget.js` math into the budget plugin.**
+  Done. `ceiling`, `measureMessages`, `measureRows`, `computeBudget`
+  now live in `src/plugins/budget/budget.js` next to `overflowBody`.
+  `src/agent/budget.js` and its sibling `.test.js` deleted; cases
+  merged into the plugin's test file. No behavior change; 909/909
+  unit + 245/245 integration green.
+- [x] **Investigate `materializeContext` re-run in budget.** Done.
+  Two re-runs, two stories: (1) Pre-LLM Prompt Demotion was a real
+  leak — replaced full `materializeContext` with in-place
+  `vBody→sBody` swap on the prompt row + `ContextAssembler`-only
+  re-assembly (rows already carry both projections from the first
+  materialize). Saves a `clear_turn_context` + `v_model_context`
+  query + N×`tools.view` projections + N inserts. (2) Post-dispatch
+  re-materialize is legitimate cost projection (next-turn packet
+  estimate; entries written during dispatch need projecting), kept
+  as-is. PLUGINS.md Budget section reframes both spots — the
+  assembler is budget's measurement instrument, not a responsibility
+  leak. 909/909 unit + 245/245 integration green.
+- [ ] **`XmlParser` extraction → parser plugin.** With a generic
+  `parser.parse` hook in TurnExecutor. Multi-format input becomes
+  possible (native tool-calls, JSON shapes, thinking-channel
+  formats) without forking core. Note: hedberg recategorization
+  (above) eliminates the backwards-seam motivation, so this is
+  now optional/lower-priority — drive by "do we actually need
+  multi-format input?" rather than by seam pressure.
+- [x] **AgentLoop run-state emission → lifecycle plugin.** Examined;
+  not a real seam. The original premise — that `run/changed`
+  notification belongs elsewhere — was misdiagnosed: `run/changed`
+  is the **wire** notification sent from `ClientConnection.js:69`
+  on the generic `entry.changed` event. AgentLoop never emits it.
+  All AgentLoop emissions (`run.created`, `loop.started/completed`,
+  `ask/act.started/completed`, `run.step.completed`,
+  `turn.verdict`, `proposal.*`, `error.log`) already route through
+  generic event/filter hooks. The remaining direct writes
+  (`#setRunStatus`, `#writeRunEntry`, `db.create_run`) are core
+  orchestration — manifesting the run as a queryable system entity
+  is what AgentLoop is for. Relocating to a "lifecycle plugin"
+  would hide the coupling, not remove it.
+
+### Phase 1 findings — investigate during orchestration mapping
+
+- **`file/` plugin reached by 3 other plugins** (rpc, set, cli).
+  Cross-plugin direct imports, classification unclear without
+  reading the file plugin's role. Tag for orchestration phase.
+
+### Phase 3 — Resume e2e troubleshooting + instruction iteration
+
+- [ ] **e2e sweep + analysis under post-refactor architecture.**
+  Plumbing first; model alignment after. Doing it the other way
+  duplicates work: any prose tweaks made now would be re-evaluated
+  against a different architecture.
+- [ ] Pivot terminal-bench from grok to local gemma (deferred from
+  prior "Now").
+
+### Spirit clause
+
+This refactor's goal is to **reduce complexity by manifesting
+ideals already described**, not to extend the architecture with
+new features. Each move should make the codebase smaller and the
+contract crisper. If a proposed extraction adds a hop without
+separating concerns, it's ceremony — drop it.
 
 ## Open Items
-
-- [ ] **Pattern / bulk-operation presentation in toolDocs.** Across
-  multiple gemma + gpro runs, models use globs for visibility-batch
-  demotion (`<set path="log://turn_5/**" visibility="archived"/>`)
-  but rarely for *discovery* — they walk entry-by-entry instead of
-  reaching for `<get path="**" manifest>keyword</get>`. Three changes
-  worth landing once the gates above settle:
-  1. Promote pattern examples in `getDoc.md` / `setDoc.md` to the
-     top so they're in the model's first read, not after the
-     single-entry forms.
-  2. Add a "pattern idiom" line in `instructions_105.md` and
-     `_106.md` — these modes are where bulk ops pay off most. One
-     line each: "When inspecting many entries, prefer a pattern
-     (`**`, `unknown://*`) with `manifest` over per-entry gets."
-  3. Now that `<get summary="..."/>` exists, surface it in the FVSM
-     mode docs as the recall-by-folksonomy idiom — a worked example
-     in `instructions_105.md` showing tag-based source recall.
 
 - [ ] **Single-turn budget escape.** A run was observed sending
   ~2.3× the configured budget cap in a single turn. Two candidate
@@ -271,8 +378,8 @@ state machine.
      thought it was capping at N; actual tokenization came in
      above.
   2. **Budget-enforcement escape path.** Content gets added to the
-     assembled packet *after* `budget.enforce()` runs (system
-     prompt assembly, post-enforcement plugin filters,
+     assembled packet *after* the `turn.beforeDispatch` filter chain
+     runs (system prompt assembly, post-enforcement plugin filters,
      `assembly.user` 175-priority inserts). Enforce caps at N;
      downstream insertion blows past it.
 
@@ -321,17 +428,6 @@ state machine.
   layer. Especially valuable now that nvim is consuming the entry
   stream directly — any change to `getEntries` shape or `run/changed`
   cadence is a silent break otherwise.
-
-- [ ] **Core → plugin extraction conversation.** Audit what still
-  lives in `src/agent/*` that could plausibly be a plugin. Top
-  candidates: `XmlParser` (syntax-layer; would need a `parser.parse`
-  hook in `TurnExecutor`), the cycle-detection / strike machinery
-  in `src/plugins/error/error.js` (already a plugin but the verdict
-  hook is core-coupled), telemetry side of `AgentLoop.#emitRunState`,
-  the YOLO-style "report current run status on resolve ack" RPC
-  shaping. The Rummy Way: everything is entries+hooks+plugins; a
-  conversation needed to decide which extractions are principled vs.
-  ceremony. Discuss before refactor.
 
 - [ ] **Render empty user-message section blocks for cache stability.**
   Today rummy renders sections (`<log>`, `<summarized>`, `<visible>`,

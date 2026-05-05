@@ -3,7 +3,8 @@
  *
  * Covers @budget_enforcement — the numeric correctness of ceiling,
  * assembled-token measurement, and overflow computation that feed
- * the accept/reject decision in `budget.enforce`.
+ * the accept/reject decision in the `turn.beforeDispatch` filter
+ * chain (budget plugin is the canonical subscriber).
  *
  * Proves that:
  * - Token counts in turn_context reflect ACTUAL context cost, not full-visibility cost
@@ -31,7 +32,24 @@ describe("Budget math", () => {
 		tdb = await TestDb.create("budget_math");
 		store = new Entries(tdb.db);
 		await store.loadSchemes(tdb.db);
-		cascade = tdb.hooks.budget;
+		// Budget participates in the turn.beforeDispatch filter chain.
+		// Tests want to invoke it with the same shape the old direct
+		// hooks.budget.enforce had, so wrap the filter call.
+		cascade = {
+			enforce: (args) =>
+				tdb.hooks.turn.beforeDispatch.filter(
+					{
+						contextSize: args.contextSize,
+						messages: args.messages,
+						rows: args.rows,
+						lastPromptTokens: args.lastPromptTokens ?? 0,
+						assembledTokens: 0,
+						ok: true,
+						overflow: null,
+					},
+					{ ctx: args.ctx, rummy: args.rummy },
+				),
+		};
 		const seed = await tdb.seedRun({ alias: "math_1" });
 		RUN_ID = seed.runId;
 	});
@@ -490,7 +508,7 @@ describe("Budget math", () => {
 					visibility: "visible",
 				});
 			}
-			await tdb.hooks.budget.postDispatch({
+			await tdb.hooks.turn.dispatched.emit({
 				contextSize: 1000,
 				ctx: {
 					runId,

@@ -26,7 +26,7 @@ function timeoutError() {
 	return err;
 }
 
-describe("LLM fetch timeout → 504 strike (@error_verdict)", () => {
+describe("LLM fetch timeout → 504 strike (@plugins_run_loop_lifecycle)", () => {
 	let tdb, tserver, projectRoot;
 
 	before(async () => {

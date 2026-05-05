@@ -1,6 +1,37 @@
-import { ceiling, computeBudget, measureMessages } from "../../agent/budget.js";
+import ContextAssembler from "../../agent/ContextAssembler.js";
 import materializeContext from "../../agent/materializeContext.js";
 import { countTokens } from "../../agent/tokens.js";
+
+const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
+
+export function ceiling(contextSize) {
+	return Math.floor(contextSize * CEILING_RATIO);
+}
+
+// Sum assembled-message token counts; used by the enforce gate.
+export function measureMessages(messages) {
+	return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
+}
+
+// Sum projected row body token counts; used by prompt.js pre-assembly.
+export function measureRows(rows) {
+	return rows.reduce((sum, r) => sum + countTokens(r.body), 0);
+}
+
+// Single source of truth for budget numbers; tokenUsage echoes totalTokens for the wire attribute.
+export function computeBudget({ contextSize, totalTokens }) {
+	const cap = ceiling(contextSize);
+	const tokensFree = Math.max(0, cap - totalTokens);
+	const overflow = Math.max(0, totalTokens - cap);
+	return {
+		ceiling: cap,
+		totalTokens,
+		tokenUsage: totalTokens,
+		tokensFree,
+		overflow,
+		ok: overflow === 0,
+	};
+}
 
 // Delta-from-actual; same scale as <prompt tokenUsage>. SPEC #budget_enforcement.
 function predictNextPacket(rows, currentTurn, baseline) {
@@ -32,11 +63,34 @@ export default class Budget {
 
 	constructor(core) {
 		this.#core = core;
-		core.hooks.budget = {
-			enforce: this.enforce.bind(this),
-			postDispatch: this.postDispatch.bind(this),
-		};
+		// Subscribe to generic turn lifecycle hooks instead of registering
+		// named `core.hooks.budget.X` methods. TurnExecutor calls
+		// `turn.beforeDispatch.filter` and `turn.dispatched.emit`; budget
+		// participates via the standard plugin surface every other plugin
+		// uses. Other plugins could trim/annotate the same packet.
+		core.filter("turn.beforeDispatch", this.#onBeforeDispatch.bind(this));
+		core.on("turn.dispatched", this.#onDispatched.bind(this));
 		core.filter("assembly.user", this.assembleBudget.bind(this), 175);
+	}
+
+	// Filter participant. Receives the assembled packet; returns a
+	// (possibly modified) packet. On overflow, may demote and re-
+	// materialize; if it can't fit, sets ok=false so TurnExecutor
+	// short-circuits.
+	async #onBeforeDispatch(packet, ctxBag) {
+		return this.enforce({
+			contextSize: packet.contextSize,
+			messages: packet.messages,
+			rows: packet.rows,
+			lastPromptTokens: packet.lastPromptTokens,
+			ctx: ctxBag.ctx,
+			rummy: ctxBag.rummy,
+		});
+	}
+
+	// Event handler. Post-dispatch cleanup; no return value used.
+	async #onDispatched({ contextSize, ctx, rummy }) {
+		await this.postDispatch({ contextSize, ctx, rummy });
 	}
 
 	// Renders <budget> at priority 275; see SPEC #token_accounting.
@@ -196,29 +250,34 @@ export default class Budget {
 		const promptRow = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
-		if (promptRow) {
-			await rummy.entries.set({
-				runId: ctx.runId,
-				path: promptRow.path,
-				visibility: "summarized",
-			});
-		}
-		const reMat = await materializeContext({
-			db: rummy.db,
-			hooks: rummy.hooks,
+		if (!promptRow) return first;
+		await rummy.entries.set({
 			runId: ctx.runId,
-			loopId: ctx.loopId,
-			turn: ctx.turn,
-			systemPrompt: ctx.systemPrompt,
-			mode: ctx.mode,
-			toolSet: ctx.toolSet,
-			contextSize,
+			path: promptRow.path,
+			visibility: "summarized",
 		});
+		// Local swap mirrors the DB demotion. materializeContext attached
+		// both projections to the row; re-running the assembler on the
+		// modified rows avoids a v_model_context round-trip.
+		promptRow.body = promptRow.sBody;
+		promptRow.visibility = "summarized";
+		const reMessages = await ContextAssembler.assembleFromTurnContext(
+			rows,
+			{
+				type: ctx.mode,
+				systemPrompt: ctx.systemPrompt,
+				contextSize,
+				toolSet: ctx.toolSet,
+				lastContextTokens: lastPromptTokens,
+				turn: ctx.turn,
+			},
+			rummy.hooks,
+		);
 		const rechecked = this.#check({
 			contextSize,
-			messages: reMat.messages,
-			rows: reMat.rows,
-			lastPromptTokens: reMat.lastContextTokens,
+			messages: reMessages,
+			rows,
+			lastPromptTokens: 0,
 		});
 		if (!rechecked.ok) {
 			const cap = ceiling(contextSize);

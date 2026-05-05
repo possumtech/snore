@@ -64,14 +64,10 @@ async function runVerdict(hooks, store, loopId, turn, status) {
 						attributes: { status },
 					},
 				];
-	return hooks.error.verdict({
-		store,
-		runId: "r",
-		loopId,
-		turn,
-		recorded,
-		summaryText: null,
-	});
+	return hooks.turn.verdict.filter(
+		{ continue: true },
+		{ store, runId: "r", loopId, turn, recorded, summaryText: null },
+	);
 }
 
 describe("error plugin: views", () => {
@@ -156,13 +152,16 @@ describe("error plugin: verdict", () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		await startTurn(hooks, "L1");
-		const verdict = await hooks.error.verdict({
-			store: makeStore(),
-			runId: "r",
-			loopId: "L1",
-			recorded: [],
-			summaryText: null,
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store: makeStore(),
+				runId: "r",
+				loopId: "L1",
+				recorded: [],
+				summaryText: null,
+			},
+		);
 		assert.deepEqual(verdict, { continue: true });
 	});
 
@@ -170,13 +169,16 @@ describe("error plugin: verdict", () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		await startTurn(hooks, "L1");
-		const verdict = await hooks.error.verdict({
-			store: makeStore(),
-			runId: "r",
-			loopId: "L1",
-			recorded: [],
-			summaryText: "all good",
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store: makeStore(),
+				runId: "r",
+				loopId: "L1",
+				recorded: [],
+				summaryText: "all good",
+			},
+		);
 		assert.equal(verdict.continue, false);
 		assert.equal(verdict.status, 200);
 	});
@@ -185,19 +187,22 @@ describe("error plugin: verdict", () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		await startTurn(hooks, "L1");
-		const verdict = await hooks.error.verdict({
-			store: makeStore(),
-			runId: "r",
-			loopId: "L1",
-			recorded: [
-				{
-					scheme: "update",
-					attributes: { status: 145 },
-					path: "log://turn_1/update/x",
-				},
-			],
-			summaryText: "decompose",
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store: makeStore(),
+				runId: "r",
+				loopId: "L1",
+				recorded: [
+					{
+						scheme: "update",
+						attributes: { status: 145 },
+						path: "log://turn_1/update/x",
+					},
+				],
+				summaryText: "decompose",
+			},
+		);
 		assert.equal(verdict.status, 145);
 	});
 
@@ -214,13 +219,16 @@ describe("error plugin: verdict", () => {
 			message: "x",
 			attributes: {},
 		});
-		const verdict = await hooks.error.verdict({
-			store,
-			runId: "r",
-			loopId: "L1",
-			recorded: [],
-			summaryText: null,
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: "r",
+				loopId: "L1",
+				recorded: [],
+				summaryText: null,
+			},
+		);
 		assert.equal(verdict.continue, true);
 		assert.match(verdict.reason, /Missing update/);
 	});
@@ -240,13 +248,16 @@ describe("error plugin: verdict", () => {
 				attributes: { path: "x" },
 			},
 		];
-		const verdict = await hooks.error.verdict({
-			store,
-			runId: "r",
-			loopId: "L1",
-			recorded,
-			summaryText: null,
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: "r",
+				loopId: "L1",
+				recorded,
+				summaryText: null,
+			},
+		);
 		assert.equal(verdict.continue, true);
 		assert.match(verdict.reason, /Missing update/);
 	});
@@ -266,13 +277,16 @@ describe("error plugin: verdict", () => {
 				attributes: { path: "x" },
 			},
 		];
-		const verdict = await hooks.error.verdict({
-			store,
-			runId: "r",
-			loopId: "L1",
-			recorded,
-			summaryText: null,
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: "r",
+				loopId: "L1",
+				recorded,
+				summaryText: null,
+			},
+		);
 		// not_found is a finding, not a contract violation — the model
 		// adapts and re-tries. Run continues without striking.
 		assert.deepEqual(verdict, { continue: true });
@@ -293,13 +307,16 @@ describe("error plugin: verdict", () => {
 				attributes: { path: "x" },
 			},
 		];
-		const verdict = await hooks.error.verdict({
-			store,
-			runId: "r",
-			loopId: "L1",
-			recorded,
-			summaryText: null,
-		});
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: "r",
+				loopId: "L1",
+				recorded,
+				summaryText: null,
+			},
+		);
 		assert.deepEqual(verdict, { continue: true });
 	});
 
@@ -319,21 +336,24 @@ describe("error plugin: verdict", () => {
 			const path = `log://turn_${i + 1}/set/x${i}`;
 			stateByPath.set(path, { state: "failed", outcome: "not_found" });
 			const store = makeStore({ stateByPath });
-			verdict = await hooks.error.verdict({
-				store,
-				runId: "r",
-				turn: i + 1,
-				loopId: "L1",
-				recorded: [
-					{ scheme: "set", path, attributes: { path: `x${i}` } },
-					{
-						scheme: "update",
-						path: `log://turn_${i + 1}/update/x`,
-						attributes: { status: 155 },
-					},
-				],
-				summaryText: null,
-			});
+			verdict = await hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: "r",
+					turn: i + 1,
+					loopId: "L1",
+					recorded: [
+						{ scheme: "set", path, attributes: { path: `x${i}` } },
+						{
+							scheme: "update",
+							path: `log://turn_${i + 1}/update/x`,
+							attributes: { status: 155 },
+						},
+					],
+					summaryText: null,
+				},
+			);
 		}
 		assert.equal(verdict.continue, true);
 		assert.equal(verdict.status, undefined);
@@ -355,13 +375,16 @@ describe("error plugin: verdict", () => {
 				message: `err${i}`,
 				attributes: {},
 			});
-			verdict = await hooks.error.verdict({
-				store,
-				runId: "r",
-				loopId: "L1",
-				recorded: [],
-				summaryText: null,
-			});
+			verdict = await hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: "r",
+					loopId: "L1",
+					recorded: [],
+					summaryText: null,
+				},
+			);
 		}
 		assert.equal(verdict.continue, false);
 		assert.equal(verdict.status, 499);
@@ -384,19 +407,22 @@ describe("error plugin: verdict", () => {
 				message: `err${i}`,
 				attributes: {},
 			});
-			verdict = await hooks.error.verdict({
-				store,
-				runId: "r",
-				loopId: "L1",
-				recorded: [
-					{
-						scheme: "update",
-						attributes: { status: 200 },
-						path: `log://turn_${i}/update/x`,
-					},
-				],
-				summaryText: "done",
-			});
+			verdict = await hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: "r",
+					loopId: "L1",
+					recorded: [
+						{
+							scheme: "update",
+							attributes: { status: 200 },
+							path: `log://turn_${i}/update/x`,
+						},
+					],
+					summaryText: "done",
+				},
+			);
 		}
 		assert.equal(verdict.continue, false);
 		assert.equal(verdict.status, 200);
@@ -418,13 +444,16 @@ describe("error plugin: verdict", () => {
 		let verdict;
 		for (let i = 1; i <= MIN_CYCLES; i++) {
 			await startTurn(hooks, "L1", i);
-			verdict = await hooks.error.verdict({
-				store,
-				runId: "r",
-				loopId: "L1",
-				recorded,
-				summaryText: null,
-			});
+			verdict = await hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: "r",
+					loopId: "L1",
+					recorded,
+					summaryText: null,
+				},
+			);
 		}
 		// Cycle detected on the MIN_CYCLES-th call → struck → continue:true
 		// with Missing-update reminder (until MAX_STRIKES).

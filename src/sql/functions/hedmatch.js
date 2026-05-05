@@ -1,4 +1,4 @@
-import { hedmatch } from "../../plugins/hedberg/patterns.js";
+import { hedmatch } from "../../lib/hedberg/patterns.js";
 
 export const deterministic = true;
 

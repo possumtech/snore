@@ -55,8 +55,26 @@ export default function createHooks(debug = false) {
 		},
 		turn: {
 			started: createEvent("turn.started"),
+			// Pre-LLM packet shaping. Filter chain: subscribers receive
+			// `{ messages, rows, contextSize, lastPromptTokens,
+			// assembledTokens, ok, overflow }` and return a transformed
+			// packet. Budget plugin participates here to enforce ceilings
+			// (may demote, may set ok=false on overflow). Other plugins
+			// could trim, re-order, or annotate — same surface.
+			beforeDispatch: createFilter("turn.beforeDispatch"),
 			response: createEvent("turn.response"),
+			// Post-dispatch event. Fired after the per-entry dispatch
+			// loop, before turn.completed. Budget subscribes here for
+			// post-dispatch demotion / 413 overflow detection.
+			dispatched: createEvent("turn.dispatched"),
 			completed: createEvent("turn.completed"),
+			// Verdict filter chain: each subscriber receives the current
+			// verdict object and returns a (possibly modified) one.
+			// Initial value is { continue: true }; final value drives the
+			// loop's continue/abandon decision. Multi-plugin: strike streak,
+			// cycle detect, stagnation pressure, future voters all
+			// participate via this surface.
+			verdict: createFilter("turn.verdict"),
 		},
 		// SPEC #resolution covers the proposal hook chain.
 		proposal: {

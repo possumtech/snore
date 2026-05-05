@@ -17,7 +17,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["src/plugins/hedberg/**"],
+			"includes": ["src/lib/hedberg/**"],
 			"plugins": []
 		}
 	]

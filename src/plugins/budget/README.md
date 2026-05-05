@@ -11,18 +11,21 @@ happens at boundaries.
 
 ## Enforcement Points
 
-1. **Pre-LLM enforce** (`hooks.budget.enforce`): checks assembled context
-   before the LLM call. If over ceiling on turn 1 → Prompt Demotion
-   (demote the incoming prompt, re-materialize, re-check). Runs in the
-   headroom if that fits. On non-first turns or still-over after
-   Prompt Demotion, emits a 413 error via `hooks.error.log` so the
-   strike system treats the overflow as a turn-level event.
+1. **Pre-LLM enforce** (`turn.beforeDispatch` filter): checks the
+   assembled dispatch packet before the LLM call. If over ceiling on
+   turn 1 → Prompt Demotion (demote the incoming prompt entry, swap
+   `body` from `vBody` to `sBody` on the local row, re-run the
+   assembler). Runs in the headroom if that fits. On non-first turns
+   or still-over after Prompt Demotion, sets `ok=false` on the packet
+   so TurnExecutor short-circuits dispatch and emits a 413 error via
+   `hooks.error.log.emit`.
 
-2. **Post-dispatch Turn Demotion** (`hooks.budget.postDispatch`): after
-   all tools dispatch, re-materialize and check. If over ceiling →
-   demote ALL visible entries from this turn (status < 400, status
-   preserved — demotion only changes visibility). Emits a 413 error
-   with the 50% rule directive as its message; the error entry is
+2. **Post-dispatch Turn Demotion** (`turn.dispatched` event): after
+   all tools dispatch, re-materialize and project the next-turn
+   packet. If predicted next packet exceeds ceiling → demote ALL
+   visible entries from this turn (status < 400, status preserved —
+   demotion only changes visibility). Emits a 413 error with the
+   demoted-paths body via `hooks.error.log.emit`; the error entry is
    what the model sees next turn.
 
 3. **LLM rejection** (`isContextExceeded` in TurnExecutor): turn-1
@@ -31,13 +34,21 @@ happens at boundaries.
 
 ## Files
 
-- **budget.js** — Plugin. Enforce + postDispatch methods exposed on
-  `core.hooks.budget`.
+- **budget.js** — Plugin. Math (`ceiling`, `measureMessages`,
+  `measureRows`, `computeBudget`), 413 body shaper (`overflowBody`),
+  and the plugin class itself. The plugin subscribes via the standard
+  hook surface — no named-method registration on `core.hooks.budget`.
 
-## Registration
+## Hook participation
 
-- **Hook**: `hooks.budget.enforce` — pre-LLM ceiling check + first-turn
-  Prompt Demotion.
-- **Hook**: `hooks.budget.postDispatch` — post-dispatch re-check + Turn
-  Demotion. Emits 413 errors through the unified error channel; there
-  is no separate `budget://` scheme.
+- `core.filter("turn.beforeDispatch", ...)` — pre-LLM ceiling check
+  on the dispatch packet. Returns the (possibly demoted) packet with
+  `ok` / `overflow` flags.
+- `core.on("turn.dispatched", ...)` — post-dispatch Turn Demotion +
+  413 emission. Other plugins may subscribe for unrelated post-
+  dispatch concerns; budget does not own the event.
+- `core.filter("assembly.user", ..., 175)` — renders the `<budget>`
+  table into the user message.
+
+Emits 413 errors through the unified error channel (`hooks.error.log.emit`);
+there is no separate `budget://` scheme.

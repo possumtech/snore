@@ -114,18 +114,22 @@ export default class TurnExecutor {
 			rowCount: initial.rows.length,
 		});
 
-		const budgetResult = await this.#hooks.budget.enforce({
-			contextSize,
-			messages: initial.messages,
-			rows: initial.rows,
-			lastPromptTokens: initial.lastContextTokens,
-			ctx: budgetCtx,
-			rummy,
-		});
-		const messages = budgetResult.messages;
-		const assembledTokens = budgetResult.assembledTokens;
+		const dispatchPacket = await this.#hooks.turn.beforeDispatch.filter(
+			{
+				contextSize,
+				messages: initial.messages,
+				rows: initial.rows,
+				lastPromptTokens: initial.lastContextTokens,
+				assembledTokens: 0,
+				ok: true,
+				overflow: null,
+			},
+			{ rummy, ctx: budgetCtx },
+		);
+		const messages = dispatchPacket.messages;
+		const assembledTokens = dispatchPacket.assembledTokens;
 
-		if (!budgetResult.ok) {
+		if (!dispatchPacket.ok) {
 			return {
 				turn,
 				turnId: turnRow.id,
@@ -134,7 +138,7 @@ export default class TurnExecutor {
 				updateText: null,
 				assembledTokens,
 				contextSize,
-				overflow: budgetResult.overflow,
+				overflow: dispatchPacket.overflow,
 			};
 		}
 
@@ -369,7 +373,7 @@ export default class TurnExecutor {
 			}
 		}
 
-		await this.#hooks.budget.postDispatch({
+		await this.#hooks.turn.dispatched.emit({
 			contextSize,
 			ctx: budgetCtx,
 			rummy,

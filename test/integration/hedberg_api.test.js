@@ -8,7 +8,7 @@ import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import TestDb from "../helpers/TestDb.js";
 
-describe("hedberg API (@hedberg, @plugins_hedberg, @hedberg_plugin)", () => {
+describe("hedberg API (@hedberg, @plugins_hedberg)", () => {
 	let tdb;
 
 	before(async () => {

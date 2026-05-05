@@ -65,7 +65,12 @@ export default class ErrorPlugin {
 		core.hooks.loop.completed.on(this.#onLoopCompleted.bind(this));
 		core.hooks.turn.started.on(this.#onTurnStarted.bind(this));
 
-		core.hooks.error.verdict = this.#verdict.bind(this);
+		// Subscribe to the turn.verdict filter chain. Multi-plugin
+		// surface — strike streak, cycle detection, stagnation
+		// pressure all flow through here. Future voters (e.g. budget
+		// overflow termination, runaway-on-context-grow) participate
+		// via the same chain.
+		core.filter("turn.verdict", this.#verdict.bind(this));
 	}
 
 	#onLoopStarted({ loopId }) {
@@ -140,7 +145,15 @@ export default class ErrorPlugin {
 		if (state) state.turnErrors++;
 	}
 
-	async #verdict({ store, runId, turn, loopId, recorded, summaryText }) {
+	async #verdict(
+		_currentVerdict,
+		{ store, runId, turn, loopId, recorded, summaryText },
+	) {
+		// _currentVerdict is the upstream filter's result. Today this is
+		// the only voter so it's always { continue: true }. When other
+		// plugins join the chain, they can short-circuit by setting
+		// continue=false; this implementation could honor that via an
+		// early return. Left noop for now to preserve current semantics.
 		const state = this.#loopState.get(loopId);
 
 		// Per-stage stagnation pressure: admin-phase turns 1–3 are free,

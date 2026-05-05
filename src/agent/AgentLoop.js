@@ -469,14 +469,17 @@ export default class AgentLoop {
 					`[LOOP] ${currentAlias} iter=${loopIteration} turn done: status=${result.status} turn=${result.turn}`,
 				);
 
-				const verdict = await this.#hooks.error.verdict({
-					store: this.#entries,
-					runId: currentRunId,
-					loopId: currentLoopId,
-					turn: result.turn,
-					recorded: result.recorded,
-					summaryText: result.summaryText,
-				});
+				const verdict = await this.#hooks.turn.verdict.filter(
+					{ continue: true },
+					{
+						store: this.#entries,
+						runId: currentRunId,
+						loopId: currentLoopId,
+						turn: result.turn,
+						recorded: result.recorded,
+						summaryText: result.summaryText,
+					},
+				);
 				const vStatus = verdict.status === undefined ? "-" : verdict.status;
 				const vReason = verdict.reason ? verdict.reason : "-";
 				console.error(

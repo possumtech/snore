@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter, @plugins_events_overview, @plugins_project_lifecycle, @plugins_run_loop_lifecycle, @plugins_turn_pipeline, @plugins_entry_events)", () => {
+describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter, @plugins_events_overview, @plugins_project_lifecycle, @plugins_run_loop_lifecycle, @plugins_turn_pipeline, @plugins_entry_events, @plugins_architectural_exceptions)", () => {
 	let tdb;
 
 	before(async () => {
@@ -73,12 +73,25 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 			assert.ok(tdb.hooks.tool.after);
 		});
 
-		it("budget hook exists and is callable", () => {
-			assert.ok(tdb.hooks.budget, "budget hook exists");
+		it("budget participates in turn.beforeDispatch + turn.dispatched lifecycle", () => {
+			// Budget is a subscriber, not a named-hook-exposing plugin.
+			// The orchestration surface is generic — TurnExecutor calls
+			// the filter chain and event; budget joined via core.filter
+			// and core.on. SPEC: PLUGINS.md @plugins_turn_pipeline.
+			assert.ok(
+				tdb.hooks.turn.beforeDispatch,
+				"turn.beforeDispatch hook exists",
+			);
 			assert.strictEqual(
-				typeof tdb.hooks.budget.enforce,
+				typeof tdb.hooks.turn.beforeDispatch.filter,
 				"function",
-				"budget.enforce is callable",
+				"turn.beforeDispatch.filter is callable",
+			);
+			assert.ok(tdb.hooks.turn.dispatched, "turn.dispatched hook exists");
+			assert.strictEqual(
+				typeof tdb.hooks.turn.dispatched.emit,
+				"function",
+				"turn.dispatched.emit is callable",
 			);
 		});
 	});

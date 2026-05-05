@@ -47,7 +47,7 @@ export default class File {
 	// True if any readonly constraint matches; called from set-accept gate.
 	static async isReadonly(db, projectId, path) {
 		const rows = await db.get_file_constraints.all({ project_id: projectId });
-		const { hedmatch } = await import("./../hedberg/patterns.js");
+		const { hedmatch } = await import("../../lib/hedberg/patterns.js");
 		return rows.some(
 			(r) => r.visibility === "readonly" && hedmatch(r.pattern, path),
 		);

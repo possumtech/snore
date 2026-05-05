@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
-describe("Scheme registration via plugins", () => {
+describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	let tdb, store, runId;
 
 	before(async () => {

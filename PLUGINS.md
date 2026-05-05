@@ -477,8 +477,21 @@ handles all exclusions:
 
 ## Hedberg {#plugins_hedberg}
 
-The hedberg plugin exposes pattern matching and interpretation
-utilities on `core.hooks.hedberg` for all plugins to use:
+Hedberg has two faces. The implementation is a **library** at
+`src/lib/hedberg/` — pattern matching, sed parsing, edit detection,
+unified-diff generation. Internal plugins import these utilities
+directly:
+
+```js
+import { hedmatch, hedsearch } from "../../lib/hedberg/patterns.js";
+import { parseSed } from "../../lib/hedberg/sed.js";
+import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
+```
+
+A thin **plugin shim** at `src/plugins/hedberg/` re-exposes the same
+surface on `core.hooks.hedberg` for external plugins shipped in
+separate packages (`rummy.repo`, `rummy.web`, etc.) that can't reach
+into rummy/main's internals via direct import.
 
 ```js
 const { match, search, replace, parseSed, parseEdits,
@@ -493,6 +506,12 @@ const { match, search, replace, parseSed, parseEdits,
 | `parseSed(input)` | Parse sed syntax (any delimiter) |
 | `parseEdits(content)` | Detect edit format (merge conflict, udiff, sed) |
 | `generatePatch(path, old, new)` | Generate unified diff |
+
+**The split is intentional.** `src/lib/` is for stateless utility
+modules anyone in the project can import. `src/plugins/` is for
+contracts exposed via the hook system. Hedberg is one of the few
+modules that has both shapes — same code, two access paths, one for
+internal consumers and one for cross-package consumers.
 
 ## Events & Filters {#plugins_events_overview}
 
@@ -518,6 +537,7 @@ All hooks are async.
 | `run.config` | filter | Before run config applied |
 | `run.progress` | event | Transient turn activity (`thinking` / `processing` / `retrying`) |
 | `run.state` | event | Turn conclusion, per-command incremental, or terminal run close — full state snapshot (status, history, unknowns, telemetry) |
+| `turn.verdict` | filter | Post-turn decision: continue / abandon / strike. Filter chain — multiple plugins (strike streak, cycle detect, stagnation today; future voters can join) each transform a verdict object. Initial value `{ continue: true }`; final value drives the loop's continue/abandon decision. |
 | `run.step.completed` | event | Turn verdict resolved (post-healer, pre-close) |
 | `loop.completed` | event | Loop exit — fires from `finally`, guaranteed on every exit path |
 | `ask.completed` | event | Ask-mode run finished |
@@ -527,32 +547,92 @@ All hooks are async.
 
 ### Turn Pipeline {#plugins_turn_pipeline}
 
-Hooks fire in this order every turn:
+Hooks fire in this order every turn. Type column legend:
+**event** = fire-and-forget, all handlers run, no return value;
+**filter** = chain transform, ordered by priority, return value carries forward;
+**call** = direct named-method invocation on a specific plugin.
+Exceptions for `call`-shaped hooks are documented under
+[Architectural exceptions](#plugins_architectural_exceptions).
 
 | # | Hook | Type | When |
 |---|------|------|------|
 | 1 | `turn.started` | event | Plugins write prompt/instructions entries |
-| 2 | `context.materialized` | event | turn_context populated from v_model_context |
-| 3 | `assembly.system` | filter | Build system message from entries |
-| 4 | `assembly.user` | filter | Build user message (prompt plugin adds `<prompt tokensFree tokenUsage>`) |
-| 5 | `budget.enforce` | call | Measure assembled tokens; if over and it's turn 1, demote prompt, re-materialize, re-check; still over → 413 |
-| 6 | `llm.messages` | filter | Transform messages before LLM call |
-| 7 | `llm.request.started` | event | LLM call about to fire |
-| 8 | `llm.response` | filter | Transform raw LLM response |
-| 9 | `llm.request.completed` | event | LLM call finished |
-| 10 | `turn.response` | event | Plugins write audit entries (telemetry) |
-| 11 | `entry.recording` | filter | Per command, during `#record()`. Returning an entry with `state: "failed"` (or `"cancelled"`) rejects it. |
-| 12 | Per recorded entry (sequential, abort-on-failure): | | |
+| 2 | `instructions.resolveSystemPrompt` | call ⚠ | System prompt assembly — single-owner exception (cache stability) |
+| 3 | `context.materialized` | event | turn_context populated from v_model_context |
+| 4 | `assembly.system` | filter | Build system message from entries (called from inside `materializeContext`) |
+| 5 | `assembly.user` | filter | Build user message (prompt plugin adds `<prompt tokensFree tokenUsage>`) |
+| 6 | `turn.beforeDispatch` | filter | Measure assembled tokens; if over and turn 1, demote prompt, re-materialize, re-check; still over → 413. Filter chain on the dispatch packet `{ messages, rows, contextSize, lastPromptTokens, assembledTokens, ok, overflow }`. Budget participates here; future plugins may trim, re-order, or annotate via the same surface. `ok=false` short-circuits dispatch. |
+| 7 | `llm.messages` | filter | Transform messages before LLM call |
+| 8 | `llm.request.started` | event | LLM call about to fire |
+| 9 | (LLM completion call) | — | Direct provider call. Errors caught: ContextExceededError → 413; TimeoutError/AbortError → 504 strike (unless drain). |
+| 10 | `llm.response` | filter | Transform raw LLM response |
+| 11 | `llm.request.completed` | event | LLM call finished |
+| 12 | (XML parse + parser-warning emission) | — | Synchronous; warnings emitted via `error.log` with `soft: true` — recoverable, no strike |
+| 13 | `llm.reasoning` | filter | Layer plugin reasoning contributions onto API-provided seed (used by `<think>` plugin to merge content-channel thinking into reasoning_content) |
+| 14 | `turn.response` | event | Plugins write audit entries (telemetry) |
+| 15 | `entry.recording` | filter | Per command, during `#record()`. Returning an entry with `state: "failed"` (or `"cancelled"`) rejects it. |
+| 16 | Per recorded entry (sequential, abort-on-failure): | | |
 |    | `tool.before` | event | Before handler dispatch |
-|    | `tools.dispatch` | — | Scheme's registered handler runs |
+|    | `tools.dispatch` | call (keyed) | Scheme's registered handler runs. Keyed dispatch is principled — multi-plugin contract by scheme name. |
 |    | `tool.after` | event | Handler finished |
 |    | `entry.created` | event | Entry written to store |
 |    | `run.state` | event | Incremental state push to connected clients |
 |    | `proposal.prepare` | event | This entry's dispatch may have created proposals (e.g. set → 202 revisions) |
 |    | `proposal.pending` | event | Per each materialized proposal — client is notified, dispatch awaits resolution |
-| 13 | `budget.postDispatch` | call | Re-materialize + check. If over ceiling → Turn Demotion (visibility=summarized on turn's visible rows) + emit 413 error. |
-| 14 | `hooks.update.resolve` | call | Update plugin classifies this turn's `<update>` (terminal/continuation, override-to-continuation if actions failed, heal from raw content if missing) |
-| 15 | `turn.completed` | event | Turn fully resolved with final status |
+| 17 | `turn.dispatched` | event | Post-dispatch cleanup. Budget subscribes for Turn Demotion (visibility=summarized on visible rows that overflow) + 413 `error://` emission via `hooks.error.log.emit`. Future plugins may subscribe for any post-dispatch concern. |
+| 18 | `update.resolve` | call ⚠ | Update plugin classifies this turn's `<update>` (terminal/continuation, override-to-continuation if actions failed, heal from raw content if missing). Single-owner exception — synchronous return value (`{ summaryText, updateText }`) is load-bearing. |
+| 19 | `turn.completed` | event | Turn fully resolved with final status |
+
+**Legend:** ⚠ = load-bearing exception (kept by design, see below); ✗ = refactor candidate (ceremonial coupling).
+
+### Architectural exceptions {#plugins_architectural_exceptions}
+
+The plugin contract aims for **events for emit, filters for transform,
+keyed dispatch for multi-plugin lookups by category**. Five points
+intentionally deviate. They're documented here so they aren't
+mistaken for ceremony and "fixed" in a way that breaks the
+load-bearing reason.
+
+**1. `instructions.resolveSystemPrompt(rummy)` — single-owner, cache-stable.**
+The system prompt is deliberately not a filter chain. Multiple
+participants would defeat prefix-cache reasoning ("Static base in
+system, phase-specific in user," see AGENTS.md instruction
+discipline). One plugin owns the surface; direct call enforces it.
+
+**2. `update.resolve({ recorded, ... })` — single-owner with
+synchronous return value.** Caller (`TurnExecutor`) needs
+`{ summaryText, updateText }` back to drive the resolve callback.
+Events emit but don't return; only the update plugin understands
+terminal-vs-continuation status semantics. Filter-chain shape
+would only have one element (still update), so the chain would be
+ceremony.
+
+**3. Static utility imports across plugins
+(`Entries.scheme`, `Entries.normalizePath`, `countTokens`,
+`stateToStatus`).** Pure stateless utilities. Routing through
+hooks adds a ceremony layer for zero capability gain — these aren't
+extension points; they're canonical implementations.
+
+**4. Hedberg lib + thin plugin shim.** The library lives at
+`src/lib/hedberg/` (pattern matching, sed parsing, merge handling).
+A thin plugin shim at `src/plugins/hedberg/hedberg.js` re-exposes
+the same surface on `core.hooks.hedberg` for external plugins
+(rummy.repo, rummy.web) that can't reach into rummy/main's
+internals via direct import. Internal plugins use direct imports
+from `src/lib/hedberg/`; external plugins use the hook namespace.
+See [Hedberg](#plugins_hedberg) for the API table.
+
+**5. Transport plugins (`cli`, `rpc`).** These are *interface*
+plugins, not action plugins. Their job is to bridge external
+interfaces (stdin/stdout, WebSocket) to the agent. Direct imports
+of `ProjectAgent` / `RummyContext` are what makes them transports;
+fitting them into the action-plugin shape would require running
+the agent over a back-channel to itself.
+
+**Anything else that looks like a direct named call into a plugin
+is a seam, not an exception** — see the ✗-marked entries in the
+Turn Pipeline above. Refactor surface tracked in AGENTS.md "Now"
+under Phase 2.
 
 `entry.changed` fires asynchronously from mutation points — not
 pipeline-ordered. Subscribe when you need to react to any entry
@@ -583,15 +663,33 @@ update, visibility change, state change, attribute update. Payload:
 
 | Hook | Type | When |
 |------|------|------|
-| `hooks.budget.enforce` | method | Pre-LLM ceiling check. On first-turn 413 → Prompt Demotion + re-check. |
-| `hooks.budget.postDispatch` | method | Post-dispatch re-check. On 413 → Turn Demotion + 413 `error://` entry via `hooks.error.log.emit`. |
+| `turn.beforeDispatch` filter | subscriber | Pre-LLM ceiling check on the dispatch packet. On first-turn 413 → Prompt Demotion + re-check; sets `ok=false` + `overflow` to short-circuit dispatch. |
+| `turn.dispatched` event | subscriber | Post-dispatch re-check. On 413 → Turn Demotion + 413 `error://` entry via `hooks.error.log.emit`. |
+| `assembly.user` filter | subscriber | Renders `<budget>` table into the user message. |
 
 The budget plugin measures tokens on the assembled messages — the
 actual content being sent to the LLM. No estimates at the ceiling,
 no SQL token sums. The assembled message IS the measurement. When
-turn 2+ information is available, `budget.enforce` prefers the actual
-API-reported token count (`turns.context_tokens` from the prior
-turn) over re-measuring the assembled string.
+turn 2+ information is available, the pre-LLM check prefers the
+actual API-reported token count (`turns.context_tokens` from the
+prior turn) over re-measuring the assembled string.
+
+**Use of the assembler.** Budget calls the context assembler in two
+spots — these are projections, not orchestration leaks:
+
+- **Pre-LLM Prompt Demotion (`turn.beforeDispatch`)** — when the
+  first-turn packet overflows, budget demotes the prompt entry in
+  the DB, swaps `body` from `vBody` to `sBody` on the local prompt
+  row, and re-runs `ContextAssembler.assembleFromTurnContext` on
+  the modified rows. No `materializeContext` round-trip — the row
+  already carries both projections.
+- **Post-dispatch projection (`turn.dispatched`)** — budget re-runs
+  `materializeContext` to project the *next* turn's packet
+  (entries written during dispatch need projection through
+  `hooks.tools.view`). If predicted next packet overflows, budget
+  demotes now so next turn's enforce isn't stuck with only the
+  prompt-demotion lever. Cost projection is the budget plugin's
+  job; the assembler is the measurement instrument.
 
 **DB tokens vs assembled tokens:** The `tokens` column on `entries`
 is strictly for DISPLAY — showing token costs in `<knowns>` tags so
@@ -726,7 +824,7 @@ pure RPC plumbing shared across all streaming producers.
 | `file` | Internal | File entry projections and constraints (`scheme IS NULL`) |
 | `rpc` | Internal | RPC method registration + tool-fallback dispatch |
 | `telemetry` | Internal | Audit entries, usage stats, reasoning_content |
-| `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Exposes `hooks.budget.enforce` / `hooks.budget.postDispatch`. |
+| `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Subscribes to `turn.beforeDispatch` (filter) + `turn.dispatched` (event) + `assembly.user` (filter). |
 | `policy` | Internal | Ask-mode per-invocation rejections via `entry.recording` filter |
 | `error` | Internal | `error.log` hook → `error://` entries |
 | `think` | Tool | Private reasoning tag; contributes to `reasoning_content` via the `llm.reasoning` filter |

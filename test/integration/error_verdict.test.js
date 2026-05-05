@@ -73,27 +73,33 @@ describe("error verdict (@response_healing)", () => {
 	}
 
 	it("clean turn with terminal summary → continue=false, status=200", async () => {
-		const verdict = await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: 1,
-			recorded: [fakeGet("src/a.js")],
-			summaryText: "done",
-		});
+		const verdict = await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 1,
+				recorded: [fakeGet("src/a.js")],
+				summaryText: "done",
+			},
+		);
 		assert.strictEqual(verdict.continue, false);
 		assert.strictEqual(verdict.status, 200);
 	});
 
 	it("no summary, no errors → continue=true", async () => {
-		const verdict = await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: 1,
-			recorded: [fakeGet("src/a.js")],
-			summaryText: null,
-		});
+		const verdict = await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 1,
+				recorded: [fakeGet("src/a.js")],
+				summaryText: null,
+			},
+		);
 		assert.strictEqual(verdict.continue, true);
 	});
 
@@ -106,14 +112,17 @@ describe("error verdict (@response_healing)", () => {
 			message: "pretend something failed",
 			status: 500,
 		});
-		const verdict = await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: 1,
-			recorded: [fakeGet("src/a.js")],
-			summaryText: "done",
-		});
+		const verdict = await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 1,
+				recorded: [fakeGet("src/a.js")],
+				summaryText: "done",
+			},
+		);
 		assert.strictEqual(
 			verdict.continue,
 			true,
@@ -133,14 +142,17 @@ describe("error verdict (@response_healing)", () => {
 				message: `strike ${i + 1}`,
 				status: 422,
 			});
-			await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded: [fakeGet(`src/${i}.js`)],
-				summaryText: null,
-			});
+			await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded: [fakeGet(`src/${i}.js`)],
+					summaryText: null,
+				},
+			);
 			await bumpTurn(i + 2);
 		}
 		// Final strike turn — model also emits a terminal update.
@@ -152,14 +164,17 @@ describe("error verdict (@response_healing)", () => {
 			message: "strike that coincides with delivery",
 			status: 413,
 		});
-		const verdict = await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: MAX_STRIKES,
-			recorded: [fakeGet("src/final.js")],
-			summaryText: "delivered the report",
-		});
+		const verdict = await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: MAX_STRIKES,
+				recorded: [fakeGet("src/final.js")],
+				summaryText: "delivered the report",
+			},
+		);
 		assert.strictEqual(verdict.continue, false);
 		assert.strictEqual(
 			verdict.status,
@@ -179,14 +194,17 @@ describe("error verdict (@response_healing)", () => {
 				message: `strike ${i + 1}`,
 				status: 422,
 			});
-			verdict = await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded: [fakeGet(`src/${i}.js`)],
-				summaryText: null,
-			});
+			verdict = await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded: [fakeGet(`src/${i}.js`)],
+					summaryText: null,
+				},
+			);
 			// Reset turnErrors for next simulated turn
 			await bumpTurn(i + 2);
 		}
@@ -209,25 +227,31 @@ describe("error verdict (@response_healing)", () => {
 				message: `err ${i}`,
 				status: 500,
 			});
-			await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded: [fakeGet(`src/${i}.js`)],
-				summaryText: null,
-			});
+			await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded: [fakeGet(`src/${i}.js`)],
+					summaryText: null,
+				},
+			);
 			await bumpTurn(i + 2);
 		}
 		// Clean turn
-		await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: 3,
-			recorded: [fakeGet("src/clean.js")],
-			summaryText: null,
-		});
+		await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 3,
+				recorded: [fakeGet("src/clean.js")],
+				summaryText: null,
+			},
+		);
 		await bumpTurn(3);
 		// One more erroring turn: if streak reset, this is strike=1, not strike=3.
 		await tdb.hooks.error.log.emit({
@@ -238,14 +262,17 @@ describe("error verdict (@response_healing)", () => {
 			message: "solo err",
 			status: 500,
 		});
-		const v = await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: 4,
-			recorded: [fakeGet("src/d.js")],
-			summaryText: null,
-		});
+		const v = await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 4,
+				recorded: [fakeGet("src/d.js")],
+				summaryText: null,
+			},
+		);
 		assert.strictEqual(
 			v.continue,
 			true,
@@ -260,14 +287,17 @@ describe("error verdict (@response_healing)", () => {
 		// superficial evasion (vary an attribute to bust the fingerprint).
 		const recorded = [fakeGet("src/loop.js")];
 		for (let i = 0; i < MIN_CYCLES; i++) {
-			const verdict = await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded,
-				summaryText: null,
-			});
+			const verdict = await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded,
+					summaryText: null,
+				},
+			);
 			assert.strictEqual(
 				verdict.continue,
 				true,
@@ -299,14 +329,17 @@ describe("error verdict (@response_healing)", () => {
 		const total = MIN_CYCLES + MAX_STRIKES - 1;
 		let verdict;
 		for (let i = 0; i < total; i++) {
-			verdict = await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded,
-				summaryText: null,
-			});
+			verdict = await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded,
+					summaryText: null,
+				},
+			);
 			await bumpTurn(i + 2);
 		}
 		assert.strictEqual(
@@ -336,14 +369,17 @@ describe("error verdict (@response_healing)", () => {
 			outcome: "validation",
 			loopId: LOOP_ID,
 		});
-		const verdict = await tdb.hooks.error.verdict({
-			store,
-			runId: RUN_ID,
-			loopId: LOOP_ID,
-			turn: 1,
-			recorded: [{ scheme: "get", path, attributes: { path: "X" } }],
-			summaryText: null,
-		});
+		const verdict = await tdb.hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 1,
+				recorded: [{ scheme: "get", path, attributes: { path: "X" } }],
+				summaryText: null,
+			},
+		);
 		assert.strictEqual(
 			verdict.continue,
 			true,
@@ -368,14 +404,17 @@ describe("error verdict (@response_healing)", () => {
 				message: `LLM context exceeded: prompt grew past window`,
 				status: 413,
 			});
-			verdict = await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded: [],
-				summaryText: null,
-			});
+			verdict = await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded: [],
+					summaryText: null,
+				},
+			);
 			await bumpTurn(i + 2);
 		}
 		assert.strictEqual(verdict.continue, false);
@@ -398,14 +437,17 @@ describe("error verdict (@response_healing)", () => {
 				outcome: "validation",
 				loopId: LOOP_ID,
 			});
-			verdict = await tdb.hooks.error.verdict({
-				store,
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: i + 1,
-				recorded: [{ scheme: "set", path, attributes: { path: `X${i}` } }],
-				summaryText: null,
-			});
+			verdict = await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: i + 1,
+					recorded: [{ scheme: "set", path, attributes: { path: `X${i}` } }],
+					summaryText: null,
+				},
+			);
 			await bumpTurn(i + 2);
 		}
 		assert.strictEqual(verdict.continue, false);

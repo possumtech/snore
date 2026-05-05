@@ -1,5 +1,5 @@
 import Entries from "../../agent/Entries.js";
-import { buildMerge } from "../hedberg/merge.js";
+import { buildMerge } from "../../lib/hedberg/merge.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 

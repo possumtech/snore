@@ -21,7 +21,23 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 	before(async () => {
 		tdb = await TestDb.create("budget_cascade");
 		store = new Entries(tdb.db);
-		cascade = tdb.hooks.budget;
+		// Budget participates in the turn.beforeDispatch filter chain.
+		// Wrap to preserve the test's existing call shape.
+		cascade = {
+			enforce: (args) =>
+				tdb.hooks.turn.beforeDispatch.filter(
+					{
+						contextSize: args.contextSize,
+						messages: args.messages,
+						rows: args.rows,
+						lastPromptTokens: args.lastPromptTokens ?? 0,
+						assembledTokens: 0,
+						ok: true,
+						overflow: null,
+					},
+					{ ctx: args.ctx, rummy: args.rummy },
+				),
+		};
 		const seed = await tdb.seedRun({ alias: "budget_1" });
 		RUN_ID = seed.runId;
 	});

@@ -1,8 +1,8 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
+import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
+import { applyMerge, buildMerge } from "../../lib/hedberg/merge.js";
 import File from "../file/file.js";
-import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
-import { applyMerge, buildMerge } from "../hedberg/merge.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 

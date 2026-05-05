@@ -1,5 +1,5 @@
-import { parseEditContent } from "../plugins/hedberg/edits.js";
-import { parseSed } from "../plugins/hedberg/sed.js";
+import { parseEditContent } from "../lib/hedberg/edits.js";
+import { parseSed } from "../lib/hedberg/sed.js";
 
 // Shell-style HEREDOC opener at the start of a `<set>` body. Models have
 // strong training prior for this shape: <<IDENT, <<-IDENT, <<'IDENT',

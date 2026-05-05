@@ -1,4 +1,4 @@
-import { hedreplace } from "../../plugins/hedberg/patterns.js";
+import { hedreplace } from "../../lib/hedberg/patterns.js";
 
 export const deterministic = true;
 

@@ -21,7 +21,7 @@ uses one of these words, it should mean exactly what's written here.
 | **phase** | (Primary, FCRM sense.) One of four FCRM states selected by `<update status="1XY">`: 104=Decomposition, 105=Distillation, 106=Demotion, 107=Deployment. Maps to `instructions_10N.md` rendered in `<instructions>`. **The model-facing instructions call these "stages"** — same concept, dual vocabulary kept for the model's surface stability. Two non-FCRM uses of "phase" coexist in the codebase and AGENTS.md: (1) "two-phase turn execution" refers to RECORD→DISPATCH within a single turn; (2) AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones (Schema, Primitives, etc.) — neither is the FCRM phase. Context disambiguates; if it doesn't, it's a doc bug. |
 | **stage** | Model-facing synonym for **phase**. Lives in `instructions_*.md` and tooldocs. |
 | **proposal** | A tool-call entry at status 202 awaiting client resolution (accept/reject). Side-effecting actions (`<sh>`, `<env>`, file `<set>`, file `<rm>`/`<mv>`/`<cp>`, `<ask_user>`) emit proposals. YOLO mode auto-accepts. |
-| **verdict** | The end-of-turn ruling from `hooks.error.verdict` (owned by the error plugin). Returns `{continue, status, reason}`. Decides whether the loop continues to another turn or terminates. |
+| **verdict** | The end-of-turn ruling from `hooks.turn.verdict.filter` — a generic filter chain. Returns `{continue, status, reason}`. The error plugin is the canonical subscriber today; future plugins (cycle-detection, budget-overflow termination) can join the chain to vote without touching error.js or AgentLoop. Decides whether the loop continues to another turn or terminates. |
 | **strike** | A turn whose verdict counts toward `MAX_STRIKES`. A strike fires when `turnErrors > 0` (any `error.log` entry that turn) or when cycle detection trips silently. The streak counter resets on a clean turn (no errors, no cycle); reaches `MAX_STRIKES` → loop abandons at 499. |
 | **resolution** | Client's accept/reject of a proposal via `run/resolve` RPC. |
 | **dispatch** | The DISPATCH phase of a turn — actually executing recorded action entries. |
@@ -597,9 +597,9 @@ to a continuation (the model's claim of doneness is false); the update
 plugin resolves the update entry to 409 and surfaces it to the next
 turn as a continuation. Multiple `<update>` tags → last signal wins.
 
-**Post-dispatch budget check:** After all tools dispatch, the budget
-plugin re-materializes context and checks the ceiling
-(`hooks.budget.postDispatch`). If context exceeds the ceiling, Turn
+**Post-dispatch budget check:** After all tools dispatch, TurnExecutor
+emits `turn.dispatched`; the budget plugin subscribes, re-materializes
+context, and checks the ceiling. If context exceeds the ceiling, Turn
 Demotion fires — all `visible` `run_views` rows for the current turn
 have their `visibility` flipped to `summarized`, and an `error://` entry at status 413 is
 written. Status is NOT touched (see [schemes_status_visibility](#schemes_status_visibility)). The tools already ran;
@@ -1126,10 +1126,10 @@ surfaces the numbers — it does not automatically manage entries.
 decisions compare `assembledTokens` against `ceiling`, never against
 `contextSize` directly.
 
-**Pre-LLM enforce** (`hooks.budget.enforce`, in TurnExecutor before
-the LLM call). Measures the assembled messages (using
-`turns.context_tokens` from the prior turn when available,
-`countTokens(messages)` as a first-turn estimate).
+**Pre-LLM enforce** (`hooks.turn.beforeDispatch.filter`, in TurnExecutor
+before the LLM call; budget is the canonical subscriber). Measures the
+assembled messages (using `turns.context_tokens` from the prior turn
+when available, `countTokens(messages)` as a first-turn estimate).
 
 - `assembledTokens ≤ ceiling` → return 200, proceed to LLM.
 - `assembledTokens > ceiling` on the first turn of a loop → **Prompt
@@ -1138,14 +1138,15 @@ the LLM call). Measures the assembled messages (using
 - `assembledTokens > ceiling` on a non-first turn, or still over after
   Prompt Demotion → return 413. AgentLoop exits the loop with 413.
 
-**Post-dispatch Turn Demotion** (`hooks.budget.postDispatch`, after
-all tool dispatches complete). Re-materializes end-of-turn context
-and re-checks. If still over the ceiling, flips every `run_views` row
-for this turn from `visibility = visible` to `visibility = summarized`
-(status preserved — see [schemes_status_visibility](#schemes_status_visibility))
-and emits a 413 error via `hooks.error.log.emit` with the descriptive
-body (what was demoted, the 50% rule for the next turn). The model
-sees the `error://` entry next turn and adjusts.
+**Post-dispatch Turn Demotion** (`hooks.turn.dispatched.emit`, after
+all tool dispatches complete; budget is the canonical subscriber).
+Re-materializes end-of-turn context and re-checks. If still over the
+ceiling, flips every `run_views` row for this turn from
+`visibility = visible` to `visibility = summarized` (status preserved —
+see [schemes_status_visibility](#schemes_status_visibility)) and emits
+a 413 error via `hooks.error.log.emit` with the descriptive body
+(what was demoted, the 50% rule for the next turn). The model sees
+the `error://` entry next turn and adjusts.
 
 **Delta-from-actual prediction.** Post-dispatch uses
 `predictNextPacket = lastContextTokens + Σ countTokens(body) for rows added this turn`,

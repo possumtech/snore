@@ -1,4 +1,4 @@
-// No silent fallbacks outside hedberg.
+// No silent fallbacks outside src/lib/hedberg/ + src/agent/XmlParser.js.
 // Rule: interiors crash on contract violation, boundaries validate.
 // Patterns like `|| 0`, `?? ""` silently mask missing data.
 // hedberg is the stochastic-interpretation boundary — fallbacks
@@ -39,7 +39,7 @@ or {
   `Number.parseFloat(process.env.$_) || $_`,
   `Number.parseFloat(process.env.$_) ?? $_`
 } as $match where {
-  $filename <: not includes "src/plugins/hedberg/",
+  $filename <: not includes "src/lib/hedberg/",
   $filename <: not includes "src/agent/XmlParser.js",
   $filename <: not includes "/test/",
   $filename <: not includes ".test.js",
