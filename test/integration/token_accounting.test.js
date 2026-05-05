@@ -47,6 +47,7 @@ describe("token accounting (@token_accounting)", () => {
 			const result = await materializeContext({
 				db: tdb.db,
 				hooks: tdb.hooks,
+				entries: store,
 				runId,
 				loopId,
 				turn: 1,
@@ -77,6 +78,7 @@ describe("token accounting (@token_accounting)", () => {
 			const result = await materializeContext({
 				db: tdb.db,
 				hooks: tdb.hooks,
+				entries: store,
 				runId,
 				loopId,
 				turn: 1,
@@ -112,6 +114,7 @@ describe("token accounting (@token_accounting)", () => {
 			const result = await materializeContext({
 				db: tdb.db,
 				hooks: tdb.hooks,
+				entries: store,
 				runId,
 				loopId,
 				turn: 2,
@@ -130,12 +133,13 @@ describe("token accounting (@token_accounting)", () => {
 				expectedVTokens,
 				"vTokens = countTokens(visible projection of body)",
 			);
-			// sTokens: known summarized projection is first 500 chars (per
-			// known.js summary handler).
+			// sTokens: known summarized projection is first 450 chars (per
+			// known.js summary handler — fits under materializeContext's
+			// 500-char system cap).
 			const summarized =
-				body.length <= 500
+				body.length <= 450
 					? body
-					: `${body.slice(0, 500)}\n[truncated — promote to see the full body]`;
+					: `${body.slice(0, 450)}\n[truncated — promote to see the full body]`;
 			assert.strictEqual(
 				row.sTokens,
 				countTokens(summarized),

@@ -52,11 +52,12 @@ export default class Unknown {
 		return entry.body;
 	}
 
-	// First 500 chars; matches knowns/prompt summarized.
+	// First 450 chars; leaves headroom for the suffix under the
+	// materializeContext 500-char cap. Matches <known> / <prompt>.
 	summary(entry) {
 		if (!entry.body) return "";
-		if (entry.body.length <= 500) return entry.body;
-		return `${entry.body.slice(0, 500)}\n[truncated — promote to see the full question]`;
+		if (entry.body.length <= 450) return entry.body;
+		return `${entry.body.slice(0, 450)}\n[truncated — promote to see the full question]`;
 	}
 
 	async assembleUnknowns(content, ctx) {

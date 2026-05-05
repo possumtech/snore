@@ -82,11 +82,13 @@ export default class Known {
 		return entry.body;
 	}
 
-	// Summarized: first 500 chars; matches <prompt> summarized.
+	// Summarized: first 450 chars; leaves headroom for the suffix to fit
+	// under the materializeContext 500-char system cap on summarized
+	// projections. Matches <prompt> / <unknown> summarized.
 	summary(entry) {
 		if (!entry.body) return "";
-		if (entry.body.length <= 500) return entry.body;
-		return `${entry.body.slice(0, 500)}\n[truncated — promote to see the full body]`;
+		if (entry.body.length <= 450) return entry.body;
+		return `${entry.body.slice(0, 450)}\n[truncated — promote to see the full body]`;
 	}
 
 	// Identity-keyed summary lines: every data entry the run is tracking

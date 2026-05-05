@@ -1,4 +1,6 @@
-const SUMMARIZED_PROMPT_CHAR_CAP = 500;
+// 450 leaves headroom for the suffix to fit under materializeContext's
+// 500-char cap on summarized projections.
+const SUMMARIZED_PROMPT_CHAR_CAP = 450;
 
 export default class Prompt {
 	#core;
