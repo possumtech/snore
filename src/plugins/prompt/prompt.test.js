@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import createHooks from "../../hooks/Hooks.js";
 import PluginContext from "../../hooks/PluginContext.js";
+import { SUMMARY_MAX_CHARS } from "../helpers.js";
 import Prompt from "./prompt.js";
 
 function makeCore({ tools = ["set", "get"] } = {}) {
@@ -32,15 +33,17 @@ describe("Prompt plugin", () => {
 		assert.equal(out, "short");
 	});
 
-	it("summarized view truncates body and appends marker when > cap", async () => {
+	it("summarized view caps body at SUMMARY_MAX_CHARS", async () => {
 		const { hooks } = makeCore();
-		const body = "x".repeat(600);
+		const body = "x".repeat(50000);
 		const out = await hooks.tools.view("prompt", {
 			body,
 			visibility: "summarized",
 		});
-		assert.match(out, /truncated — promote to see/);
-		assert.ok(out.length < body.length + 100);
+		assert.ok(
+			out.length <= SUMMARY_MAX_CHARS,
+			`summary ≤ SUMMARY_MAX_CHARS; got ${out.length}`,
+		);
 	});
 
 	describe("turn.started: archive + record prompt", () => {
@@ -137,7 +140,9 @@ describe("Prompt plugin", () => {
 			assert.match(out, /^PRE/);
 			assert.match(out, /<prompt /);
 			assert.match(out, /commands="get,set"/);
-			assert.match(out, />hello<\/prompt>/);
+			assert.match(out, /<<:::prompt:\/\/1/);
+			assert.match(out, /\nhello\n/);
+			assert.match(out, /:::prompt:\/\/1\n<\/prompt>/);
 		});
 
 		it('ask mode triggers warn="File editing disallowed."', async () => {
@@ -217,12 +222,12 @@ describe("Prompt plugin", () => {
 			assert.equal(out.includes("reverted="), false);
 		});
 
-		it("renders empty body and no path when no prompt entry exists", async () => {
+		it("renders empty <prompt> wrapper with no fenced entry when no prompt entry exists", async () => {
 			const { hooks } = makeCore();
 			const out = await hooks.assembly.user.filter("", ctxWith([]));
 			assert.match(out, /<prompt /);
-			assert.equal(out.includes("path="), false);
-			assert.match(out, /><\/prompt>$/);
+			assert.equal(out.includes("<<:::prompt:"), false);
+			assert.match(out, /<\/prompt>$/);
 		});
 	});
 });

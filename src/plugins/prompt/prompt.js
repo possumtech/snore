@@ -1,6 +1,4 @@
-// 450 leaves headroom for the suffix to fit under materializeContext's
-// 500-char cap on summarized projections.
-const SUMMARIZED_PROMPT_CHAR_CAP = 450;
+import { renderEntry, SUMMARY_MAX_CHARS } from "../helpers.js";
 
 export default class Prompt {
 	#core;
@@ -10,11 +8,7 @@ export default class Prompt {
 		core.hooks.tools.onView("prompt", (entry) => entry.body, "visible");
 		core.hooks.tools.onView(
 			"prompt",
-			(entry) => {
-				const full = entry.body;
-				if (full.length <= SUMMARIZED_PROMPT_CHAR_CAP) return full;
-				return `${full.slice(0, SUMMARIZED_PROMPT_CHAR_CAP)}\n[truncated — promote to see the complete prompt]`;
-			},
+			(entry) => entry.body.slice(0, SUMMARY_MAX_CHARS),
 			"summarized",
 		);
 		core.on("turn.started", this.onTurnStarted.bind(this));
@@ -83,14 +77,15 @@ export default class Prompt {
 			}
 		}
 
-		const path = promptEntry ? ` path="${promptEntry.path}"` : "";
-		const visibility = promptEntry?.visibility
-			? ` visibility="${promptEntry.visibility}"`
-			: "";
-		const tokens =
-			promptEntry?.aTokens != null ? ` tokens="${promptEntry.aTokens}"` : "";
-		const lines =
-			promptEntry?.vLines != null ? ` lines="${promptEntry.vLines}"` : "";
-		return `${content}<prompt${path} commands="${commands}"${warn}${reverted}${visibility}${tokens}${lines}>${body}</prompt>`;
+		// <prompt> wrapper carries section-level metadata (commands, mode
+		// warn, reverted-from-413). The body is heredoc-fenced so any
+		// task description containing tag-shaped text won't be parsed as
+		// a tool call when the model echoes attention through the packet.
+		const meta = {};
+		if (promptEntry?.visibility) meta.visibility = promptEntry.visibility;
+		if (promptEntry?.aTokens != null) meta.tokens = promptEntry.aTokens;
+		if (promptEntry?.vLines != null) meta.lines = promptEntry.vLines;
+		const fenced = promptEntry ? renderEntry(promptEntry.path, meta, body) : "";
+		return `${content}<prompt commands="${commands}"${warn}${reverted}>\n${fenced}\n</prompt>`;
 	}
 }

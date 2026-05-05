@@ -1,4 +1,5 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
+import { renderEntry } from "../helpers.js";
 
 // sh/env span multiple channels; channels render their own tokens in <visible>.
 const STREAM_NO_TOKENS = new Set(["sh", "env"]);
@@ -45,20 +46,12 @@ function renderLogTag(entry, rowsByPath) {
 			: entry.attributes;
 
 	const action = actionFromPath(entry.path);
-
 	const statusValue =
 		attrs?.status != null
 			? attrs.status
 			: entry.state
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
-	// Suppress status on prompts; uniform 200 carries no signal.
-	const status =
-		statusValue != null && action !== "prompt"
-			? ` status="${statusValue}"`
-			: "";
-	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	// tokens = aTokens of the thing this tag represents (target via attrs.path, else self).
 	const isSlice = attrs?.lineStart != null;
 	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
 	let tokenSource = null;
@@ -76,27 +69,22 @@ function renderLogTag(entry, rowsByPath) {
 		tokenSource = entry.aTokens;
 		lineSource = entry.vLines;
 	}
-	const tokens = tokenSource != null ? ` tokens="${tokenSource}"` : "";
-	const summary =
-		typeof attrs?.summary === "string"
-			? ` summary="${attrs.summary.slice(0, 80)}"`
-			: "";
-	const query =
-		typeof attrs?.query === "string" ? ` query="${attrs.query}"` : "";
-	const command =
-		typeof attrs?.command === "string" ? ` command="${attrs.command}"` : "";
-	const target = attrs?.path ? ` target="${attrs.path}"` : "";
-	// Slice reads emit lines="a-b/total"; others emit simple lines="N".
-	const lines = isSlice
-		? ` lines="${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}"`
-		: lineSource != null
-			? ` lines="${lineSource}"`
-			: "";
 
-	const attrStr = `${target}${status}${outcomeAttr}${query}${command}${summary}${lines}${tokens}`;
-
-	if (entry.body) {
-		return `<${action} path="${entry.path}"${attrStr}>${entry.body}</${action}>`;
+	const meta = { action };
+	if (attrs?.path) meta.target = attrs.path;
+	// Suppress status on prompts; uniform 200 carries no signal.
+	if (statusValue != null && action !== "prompt") meta.status = statusValue;
+	if (entry.outcome) meta.outcome = entry.outcome;
+	if (typeof attrs?.query === "string") meta.query = attrs.query;
+	if (typeof attrs?.command === "string") meta.command = attrs.command;
+	if (typeof attrs?.summary === "string")
+		meta.summary = attrs.summary.slice(0, 80);
+	if (isSlice) {
+		meta.lines = `${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}`;
+	} else if (lineSource != null) {
+		meta.lines = lineSource;
 	}
-	return `<${action} path="${entry.path}"${attrStr}/>`;
+	if (tokenSource != null) meta.tokens = tokenSource;
+
+	return renderEntry(entry.path, meta, entry.body);
 }

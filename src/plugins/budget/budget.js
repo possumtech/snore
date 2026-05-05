@@ -298,6 +298,7 @@ export default class Budget {
 		const postMat = await materializeContext({
 			db: rummy.db,
 			hooks: rummy.hooks,
+			entries: rummy.entries,
 			runId: ctx.runId,
 			loopId: ctx.loopId,
 			turn: ctx.turn,

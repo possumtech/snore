@@ -295,7 +295,7 @@ describe("ContextAssembler", () => {
 			);
 			const user = messages[1].content;
 
-			assert.ok(user.includes("<known path="), "known summary line in user");
+			assert.ok(user.includes("<<:::known://auth"), "known fence in user");
 			assert.ok(user.includes("const y = 2;"), "old file body in <visible>");
 			assert.ok(user.includes("JWT"), "known body in <visible>");
 			assert.ok(user.includes("const x = 1;"), "new file body in <visible>");
@@ -336,8 +336,8 @@ describe("ContextAssembler", () => {
 
 			assert.ok(user.includes("<unknowns>"), "unknowns block rendered");
 			assert.ok(
-				user.includes('<unknown path="unknown://config"'),
-				"unknown rendered inside its own block",
+				user.includes("<<:::unknown://config"),
+				"unknown fenced inside its own block",
 			);
 			assert.ok(user.includes("which database adapter"));
 			assert.ok(
@@ -346,7 +346,7 @@ describe("ContextAssembler", () => {
 				"unknowns block does not nest inside <summarized>",
 			);
 			assert.ok(!system.includes("<unknowns>"), "no <unknowns> in system");
-			assert.ok(!system.includes("<unknown "), "no unknowns in system");
+			assert.ok(!system.includes("<<:::unknown://"), "no unknowns in system");
 		});
 
 		it("prompt element carries tokenUsage and tokensFree attrs", async () => {
@@ -419,11 +419,11 @@ describe("ContextAssembler", () => {
 			assert.ok(summarizedBlock, "<summarized> block exists");
 			assert.ok(
 				summarizedBlock.includes("class AgentLoop"),
-				"summary projection renders as tag body — symbols visible to model",
+				"summary projection renders inside heredoc — symbols visible to model",
 			);
 			assert.ok(
-				summarizedBlock.includes("</file>"),
-				"summary entry is a closed tag, not self-closing, when body is present",
+				summarizedBlock.includes("<<:::src/agent/AgentLoop.js"),
+				"entry uses heredoc fence with path-as-marker",
 			);
 		});
 

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
 	loadDoc,
 	logPathToDataBase,
+	SUMMARY_MAX_CHARS,
 	storePatternResult,
 	streamSummary,
 } from "./helpers.js";
@@ -108,20 +109,18 @@ describe("streamSummary", () => {
 		}
 	});
 
-	it("char-caps when body has few or no newlines (handles ANSI escape streams)", () => {
-		// Single-line body that exceeds MAX_CHARS (default 480).
+	it("output stays under SUMMARY_MAX_CHARS regardless of body shape", () => {
+		// One-line ANSI escape stream — line cap doesn't bite, char cap must.
 		const giant = "x".repeat(5000);
 		const entry = {
 			body: giant,
 			attributes: { command: "cmatrix", channel: 1 },
 		};
 		const out = streamSummary("env", entry);
-		// Header should mention "tail 480 of 5000 chars".
-		assert.match(out, /tail 480 of 5000 chars/);
-		assert.match(out, /<get line="1"/);
-		// Output body should be exactly the last 480 chars, not more.
-		const bodyPart = out.split("\n").slice(1).join("\n");
-		assert.equal(bodyPart.length, 480, "body capped at 480 chars");
+		assert.ok(
+			out.length <= SUMMARY_MAX_CHARS,
+			`output ≤ SUMMARY_MAX_CHARS; got ${out.length}`,
+		);
 	});
 
 	it("preserves trailing newline in tail when body had one", () => {

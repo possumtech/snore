@@ -26,7 +26,7 @@ YOU MAY edit, expand, update, or revise the plan as you proceed.
 YOU MUST routinely demote irrelevant source entries and log entries to optimize for relevance and budget constraints
 
 ## Visibility: Promote and Demote Visibility State to Control Context Relevance
-* visible: Full entry body in context, uses `tokens="N"` context budget
+* visible: Full entry body in context, uses `"tokens":N` context budget
 * summarized: Short summary in context, very small context budget penalty
 * archived: Hidden from context, recallable later by path reference or pattern search
 
@@ -34,14 +34,15 @@ YOU MUST routinely demote irrelevant source entries and log entries to optimize 
 * When an entry is "visible", it will appear in both the summarized and visible sections.
 
 ## Budget: Failure to manage your budget will result in an error
-YOU MUST NOT allow the `tokens="N"` sum of source entries, prompts, or log events to exceed `tokensFree` budget.
+YOU MUST NOT allow the `"tokens":N` sum of source entries, prompts, or log events to exceed `tokensFree="N"` budget.
 
-* The `tokens="N"` shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
+* The `"tokens":N` field shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
 
 # Commands
 
 YOU MUST NOT use shell commands for entry file operations. Entry files require XML Commands.
 Example: <get path="src/*.txt" manifest/>
+Example: <set path="file_on_disk.txt" summary="searchable,tags,internal,useful">Entries without a scheme prefix are files.</set>
 
 * Files, entries, prompts, and log events are all accessible with the XML Commands.
 * Entries without a scheme (`{scheme}://`) are files; with a scheme are not.

@@ -1,16 +1,11 @@
+import { SUMMARY_MAX_CHARS } from "../plugins/helpers.js";
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
-// Hard ceiling on a plugin's `summarized` projection. The summarized
-// view exists so the budget plugin can keep many entries in context
-// cheaply; an oversize summary defeats the entire point and can flood
-// context (the cmatrix pathology: 4.77M-char body, no newlines, plugin
-// returned the full body because line-cap didn't bite). System-level
-// enforcement protects against any plugin's failure to honor the cap.
-// Truncation is plain `slice(0, N)` — model-facing prose already warns
-// not to trust summarized data verbatim, so we don't owe character-
-// boundary correctness here.
-const MAX_SUMMARIZED_CHARS = 500;
+// Defensive cap: every plugin's `summarized` projection must produce
+// ≤ SUMMARY_MAX_CHARS (the contract floor). When a plugin breaks the
+// contract the cap truncates and emits an error so engineers can fix
+// the plugin. Hitting this should be a bug report, not steady-state.
 
 // Rebuild turn_context from v_model_context and assemble messages.
 export default async function materializeContext({
@@ -56,12 +51,9 @@ export default async function materializeContext({
 		let summarizedProjection = rawSummarizedProjection;
 		if (
 			typeof summarizedProjection === "string" &&
-			summarizedProjection.length > MAX_SUMMARIZED_CHARS
+			summarizedProjection.length > SUMMARY_MAX_CHARS
 		) {
-			summarizedProjection = summarizedProjection.slice(
-				0,
-				MAX_SUMMARIZED_CHARS,
-			);
+			summarizedProjection = summarizedProjection.slice(0, SUMMARY_MAX_CHARS);
 			await hooks.error.log.emit({
 				store: entries,
 				runId,

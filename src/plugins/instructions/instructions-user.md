@@ -31,7 +31,7 @@ Example:
 	<set path="known://plan">s/- [ ] Deliver answer to trivia question/- [x] Deliver answer to trivia question/g</set>
 	<update status="200">Paris</update>
 
-* Check `tokens="N"` against `tokensFree="N"` before promoting source entries.
+* Check `"tokens":N` against `tokensFree="N"` before promoting source entries.
 * Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
 * Use `<get summary="..." manifest/>` to recall entries by summary tags when paths are forgotten.
 * Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.

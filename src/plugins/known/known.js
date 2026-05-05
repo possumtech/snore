@@ -1,5 +1,6 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
+import { renderEntry, SUMMARY_MAX_CHARS } from "../helpers.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
 
@@ -82,13 +83,13 @@ export default class Known {
 		return entry.body;
 	}
 
-	// Summarized: first 450 chars; leaves headroom for the suffix to fit
-	// under the materializeContext 500-char system cap on summarized
-	// projections. Matches <prompt> / <unknown> summarized.
+	// Summarized: first SUMMARY_MAX_CHARS of the body. The model already
+	// knows summarized data is approximate (taught in instructions), so
+	// we don't owe it a "[truncated]" marker that would push the body
+	// past the contract floor.
 	summary(entry) {
 		if (!entry.body) return "";
-		if (entry.body.length <= 450) return entry.body;
-		return `${entry.body.slice(0, 450)}\n[truncated — promote to see the full body]`;
+		return entry.body.slice(0, SUMMARY_MAX_CHARS);
 	}
 
 	// Identity-keyed summary lines: every data entry the run is tracking
@@ -119,10 +120,6 @@ export default class Known {
 }
 
 function renderContextTag(entry, projectedBody) {
-	const tag = entry.scheme ? entry.scheme : "file";
-	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
-	const lines = entry.vLines != null ? ` lines="${entry.vLines}"` : "";
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -133,23 +130,16 @@ function renderContextTag(entry, projectedBody) {
 			: entry.state
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
-	const status =
-		statusValue != null && statusValue !== 200
-			? ` status="${statusValue}"`
-			: "";
-	const stateAttr =
-		entry.state && entry.state !== "resolved" ? ` state="${entry.state}"` : "";
-	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
-	const visibility =
-		entry.visibility === "archived" ? ` visibility="archived"` : "";
-	const summaryText =
-		typeof attrs?.summary === "string"
-			? attrs.summary.replace(/"/g, "'").slice(0, 80)
-			: "";
-	const summary = ` summary="${summaryText}"`;
-	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${visibility}${tokens}${lines}`;
-	if (projectedBody) {
-		return `<${tag} path="${entry.path}"${attrStr}>${projectedBody}</${tag}>`;
+	const meta = {};
+	if (entry.source_turn) meta.turn = entry.source_turn;
+	if (statusValue != null && statusValue !== 200) meta.status = statusValue;
+	if (entry.state && entry.state !== "resolved") meta.state = entry.state;
+	if (entry.outcome) meta.outcome = entry.outcome;
+	if (typeof attrs?.summary === "string") {
+		meta.summary = attrs.summary.slice(0, 80);
 	}
-	return `<${tag} path="${entry.path}"${attrStr}/>`;
+	if (entry.visibility === "archived") meta.visibility = "archived";
+	if (entry.aTokens != null) meta.tokens = entry.aTokens;
+	if (entry.vLines != null) meta.lines = entry.vLines;
+	return renderEntry(entry.path, meta, projectedBody);
 }

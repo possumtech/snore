@@ -1,3 +1,5 @@
+import { renderEntry, SUMMARY_MAX_CHARS } from "../helpers.js";
+
 export default class Unknown {
 	constructor(core) {
 		core.ensureTool();
@@ -52,12 +54,10 @@ export default class Unknown {
 		return entry.body;
 	}
 
-	// First 450 chars; leaves headroom for the suffix under the
-	// materializeContext 500-char cap. Matches <known> / <prompt>.
+	// First SUMMARY_MAX_CHARS of the body. Matches <known> / <prompt>.
 	summary(entry) {
 		if (!entry.body) return "";
-		if (entry.body.length <= 450) return entry.body;
-		return `${entry.body.slice(0, 450)}\n[truncated — promote to see the full question]`;
+		return entry.body.slice(0, SUMMARY_MAX_CHARS);
 	}
 
 	async assembleUnknowns(content, ctx) {
@@ -73,18 +73,12 @@ function renderUnknownTag(entry) {
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
-	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const visibility = entry.visibility
-		? ` visibility="${entry.visibility}"`
-		: "";
-	const tokens = entry.aTokens != null ? ` tokens="${entry.aTokens}"` : "";
-	const summary =
-		typeof attrs?.summary === "string"
-			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`
-			: "";
-	const attrStr = `${turn}${summary}${visibility}${tokens}`;
-	if (entry.body) {
-		return `<unknown path="${entry.path}"${attrStr}>${entry.body}</unknown>`;
+	const meta = {};
+	if (entry.source_turn) meta.turn = entry.source_turn;
+	if (typeof attrs?.summary === "string") {
+		meta.summary = attrs.summary.slice(0, 80);
 	}
-	return `<unknown path="${entry.path}"${attrStr}/>`;
+	if (entry.visibility) meta.visibility = entry.visibility;
+	if (entry.aTokens != null) meta.tokens = entry.aTokens;
+	return renderEntry(entry.path, meta, entry.body);
 }

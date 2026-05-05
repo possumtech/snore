@@ -133,13 +133,9 @@ describe("token accounting (@token_accounting)", () => {
 				expectedVTokens,
 				"vTokens = countTokens(visible projection of body)",
 			);
-			// sTokens: known summarized projection is first 450 chars (per
-			// known.js summary handler — fits under materializeContext's
-			// 500-char system cap).
-			const summarized =
-				body.length <= 450
-					? body
-					: `${body.slice(0, 450)}\n[truncated — promote to see the full body]`;
+			// sTokens: known summarized projection is the body sliced to
+			// SUMMARY_MAX_CHARS (per known.js summary handler).
+			const summarized = body.slice(0, 500);
 			assert.strictEqual(
 				row.sTokens,
 				countTokens(summarized),

@@ -91,10 +91,14 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { path: "https://example.com/page" },
 		});
 		const out = await render([target, getLog]);
-		assert.match(out, /<get\b[^>]*\btokens="4418"/, "tokens is target size");
+		assert.match(
+			out,
+			/"action":"get"[^}]*"tokens":4418/,
+			"tokens is target size",
+		);
 		assert.doesNotMatch(
 			out,
-			/<get\b[^>]*\btokens="30"/,
+			/"action":"get"[^}]*"tokens":30/,
 			"stub size not leaked",
 		);
 	});
@@ -113,7 +117,11 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { path: "known://fact" },
 		});
 		const out = await render([target, setLog]);
-		assert.match(out, /<set\b[^>]*\btokens="250"/, "tokens is target size");
+		assert.match(
+			out,
+			/"action":"set"[^}]*"tokens":250/,
+			"tokens is target size",
+		);
 	});
 
 	it("<get> falls back to entry.tokens when target is absent (rm'd or never loaded)", async () => {
@@ -127,7 +135,7 @@ describe("log plugin tokens= invariant", () => {
 		const out = await render([getLog]);
 		assert.match(
 			out,
-			/<get\b[^>]*\btokens="5"/,
+			/"action":"get"[^}]*"tokens":5/,
 			"falls back to log body tokens",
 		);
 	});
@@ -141,7 +149,7 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { query: "query" },
 		});
 		const out = await render([searchLog]);
-		assert.match(out, /<search\b[^>]*\btokens="204"/);
+		assert.match(out, /"action":"search"[^}]*"tokens":204/);
 	});
 
 	it("<update> tokens= is the log body tokens", async () => {
@@ -153,7 +161,7 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { status: 200 },
 		});
 		const out = await render([updateLog]);
-		assert.match(out, /<update\b[^>]*\btokens="8"/);
+		assert.match(out, /"action":"update"[^}]*"tokens":8/);
 	});
 
 	it("<error> tokens= is the log body tokens (the error message)", async () => {
@@ -167,7 +175,7 @@ describe("log plugin tokens= invariant", () => {
 			outcome: "status:413",
 		});
 		const out = await render([errLog]);
-		assert.match(out, /<error\b[^>]*\btokens="54"/);
+		assert.match(out, /"action":"error"[^}]*"tokens":54/);
 	});
 
 	it("<sh> omits tokens= entirely — no stub tokens can leak", async () => {
@@ -179,8 +187,12 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { command: "echo hi" },
 		});
 		const out = await render([shLog]);
-		assert.match(out, /<sh\b/);
-		assert.doesNotMatch(out, /<sh\b[^>]*\btokens=/, "sh never shows tokens");
+		assert.match(out, /"action":"sh"/);
+		assert.doesNotMatch(
+			out,
+			/"action":"sh"[^}]*"tokens":/,
+			"sh never shows tokens",
+		);
 	});
 
 	it("<env> omits tokens= entirely", async () => {
@@ -192,8 +204,8 @@ describe("log plugin tokens= invariant", () => {
 			attrs: { command: "pwd" },
 		});
 		const out = await render([envLog]);
-		assert.match(out, /<env\b/);
-		assert.doesNotMatch(out, /<env\b[^>]*\btokens=/);
+		assert.match(out, /"action":"env"/);
+		assert.doesNotMatch(out, /"action":"env"[^}]*"tokens":/);
 	});
 
 	it("<get> slice render: lines= attr and slice tokens (not target tokens)", async () => {
@@ -222,11 +234,19 @@ describe("log plugin tokens= invariant", () => {
 			},
 		});
 		const out = await render([target, sliceLog]);
-		assert.match(out, /<get\b[^>]*\blines="1-50\/262"/, "lines attr present");
-		assert.match(out, /<get\b[^>]*\btokens="200"/, "slice tokens, not target");
+		assert.match(
+			out,
+			/"action":"get"[^}]*"lines":"1-50\/262"/,
+			"lines attr present",
+		);
+		assert.match(
+			out,
+			/"action":"get"[^}]*"tokens":200/,
+			"slice tokens, not target",
+		);
 		assert.doesNotMatch(
 			out,
-			/<get\b[^>]*\btokens="19500"/,
+			/"action":"get"[^}]*"tokens":19500/,
 			"target size not leaked on slice log",
 		);
 	});
@@ -259,8 +279,8 @@ describe("log plugin tokens= invariant", () => {
 			}),
 		);
 		const out = await render([...pages, ...logs]);
-		const matches = [...out.matchAll(/<get\b[^>]*\btokens="(\d+)"/g)].map((m) =>
-			Number(m[1]),
+		const matches = [...out.matchAll(/"action":"get"[^}]*"tokens":(\d+)/g)].map(
+			(m) => Number(m[1]),
 		);
 		assert.strictEqual(matches.length, 3, "three get tags rendered");
 		const total = matches.reduce((a, b) => a + b, 0);
