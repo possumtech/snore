@@ -9,8 +9,13 @@ export default class Policy {
 		core.filter("entry.recording", this.#enforceDeliveryMode.bind(this), 2);
 	}
 
-	#fail(entry, body) {
-		return { ...entry, body, state: "failed", outcome: "permission" };
+	// Mark the entry failed without destroying its body. The body is the
+	// model's recorded intent — what it tried — and stays intact so the
+	// model can reflect on its own action when reading the log later.
+	// The rejection reason lives in a separate `log://turn_N/error/...`
+	// entry emitted by the caller via `hooks.error.log.emit`.
+	#fail(entry) {
+		return { ...entry, state: "failed", outcome: "permission" };
 	}
 
 	#isFileModification(entry) {
@@ -31,39 +36,37 @@ export default class Policy {
 	async #enforceAskMode(entry, ctx) {
 		if (ctx.mode !== "ask") return entry;
 
+		let message = null;
 		if (entry.scheme === "sh") {
-			return this.#fail(entry, "Rejected <sh> in ask mode");
-		}
-
-		if (entry.scheme === "set" && entry.attributes?.path) {
+			message = "Rejected <sh> in ask mode";
+		} else if (entry.scheme === "set" && entry.attributes?.path) {
 			const scheme = Entries.scheme(entry.attributes.path);
 			if (scheme === null && entry.body) {
-				return this.#fail(
-					entry,
-					`Rejected file edit to ${entry.attributes.path} in ask mode`,
-				);
+				message = `Rejected file edit to ${entry.attributes.path} in ask mode`;
 			}
-		}
-
-		if (entry.scheme === "rm") {
+		} else if (entry.scheme === "rm") {
 			const pathAttr = entry.attributes?.path || entry.path;
 			const scheme = Entries.scheme(pathAttr);
 			if (scheme === null) {
-				return this.#fail(entry, `Rejected file rm of ${pathAttr} in ask mode`);
+				message = `Rejected file rm of ${pathAttr} in ask mode`;
 			}
-		}
-
-		if (entry.scheme === "mv" || entry.scheme === "cp") {
+		} else if (entry.scheme === "mv" || entry.scheme === "cp") {
 			const destScheme = Entries.scheme(entry.attributes?.to);
 			if (destScheme === null) {
-				return this.#fail(
-					entry,
-					`Rejected ${entry.scheme} to file ${entry.attributes?.to} in ask mode`,
-				);
+				message = `Rejected ${entry.scheme} to file ${entry.attributes?.to} in ask mode`;
 			}
 		}
 
-		return entry;
+		if (!message) return entry;
+		await this.#core.hooks.error.log.emit({
+			store: ctx.store,
+			runId: ctx.runId,
+			turn: ctx.turn,
+			loopId: ctx.loopId,
+			message,
+			status: 403,
+		});
+		return this.#fail(entry);
 	}
 
 	// File modification (bare-path `<set body>`, `<rm>`, `<mv>`, `<cp>`
@@ -81,8 +84,7 @@ export default class Policy {
 			sequence: ctx.turn,
 		});
 		if (phase === 7) return entry;
-		const message =
-			"YOU MUST NOT deliver file modifications in the current mode";
+		const message = "YOU MUST NOT attempt to deliver before Delivery Mode";
 		await this.#core.hooks.error.log.emit({
 			store: ctx.store,
 			runId: ctx.runId,
@@ -91,6 +93,6 @@ export default class Policy {
 			message,
 			status: 403,
 		});
-		return this.#fail(entry, message);
+		return this.#fail(entry);
 	}
 }

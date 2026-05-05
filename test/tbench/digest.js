@@ -295,7 +295,9 @@ function classifyMarkers(reward, runSummary, turnRows) {
 				shieldHits.add("gate_knowns");
 			else if (body.includes("YOU MUST demote all unknowns"))
 				shieldHits.add("gate_demote");
-			else if (body.includes("YOU MUST NOT deliver file modifications"))
+			else if (
+				body.includes("YOU MUST NOT attempt to deliver before Delivery Mode")
+			)
 				shieldHits.add("gate_delivery");
 			if (body.startsWith("Unclosed") || body.includes("Tool call limit")) {
 				parserWarn = true;

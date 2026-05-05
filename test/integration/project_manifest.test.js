@@ -90,7 +90,7 @@ describe("project manifest (@project_manifest)", () => {
 		);
 	});
 
-	it("manifest body is a flat `* path - N tokens` list with no headers, legend, or absolute path", async () => {
+	it("manifest body has directory rollup + flat list, no headers, no absolute path", async () => {
 		const root = await makeProject("body");
 		const { runId, projectId } = await tdb.seedRun({
 			alias: "manifest_body",
@@ -105,21 +105,42 @@ describe("project manifest (@project_manifest)", () => {
 		});
 		const body = await entries.getBody(runId, "log://turn_0/repo/manifest");
 		assert.ok(body, "manifest body exists");
-		const lines = body.split("\n").filter((l) => l.length > 0);
-		assert.ok(lines.length > 0, "manifest lists at least one file");
-		for (const line of lines) {
+
+		// Two sections joined by a markdown horizontal rule.
+		const idx = body.indexOf("\n\n---\n\n");
+		assert.ok(idx > 0, "body has the rollup/flat-list delimiter");
+		const rollup = body.slice(0, idx);
+		const flat = body.slice(idx + "\n\n---\n\n".length);
+
+		// Rollup lines: "* dir/ - N files, T tokens"; root files under "./".
+		const rollupLines = rollup.split("\n").filter((l) => l.length > 0);
+		assert.ok(rollupLines.length > 0, "rollup lists at least one directory");
+		for (const line of rollupLines) {
+			assert.match(
+				line,
+				/^\* [^\s].*\/ - \d+ files, \d+ tokens$/,
+				`every rollup line is "* dir/ - N files, T tokens" — got ${JSON.stringify(line)}`,
+			);
+		}
+		assert.match(rollup, /^\* \.\/ /m, "root files roll up under ./");
+		assert.match(rollup, /^\* src\/ /m, "src/ has its own rollup line");
+
+		// Flat list: per-file "* path - N tokens"; nested paths preserved.
+		const flatLines = flat.split("\n").filter((l) => l.length > 0);
+		assert.ok(flatLines.length > 0, "flat list has files");
+		for (const line of flatLines) {
 			assert.match(
 				line,
 				/^\* [^\s].* - \d+ tokens$/,
-				`every line is "* path - N tokens" — got ${JSON.stringify(line)}`,
+				`every flat line is "* path - N tokens" — got ${JSON.stringify(line)}`,
 			);
 		}
-		assert.match(body, /README\.md/, "root README.md is named");
-		assert.match(body, /src\/a\.js/, "nested files use full relative path");
+		assert.match(flat, /README\.md/, "root README.md is named");
+		assert.match(flat, /src\/a\.js/, "nested files use full relative path");
+
 		assert.ok(!body.includes("##"), "no markdown headings");
 		assert.ok(!body.includes("Navigate"), "no navigation legend");
 		assert.ok(!body.includes("Constraints"), "no constraints section");
-		assert.ok(!body.includes("Directories"), "no directory aggregation");
 		assert.ok(!body.includes(root), "no absolute filesystem path leak");
 	});
 
