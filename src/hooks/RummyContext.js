@@ -14,6 +14,7 @@ const CONTEXT_DEFAULTS = Object.freeze({
 	loopPrompt: "",
 	writer: "model",
 	signal: null,
+	pendingChildren: null,
 });
 
 export default class RummyContext {
@@ -131,6 +132,20 @@ export default class RummyContext {
 	// / last_run.txt never make it out of the docker sandbox.
 	get signal() {
 		return this.#context.signal;
+	}
+
+	// Plugins that spawn long-running children (yolo's <sh> / <env>
+	// executor) register the child's lifecycle promise here so the
+	// agent loop can: (a) avoid blocking turn execution on slow
+	// children, and (b) drain pending children before the loop's
+	// verdict-terminate path actually exits — guaranteeing the agent
+	// gets one more turn to see streamed completion entries even when
+	// it had already emitted a 200. SPEC #streaming_entries.
+	trackChild(closePromise) {
+		const set = this.#context.pendingChildren;
+		if (!set) return;
+		set.add(closePromise);
+		closePromise.finally(() => set.delete(closePromise));
 	}
 
 	get system() {

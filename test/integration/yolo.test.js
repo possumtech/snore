@@ -20,6 +20,7 @@ import TestDb from "../helpers/TestDb.js";
 async function makeRummy(tdb, runId, projectId, projectRoot, yolo, signal) {
 	const entries = new Entries(tdb.db);
 	entries.loadSchemes(tdb.db);
+	const pendingChildren = new Set();
 	return {
 		runId,
 		projectId,
@@ -29,7 +30,23 @@ async function makeRummy(tdb, runId, projectId, projectRoot, yolo, signal) {
 		hooks: tdb.hooks,
 		project: { id: projectId, project_root: projectRoot },
 		signal,
+		pendingChildren,
+		// Mirrors RummyContext.trackChild — yolo registers child
+		// lifecycle promises here; tests await them before asserting
+		// since proposal.pending emit no longer blocks on the child.
+		trackChild(p) {
+			pendingChildren.add(p);
+			p.finally(() => pendingChildren.delete(p));
+		},
 	};
+}
+
+// Drain rummy's tracked children so test assertions see the
+// final state. Mirrors AgentLoop's drain step.
+async function drainChildren(rummy) {
+	while (rummy.pendingChildren.size > 0) {
+		await Promise.allSettled([...rummy.pendingChildren]);
+	}
 }
 
 async function seedSetProposal(entries, runId, turn, relPath, content) {
@@ -176,6 +193,7 @@ describe("yolo mode (@yolo_mode)", () => {
 			proposed: [{ path: proposalPath }],
 			rummy,
 		});
+		await drainChildren(rummy);
 
 		const dataBase = logPathToDataBase(proposalPath);
 		const stdoutPath = `${dataBase}_1`;
@@ -242,6 +260,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		controller.abort();
 		await pending;
+		await drainChildren(rummy);
 		const elapsed = Date.now() - start;
 		assert.ok(
 			elapsed < 5000,
@@ -280,6 +299,7 @@ describe("yolo mode (@yolo_mode)", () => {
 			proposed: [{ path: proposalPath }],
 			rummy,
 		});
+		await drainChildren(rummy);
 
 		const dataBase = logPathToDataBase(proposalPath);
 		const stderrPath = `${dataBase}_2`;
