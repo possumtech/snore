@@ -207,7 +207,7 @@ anchors × 44 test files.
 
 **Packet ordering — locked in (sandwich):** the user message is
 ordered `<prompt>` (priority 30, front, cacheable) → dynamic state
-blocks `<summarized>` / `<visible>` / `<log>` / `<unknowns>` (50–150)
+blocks `<summary>` / `<visible>` / `<log>` / `<unknowns>` (50–150)
 → `<instructions>` (165, late so the rules sit at the action site
 for recency) → `<budget>` (175, last). The system message is
 unchanged — instructions-system.md + tool docs, fully cacheable
@@ -569,7 +569,7 @@ extraction adds a hop without separating concerns, it's ceremony
   integration tests at every layer.
 - **Block ordering is a cache-vs-recency trade.** User message
   current order (sandwich): `<prompt>` (30, front, cacheable
-  across turns of a run) → dynamic state `<summarized>` /
+  across turns of a run) → dynamic state `<summary>` /
   `<visible>` / `<log>` / `<unknowns>` (50–150) → `<instructions>`
   (165, late so rules sit at the action site) → `<budget>` (175,
   last). Front-loaded ordering (instructions+prompt at front)
@@ -636,9 +636,9 @@ go for a focused instruction-edit session.
   2 binary distinctions; tooldoc cleanup.
 - **PF-2 — Persona_fork run start** doesn't recognize
   fork-inherited knowns; weak models confabulate new unknowns.
-- **`<summarized>` / `<visible>` packet split.** Tooldocs need to
+- **`<summary>` / `<visible>` packet split.** Tooldocs need to
   teach the working-memory model: summary lines live in
-  `<summarized>` (identity-keyed map); full bodies live in
+  `<summary>` (identity-keyed map); full bodies live in
   `<visible>` (current working set). Promote/demote moves entries
   between them.
 

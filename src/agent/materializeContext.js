@@ -2,10 +2,14 @@ import { SUMMARY_MAX_CHARS } from "../plugins/helpers.js";
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
-// Defensive cap: every plugin's `summarized` projection must produce
-// ≤ SUMMARY_MAX_CHARS (the contract floor). When a plugin breaks the
-// contract the cap truncates and emits an error so engineers can fix
-// the plugin. Hitting this should be a bug report, not steady-state.
+// Defensive cap: model-written summary projections (knowns, unknowns,
+// log actions, etc.) must produce ≤ SUMMARY_MAX_CHARS — the contract
+// floor for terse model-authored summaries. File-scheme entries are
+// exempt: their summarized projection is a structural derivative
+// (rummy.repo's symbol map), bounded by the file's actual complexity,
+// not by writer discipline. Truncating symbol data at 500 chars
+// destroys its utility. Files either render blank (no symbols
+// extracted) or render their full symbol map.
 
 // Rebuild turn_context from v_model_context and assemble messages.
 export default async function materializeContext({
@@ -50,6 +54,7 @@ export default async function materializeContext({
 		});
 		let summarizedProjection = rawSummarizedProjection;
 		if (
+			scheme !== "file" &&
 			typeof summarizedProjection === "string" &&
 			summarizedProjection.length > SUMMARY_MAX_CHARS
 		) {

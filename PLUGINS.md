@@ -253,7 +253,7 @@ the message. Current `assembly.user` registrations:
 
 | Priority | Block | Plugin | Mutates per turn? |
 |---|---|---|---|
-| 50 | `<summarized>` | `known.js` | Slow — only on new entry |
+| 50 | `<summary>` | `known.js` | Slow — only on new entry |
 | 75 | `<visible>` | `known.js` | Fast — on every promote/demote |
 | 100 | `<log>` | `log.js` | Always — appends per action |
 | 200 | `<unknowns>` | `unknown.js` | On unknown lifecycle |
@@ -266,7 +266,7 @@ and predictable rendering position):
 
 | Range | Position | Use for |
 |---|---|---|
-| `0–49` | Top of user | Reserved (stable identity-tier blocks above `<summarized>`) |
+| `0–49` | Top of user | Reserved (stable identity-tier blocks above `<summary>`) |
 | `50–99` | Codebase data surface | Don't add here — owned by `known.js` |
 | `100–149` | History tier | Action history, timeline-style content |
 | `150–199` | Open slot | Inter-history blocks (e.g. recent-decisions, tracked progress) |
@@ -378,10 +378,10 @@ full contract and the rationale.
 
 Returns the string the model sees for this tool's entries at the
 given visibility. Every tool MUST register `full`. `summary` is
-optional — if unregistered, falls back to `attributes.summary`
+optional — if unregistered, falls back to `attributes.tags`
 (model-authored keyword description) or empty string.
 
-At summary visibility, `attributes.summary` is prepended above the
+At summary visibility, `attributes.tags` is prepended above the
 plugin's summary output automatically by ToolRegistry.view().
 
 ## Two Objects {#plugins_two_objects}
@@ -726,7 +726,7 @@ Every entry follows the same lifecycle regardless of origin:
 
 Entries at `visibility = 'archived'` skip steps 4–6 (invisible to
 model, discoverable via pattern search). Entries at `visibility =
-'summarized'` render with `attributes.summary` (model-authored keyword
+'summarized'` render with `attributes.tags` (model-authored keyword
 description) prepended above the plugin's `summarized` view output —
 the body is hidden; promoting with `<get>` brings it back.
 
@@ -746,7 +746,7 @@ the projected body — they do NOT re-check `entry.visibility`.
 | `file` (bare paths) | data | `entry.body` | `""` | Same as known |
 
 Plugins providing only a `visible` hook fall back to
-`attributes.summary` (model-authored keyword description) at summarized;
+`attributes.tags` (model-authored keyword description) at summarized;
 the renderer inserts it automatically. Plugins providing neither
 default to empty body — the tag still renders with its attributes so
 the model can pattern-match the path.
@@ -768,7 +768,7 @@ state: "proposed" (user decision pending)
 
 1. On dispatch, create a **proposal entry** at `{scheme}://turn_N/{slug}`
    with `state: "proposed"`, category=logging. Body empty;
-   `summary=command` attr.
+   `tags=command` attr.
 2. On user accept (client sends `set { state: "resolved" }` on the
    proposal path), `AgentLoop.resolve()` transitions the proposal
    entry to `state: "resolved"` (it becomes the **log entry**) and

@@ -164,7 +164,7 @@ export default class RummyContext {
 				this.runId,
 				"known",
 				body,
-				attributes?.summary,
+				attributes?.tags,
 			);
 		}
 		await this.entries.set({

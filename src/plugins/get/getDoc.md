@@ -9,8 +9,8 @@ Example: <get path="known://*">auth</get>
 Example: <get path="src/**/*.js" manifest>authentication</get>
 <!-- Bulk discovery: recursive glob + content filter + manifest — lists matches without promoting any. -->
 
-Example: <get path="**/*.{js,ts}" summary="hydrology" manifest/>
-<!-- Folksonomic recall: list entries whose stored `summary` tags include all listed terms. Same `summary` attribute that <set> writes. Path glob (with brace expansion) scopes the search; default is **. -->
+Example: <get path="**/*.{js,ts}" tags="hydrology" manifest/>
+<!-- Folksonomic recall: list entries whose stored `tags` include all listed terms. Same `tags` attribute that <set> writes. Path glob (with brace expansion) scopes the search; default is **. -->
 
 Example: <get path="unknown://**" manifest/>
 <!-- Inventory unfinished work without promoting. Recursive scheme glob applies to any scheme: known://, log://, prompt://, etc. -->

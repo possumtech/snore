@@ -14,10 +14,11 @@ A streaming action lives in **two namespaces** by design:
   client resolves. Renders inside `<log>`.
 - **Data channels** (payload): `{action}://turn_N/{slug}_1`,
   `{action}://turn_N/{slug}_2`, ... — scheme=`{action}` (sh, env, ...),
-  category=`data`. Created at status=102 on proposal acceptance. Grow
-  via `stream`; terminal via `stream/completed` / `stream/aborted` /
-  `stream/cancel`. Render inside `<visible>` (or `<summarized>` if
-  demoted).
+  category=`logging` (time-indexed activity, not topic-indexed state).
+  Created at status=102 on proposal acceptance. Grow via `stream`;
+  terminal via `stream/completed` / `stream/aborted` / `stream/cancel`.
+  Render inside `<log>` adjacent to their parent action entry; visibility
+  controls body projection (full vs compact), not section assignment.
 
 The stream RPC `path` param is always the **log-entry path** (the
 `log://...` path the client discovers via `getEntries` after a
@@ -75,8 +76,8 @@ A streaming producer plugin:
    `TurnExecutor` builds the path via `logPath`; the producer's
    `handler` just persists it).
 2. On `proposal.accepted`, derives the data base
-   (`logPathToDataBase(ctx.path)`) and creates **data entries** at
-   `{dataBase}_1`, `{dataBase}_2`, etc. at status=102, category=data,
+   (`logPathToDataBase(ctx.path)`) and creates **channel entries** at
+   `{dataBase}_1`, `{dataBase}_2`, etc. at status=102, category=logging,
    visibility=summarized, empty body. Then rewrites the log entry body
    to reference the channel paths.
 3. Client or external producer calls the `stream` RPC with chunks as

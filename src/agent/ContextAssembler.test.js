@@ -70,15 +70,15 @@ describe("ContextAssembler", () => {
 			);
 			assert.strictEqual(messages[1].role, "user");
 			const user = messages[1].content;
-			assert.ok(user.includes("<summarized>"), "user has <summarized>");
+			assert.ok(user.includes("<summary>"), "user has <summary>");
 			assert.ok(user.includes("<visible>"), "user has <visible>");
 			assert.ok(user.includes("known://auth"), "known summary line");
 			assert.ok(user.includes("const x = 1;"), "file body in <visible>");
 			assert.ok(user.includes("<prompt"));
 			assert.ok(user.includes("What does this do?"));
 			assert.ok(
-				user.indexOf("<summarized>") < user.indexOf("<visible>"),
-				"<summarized> renders above <visible>",
+				user.indexOf("<summary>") < user.indexOf("<visible>"),
+				"<summary> renders above <visible>",
 			);
 		});
 
@@ -341,9 +341,9 @@ describe("ContextAssembler", () => {
 			);
 			assert.ok(user.includes("which database adapter"));
 			assert.ok(
-				!user.includes("<summarized>") ||
-					user.indexOf("<unknowns>") > user.indexOf("<summarized>"),
-				"unknowns block does not nest inside <summarized>",
+				!user.includes("<summary>") ||
+					user.indexOf("<unknowns>") > user.indexOf("<summary>"),
+				"unknowns block does not nest inside <summary>",
 			);
 			assert.ok(!system.includes("<unknowns>"), "no <unknowns> in system");
 			assert.ok(!system.includes("<<:::unknown://"), "no unknowns in system");
@@ -380,7 +380,7 @@ describe("ContextAssembler", () => {
 			);
 		});
 
-		it("summary projection renders as the tag body inside <summarized>", async () => {
+		it("summary projection renders as the tag body inside <summary>", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -413,10 +413,8 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			const user = messages[1].content;
-			const summarizedBlock = user.match(
-				/<summarized>([\s\S]*?)<\/summarized>/,
-			)?.[1];
-			assert.ok(summarizedBlock, "<summarized> block exists");
+			const summarizedBlock = user.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
+			assert.ok(summarizedBlock, "<summary> block exists");
 			assert.ok(
 				summarizedBlock.includes("class AgentLoop"),
 				"summary projection renders inside heredoc — symbols visible to model",
@@ -458,9 +456,7 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			const user = messages[1].content;
-			const summarizedBlock = user.match(
-				/<summarized>([\s\S]*?)<\/summarized>/,
-			)?.[1];
+			const summarizedBlock = user.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
 			const visibleBlock = user.match(/<visible>([\s\S]*?)<\/visible>/)?.[1];
 			assert.ok(summarizedBlock.includes("short summary"));
 			assert.ok(!summarizedBlock.includes("FULL BODY HERE"));

@@ -8,7 +8,7 @@
  * messages, and inspects system and user content directly including
  * the rendering of prior-loop and current-loop entries. Filter
  * priority bands (@plugins_filter_bands) govern the user-message
- * block order verified here: <summarized> @50, <visible> @75,
+ * block order verified here: <summary> @50, <visible> @75,
  * <log> @100, etc.
  */
 import assert from "node:assert";
@@ -235,19 +235,16 @@ describe("Message assembly", () => {
 		);
 	});
 
-	it("data entries land in user <summarized>/<visible>; logs stay out of system", async () => {
+	it("data entries land in user <summary>/<visible>; logs stay out of system", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(
-			user.content.includes("<summarized>"),
-			"user has <summarized> block",
-		);
+		assert.ok(user.content.includes("<summary>"), "user has <summary> block");
 		assert.ok(user.content.includes("<visible>"), "user has <visible> block");
 		assert.ok(user.content.includes("src/app.js"), "files in user");
 		assert.ok(
-			!system.content.includes("<summarized>"),
-			"<summarized> is not in system",
+			!system.content.includes("<summary>"),
+			"<summary> is not in system",
 		);
 		assert.ok(
 			!system.content.includes("<visible>"),

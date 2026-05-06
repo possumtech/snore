@@ -19,12 +19,12 @@ export default class Get {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		// Search-by-summary: same `summary` attribute that <set> writes
-		// onto entries. Same name on both ends — no in/out semantic split.
-		const summaryAttr = entry.attributes.summary;
-		// Summary-only get defaults path to "**" so the model can recall by
-		// folksonomic summary tags without remembering exact paths.
-		const target = entry.attributes.path || (summaryAttr ? "**" : null);
+		// Search-by-tags: same `tags` attribute that <set> writes onto
+		// entries. Same name on both ends — no in/out semantic split.
+		const tagsAttr = entry.attributes.tags;
+		// Tags-only get defaults path to "**" so the model can recall by
+		// folksonomic tags without remembering exact paths.
+		const target = entry.attributes.path || (tagsAttr ? "**" : null);
 		if (!target) {
 			await store.set({
 				runId,
@@ -40,8 +40,8 @@ export default class Get {
 		const normalized = Entries.normalizePath(target);
 		const bodyFilter = entry.attributes.body;
 		const manifest = entry.attributes.manifest !== undefined;
-		const wantedTags = summaryAttr
-			? summaryAttr
+		const wantedTags = tagsAttr
+			? tagsAttr
 					.split(",")
 					.map((t) => t.trim().toLowerCase())
 					.filter(Boolean)
@@ -68,9 +68,9 @@ export default class Get {
 					typeof e.attributes === "string"
 						? JSON.parse(e.attributes)
 						: e.attributes;
-				if (typeof attrs.summary !== "string") return false;
-				const summary = attrs.summary.toLowerCase();
-				return wantedTags.every((t) => summary.includes(t));
+				if (typeof attrs.tags !== "string") return false;
+				const tags = attrs.tags.toLowerCase();
+				return wantedTags.every((t) => tags.includes(t));
 			});
 		}
 

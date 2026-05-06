@@ -141,10 +141,10 @@ export default class Entries {
 		return `${base}_${++this.#seq}`;
 	}
 
-	async slugPath(runId, scheme, content, summary) {
-		// summary > content > empty; slugify("") yields "" and we sequence-only.
+	async slugPath(runId, scheme, content, tags) {
+		// tags > content > empty; slugify("") yields "" and we sequence-only.
 		let source = "";
-		if (summary) source = summary;
+		if (tags) source = tags;
 		else if (content) source = content;
 		const base = slugify(source);
 		const prefix = `${scheme}://`;

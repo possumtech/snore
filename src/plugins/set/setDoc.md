@@ -1,6 +1,6 @@
 ## <set path="[path/to/file]">[content or edit]</set> - Create, edit, or update a file or entry
 
-Example: <set path="known://project/milestones" visibility="summarized" summary="milestone,deadline,2026"/>
+Example: <set path="known://project/milestones" visibility="summarized" tags="milestone,deadline,2026"/>
 <!-- Visibility control first — most unique capability of set. -->
 
 Example: <set path="log://turn_3/**" visibility="archived"/>
@@ -21,9 +21,9 @@ Example: <set path="src/api.js">s,baseUrl = "/api/v1",baseUrl = "/api/v2",g</set
 Example:
 	<set path="src/app.js">
 	<<<<<<< SEARCH
-	old text
+	literal new text
 	=======
-	new text
+	literal new text
 	>>>>>>> REPLACE
 	</set>
 <!-- SEARCH/REPLACE: multi-line edits where you want to anchor against surrounding context. The SEARCH block must match the existing body literally (whitespace, punctuation, and all). -->
@@ -31,8 +31,8 @@ Example:
 Example: <set path="src/url.go">s#regex := "https://"+host#regex := "https?://"+host#g</set>
 <!-- Diverse delimiters; `#` reads cleanly when content has both `/` and `|`. Pipe is a safe default but match the delimiter to the content. -->
 
-Example: <set path="example.md" visibility="summarized" summary="example,docs">Full file content here</set>
-<!-- Create: body is the entire file. visibility and summary are independent attributes — they don't replace the body. -->
+Example: <set path="example.md" visibility="summarized" tags="example,docs">Full file content here</set>
+<!-- Create: body is the entire file. visibility and tags are independent attributes — they don't replace the body. -->
 
 Example:
 	<set path="OPUS_NOTES.md"><<EOF

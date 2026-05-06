@@ -99,8 +99,7 @@ function renderLogTag(entry, rowsByPath) {
 	if (entry.outcome) meta.outcome = entry.outcome;
 	if (typeof attrs?.query === "string") meta.query = attrs.query;
 	if (typeof attrs?.command === "string") meta.command = attrs.command;
-	if (typeof attrs?.summary === "string")
-		meta.summary = attrs.summary.slice(0, 80);
+	if (typeof attrs?.tags === "string") meta.tags = attrs.tags.slice(0, 80);
 	if (isSlice) {
 		meta.lines = `${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}`;
 	} else if (lineSource != null) {

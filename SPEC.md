@@ -252,7 +252,7 @@ Every entry plays one of four roles:
 
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
-| **Data** | `data` | `<summarized>` + `<visible>` | Entries the model works with — persistent state and captured payload. Summary line in `<summarized>` for visible+summarized tiers; full body in `<visible>` only when promoted. |
+| **Data** | `data` | `<summary>` + `<visible>` | Entries the model works with — persistent state and captured payload. Summary line in `<summary>` for visible+summarized tiers; full body in `<visible>` only when promoted. |
 | **Logging** | `logging` | `<log>` | Records of what happened — tool results, lifecycle signals |
 | **Unknowns** | `unknown` | `<unknowns>` | Open questions the model is tracking |
 | **Prompt** | `prompt` | `<prompt>` | The task driving the loop |
@@ -287,7 +287,7 @@ across two namespaces as a direct consequence:
   scheme=`log`, category=`logging`. Renders in `<log>`.
 - **Payload channels** live in `{action}://turn_N/{slug}_N` —
   scheme=`{action}` (registered as `category: "data"`). Render in
-  `<summarized>` (always, while tracked) and `<visible>` (when
+  `<summary>` (always, while tracked) and `<visible>` (when
   promoted).
 
 This keeps `<log>` a terse audit trail (what happened, exit code,
@@ -755,13 +755,13 @@ log://turn_N/{action}/{slug}    scheme=log       category=logging   status=202�
 
 {action}://turn_N/{slug}_1      scheme={action}  category=data      status=102 → 200/500
                                 body: primary stream (stdout for shell)
-                                summary="{command}" visibility=summarized
-                                (line in <summarized>; full body in
+                                tags="{command}" visibility=summarized
+                                (line in <summary>; full body in
                                  <visible> when promoted)
 
 {action}://turn_N/{slug}_2      scheme={action}  category=data      status=102 → 200/500
                                 body: alt stream (stderr for shell)
-                                (line in <summarized>; full body in
+                                (line in <summary>; full body in
                                  <visible> when promoted, often empty)
 ```
 
@@ -819,7 +819,7 @@ Two messages per turn. System = stable truth. User = active task.
         (instructions.md base template + tool docs injected via
          instructions.toolDocs filter; optional persona appended)
 [user message]
-    <summarized>
+    <summary>
         one entry per category=data entry whose visibility is visible
         or summarized. Each entry renders under its scheme tag with
         its summarized projection as the tag body — this is the
@@ -834,7 +834,7 @@ Two messages per turn. System = stable truth. User = active task.
         action-gate is the principled future fix per
         src/plugins/prompt/README.md).
         (known.js, assembly.user priority 50)
-    </summarized>
+    </summary>
     <visible>
         each category=data entry whose visibility is visible, rendered
         under its scheme tag with its visible projection as the tag
@@ -863,7 +863,7 @@ tools, tool docs). Stable across turns within a run, which keeps
 prompt caching intact. **User** = active work (what the model is
 doing right now): the project's data surface, history, open questions,
 current phase, and current prompt. Both phase-specific
-`<instructions>` and the codebase blocks (`<summarized>` / `<visible>`)
+`<instructions>` and the codebase blocks (`<summary>` / `<visible>`)
 live in the user message because they change turn-to-turn — putting
 mutable state in system would invalidate the cache on every promote
 or phase transition.
@@ -871,10 +871,10 @@ or phase transition.
 **Why two blocks instead of one `<context>`.** Promote/demote is the
 dominant intra-phase operation. Today's single-block render
 invalidates the entire data surface every time. With the split,
-`<summarized>` mutates only when a new entry lands (slow); `<visible>`
+`<summary>` mutates only when a new entry lands (slow); `<visible>`
 mutates on every promote/demote (fast). Ordering slow-above-fast
-preserves the prefix cache for `<summarized>` across the common case.
-Cognitively: `<summarized>` is "what I know exists" (identity);
+preserves the prefix cache for `<summary>` across the common case.
+Cognitively: `<summary>` is "what I know exists" (identity);
 `<visible>` is "what I'm reading right now" (working memory).
 
 The `<prompt>` tag is present on every turn — first turn and

@@ -33,12 +33,12 @@ export default class Unknown {
 			return;
 		}
 
-		// summary > body for slug; lets the model round-trip via <get>.
+		// tags > body for slug; lets the model round-trip via <get>.
 		const unknownPath = await store.slugPath(
 			runId,
 			"unknown",
 			entry.body,
-			entry.attributes?.summary,
+			entry.attributes?.tags,
 		);
 		await store.set({
 			runId,
@@ -75,8 +75,8 @@ function renderUnknownTag(entry) {
 			: entry.attributes;
 	const meta = {};
 	if (entry.source_turn) meta.turn = entry.source_turn;
-	if (typeof attrs?.summary === "string") {
-		meta.summary = attrs.summary.slice(0, 80);
+	if (typeof attrs?.tags === "string") {
+		meta.tags = attrs.tags.slice(0, 80);
 	}
 	if (entry.visibility) meta.visibility = entry.visibility;
 	if (entry.aTokens != null) meta.tokens = entry.aTokens;

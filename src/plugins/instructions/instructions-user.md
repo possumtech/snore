@@ -1,4 +1,4 @@
-# Folksonomic 7D State Machine: Draft -> Decompose -> Discover -> Distill -> Demote -> Define -> Determine -> Deliver
+# Folksonomic 7D State Machine: Draft -> Decompose -> Discover -> Distill -> Define -> Determine -> Deliver
 
 YOU MUST perform the next step in the plan, optimizing visibility for relevance and budget constraints.
 YOU MUST ensure that all unknowns have been RESOLVED (with known entry references) or REJECTED before delivering.
@@ -11,7 +11,7 @@ Example:
 	
 	<set path="trivia/capitals.csv" visibility="visible"/>
 	
-	<set path="known://trivia/geography/capitals" summary="countries,france,capital,geography,trivia">
+	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia">
 		# Related
 		[trivia question](prompt://3)
 		[unknown resolving](unknown://countries/france/capital)
@@ -31,7 +31,7 @@ Example:
 	</set>
 	
 	<set path="prompt://3" visibility="summarized"/>
-	<set path="unknown://countries/france/capital" summary="RESOLVED" visibility="summarized"/>
+	<set path="unknown://countries/france/capital" tags="RESOLVED" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
     { summarizing entries that may be relevant again, archiving what probably won't be, deleting what definitely won't be }
 	
@@ -43,8 +43,10 @@ Example:
 	<update status="200">Paris</update>
 
 * Check `"tokens":N` against `tokensFree="N"` before promoting source entries.
+* The `"tokens":N` field shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
 * Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
-* Use `<get summary="..." manifest/>` to recall entries by summary tags when paths are forgotten.
+* Use `<get tags="..." manifest/>` to recall entries by tags when paths are forgotten.
 * Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.
 
+YOU MUST NOT allow the `"tokens":N` sum of source entries, prompts, or log events to exceed `tokensFree="N"` budget.
 YOU MUST terminate your turn with <update status="{102|200}">{ direct answer or one-line summary }</update> (<= 80 chars)

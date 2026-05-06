@@ -102,8 +102,8 @@ export default class Set {
 		const visibilityAttr = VALID_VISIBILITY[attrs.visibility]
 			? attrs.visibility
 			: null;
-		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
-		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
+		const rawTags = typeof attrs.tags === "string" ? attrs.tags : null;
+		const tagsText = rawTags ? rawTags.slice(0, 80) : null;
 
 		// log:// is the immutable record of what happened. Visibility/metadata
 		// updates are fine (no body); rewriting the body destroys history.
@@ -213,12 +213,12 @@ export default class Set {
 					path: match.path,
 					visibility: visibilityAttr,
 				});
-				if (summaryText) {
+				if (tagsText) {
 					await store.set({
 						runId: runId,
 						path: match.path,
 						attributes: {
-							summary: summaryText,
+							tags: tagsText,
 						},
 					});
 				}
@@ -266,7 +266,7 @@ export default class Set {
 						merge,
 						beforeTokens,
 						afterTokens,
-						summary: summaryText,
+						tags: tagsText,
 					},
 					loopId,
 				});
@@ -311,7 +311,7 @@ export default class Set {
 					state: "resolved",
 					// Scheme writes default visible; the model wrote it.
 					visibility: visibilityAttr ? visibilityAttr : "visible",
-					attributes: summaryText ? { summary: summaryText } : null,
+					attributes: tagsText ? { tags: tagsText } : null,
 					loopId,
 				});
 				await store.set({
@@ -327,7 +327,7 @@ export default class Set {
 						merge,
 						beforeTokens,
 						afterTokens,
-						summary: summaryText,
+						tags: tagsText,
 					},
 				});
 			}
@@ -344,11 +344,11 @@ export default class Set {
 					visibility: visibilityAttr,
 				});
 			}
-			if (summaryText) {
+			if (tagsText) {
 				await store.set({
 					runId: runId,
 					path: target,
-					attributes: { summary: summaryText },
+					attributes: { tags: tagsText },
 				});
 			}
 		}

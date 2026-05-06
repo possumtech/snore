@@ -11,7 +11,7 @@ export default class Env {
 		// env vs sh: env is read-only (allowed in ask-mode); see plugin README.
 		// Streaming stdout/stderr is time-indexed activity output, not
 		// topic-indexed state — category="logging" so it renders in <log>
-		// adjacent to its action entry, not in <summarized>/<visible>.
+		// adjacent to its action entry, not in <summary>/<visible>.
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
@@ -28,7 +28,7 @@ export default class Env {
 		if (m?.[1] !== "env") return;
 		let command = "";
 		if (ctx.attrs?.command) command = ctx.attrs.command;
-		else if (ctx.attrs?.summary) command = ctx.attrs.summary;
+		else if (ctx.attrs?.tags) command = ctx.attrs.tags;
 		const turn = (await ctx.db.get_run_by_id.get({ id: ctx.runId })).next_turn;
 		const dataBase = logPathToDataBase(ctx.path);
 		for (const ch of [1, 2]) {
@@ -39,7 +39,7 @@ export default class Env {
 				body: "",
 				state: "streaming",
 				visibility: "summarized",
-				attributes: { command, summary: command, channel: ch },
+				attributes: { command, tags: command, channel: ch },
 			});
 		}
 		await ctx.entries.set({
@@ -58,7 +58,7 @@ export default class Env {
 			path: entry.resultPath,
 			body: "",
 			state: "proposed",
-			attributes: { ...entry.attributes, summary: entry.attributes.command },
+			attributes: { ...entry.attributes, tags: entry.attributes.command },
 			loopId,
 		});
 	}

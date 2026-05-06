@@ -48,7 +48,7 @@ export default class Known {
 				runId,
 				"known",
 				entry.body,
-				entry.attributes?.summary,
+				entry.attributes?.tags,
 			);
 		}
 
@@ -104,7 +104,7 @@ export default class Known {
 		const lines = entries.map((e) =>
 			renderContextTag(e, e.sBody != null ? e.sBody : e.body),
 		);
-		return `${content}<summarized>\n${lines.join("\n")}\n</summarized>\n`;
+		return `${content}<summary>\n${lines.join("\n")}\n</summary>\n`;
 	}
 
 	async assembleVisible(content, ctx) {
@@ -135,8 +135,8 @@ function renderContextTag(entry, projectedBody) {
 	if (statusValue != null && statusValue !== 200) meta.status = statusValue;
 	if (entry.state && entry.state !== "resolved") meta.state = entry.state;
 	if (entry.outcome) meta.outcome = entry.outcome;
-	if (typeof attrs?.summary === "string") {
-		meta.summary = attrs.summary.slice(0, 80);
+	if (typeof attrs?.tags === "string") {
+		meta.tags = attrs.tags.slice(0, 80);
 	}
 	if (entry.visibility === "archived") meta.visibility = "archived";
 	if (entry.aTokens != null) meta.tokens = entry.aTokens;

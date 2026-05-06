@@ -7,7 +7,7 @@ after the proposal is accepted.
 ## Registration
 
 - **Tool**: `sh`
-- **Scheme**: `sh` — `category: "data"` (channels only; see below)
+- **Scheme**: `sh` — `category: "logging"` (channels are time-indexed activity, not state)
 - **Handler**: Upserts the proposal entry at status 202 (proposed). The
   client must approve execution.
 
@@ -22,10 +22,11 @@ record, one data payload:
   and finalized by `stream/completed` with exit code + duration. Renders
   inside the `<log>` block as `<sh>`.
 - **Data channels**: `sh://turn_N/{slug}_1` (stdout), `sh://turn_N/{slug}_2`
-  (stderr) — scheme=`sh`, category=`data`. Created at status=102 on
-  proposal acceptance, grow via the `stream` RPC, transition to 200/500
-  via `stream/completed`. Render inside `<visible>` as `<sh>` when
-  promoted; listed in `<summarized>` otherwise.
+  (stderr) — scheme=`sh`, category=`logging` (time-indexed activity).
+  Created at status=102 on proposal acceptance, grow via the `stream`
+  RPC, transition to 200/500 via `stream/completed`. Render inside
+  `<log>` adjacent to their parent `<sh>` action entry; visibility
+  controls whether the body is full or compact, not which block.
 
 The `sh` scheme exists **only** for the data channels. The proposal/log
 entry itself is in the unified `log://` namespace along with every

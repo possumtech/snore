@@ -1,7 +1,7 @@
 # known {#known_plugin}
 
 Writes knowledge entries into the store at full visibility, and renders
-the project's data surface as the bifurcated `<summarized>` /
+the project's data surface as the bifurcated `<summary>` /
 `<visible>` blocks at the top of the user message.
 
 ## Registration
@@ -10,7 +10,7 @@ the project's data surface as the bifurcated `<summarized>` /
 - **Category**: `data`
 - **Handler**: Upserts the entry body at the target path with status 200.
 - **Filters**:
-  - `assembly.user` priority 50 — renders `<summarized>`.
+  - `assembly.user` priority 50 — renders `<summary>`.
   - `assembly.user` priority 75 — renders `<visible>`.
 
 ## Projection
@@ -22,7 +22,7 @@ Shows `# known {path}` followed by the entry body.
 Filters `ctx.rows` where `category === "data"`. Two separate blocks
 emit at the top of the user message in this order:
 
-- `<summarized>` — each data entry whose visibility is `visible` or
+- `<summary>` — each data entry whose visibility is `visible` or
   `summarized`, rendered under its scheme tag with the plugin's
   summary projection as body (truncated knowns, code symbols,
   page abstracts — whatever the plugin's `summary()` hook produces).
@@ -33,7 +33,7 @@ emit at the top of the user message in this order:
   tag body. A visible entry appears in *both* blocks: summary
   projection up top, full body below.
 
-This split lets `<summarized>` stay cache-stable across promote/demote
+This split lets `<summary>` stay cache-stable across promote/demote
 operations — only `<visible>` mutates when the model promotes a
 summary or demotes a visible entry. Third-party plugins that register
 with `category: "data"` automatically appear in both blocks under
