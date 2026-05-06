@@ -105,6 +105,25 @@ export default class Set {
 		const rawSummary = typeof attrs.summary === "string" ? attrs.summary : null;
 		const summaryText = rawSummary ? rawSummary.slice(0, 80) : null;
 
+		// log:// is the immutable record of what happened. Visibility/metadata
+		// updates are fine (no body); rewriting the body destroys history.
+		// Models reach for this when the Demote example pattern primes
+		// `<set ... visibility="summarized">` and they tack on a body line —
+		// 405 here teaches the shape that's actually allowed.
+		if (attrs.path?.startsWith("log://") && entry.body) {
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: entry.resultPath,
+				body: `log:// is immutable. To demote: <set path="${attrs.path}" visibility="summarized"/> (no body).`,
+				state: "failed",
+				outcome: "method_not_allowed",
+				attributes: { path: attrs.path },
+			});
+			return;
+		}
+
 		// Reject invalid visibility on body-less set; otherwise a typo silently wipes the body.
 		if (
 			!entry.body &&

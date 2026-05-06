@@ -23,6 +23,11 @@ export default class AgentLoop {
 		this.#hooks = hooks;
 		this.#turnExecutor = turnExecutor;
 		this.#entries = entries;
+		hooks.run.wake.on(this.#onWake.bind(this));
+	}
+
+	async #onWake({ runAlias, body, mode }) {
+		await this.inject(runAlias, body, mode);
 	}
 
 	abort(runId) {
@@ -255,11 +260,6 @@ export default class AgentLoop {
 
 		// Pair controller + Promise so abortAll can both signal and await drain.
 		const controller = new AbortController();
-		// Per-run set of in-flight child-process lifecycle promises.
-		// Plugins (yolo's <sh>/<env> executor) register close-promises
-		// via rummy.trackChild() so the agent-loop drain can wait for
-		// streamed completions before truly terminating.
-		const pendingChildren = new Set();
 		const promise = this.#drainQueue(
 			currentRunId,
 			currentAlias,
@@ -267,7 +267,6 @@ export default class AgentLoop {
 			project,
 			options,
 			controller,
-			pendingChildren,
 		);
 		this.#activeRuns.set(currentRunId, { controller, promise });
 		return promise;
@@ -280,7 +279,6 @@ export default class AgentLoop {
 		project,
 		options,
 		controller,
-		pendingChildren,
 	) {
 		console.error(`[DRAIN] ${currentAlias} enter (runId=${currentRunId})`);
 
@@ -326,7 +324,6 @@ export default class AgentLoop {
 						options: { ...options, temperature: loopConfig.temperature },
 						hook,
 						signal: controller.signal,
-						pendingChildren,
 					});
 				} catch (err) {
 					console.error(
@@ -392,7 +389,6 @@ export default class AgentLoop {
 		options,
 		hook,
 		signal,
-		pendingChildren,
 	}) {
 		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 		if (runRow.status !== 102) {
@@ -473,7 +469,6 @@ export default class AgentLoop {
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal,
-					pendingChildren,
 				});
 				console.error(
 					`[LOOP] ${currentAlias} iter=${loopIteration} turn done: status=${result.status} turn=${result.turn}`,
@@ -502,30 +497,6 @@ export default class AgentLoop {
 					turn: result.turn,
 				});
 				if (verdict.continue) continue;
-
-				// Verdict says terminate — but if status=200 (model said
-				// done cleanly) and streaming children are still in flight
-				// (e.g., a slow `<env>./executable` the model fired-and-
-				// forgot), drain them and force one more turn so the agent
-				// can react to async completions. SPEC #streaming_entries.
-				//
-				// Other terminal statuses (499 abandoned, 413 overflow,
-				// 500 error) skip the hold — the run is being killed for
-				// cause; one more turn just delays cleanup with the same
-				// failed loop the model couldn't recover from. abort
-				// always skips.
-				if (
-					!signal.aborted &&
-					verdict.status === 200 &&
-					pendingChildren &&
-					pendingChildren.size > 0
-				) {
-					console.error(
-						`[LOOP] ${currentAlias} iter=${loopIteration} verdict-terminate (200) held: ${pendingChildren.size} children pending — draining and forcing one more turn`,
-					);
-					await Promise.allSettled([...pendingChildren]);
-					continue;
-				}
 
 				console.error(
 					`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${vReason}`,

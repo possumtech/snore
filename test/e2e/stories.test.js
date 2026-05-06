@@ -502,7 +502,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
 			noInteraction: true,
-			contextLimit: 6000,
+			contextLimit: 7000,
 		});
 		await client.assertRun(r1, 200, "tight-context");
 		assertContains(

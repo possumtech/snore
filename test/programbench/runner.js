@@ -97,6 +97,44 @@ async function extractWorkspace() {
 	if (existsSync(exePath)) await fs.chmod(exePath, 0o111);
 }
 
+// Container name: per-run unique, sweep-safe. Docker name regex is
+// [a-zA-Z0-9_.-]; sanitize the run-id and task slug to fit.
+const containerName = `programbench_${runId.replace(/[^a-zA-Z0-9_.-]/g, "_")}_${taskKey(TASK).replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
+
+async function startSandbox() {
+	// Long-lived cleanroom container with no network access. Bind-mount
+	// the host scratchDir → /workspace so the agent's host-side file ops
+	// and the container's docker-exec view stay in sync. `--network=none`
+	// satisfies ProgramBench's "agent must not have internet during
+	// inference" contract at the kernel level — a tool-list filter
+	// (RUMMY_NO_WEB) can't enforce this; the network namespace can.
+	execFileSync(
+		"docker",
+		[
+			"run",
+			"-d",
+			"--rm",
+			"--network=none",
+			"--name",
+			containerName,
+			"-v",
+			`${scratchDir}:/workspace`,
+			"-w",
+			"/workspace",
+			IMAGE,
+			"sleep",
+			"infinity",
+		],
+		{ stdio: "pipe" },
+	);
+}
+
+async function stopSandbox() {
+	try {
+		execFileSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
+	} catch {}
+}
+
 function buildPrompt() {
 	// Aligned to the mini-swe-agent SWE-bench reference prompt structure
 	// — verbatim where possible, substituted only for the structural
@@ -185,6 +223,20 @@ async function runAgent() {
 		// can be folded into the submission tar after the run for a
 		// fully-transparent record of the agent's reasoning trace.
 		RUMMY_DB_PATH: join(adminDir, "rummy_programbench.db"),
+		// Route yolo's <sh>/<env> exec through the per-task cleanroom
+		// container. Inside the container the agent has no network reach
+		// (--network=none) — required by ProgramBench. File ops continue
+		// to operate on the host scratchDir because the bind-mount keeps
+		// host and container views in sync.
+		RUMMY_SHELL_ARGV: JSON.stringify([
+			"docker",
+			"exec",
+			"--workdir",
+			"/workspace",
+			containerName,
+			"bash",
+			"-lc",
+		]),
 		// Project surface: docs + data only. The executable is excluded
 		// from ingestion (perms `---x--x--x` would fail file reads); the
 		// model probes its behavior via `<sh>./executable …` instead.
@@ -206,7 +258,15 @@ async function runAgent() {
 await ensureImage();
 await extractWorkspace();
 console.error(`workspace ready at ${scratchDir}`);
-const exitCode = await runAgent();
+await startSandbox();
+console.error(`sandbox started: ${containerName} (--network=none)`);
+let exitCode;
+try {
+	exitCode = await runAgent();
+} finally {
+	await stopSandbox();
+	console.error(`sandbox stopped: ${containerName}`);
+}
 console.error(`rummy exited with code ${exitCode}`);
 await foldDbIntoWorkspace();
 await tarSubmission();

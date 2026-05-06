@@ -20,7 +20,6 @@ import TestDb from "../helpers/TestDb.js";
 async function makeRummy(tdb, runId, projectId, projectRoot, yolo, signal) {
 	const entries = new Entries(tdb.db);
 	entries.loadSchemes(tdb.db);
-	const pendingChildren = new Set();
 	return {
 		runId,
 		projectId,
@@ -30,23 +29,18 @@ async function makeRummy(tdb, runId, projectId, projectRoot, yolo, signal) {
 		hooks: tdb.hooks,
 		project: { id: projectId, project_root: projectRoot },
 		signal,
-		pendingChildren,
-		// Mirrors RummyContext.trackChild — yolo registers child
-		// lifecycle promises here; tests await them before asserting
-		// since proposal.pending emit no longer blocks on the child.
-		trackChild(p) {
-			pendingChildren.add(p);
-			p.finally(() => pendingChildren.delete(p));
-		},
 	};
 }
 
-// Drain rummy's tracked children so test assertions see the
-// final state. Mirrors AgentLoop's drain step.
-async function drainChildren(rummy) {
-	while (rummy.pendingChildren.size > 0) {
-		await Promise.allSettled([...rummy.pendingChildren]);
-	}
+// Wait for both streaming data channels to reach a terminal state.
+// finalizeStream transitions {dataBase}_1 and _2 out of "streaming"
+// when the child closes; awaiting both prevents trailing writes from
+// racing with TestDb cleanup at suite teardown.
+async function waitForChannelsTerminal(entries, runId, dataBase) {
+	await Promise.all([
+		entries.waitForResolution(runId, `${dataBase}_1`),
+		entries.waitForResolution(runId, `${dataBase}_2`),
+	]);
 }
 
 async function seedSetProposal(entries, runId, turn, relPath, content) {
@@ -193,10 +187,10 @@ describe("yolo mode (@yolo_mode)", () => {
 			proposed: [{ path: proposalPath }],
 			rummy,
 		});
-		await drainChildren(rummy);
-
 		const dataBase = logPathToDataBase(proposalPath);
 		const stdoutPath = `${dataBase}_1`;
+		await waitForChannelsTerminal(rummy.entries, runId, dataBase);
+
 		const stdoutBody = await rummy.entries.getBody(runId, stdoutPath);
 		assert.ok(
 			stdoutBody?.includes("hello yolo"),
@@ -260,14 +254,14 @@ describe("yolo mode (@yolo_mode)", () => {
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		controller.abort();
 		await pending;
-		await drainChildren(rummy);
+		const dataBase = logPathToDataBase(proposalPath);
+		await waitForChannelsTerminal(rummy.entries, runId, dataBase);
 		const elapsed = Date.now() - start;
 		assert.ok(
 			elapsed < 5000,
 			`abort unwound in ${elapsed}ms — must be well under sleep 30 (5s ceiling)`,
 		);
 
-		const dataBase = logPathToDataBase(proposalPath);
 		const stdoutState = await rummy.entries.getState(runId, `${dataBase}_1`);
 		// On SIGTERM-from-abort the child exits non-zero; channels land
 		// in a terminal state either way, never lingering in 'streaming'.
@@ -299,10 +293,10 @@ describe("yolo mode (@yolo_mode)", () => {
 			proposed: [{ path: proposalPath }],
 			rummy,
 		});
-		await drainChildren(rummy);
-
 		const dataBase = logPathToDataBase(proposalPath);
 		const stderrPath = `${dataBase}_2`;
+		await waitForChannelsTerminal(rummy.entries, runId, dataBase);
+
 		const stderrBody = await rummy.entries.getBody(runId, stderrPath);
 		assert.ok(
 			stderrBody?.includes("to stderr"),

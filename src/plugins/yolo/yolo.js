@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { logPathToDataBase } from "../helpers.js";
+import finalizeStream from "../stream/finalize.js";
 
 const SH_PATH_RE = /^log:\/\/turn_\d+\/(sh|env)\//;
 
@@ -16,11 +17,10 @@ export default class Yolo {
 			// Resolve first so sh/env's post-accept seeds channels before we stream into them.
 			await this.#serverResolve(rummy, p.path);
 			if (SH_PATH_RE.test(p.path)) {
-				// Fire-and-forget: spawn returns immediately after wiring;
-				// the close-promise is registered on rummy.pendingChildren
-				// so the agent loop can drain before truly terminating.
-				// Awaiting here would re-introduce the hang on long-running
-				// children (screensavers, daemons, REPLs). SPEC #streaming_entries.
+				// Fire-and-forget: spawn returns and yolo never blocks. If
+				// the child outlives the loop, finalizeStream wakes the run
+				// with a fresh prompt so the agent gets a turn to react.
+				// SPEC #streaming_entries.
 				this.#executeShellProposal(rummy, p.path);
 			}
 		}
@@ -71,16 +71,19 @@ export default class Yolo {
 		await this.core.hooks.proposal.accepted.emit({ ...ctx, resolvedBody });
 	}
 
-	// Spawn locally and stream into {dataBase}_{1,2}; mirrors stream/stream-completed RPC.
-	// Returns synchronously after wiring; the close-promise is registered
-	// on rummy.pendingChildren so the agent loop can drain it before
-	// terminating, but turn execution NEVER awaits the child.
+	// Spawn locally and stream into {dataBase}_{1,2}; finalization (channel
+	// terminal states, log-body rewrite, dormant-run wake) is delegated to
+	// stream/finalize so yolo and external producers share one termination
+	// site. Fire-and-forget: spawn returns synchronously; the close handler
+	// runs whenever the child exits, regardless of whether the loop that
+	// proposed the <sh> is still alive.
 	#executeShellProposal(rummy, logPath) {
 		const runId = rummy.runId;
 		const entries = rummy.entries;
 		const db = rummy.db;
+		const hooks = this.core.hooks;
 
-		const closePromise = (async () => {
+		(async () => {
 			const runRow = await db.get_run_by_id.get({ id: runId });
 			const project = await db.get_project_by_id.get({
 				id: runRow.project_id,
@@ -98,33 +101,34 @@ export default class Yolo {
 			const stderrPath = `${dataBase}_2`;
 
 			const start = Date.now();
-			// signal: tied to AgentLoop's per-run AbortController. When
-			// drain fires (cli.js watchdog or external abort), Node's
-			// spawn auto-kills the child via SIGTERM. Streamed entries
-			// land via the data handlers below; the close handler does
-			// terminal-state writes.
-			const child = spawn("bash", ["-lc", command], {
+			// Shell argv defaults to ["bash", "-lc"] — a host-shell exec.
+			// `RUMMY_SHELL_ARGV` (JSON array) routes commands elsewhere:
+			// benchmark integrations set it to docker-exec into a per-task
+			// isolated container so the agent's `<sh>` runs without host
+			// filesystem access or network reach. Example:
+			//   ["docker","exec","--workdir","/workspace","<cid>","bash","-lc"]
+			const argvJson = process.env.RUMMY_SHELL_ARGV;
+			const shellArgv = argvJson ? JSON.parse(argvJson) : ["bash", "-lc"];
+			// signal: AbortController kills the child if the user aborts
+			// the run. Children that simply outlive their loop are not
+			// killed — finalizeStream wakes the run when they close.
+			const child = spawn(shellArgv[0], [...shellArgv.slice(1), command], {
 				cwd: projectRoot,
 				env: process.env,
 				signal: rummy.signal ?? undefined,
 			});
 
-			// Append chunks to the streaming entries as they arrive.
-			// Serialize via a per-channel promise chain so concurrent
-			// appends don't race for body order in SQLite. Errors are
-			// logged but don't break the chain.
-			const stdoutQueue = Promise.resolve();
-			const stderrQueue = Promise.resolve();
+			// Append chunks via per-channel promise chains so concurrent
+			// appends don't race for body order in SQLite.
+			const stdoutRef = { value: Promise.resolve() };
+			const stderrRef = { value: Promise.resolve() };
 			const appendChunk = (path, body, queueRef) => {
-				const q = queueRef.value
+				queueRef.value = queueRef.value
 					.then(() => entries.set({ runId, path, body, append: true }))
 					.catch((err) => {
 						console.error(`[yolo] append to ${path} failed: ${err.message}`);
 					});
-				queueRef.value = q;
 			};
-			const stdoutRef = { value: stdoutQueue };
-			const stderrRef = { value: stderrQueue };
 			child.stdout.on("data", (data) => {
 				appendChunk(stdoutPath, data.toString(), stdoutRef);
 			});
@@ -132,67 +136,51 @@ export default class Yolo {
 				appendChunk(stderrPath, data.toString(), stderrRef);
 			});
 
-			await new Promise((resolve) => {
-				let launched = false;
-				child.on("spawn", () => {
-					launched = true;
-				});
-				// If "error" fires BEFORE "spawn", the launch itself failed
-				// (binary missing, cwd invalid) and "close" will never
-				// arrive — resolve here so drain doesn't hang. Verified
-				// pypi-server pathology 2026-05-01.
-				child.on("error", () => {
-					if (!launched) resolve();
-				});
-				child.on("close", async (code) => {
-					// Drain the per-channel append queues before writing
-					// the terminal state, so the final state-transition
-					// can't land before the last data chunk.
-					await Promise.allSettled([stdoutRef.value, stderrRef.value]);
-
-					const exitCode = code === null ? 130 : code;
-					const duration = `${Math.round((Date.now() - start) / 1000)}s`;
-					const terminalState = exitCode === 0 ? "resolved" : "failed";
-					const outcome = exitCode === 0 ? null : `exit:${exitCode}`;
-					// body=undefined preserves streamed content; body="" would wipe it.
-					for (const path of [stdoutPath, stderrPath]) {
-						try {
-							await entries.set({
-								runId,
-								path,
-								state: terminalState,
-								outcome,
-							});
-						} catch {}
-					}
-					try {
-						const channels = await entries.getEntriesByPattern(
-							runId,
-							`${dataBase}_*`,
-							null,
-						);
-						const summary = channels
-							.map((c) => `${c.path} (${c.tokens} tokens)`)
-							.join(", ");
-						const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
-						await entries.set({
-							runId,
-							path: logPath,
-							state: "resolved",
-							body: `ran '${command}', ${exitLabel} (${duration}). Output: ${summary}`,
-						});
-					} catch {}
-					resolve();
-				});
+			let launched = false;
+			child.on("spawn", () => {
+				launched = true;
 			});
-		})();
-
-		// Register so the agent loop can drain pending children before
-		// terminating. trackChild auto-deletes on settle. Failures inside
-		// the IIFE shouldn't break the loop, so swallow them here.
-		closePromise.catch((err) => {
+			// Launch failure (binary missing, cwd invalid): no "close"
+			// arrives, so finalize directly with a non-zero exit.
+			child.on("error", async (err) => {
+				if (launched) return;
+				try {
+					await finalizeStream({
+						db,
+						entries,
+						hooks,
+						runRow,
+						path: logPath,
+						exitCode: 127,
+						duration: `${Math.round((Date.now() - start) / 1000)}s`,
+					});
+				} catch (e) {
+					console.error(`[yolo] finalize on launch error failed: ${e.message}`);
+				}
+				console.error(`[yolo] spawn failed: ${err.message}`);
+			});
+			child.on("close", async (code) => {
+				// Drain per-channel append queues before finalizing so the
+				// terminal-state write can't land before the last chunk.
+				await Promise.allSettled([stdoutRef.value, stderrRef.value]);
+				const exitCode = code === null ? 130 : code;
+				const duration = `${Math.round((Date.now() - start) / 1000)}s`;
+				try {
+					await finalizeStream({
+						db,
+						entries,
+						hooks,
+						runRow,
+						path: logPath,
+						exitCode,
+						duration,
+					});
+				} catch (err) {
+					console.error(`[yolo] finalize failed: ${err.message}`);
+				}
+			});
+		})().catch((err) => {
 			console.error(`[yolo] child lifecycle errored: ${err.message}`);
 		});
-		rummy.trackChild?.(closePromise);
 	}
 }

@@ -23,7 +23,9 @@ function makeStore({ channels = [], attrs = {} } = {}) {
 }
 
 const RUN_DB = (id = "r1") => ({
-	get_run_by_alias: { get: async () => ({ id }) },
+	get_run_by_alias: { get: async () => ({ id, alias: "test_run" }) },
+	get_pending_loops: { all: async () => [] },
+	get_latest_completed_loop: { get: async () => null },
 });
 
 describe("Stream plugin", () => {
@@ -130,7 +132,7 @@ describe("Stream plugin", () => {
 				{ run: "r", path: "log://turn_1/sh/run", exit_code: 0, duration: "1s" },
 				ctx,
 			);
-			assert.deepEqual(result, { ok: true, channels: 2 });
+			assert.deepEqual(result, { ok: true, channels: 2, woke: false });
 			const channelUpdates = store._calls.filter((c) =>
 				c.path.startsWith("sh://"),
 			);

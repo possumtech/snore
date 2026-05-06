@@ -1,4 +1,5 @@
 import { logPathToDataBase } from "../helpers.js";
+import finalizeStream from "./finalize.js";
 
 // RPC plumbing that appends/terminates streaming data entries; see plugin README.
 export default class Stream {
@@ -59,55 +60,22 @@ export default class Stream {
 					alias: params.run,
 				});
 				if (!runRow) throw new Error(`run not found: ${params.run}`);
-				const runId = runRow.id;
 
 				const { exit_code: exitCode = 0, duration = null } = params;
-				const terminalState = exitCode === 0 ? "resolved" : "failed";
-				const terminalOutcome = exitCode === 0 ? null : `exit:${exitCode}`;
-
-				const dataBase = logPathToDataBase(params.path);
-				if (!dataBase) {
-					throw new Error(
-						`path must be a log entry (log://turn_N/...); got: ${params.path}`,
-					);
-				}
-				// Find all `{dataBase}_*` data entries (channels 1, 2, ...).
-				const store = ctx.projectAgent.entries;
-				const channels = await store.getEntriesByPattern(
-					runId,
-					`${dataBase}_*`,
-					null,
-				);
-				for (const ch of channels) {
-					await store.set({
-						runId,
-						path: ch.path,
-						state: terminalState,
-						body: ch.body,
-						outcome: terminalOutcome,
-					});
-				}
-
-				// One-line final stats for the log entry body.
-				const logEntry = await store.getAttributes(runId, params.path);
-				let command = "";
-				if (logEntry?.command) command = logEntry.command;
-				else if (logEntry?.summary) command = logEntry.summary;
-				const channelSummary = channels
-					.map((c) => {
-						const size = c.body ? `${c.tokens} tokens` : "empty";
-						return `${c.path} (${size})`;
-					})
-					.join(", ");
-				const dur = duration ? ` (${duration})` : "";
-				const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
-				const body = `ran '${command}', ${exitLabel}${dur}. Output: ${channelSummary}`;
-				await store.set({ runId, path: params.path, state: "resolved", body });
-
-				return { ok: true, channels: channels.length };
+				const result = await finalizeStream({
+					db: ctx.db,
+					entries: ctx.projectAgent.entries,
+					hooks,
+					runRow,
+					path: params.path,
+					exitCode,
+					duration,
+					wake: true,
+				});
+				return { ok: true, ...result };
 			},
 			description:
-				"Finalize a streaming producer. Transitions all `{path}_*` data channels to terminal status (200 on exit_code=0, 500 otherwise) and rewrites the log entry body with exit code, duration, and channel sizes.",
+				"Finalize a streaming producer. Transitions all `{path}_*` data channels to terminal status (200 on exit_code=0, 500 otherwise), rewrites the log entry body with exit code/duration/channel sizes, and wakes the run with a 'Process complete' prompt if it has gone dormant.",
 			params: {
 				run: "string — run alias",
 				path: "string — log-entry path (log://turn_N/{action}/{slug}); server derives the data channel path",

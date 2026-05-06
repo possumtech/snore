@@ -36,7 +36,6 @@ export default class TurnExecutor {
 		contextSize,
 		options,
 		signal,
-		pendingChildren,
 	}) {
 		const turn = await this.#entries.nextTurn(currentRunId);
 
@@ -78,7 +77,6 @@ export default class TurnExecutor {
 				systemPrompt: null,
 				loopPrompt,
 				signal,
-				pendingChildren,
 			},
 		);
 		await this.#hooks.turn.started.emit({

@@ -223,10 +223,15 @@ static reference (manual, quick-ref) goes near `<prompt>` for
 cache; per-turn discipline reminders go near `<instructions>` for
 recency; live accounting goes after `<budget>`.
 
-**Server context size: 64K** (`gemma.possumtech.com` /props
-reports `n_ctx: 65536`, build `b199-82209ef`). Doubled from 32K
-sometime today. Budget plugin reads `contextSize` from runtime
-queries; no hardcoded literals to update.
+**Bench environment.** Local llama-server build `b199-82209ef`
+(Blackwell-targeted CUDA) on RTX 5070 Ti / 16 GB VRAM / single
+slot, `n_ctx=65536`. Loaded model: **Gemma 4 26B-A4B-It** IQ4_XS,
+~168 t/s generation. Sampler: temp=0.1, reasoning-budget=4096.
+**Cache=0 is structural, not a bug** — Gemma 4 uses sliding-window
+attention; llama.cpp's prompt-cache path doesn't support hybrid
+KV state (PR #13194). Server logs `cache_reuse is not supported by
+this context` at boot; every request re-processes the full prompt.
+Don't treat cache rate as harness-side signal on this model.
 
 **Open items unblocked by the cleanup:**
 
@@ -281,29 +286,87 @@ extraction adds a hop without separating concerns, it's ceremony
 
 ## Open Items
 
-- [ ] **ProgramBench integration follow-ups.** First end-to-end
-  cmatrix run validated streaming + heredoc + completion-log
-  lifecycle (T8: model self-bounded `timeout 1 ./executable`;
-  close-handler wrote terminal log entry + stream-channel state
-  cleanly; strike streak handled a 2-turn ANSI-regurgitation
-  spiral; recovered on T12). Outstanding tweaks before sweep:
-  - **Move DB out of run dir.** Currently `<run-id>/<task>/rummy_programbench.db`
-    sits as a sibling of `workspace/`. Project-root file ops can't
-    see it but `<sh>cd ..</sh>` could. Adopt tbench's `agent/`
-    convention: `<run-id>/<task>/agent/rummy_programbench.db`,
-    workspace at `<run-id>/<task>/workspace/`. Update `dev:digest`
-    path docs accordingly.
-  - **Raise `RUMMY_MAX_LOOP_TURNS` for ProgramBench profile.**
-    Default 99 is sized for tbench / lme answers; full-codebase
-    reconstruction needs hundreds. Set ~500 in a profile env file
-    (e.g. `.env.programbench`) so tbench/lme aren't affected.
-  - Each task likely needs RUMMY_LOOP_TIMEOUT raised too —
-    multi-hour reconstructions vs the default 60min watchdog.
-  - Rummy lives in cleanroom via bind-mount initially (faster
-    iteration than baking an image); deviation documented in
-    `test/programbench/README.md`.
-  - Test blob downloads from HuggingFace happen at eval time;
-    pre-sync via `uv run programbench blob sync` if disk allows.
+- [x] **Streaming-workflow architectural refactor (rummy way).** Landed
+  2026-05-05. Async children (yolo's `<sh>` spawn) used to block
+  termination via a `pendingChildren` Set + verdict-hold + (broken)
+  `bonusTurnSpent` flag — the harness was arbitrating the race between
+  model and child. The rummy way: when a loop terminates, the run is
+  dormant; a child that closes later writes a new prompt entry and
+  enqueues a fresh loop on the existing queue, exactly the flow the
+  neovim client already uses to drop continuation prompts.
+
+  **What landed:**
+  - `hooks.run.wake` event (`Hooks.js`). Fire-and-forget primitive any
+    plugin can emit with `{runAlias, body, mode}`. AgentLoop subscribes
+    in its constructor and routes to `inject()`.
+  - `src/plugins/stream/finalize.js` — single termination site for
+    streaming entries. Sets channel terminal states, rewrites log
+    entry body with command/exit/duration/channels, queries
+    `db.get_pending_loops` for dormancy, fires `run.wake` with
+    body `"Process complete"` + mode from `db.get_latest_completed_loop`
+    when dormant.
+  - `stream/completed` collapsed to a thin wrapper over `finalizeStream`.
+  - yolo's child-close handler collapsed: no more inline channel
+    state writes / log body rewrites — just calls `finalizeStream`.
+    Drops `closePromise` / `trackChild` / drain registration.
+  - Deleted: `pendingChildren` plumbing across AgentLoop / TurnExecutor
+    / RummyContext, the verdict-terminate-hold block, undeclared
+    `bonusTurnSpent`, `drainChildren(rummy)` test helper.
+  - `Entries.normalizePath()` applied to derived dataBase pattern in
+    finalize so `${dataBase}_*` matches the canonicalized stored
+    channel paths regardless of the form caller passes (`%20` vs `_`).
+
+  **Tests:** 889 unit, 245 integration, lint clean. New
+  `finalize.test.js` covers wake-on-dormant, no-wake-when-active,
+  no-wake-when-aborted, mode-inheritance, body shape.
+
+  **Known harmless noise:** the abort integration test logs
+  `[yolo] finalize failed: SqlRite instance is closed` at suite
+  teardown — child SIGTERM-close races with the `after()` DB close.
+  Production code path doesn't see this; cosmetic only.
+
+- [ ] **ProgramBench sweep readiness.** Integration mirrors
+  mini-swe-agent's reference: agent runs on host, every `<sh>` is
+  proxied via `docker exec` into a per-task cleanroom container with
+  `--network=none`, bind-mount `host_workspace ↔ /workspace` keeps
+  host file ops in sync with the container view. Per AGENTS.md
+  "Benchmark integrity": no benchmark-specific prompts, no behavioral
+  coaching — task prompt is structurally aligned to the SWE-bench
+  reference (`test/programbench/runner.js buildPrompt()`).
+
+  **Done:**
+  - [x] Container-isolated per-task `<sh>` (yolo's `RUMMY_SHELL_ARGV`)
+  - [x] `--network=none` enforced at kernel level (not tool-level)
+  - [x] Workspace/admin layout split (`<task>/workspace/`, `<task>/agent/`)
+  - [x] SWE-bench-aligned neutral prompt
+  - [x] Hardened harness: sandwich packet ordering, heredoc fences for
+    visible content (injection protection), sed validation
+    (fail-on-malformed not garbage-out), summary projection cap as
+    plugin contract, streaming + pending-children drain, no-update-no-
+    actions rule, 999 turn cap, 24h watchdog
+  - [x] Submission tarball includes `rummy_programbench.db` for audit
+
+  **Before any sweep:**
+  - [ ] Streaming-workflow refactor (see top Open Item) — blocks
+    sweep; current code is broken (`bonusTurnSpent` undeclared)
+  - [ ] Validate container arch end-to-end with one gron run under
+    the new code (just landed, untested)
+  - [ ] Per-profile env files: `.env.programbench`,
+    `.env.programbench.gemma`, `.env.programbench.xfast` (currently
+    reuses `.env.tbench` — sloppy coupling)
+  - [ ] Sweep driver `test/programbench/sweep.js`: iterates task
+    list, spawns runner.js per task, isolates per-task failures,
+    supports same-folder skip-completed for resume
+  - [ ] Pre-pull all ~200 cleanroom images (broadband-bound, runs
+    once before sweeping)
+  - [ ] First gemma sweep on full task set with eval; sanity-check
+    against published baselines before announcing anything
+
+  **Post-sweep (parallel runs of gemma + xfast):**
+  - [ ] xfast profile uses xAI endpoint (different upstream from
+    gemma's local llama-server, so true parallelism — concurrency
+    matches each upstream's parallelism, not affected by cost)
+  - [ ] Sweep dirs separated by profile + invocation; never mixed
 
 - [ ] **Cache eviction anomaly with sandwich ordering.** Sandwich
   e2e showed cache hitting only on turn 2 of multi-turn runs —
@@ -361,6 +424,30 @@ extraction adds a hop without separating concerns, it's ceremony
   Everything the contract doesn't name, isn't there.
 
 ## Lessons (keep these pinned; don't let future sessions forget)
+
+- **`log://` body is immutable to the model.** A model that learned
+  the demote pattern from instructions-user.md
+  (`<set path="X" visibility="summarized"/>`) will sometimes adapt it
+  with a body line — destroying historical search results / sh output
+  / etc. The `<set>` handler now rejects `<set path="log://..."` with
+  non-empty body as `method_not_allowed` (terse 405 in the entry's
+  outcome), surfacing a one-line nudge that points at the body-less
+  shape. Visibility/metadata-only writes still flow through normally.
+  Reasoning: log entries are time-indexed records of what happened —
+  the model can re-rank them but not rewrite history. This is the
+  one place where the engine polices the model's grammar; it earns
+  its keep because the alternative is silent destruction of the
+  reasoning trace.
+- **System-prompt growth eats budget. Calibrate test ceilings when
+  you grow it.** When instructions-system.md or `[%TOOLDOCS%]`
+  expansion grows, every test that pins `contextLimit` near the
+  rendered system size starts overflowing on turn 1 before the model
+  has done any work. The `tight-context` story regressed exactly this
+  way — system://1 hit ~3851 tok, leaving <1600 tok for everything
+  else against a 5400 ceiling. Fix is to bump the test's
+  `contextLimit` minimally (just over the natural turn-3 packet
+  growth ~6065 tok → contextLimit 7000 → ceiling 6300). Bigger fix is
+  "teach more with less" — but that's a separate pass.
 
 - **The contract is lean.** The engine enforces three things via
   the strike system: budget overflow, repetition (cycle detection),

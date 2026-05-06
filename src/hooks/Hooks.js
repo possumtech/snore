@@ -48,6 +48,14 @@ export default function createHooks(debug = false) {
 			step: {
 				completed: createEvent("run.step.completed"),
 			},
+			// Fire-and-forget wake: any plugin that wants to deliver a new
+			// prompt onto a (possibly dormant) run emits with
+			// {runAlias, body, mode}. AgentLoop subscribes and runs inject —
+			// writes prompt://<nextTurn>, enqueues a loop, ensures the
+			// drainer is up. This is the "streaming child closed after the
+			// loop ended" rendezvous: the producer doesn't care whether the
+			// run is alive or asleep, just that the prompt reaches it.
+			wake: createEvent("run.wake"),
 		},
 		loop: {
 			started: createEvent("loop.started"),

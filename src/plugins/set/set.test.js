@@ -117,6 +117,52 @@ describe("Set plugin", () => {
 	});
 
 	describe("handler", () => {
+		it("rejects body writes against log:// with method_not_allowed outcome", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "search results for X",
+					path: "log://turn_2/set/log___turn_1/search/X",
+					resultPath: "log://turn_2/set/log___turn_1/search/X",
+					attributes: {
+						path: "log://turn_1/search/X",
+						visibility: "summarized",
+						summary: "search,X",
+					},
+				},
+				{ entries: store, sequence: 2, runId: "r", loopId: "l" },
+			);
+			assert.equal(store._calls.length, 1);
+			assert.equal(store._calls[0].state, "failed");
+			assert.equal(store._calls[0].outcome, "method_not_allowed");
+			assert.match(store._calls[0].body, /log:\/\/ is immutable/);
+			assert.match(store._calls[0].body, /visibility="summarized"/);
+		});
+
+		it("body-less visibility update on log:// is allowed", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("log://turn_1/search/X", { body: "results" });
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_2/set/log___turn_1/search/X",
+					resultPath: "log://turn_2/set/log___turn_1/search/X",
+					attributes: {
+						path: "log://turn_1/search/X",
+						visibility: "summarized",
+					},
+				},
+				{ entries: store, sequence: 2, runId: "r", loopId: "l" },
+			);
+			const visUpdate = store._calls.find(
+				(c) =>
+					c.path === "log://turn_1/search/X" && c.visibility === "summarized",
+			);
+			assert.ok(visUpdate, "visibility-only update on log:// goes through");
+		});
+
 		it("rejects invalid visibility on body-less set with validation outcome", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
