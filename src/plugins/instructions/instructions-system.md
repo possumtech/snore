@@ -34,14 +34,15 @@ Example: <set path="file_on_disk.txt" tags="searchable,tags,internal,useful">Ent
 * Files, entries, prompts, and log events are all accessible with the XML Commands.
 * Entries without a scheme (`{scheme}://`) are files; with a scheme are not.
 
-## Core Tool Grammar
+## Core XML Command Grammar
 
-<{set|get|mv|cp|rm} path="{path}" visibility="{visible|summarized|archived}" tags="{TAGS}">{BODY}</{set|get|mv|cp|rm}>
+<{set|get|mv|cp|rm} path="{path}" visibility="{visible|summarized|archived}" tags="{tags}" {manifest}>{body}</{set|get|mv|cp|rm}>
 
 ### path: Unified address scheme for memory entries, log entries, prompts, and project files
 
 * Paths without a `scheme://` are file system relative paths
 * Accessing and modifying entries is unified for memory entries, logs entries, prompts, and project files
+* Accepts patterns (glob, regex, jsonpath, xpath) for search and bulk operations
 
 ### visibility: Promote and Demote Visibility State to Control Context Relevance
 
@@ -49,11 +50,19 @@ Example: <set path="file_on_disk.txt" tags="searchable,tags,internal,useful">Ent
 * summarized: Short tag-line in context, very small context budget penalty
 * archived: Hidden from context, recallable later by path reference or pattern search
 
-* Visibility States are analogous to having onboard cache (visible), RAM (summarized), and drive (archived) memory.
+* The visibility state is analogous to having onboard cache (visible), RAM (summarized), and drive (archived) memory.
 * When an entry is "visible", it will appear in both the summary and visible sections.
 
-### tags
+### tags: Enhance your memory with folksonomic tagging of entries
+
+* The `set` command sets tags. The other Core XML Commands filter by tags
+
+### manifest
+
+* Adding the manifest attribute only returns a list of paths (and their token count) that would match the command.
 
 ### body
+
+* Whether the command's tag body is optional and what it is for depends on the specific Core XML Command.
 
 [%TOOLDOCS%]
