@@ -8,5 +8,3 @@ Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
 <!-- line/limit: read a slice without promoting. line=-50 tails the last 50 lines. -->
 Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200"/>
 <!-- URL slice. line/limit works on any scheme — files, sh stdout, knowns, urls. -->
-
-* Remember to demote entries that are no longer relevant.

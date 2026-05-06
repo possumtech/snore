@@ -1,13 +1,6 @@
-## <cp path="[source]">[destination]</cp> - Copy a file or entry
-
-Example: <cp path="src/config.js">src/config.backup.js</cp>
-<!-- Simple file copy. Path = source, body = destination. -->
+## <cp path="[source]">[destination]</cp> - Copy an entry or file
 
 Example: <cp path="known://server/handler_main">src/main.c</cp>
-<!-- Land a known's body as a file: cp instead of re-emitting via <set>. -->
-
+<!-- Body is the destination path; cross-scheme copies are allowed. -->
 Example: <cp path="known://countries/france/*">known://archive/countries/france/</cp>
-<!-- Glob batch copy across known entries. -->
-
-Example: <cp path="known://countries/france/*" manifest/>
-<!-- Manifest preview before glob batch copy. -->
+<!-- Glob source + directory-shaped destination = batch copy preserving names. -->
