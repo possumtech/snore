@@ -55,7 +55,13 @@ const IMAGE = `programbench/${TASK}:task_cleanroom`;
 
 const runId = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const runDir = args.out ? args.out : join(RESULTS_DIR, runId, taskKey(TASK));
+// Layout mirrors tbench's diag-dir convention: workspace/ holds the
+// agent's project root (its `cwd`); agent/ holds the run's audit
+// artifacts (DB, future log files). Keeps admin files out of the
+// agent's filesystem-traversal range — `<sh>cd ..</sh>` from workspace
+// lands one dir above admin, not co-located with it.
 const scratchDir = join(runDir, "workspace");
+const adminDir = join(runDir, "agent");
 
 function taskKey(slug) {
 	// Convert dockerhub `_1776_` back to canonical `__` instance id.
@@ -75,6 +81,7 @@ async function ensureImage() {
 
 async function extractWorkspace() {
 	await fs.mkdir(scratchDir, { recursive: true });
+	await fs.mkdir(adminDir, { recursive: true });
 	// Create a stopped container so we can `docker cp` /workspace out.
 	const cid = sh(`docker create ${IMAGE}`).trim();
 	try {
@@ -138,7 +145,7 @@ async function foldDbIntoWorkspace() {
 	// tar contains the agent's full reasoning trace alongside the
 	// produced codebase. Public reviewers can `npm run dev:digest`
 	// against the extracted DB to see every turn the agent took.
-	const srcDb = join(runDir, "rummy_programbench.db");
+	const srcDb = join(adminDir, "rummy_programbench.db");
 	if (!existsSync(srcDb)) return;
 	const dstDb = join(scratchDir, "rummy_programbench.db");
 	// Use sqlite3 .backup so the copy is consistent even if the writer
@@ -177,7 +184,7 @@ async function runAgent() {
 		// works mid-run for turn-by-turn observation, and so the file
 		// can be folded into the submission tar after the run for a
 		// fully-transparent record of the agent's reasoning trace.
-		RUMMY_DB_PATH: join(runDir, "rummy_programbench.db"),
+		RUMMY_DB_PATH: join(adminDir, "rummy_programbench.db"),
 		// Project surface: docs + data only. The executable is excluded
 		// from ingestion (perms `---x--x--x` would fail file reads); the
 		// model probes its behavior via `<sh>./executable …` instead.
