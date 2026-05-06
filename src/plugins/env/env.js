@@ -9,7 +9,10 @@ export default class Env {
 	constructor(core) {
 		this.#core = core;
 		// env vs sh: env is read-only (allowed in ask-mode); see plugin README.
-		core.registerScheme({ category: "data" });
+		// Streaming stdout/stderr is time-indexed activity output, not
+		// topic-indexed state — category="logging" so it renders in <log>
+		// adjacent to its action entry, not in <summarized>/<visible>.
+		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));

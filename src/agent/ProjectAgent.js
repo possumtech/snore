@@ -26,6 +26,21 @@ export default class ProjectAgent {
 					status: 413,
 					attributes: { path: error.path, size: error.size },
 				}),
+			// Universal failure-rendering: every state→failed transition on
+			// a non-error path fires error.log.emit so a sibling
+			// log://turn_N/error/<slug> entry is created. The error plugin's
+			// own #onErrorLog handler also writes state=failed on the error
+			// entry; Entries.#fireFailed skips when path matches
+			// log://turn_*/error/* so no recursion.
+			onFailed: ({ runId, loopId, turn, sourcePath, body, outcome }) =>
+				hooks.error.log.emit({
+					store: this.#entries,
+					runId,
+					turn,
+					loopId,
+					message: body,
+					attributes: { sourcePath, outcome },
+				}),
 		});
 		this.#entries.loadSchemes(db);
 

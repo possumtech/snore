@@ -8,8 +8,11 @@ export default class Sh {
 
 	constructor(core) {
 		this.#core = core;
-		// data scheme = streamed stdout/stderr; audit lives in log://. SPEC #streaming_entries.
-		core.registerScheme({ category: "data" });
+		// Streaming stdout/stderr is time-indexed activity output, not
+		// topic-indexed state — category="logging" so it renders in <log>
+		// adjacent to its action entry, not in <summarized>/<visible> next
+		// to knowns and files. SPEC #streaming_entries.
+		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));

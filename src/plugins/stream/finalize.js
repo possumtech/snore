@@ -33,6 +33,13 @@ export default async function finalizeStream({
 	// derived dataBase so `${dataBase}_*` matches the stored channel
 	// paths regardless of which form the caller passed in.
 	const dataBase = Entries.normalizePath(rawBase);
+	// Pin every state-transition write to the action's originating turn.
+	// Without this, entries.set's default turn=0 re-stamps the entry's
+	// run_view.turn to 0 — and the auto-failure hook then derives
+	// log://turn_0/error/... for failures that actually happened on
+	// turn N.
+	const turnMatch = path.match(/^log:\/\/turn_(\d+)\//);
+	const turn = turnMatch ? Number(turnMatch[1]) : 0;
 
 	const runId = runRow.id;
 	const terminalState = exitCode === 0 ? "resolved" : "failed";
@@ -46,6 +53,7 @@ export default async function finalizeStream({
 	for (const ch of channels) {
 		await entries.set({
 			runId,
+			turn,
 			path: ch.path,
 			state: terminalState,
 			body: ch.body,
@@ -66,7 +74,7 @@ export default async function finalizeStream({
 	const dur = duration ? ` (${duration})` : "";
 	const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
 	const body = `ran '${command}', ${exitLabel}${dur}. Output: ${channelSummary}`;
-	await entries.set({ runId, path, state: "resolved", body });
+	await entries.set({ runId, turn, path, state: "resolved", body });
 
 	if (!wake) return { channels: channels.length };
 

@@ -174,11 +174,27 @@ function readDb(rummyDb) {
 		 WHERE rv.run_id = ? AND e.path = 'prompt://1'
 		 LIMIT 1`,
 	);
+	// Per-turn assembled packet bytes. system://N + user://N are what we
+	// sent to the LLM; assistant://N is the parsed content; model://N is
+	// the raw response wrapper (includes reasoning_content, finish_reason,
+	// usage). reasoning://N is the bare reasoning channel when the model
+	// surfaced one.
+	const packetStmt = db.prepare(
+		`SELECT e.path, e.body
+		 FROM entries e
+		 JOIN run_views rv ON rv.entry_id = e.id
+		 WHERE rv.run_id = ?
+		   AND (e.path GLOB 'system://*' OR e.path GLOB 'user://*'
+		        OR e.path GLOB 'assistant://*' OR e.path GLOB 'model://*'
+		        OR e.path GLOB 'reasoning://*')
+		 ORDER BY e.id`,
+	);
 
 	const perRun = runs.map((run) => ({
 		run,
 		turns: turnsStmt.all(run.id),
 		logEntries: logStmt.all(run.id),
+		packetEntries: packetStmt.all(run.id),
 		prompt: promptStmt.get(run.id)?.body ?? null,
 	}));
 
@@ -355,6 +371,7 @@ function renderWaterfall(
 	lines.push("- agent/rummy.txt   (full trace)");
 	lines.push("- agent/rummy.db    (sqlite — entries, run_views, turns)");
 	lines.push("- reasoning.md      (per-turn reasoning_content)");
+	lines.push("- packets.md        (per-turn assembled wire packets)");
 	return lines.join("\n");
 }
 
@@ -370,6 +387,55 @@ function renderReasoning(taskName, turnRows) {
 		} else {
 			lines.push("");
 			lines.push("(no reasoning_content)");
+		}
+	}
+	return lines.join("\n");
+}
+
+// Group packet entries (system://N / user://N / assistant://N / model://N
+// / reasoning://N) by their turn number suffix.
+function groupPacketsByTurn(packetEntries) {
+	const byTurn = new Map();
+	for (const e of packetEntries) {
+		const m = e.path.match(/^([a-z]+):\/\/(\d+)$/);
+		if (!m) continue;
+		const role = m[1];
+		const turn = Number(m[2]);
+		if (!byTurn.has(turn)) byTurn.set(turn, {});
+		byTurn.get(turn)[role] = e.body;
+	}
+	return [...byTurn.entries()]
+		.toSorted(([a], [b]) => a - b)
+		.map(([turn, parts]) => ({ turn, ...parts }));
+}
+
+// Per-turn packet dump: exactly what was sent (system + user) and
+// received (assistant + model wrapper + reasoning) for each turn. The
+// shape mirrors the wire payload so a forensic reader can see how
+// errors, log entries, and state actually presented to the model.
+function renderPackets(taskName, turnPackets) {
+	const lines = [];
+	lines.push(`# Packets: ${taskName}`);
+	lines.push("");
+	lines.push(
+		"Per-turn assembled packets. `system` + `user` are the outgoing message;",
+	);
+	lines.push(
+		"`assistant` is the parsed completion; `model` is the raw response",
+	);
+	lines.push("wrapper (usage, finish_reason); `reasoning` is the bare CoT");
+	lines.push("channel when the provider surfaces one.");
+	for (const p of turnPackets) {
+		lines.push("");
+		lines.push(`## Turn ${p.turn}`);
+		for (const role of ["system", "user", "assistant", "reasoning", "model"]) {
+			if (p[role] == null) continue;
+			lines.push("");
+			lines.push(`### ${role}://${p.turn}`);
+			lines.push("");
+			lines.push("```");
+			lines.push(p[role]);
+			lines.push("```");
 		}
 	}
 	return lines.join("\n");
@@ -477,8 +543,9 @@ function processTask(taskDir) {
 	// at <task>/<alias>/.
 	const multiRun = perRun.length > 1;
 	const out = [];
-	for (const { run, turns, logEntries, prompt } of perRun) {
+	for (const { run, turns, logEntries, packetEntries, prompt } of perRun) {
 		const turnRows = buildTurns(turns, logEntries);
+		const turnPackets = groupPacketsByTurn(packetEntries);
 		const runSummary =
 			!multiRun && harborSummary ? harborSummary : synthSummary(run, turns);
 		const markers = classifyMarkers(reward, runSummary, turnRows);
@@ -498,6 +565,10 @@ function processTask(taskDir) {
 		writeFileSync(
 			join(outDir, "reasoning.md"),
 			`${renderReasoning(runName, turnRows)}\n`,
+		);
+		writeFileSync(
+			join(outDir, "packets.md"),
+			`${renderPackets(runName, turnPackets)}\n`,
 		);
 		const digest = digestJson({
 			taskName: runName,

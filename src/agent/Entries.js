@@ -19,10 +19,23 @@ function translateBodyOverflow(err, path, body) {
 	return new EntryOverflowError(path, size);
 }
 
+// Already-an-error path: log://turn_N/error/<slug>. The auto-failure
+// hook below skips these to break the recursion (error.log.emit's
+// handler ALSO writes state=failed when materializing its own entry).
+const ERROR_PATH_RE = /^log:\/\/turn_\d+\/error\//;
+
+// Streaming data channels for env/sh actions (env://turn_N/cmd_K,
+// sh://turn_N/cmd_K). Their failure is already captured by the parent
+// log://turn_N/<scheme>/<slug> action entry's auto-emit; emitting again
+// for each channel produces redundant duplicates with empty-body
+// fallback messages.
+const CHANNEL_PATH_RE = /^(env|sh):\/\/turn_\d+\//;
+
 export default class Entries {
 	#db;
 	#onChanged;
 	#onError;
+	#onFailed;
 	#schemes = new Map();
 	#schemesLoaded = null;
 	#seq = 0;
@@ -36,10 +49,20 @@ export default class Entries {
 	// returns silently — callers don't need to handle storage-layer
 	// rejections at every write site. When onError is null (e.g. unit
 	// tests with a bare Entries), the error propagates as before.
-	constructor(db, { onChanged = null, onError = null } = {}) {
+	//
+	// onFailed is the universal failure-rendering enforcer: every
+	// transition to state="failed" on a non-error path fires this
+	// callback so a SEPARATE log://turn_N/error/<slug> entry is created
+	// alongside the action entry. Without this, plugins that record
+	// failure via entries.set({state: "failed", ...}) leave nothing for
+	// the model to recognize as an error — failure encodes only as tiny
+	// JSON metadata indistinguishable from a successful entry. The
+	// callback wires to hooks.error.log.emit (see ProjectAgent).
+	constructor(db, { onChanged = null, onError = null, onFailed = null } = {}) {
 		this.#db = db;
 		this.#onChanged = onChanged;
 		this.#onError = onError;
+		this.#onFailed = onFailed;
 	}
 
 	// Populate the scheme cache; idempotent, lazy on first need.
@@ -293,6 +316,15 @@ export default class Entries {
 				});
 				this.#emitChanged(runId, normalized, "resolve");
 				this.#drainPendingResolution(runId, normalized);
+				if (state === "failed") {
+					await this.#fireFailed({
+						runId,
+						turn,
+						loopId,
+						path: normalized,
+						outcome,
+					});
+				}
 			}
 			if (visibility != null) {
 				await this.#db.set_visibility.run({
@@ -357,6 +389,42 @@ export default class Entries {
 		if (effectiveState !== "proposed") {
 			this.#drainPendingResolution(runId, normalized);
 		}
+		if (effectiveState === "failed") {
+			await this.#fireFailed({
+				runId,
+				turn,
+				loopId,
+				path: normalized,
+				body,
+				outcome,
+			});
+		}
+	}
+
+	// Fire onFailed for any state→failed transition on a non-error path.
+	// The auto-emit creates a sibling log://turn_N/error/<slug> entry so
+	// the failure appears in the model's <log> as a category-distinct
+	// item, not just metadata buried in the action's own log entry.
+	async #fireFailed({ runId, turn, loopId, path, body, outcome }) {
+		if (!this.#onFailed) return;
+		if (ERROR_PATH_RE.test(path)) return;
+		if (CHANNEL_PATH_RE.test(path)) return;
+		// Body-less state changes don't carry a message; fall back to the
+		// outcome string (or the path itself) so the error entry has a
+		// recognizable slug instead of an empty one.
+		let message = body;
+		if (!message) {
+			if (outcome) message = `failed: ${outcome}`;
+			else message = `failed: ${path}`;
+		}
+		await this.#onFailed({
+			runId,
+			turn,
+			loopId,
+			sourcePath: path,
+			body: message,
+			outcome,
+		});
 	}
 
 	// get — promote entry(ies); see PLUGINS.md primitives.

@@ -17,8 +17,13 @@ export default class Log {
 		const latestPrompt = ctx.rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
+		// All time-indexed activity belongs here: log entries (actions,
+		// errors, updates) AND streaming data channels from env/sh which
+		// are also time-indexed. Visibility controls the body projection
+		// (vBody for visible, sBody for summarized) — not which section
+		// the entry lives in.
 		const entries = ctx.rows.filter((r) => {
-			if (r.category === "logging" && r.scheme === "log") return true;
+			if (r.category === "logging") return true;
 			if (r.category === "prompt" && r.scheme === "prompt") {
 				return r !== latestPrompt;
 			}
@@ -32,11 +37,28 @@ export default class Log {
 	}
 }
 
-// Action segment of log://turn_N/action/slug → XML tag.
+// Action label for the entry's <log> rendering. log://turn_N/<action>/<slug>
+// uses the path's action segment; env://turn_N/* and sh://turn_N/* are
+// streaming channels, so the scheme itself is the action.
 function actionFromPath(path) {
 	if (path?.startsWith("prompt://")) return "prompt";
+	if (path?.startsWith("env://")) return "env";
+	if (path?.startsWith("sh://")) return "sh";
 	const match = path?.match(/^log:\/\/turn_\d+\/([^/]+)\//);
 	return match ? match[1] : "log";
+}
+
+// Visibility controls projection within <log>: summarized entries render
+// the compact sBody; visible entries render the full vBody (or fall back
+// to the raw body when no projection exists).
+function projectedBody(entry) {
+	if (entry.visibility === "summarized" && entry.sBody != null) {
+		return entry.sBody;
+	}
+	if (entry.visibility === "visible" && entry.vBody != null) {
+		return entry.vBody;
+	}
+	return entry.body;
 }
 
 function renderLogTag(entry, rowsByPath) {
@@ -86,5 +108,5 @@ function renderLogTag(entry, rowsByPath) {
 	}
 	if (tokenSource != null) meta.tokens = tokenSource;
 
-	return renderEntry(entry.path, meta, entry.body);
+	return renderEntry(entry.path, meta, projectedBody(entry));
 }
