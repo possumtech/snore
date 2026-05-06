@@ -1,6 +1,7 @@
 import LlmProvider from "../llm/LlmProvider.js";
 import AgentLoop from "./AgentLoop.js";
 import Entries from "./Entries.js";
+import { SOFT_FAILURE_OUTCOMES } from "./errors.js";
 import TurnExecutor from "./TurnExecutor.js";
 
 export default class ProjectAgent {
@@ -32,6 +33,14 @@ export default class ProjectAgent {
 			// own #onErrorLog handler also writes state=failed on the error
 			// entry; Entries.#fireFailed skips when path matches
 			// log://turn_*/error/* so no recursion.
+			//
+			// soft=true when the outcome is in SOFT_FAILURE_OUTCOMES
+			// (not_found, conflict): the error entry still renders so the
+			// model can read the finding, but error.log skips turnErrors++
+			// so the strike accumulator doesn't penalize legitimate
+			// state-discovery via the auto-emit path. Without this, soft
+			// outcomes count as strikes on the turnErrors path even though
+			// recordedFailed correctly excludes them.
 			onFailed: ({ runId, loopId, turn, sourcePath, body, outcome }) =>
 				hooks.error.log.emit({
 					store: this.#entries,
@@ -40,6 +49,7 @@ export default class ProjectAgent {
 					loopId,
 					message: body,
 					attributes: { sourcePath, outcome },
+					soft: SOFT_FAILURE_OUTCOMES.has(outcome),
 				}),
 		});
 		this.#entries.loadSchemes(db);

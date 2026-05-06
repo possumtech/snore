@@ -23,10 +23,13 @@ describe("parseSed", () => {
 		assert.equal(blocks[0].sed, true);
 	});
 
-	it("captures gimsv flags suffix", () => {
+	it("captures gim flags suffix", () => {
+		// `s` and `v` from real sed are not recognized: `s` collides with
+		// chained `s<delim>` after whitespace, and neither has effect on
+		// our literal substring substitution.
 		assert.equal(parseSed("s/a/b/g")[0].flags, "g");
 		assert.equal(parseSed("s/a/b/gi")[0].flags, "gi");
-		assert.equal(parseSed("s/a/b/gimsv")[0].flags, "gimsv");
+		assert.equal(parseSed("s/a/b/gim")[0].flags, "gim");
 	});
 
 	it("supports alternative delimiters (|, #, ,)", () => {
@@ -70,5 +73,43 @@ describe("parseSed", () => {
 		assert.equal(blocks[0].search, "- [ ] Run `./executable`");
 		assert.equal(blocks[0].replace, "- [x] Run `./executable`");
 		assert.equal(blocks[0].flags, "g");
+	});
+
+	// Multi-line layout: the model often spreads long substitutions across
+	// lines for readability. The parser tolerates whitespace before flags.
+	describe("multi-line layout", () => {
+		it("tolerates whitespace before flags", () => {
+			const blocks = parseSed("s|a|b|\ng");
+			assert.equal(blocks.length, 1);
+			assert.equal(blocks[0].flags, "g");
+		});
+
+		it("tolerates whitespace+newline before flags after long replace", () => {
+			const blocks = parseSed(
+				"s|- [ ] Impl: flags|- [x] Impl: flags (tested)|\n  g",
+			);
+			assert.equal(blocks.length, 1);
+			assert.equal(blocks[0].search, "- [ ] Impl: flags");
+			assert.equal(blocks[0].replace, "- [x] Impl: flags (tested)");
+			assert.equal(blocks[0].flags, "g");
+		});
+
+		it("preserves intentional whitespace inside search/replace fields", () => {
+			// Whitespace BEFORE flags is stripped; whitespace INSIDE
+			// search/replace stays — including a leading newline that the
+			// model may not have intended (caveat documented in README).
+			const blocks = parseSed("s|x|\ny|g");
+			assert.equal(blocks[0].search, "x");
+			assert.equal(blocks[0].replace, "\ny");
+		});
+
+		it("does not eat 's' as a flag when followed by a chain", () => {
+			// `s` is intentionally NOT a recognized flag (would collide
+			// with the next chained `s<delim>` command after whitespace).
+			const blocks = parseSed("s|a|b| s|c|d|");
+			assert.equal(blocks.length, 2);
+			assert.equal(blocks[0].flags, "");
+			assert.equal(blocks[1].search, "c");
+		});
 	});
 });

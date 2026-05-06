@@ -20,30 +20,26 @@ export default class Hedberg {
 		};
 	}
 
-	// Order: sed regex → literal → heuristic fuzzy.
-	static replace(body, search, replacement, { sed = false, flags = "" } = {}) {
+	// Order: literal substitution → heuristic fuzzy.
+	//
+	// sed=true semantically means "literal substring substitution with
+	// regex-style escape friendliness." The model writes `\[`, `\.`,
+	// `\|`, etc. out of muscle memory from real sed, but we don't
+	// compile a regex — native String.replaceAll does the substitution.
+	// We strip the regex-meta backslashes from search and replacement
+	// so the model's escaped chars match their literal counterparts in
+	// body. This sidesteps a class of "regex-meta in content" failures
+	// and the parser-edge-case surface that compiling user input as
+	// regex drags in.
+	static replace(body, search, replacement, { sed = false } = {}) {
 		let patch = null;
 		let warning = null;
 		let error = null;
-		const searchText = search;
-		const replaceText = replacement;
+		const stripRegexEscapes = (s) => s.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
+		const searchText = sed ? stripRegexEscapes(search) : search;
+		const replaceText = sed ? stripRegexEscapes(replacement) : replacement;
 
-		if (sed) {
-			try {
-				const re = new RegExp(
-					searchText,
-					flags.includes("g") ? flags : `${flags}g`,
-				);
-				// Strip regex-meta escapes in replacement; String.replace only interprets `$`, not `\`.
-				const unescaped = replaceText.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
-				patch = body.replace(re, unescaped);
-				if (patch === body) patch = null;
-			} catch {
-				// Invalid regex — fall through to literal/heuristic interpretation
-			}
-		}
-
-		if (!patch && body.includes(searchText)) {
+		if (body.includes(searchText)) {
 			patch = body.replaceAll(searchText, replaceText);
 		}
 

@@ -1,12 +1,9 @@
+import { SOFT_FAILURE_OUTCOMES } from "../../agent/errors.js";
 import { SUMMARY_MAX_CHARS } from "../helpers.js";
 
 const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
-
-// Failure outcomes that don't accumulate strikes — they're findings
-// the model adapts to, not contract violations. See verdict() for usage.
-const SOFT_FAILURE_OUTCOMES = new Set(["not_found", "conflict"]);
 
 function fingerprint(entry) {
 	const parts = Object.keys(entry.attributes)
