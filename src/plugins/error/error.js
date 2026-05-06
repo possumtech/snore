@@ -1,3 +1,5 @@
+import { SUMMARY_MAX_CHARS } from "../helpers.js";
+
 const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
@@ -43,7 +45,7 @@ export default class ErrorPlugin {
 		this.#core = core;
 		core.registerScheme({ category: "logging" });
 		core.on("visible", (entry) => `# error\n${entry.body}`);
-		core.on("summarized", (entry) => entry.body);
+		core.on("summarized", (entry) => entry.body.slice(0, SUMMARY_MAX_CHARS));
 
 		core.hooks.error.log.on(this.#onErrorLog.bind(this));
 		core.hooks.loop.started.on(this.#onLoopStarted.bind(this));

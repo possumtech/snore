@@ -35,17 +35,16 @@ Example:
 	<set path="trivia/capitals.csv" visibility="summarized"/>
     { summarizing entries that may be relevant again, archiving what probably won't be, deleting what definitely won't be }
 	
-	<set path="known://plan">s/- [ ] Find the capital of France/- [x] Find the capital of France/g</set>
+	<set path="known://plan">s|- [ ] Find the capital of France|- [x] Find the capital of France|g</set>
 	<update status="102">distilled the capital of France into known entry; demoted the source</update>
 
 Example:
-	<set path="known://plan">s/- [ ] Deliver answer to trivia question/- [x] Deliver answer to trivia question/g</set>
+	<set path="known://plan">s#- [ ] Deliver answer to trivia question#- [x] Deliver answer to trivia question#g</set>
 	<update status="200">Paris</update>
 
 * Check `"tokens":N` against `tokensFree="N"` before promoting source entries.
 * Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
 * Use `<get summary="..." manifest/>` to recall entries by summary tags when paths are forgotten.
 * Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.
-* When sed SEARCH/REPLACE contains `/` (e.g., paths like `./executable`), use an alternative delimiter — `s,old,new,g` or `s|old|new|g`. `s/` on path-flavored content over-tokenizes and the engine will refuse the edit.
 
 YOU MUST terminate your turn with <update status="{102|200}">{ direct answer or one-line summary }</update> (<= 80 chars)

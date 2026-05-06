@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { SUMMARY_MAX_CHARS } from "../helpers.js";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
 import Set from "./set.js";
 
@@ -100,23 +101,18 @@ describe("Set plugin", () => {
 			assert.equal(plugin.summary({ body: "" }), "");
 		});
 
-		it("preserves SEARCH/REPLACE blocks intact", () => {
-			const block = "<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE";
-			assert.equal(plugin.summary({ body: block }), block);
+		it("returns body verbatim when ≤ SUMMARY_MAX_CHARS", () => {
+			const body = "<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE";
+			assert.equal(plugin.summary({ body }), body);
 		});
 
-		it("flattens whitespace and returns whole body when ≤80 chars", () => {
-			assert.equal(
-				plugin.summary({ body: "  hello\n\n  world  " }),
-				"hello world",
-			);
-		});
-
-		it("truncates long bodies to 77 chars + ellipsis", () => {
-			const body = "x".repeat(200);
+		it("truncates oversize bodies to SUMMARY_MAX_CHARS (contract floor)", () => {
+			const body = "x".repeat(50000);
 			const out = plugin.summary({ body });
-			assert.equal(out.length, 80);
-			assert.ok(out.endsWith("..."));
+			assert.ok(
+				out.length <= SUMMARY_MAX_CHARS,
+				`summary ≤ SUMMARY_MAX_CHARS; got ${out.length}`,
+			);
 		});
 	});
 

@@ -3,7 +3,7 @@ import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 import { applyMerge, buildMerge } from "../../lib/hedberg/merge.js";
 import File from "../file/file.js";
-import { storePatternResult } from "../helpers.js";
+import { SUMMARY_MAX_CHARS, storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
 const VALID_VISIBILITY = { archived: 1, summarized: 1, visible: 1 };
@@ -349,12 +349,11 @@ export default class Set {
 
 	summary(entry) {
 		if (!entry.body) return "";
-		// Preserve SEARCH/REPLACE blocks intact; truncation strips before/after the model needs.
-		if (/<<<<<<< SEARCH[\s\S]*>>>>>>> REPLACE/.test(entry.body)) {
-			return entry.body;
-		}
-		const flat = entry.body.replace(/\s+/g, " ").trim();
-		return flat.length <= 80 ? flat : `${flat.slice(0, 77)}...`;
+		// Contract: summarized projections are ≤ SUMMARY_MAX_CHARS. The
+		// merge body for an edit can be many KB; truncate. The model
+		// reads the full body via promotion to visible if it needs the
+		// edit's exact content.
+		return entry.body.slice(0, SUMMARY_MAX_CHARS);
 	}
 
 	async #processEdit(rummy, entry, attrs) {

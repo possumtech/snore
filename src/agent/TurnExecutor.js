@@ -259,6 +259,27 @@ export default class TurnExecutor {
 			});
 		}
 
+		// Contract floor: a turn without <update> is malformed; refuse to
+		// honor its side effects. Repetition loops, partial outputs, and
+		// other broken responses commonly emit actions without closure;
+		// dispatching them anyway lets a broken turn corrupt state. Skip
+		// recording AND dispatching when commands are present but no
+		// <update> closes the turn — the strike system still fires via
+		// turnErrors, model retries cleanly next turn.
+		const hasUpdate = commands.some((c) => c.name === "update");
+		const skipDispatch = commands.length > 0 && !hasUpdate;
+		if (skipDispatch) {
+			await this.#hooks.error.log.emit({
+				store: this.#entries,
+				runId: currentRunId,
+				turn,
+				loopId: currentLoopId,
+				message:
+					"Turn rejected: no <update> emitted. Actions are not honored unless the turn ends with an <update>.",
+				status: 422,
+			});
+		}
+
 		// Layer plugin reasoning contributions onto the API-provided seed.
 		if (responseMessage) {
 			const seed = responseMessage.reasoning_content
@@ -284,17 +305,19 @@ export default class TurnExecutor {
 			userMsg: userMsg?.content,
 		});
 
-		// PHASE 1: RECORD
+		// PHASE 1: RECORD (skipped when skipDispatch — broken turn, no side effects)
 		const recorded = [];
-		for (const cmd of commands) {
-			const entry = await this.#record(
-				currentRunId,
-				currentLoopId,
-				turn,
-				mode,
-				cmd,
-			);
-			if (entry) recorded.push(entry);
+		if (!skipDispatch) {
+			for (const cmd of commands) {
+				const entry = await this.#record(
+					currentRunId,
+					currentLoopId,
+					turn,
+					mode,
+					cmd,
+				);
+				if (entry) recorded.push(entry);
+			}
 		}
 
 		// PHASE 2: DISPATCH — sequential; abort-after-failure; proposals notify-and-await.
