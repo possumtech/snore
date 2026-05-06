@@ -91,35 +91,23 @@ async function extractWorkspace() {
 }
 
 function buildPrompt() {
-	// Keep the prompt task-agnostic; rummy reads the docs itself.
+	// Keep the prompt to two registers: task statement + protocol contract.
+	// Behavioral guidance (verify before done, probe the binary, etc.) is
+	// strategy — that belongs to the agent's general training, not this
+	// per-benchmark prompt. See AGENTS.md "Benchmark integrity."
 	return [
 		"Reproduce the program in `./executable` from scratch.",
 		"",
-		"Inputs you have:",
-		"- `./executable` — the compiled binary you must reproduce.",
-		"  Executable-only (cannot be read or decompiled).",
-		"- `./README.md`, `./*.1`, `./COPYING` — documentation.",
-		"- `./data/` — runtime data files the binary uses (if present).",
+		"Inputs:",
+		"- `./executable` — the compiled binary (executable-only)",
+		"- `./README.md`, `./*.1`, `./COPYING` — documentation",
+		"- `./data/` — runtime data files (if present)",
 		"",
-		"Submission contract — your codebase must satisfy this exactly:",
-		"- `./compile.sh` — executable shell script that builds your",
-		"  source into a binary at `./executable` (overwriting the",
-		"  reference binary in the eval workspace). The eval pipeline",
-		"  runs `chmod +x ./compile.sh && ./compile.sh` then tests the",
-		"  resulting `./executable` against a behavioral test suite.",
-		"- All source files needed for compile.sh to succeed.",
-		"",
-		"Your job:",
-		"- Probe the binary's behavior by running it; do not speculate",
-		"  from docs alone. The behavioral tests match the binary, not",
-		"  the README.",
-		"- Write source AND `compile.sh`. Both are mandatory.",
-		"- VERIFY YOUR BUILD before declaring done. Run",
-		"  `chmod +x ./compile.sh && ./compile.sh` and confirm it",
-		"  exits 0 and produces `./executable`. Run your binary",
-		"  against a sample input and compare to the reference's",
-		"  output. Don't emit `<update status=\"200\">` until you've",
-		"  verified end-to-end.",
+		"Submission protocol:",
+		"- The eval runs `chmod +x ./compile.sh && ./compile.sh` to",
+		"  build your source, then tests the resulting `./executable`",
+		"  against a behavioral suite. Your submission must include",
+		"  `./compile.sh` and any source files it needs.",
 	].join("\n");
 }
 
