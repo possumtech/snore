@@ -61,13 +61,17 @@ export default class TestDb {
 		if (options.home) {
 			process.env.RUMMY_HOME = options.home;
 		}
+		const entrySizeMax =
+			options.entrySizeMax !== undefined
+				? options.entrySizeMax
+				: Number(process.env.RUMMY_ENTRY_SIZE_MAX);
 		const db = await SqlRite.open({
 			path: dbPath,
 			dir: ["migrations", "src"],
 			functions: sqlFunctions,
 			params: {
 				mmap_size: 0,
-				entry_size_max: Number(process.env.RUMMY_ENTRY_SIZE_MAX),
+				entry_size_max: entrySizeMax,
 			},
 		});
 		const hooks = createHooks();

@@ -264,6 +264,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 	it("autonomous file edit", { timeout: TIMEOUT }, async () => {
 		const r = await client.act({
 			model,
+			yolo: true,
 			prompt:
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});
@@ -287,6 +288,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 	it("accepted edits visible on next turn", { timeout: TIMEOUT }, async () => {
 		const r1 = await client.act({
 			model,
+			yolo: true,
 			prompt:
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});

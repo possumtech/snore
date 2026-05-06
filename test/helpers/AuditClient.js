@@ -143,6 +143,7 @@ export default class AuditClient extends RpcClient {
 			noWeb,
 			noProposals,
 			noInteraction,
+			yolo,
 			timeoutMs = Number.parseInt(process.env.RUMMY_TEST_RUN_TIMEOUT, 10),
 		} = params;
 		const attributes = { model, mode };
@@ -154,6 +155,7 @@ export default class AuditClient extends RpcClient {
 		if (noWeb !== undefined) attributes.noWeb = noWeb;
 		if (noProposals !== undefined) attributes.noProposals = noProposals;
 		if (noInteraction !== undefined) attributes.noInteraction = noInteraction;
+		if (yolo !== undefined) attributes.yolo = yolo;
 		const path = `run://${run ? run : ""}`;
 		const startRes = await super.call("set", {
 			path,

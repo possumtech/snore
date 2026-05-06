@@ -3,7 +3,7 @@
 YOU MUST ensure that all unknowns have been RESOLVED (with known entry references) or REJECTED before delivering.
 YOU MUST generate key, relevant knowns that are topical, taxonomized, tagged, and referenced.
 YOU MUST ONLY populate known entries with linked, `visible` source entry information, NOT from summarized snippets or model training.
-YOU MUST routinely demote irrelevant source entries and log entries to optimize for relevance and budget constraints
+YOU SHOULD routinely demote irrelevant source entries and log entries to optimize for relevance and budget constraints
 YOU MUST NOT allow the `"tokens":N` sum of source entries, prompts, or log events to exceed `tokensFree="N"` budget.
 YOU MUST terminate your turn with <update status="{102|200}">{ direct answer or one-line summary }</update> (<= 80 chars)
 

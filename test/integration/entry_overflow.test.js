@@ -13,11 +13,16 @@ import Entries from "../../src/agent/Entries.js";
 import { EntryOverflowError } from "../../src/agent/errors.js";
 import TestDb from "../helpers/TestDb.js";
 
+// Per-test cap: keeps allocations cheap without forcing a global env
+// override. Behavior is identical at any cap value — test exercises the
+// CHECK boundary, not a specific number.
+const TEST_CAP = 1024;
+
 describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 	let tdb;
 
 	before(async () => {
-		tdb = await TestDb.create("entry_overflow");
+		tdb = await TestDb.create("entry_overflow", { entrySizeMax: TEST_CAP });
 	});
 
 	after(async () => {
@@ -26,7 +31,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 
 	it("oversized body triggers EntryOverflowError; onError swallows it", async () => {
 		const { runId } = await tdb.seedRun({ alias: "overflow_huge" });
-		const cap = Number(process.env.RUMMY_ENTRY_SIZE_MAX);
+		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {
 			onError: (event) => events.push(event),
@@ -57,7 +62,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 
 	it("body at cap is accepted; just-over-cap is rejected", async () => {
 		const { runId } = await tdb.seedRun({ alias: "overflow_boundary" });
-		const cap = Number(process.env.RUMMY_ENTRY_SIZE_MAX);
+		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {
 			onError: (event) => events.push(event),
@@ -83,7 +88,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 
 	it("append-mode that pushes existing body past cap is rejected", async () => {
 		const { runId } = await tdb.seedRun({ alias: "overflow_append" });
-		const cap = Number(process.env.RUMMY_ENTRY_SIZE_MAX);
+		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {
 			onError: (event) => events.push(event),
