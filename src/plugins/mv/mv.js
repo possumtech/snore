@@ -70,6 +70,18 @@ export default class Mv {
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
+		// Tags propagate: explicit `tags=` on the mv wins; otherwise the
+		// destination inherits the source entry's tags. Same shape as
+		// visibility — explicit attr overrides, default inherits.
+		let destTags = null;
+		if (typeof entry.attributes.tags === "string") {
+			destTags = entry.attributes.tags;
+		} else {
+			const sourceAttrs = await store.getAttributes(runId, path);
+			if (sourceAttrs && typeof sourceAttrs.tags === "string") {
+				destTags = sourceAttrs.tags;
+			}
+		}
 
 		const destScheme = Entries.scheme(to);
 		const existing = await store.getBody(runId, to);
@@ -97,6 +109,7 @@ export default class Mv {
 				body: source,
 				state: "resolved",
 				visibility,
+				attributes: destTags ? { tags: destTags } : null,
 				loopId,
 			});
 			await store.rm({ runId: runId, path: path });

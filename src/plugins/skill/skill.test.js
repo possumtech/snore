@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import Skill from "./skill.js";
 
 function makeCore() {
-	const methods = new Map();
 	const views = new Map();
 	const schemes = [];
+	let handler = null;
+	const toolDocFilters = [];
 	return {
 		registerScheme: (opts) => schemes.push(opts),
 		hooks: {
@@ -18,210 +19,149 @@ function makeCore() {
 					views.get(scheme).set(vis, fn);
 				},
 			},
-			rpc: {
-				registry: {
-					register: (name, def) => methods.set(name, def),
-				},
-			},
 		},
-		_method: (name) => methods.get(name),
+		on: (event, fn) => {
+			if (event === "handler") handler = fn;
+		},
+		filter: (name, fn) => {
+			if (name === "instructions.toolDocs") toolDocFilters.push(fn);
+		},
 		_view: (scheme, vis) => views.get(scheme)?.get(vis),
 		_schemes: schemes,
+		_handler: () => handler,
+		_toolDocs: async () => {
+			const map = {};
+			for (const f of toolDocFilters) await f(map);
+			return map;
+		},
+	};
+}
+
+function makeStore() {
+	const writes = [];
+	return {
+		writes,
+		set: async (params) => {
+			writes.push(params);
+		},
+	};
+}
+
+function rummyCtxFor(store, projectRoot) {
+	return {
+		entries: store,
+		sequence: 0,
+		runId: "r1",
+		loopId: null,
+		projectId: "p1",
+		db: {
+			get_project_by_id: {
+				get: async () => ({ project_root: projectRoot }),
+			},
+		},
 	};
 }
 
 describe("Skill plugin", () => {
-	let originalHome;
-	let tmpHome;
+	let tmp;
 
 	beforeEach(async () => {
-		originalHome = process.env.RUMMY_HOME;
-		tmpHome = await mkdtemp(join(tmpdir(), "skill-test-"));
-		process.env.RUMMY_HOME = tmpHome;
+		tmp = await mkdtemp(join(tmpdir(), "skill-test-"));
 	});
 
 	afterEach(async () => {
-		if (originalHome === undefined) delete process.env.RUMMY_HOME;
-		else process.env.RUMMY_HOME = originalHome;
-		await rm(tmpHome, { recursive: true, force: true });
+		await rm(tmp, { recursive: true, force: true });
 	});
 
-	it("registers skill scheme + visible/summarized views", () => {
+	it("registers skill scheme + visible/summarized views + handler + tooldoc", async () => {
 		const core = makeCore();
 		new Skill(core);
 		assert.deepEqual(core._schemes, [{ name: "skill", category: "data" }]);
 		assert.equal(core._view("skill", "visible")({ body: "hi" }), "hi");
 		assert.equal(core._view("skill", "summarized")(), "");
+		assert.equal(typeof core._handler(), "function");
+		const docs = await core._toolDocs();
+		assert.match(docs.skill, /<skill path/);
 	});
 
-	it("registers all four RPC methods (skill/add, skill/remove, getSkills, listSkills)", () => {
+	it("emits validation failure when path missing", async () => {
 		const core = makeCore();
 		new Skill(core);
-		for (const m of ["skill/add", "skill/remove", "getSkills", "listSkills"]) {
-			assert.ok(core._method(m), `expected ${m} to be registered`);
-			assert.equal(core._method(m).requiresInit, true);
-		}
+		const store = makeStore();
+		await core._handler()(
+			{ attributes: {}, resultPath: "log://turn_0/skill/_" },
+			rummyCtxFor(store, tmp),
+		);
+		const fail = store.writes.find((w) => w.state === "failed");
+		assert.ok(fail);
+		assert.equal(fail.outcome, "validation");
 	});
 
-	describe("skill/add", () => {
-		it("throws when name missing", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/add");
-			await assert.rejects(def.handler({ run: "r" }, {}), /name is required/);
-		});
-
-		it("throws when run missing", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/add");
-			await assert.rejects(def.handler({ name: "n" }, {}), /run is required/);
-		});
-
-		it("throws when run alias is unknown", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/add");
-			await assert.rejects(
-				def.handler(
-					{ run: "missing", name: "n" },
-					{ db: { get_run_by_alias: { get: async () => null } } },
-				),
-				/Run not found/,
-			);
-		});
-
-		it("loads skill body from RUMMY_HOME/skills and stores at skill://{name}", async () => {
-			const skillDir = join(tmpHome, "skills");
-			await mkdir(skillDir, { recursive: true });
-			await writeFile(join(skillDir, "foo.md"), "skill body");
-
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/add");
-			let stored;
-			const ctx = {
-				db: {
-					get_run_by_alias: { get: async () => ({ id: "r1" }) },
-				},
-				projectAgent: {
-					entries: {
-						set: async (params) => {
-							stored = params;
-						},
-					},
-				},
-			};
-			const result = await def.handler({ run: "alias", name: "foo" }, ctx);
-			assert.deepEqual(result, { status: "ok", skill: "foo" });
-			assert.equal(stored.path, "skill://foo");
-			assert.equal(stored.body, "skill body");
-			assert.equal(stored.attributes.name, "foo");
-			assert.match(stored.attributes.source, /skills\/foo\.md$/);
-		});
-
-		it("throws when RUMMY_HOME not configured", async () => {
-			delete process.env.RUMMY_HOME;
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/add");
-			const ctx = {
-				db: {
-					get_run_by_alias: { get: async () => ({ id: "r1" }) },
-				},
-				projectAgent: { entries: { set: async () => {} } },
-			};
-			await assert.rejects(
-				def.handler({ run: "a", name: "n" }, ctx),
-				/RUMMY_HOME not configured/,
-			);
-		});
+	it("ingests single .md file as skill://<basename> (summarized)", async () => {
+		await writeFile(join(tmp, "playbook.md"), "# playbook root");
+		const core = makeCore();
+		new Skill(core);
+		const store = makeStore();
+		await core._handler()(
+			{
+				attributes: { path: "playbook.md" },
+				resultPath: "log://turn_0/skill/_",
+			},
+			rummyCtxFor(store, tmp),
+		);
+		const entry = store.writes.find((w) => w.path === "skill://playbook");
+		assert.ok(entry);
+		assert.equal(entry.body, "# playbook root");
+		assert.equal(entry.visibility, "summarized");
+		const result = store.writes.find((w) => w.path === "log://turn_0/skill/_");
+		assert.equal(result.state, "resolved");
 	});
 
-	describe("skill/remove", () => {
-		it("throws when name missing", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/remove");
-			await assert.rejects(def.handler({ run: "r" }, {}), /name is required/);
-		});
+	it("ingests folder: index.md → root summarized, others archived; foo/index.md collapses", async () => {
+		const root = join(tmp, "playbook");
+		await mkdir(join(root, "foo"), { recursive: true });
+		await writeFile(join(root, "index.md"), "root");
+		await writeFile(join(root, "intro.md"), "intro page");
+		await writeFile(join(root, "foo", "index.md"), "foo root");
+		await writeFile(join(root, "foo", "bar.md"), "foo bar");
 
-		it("calls store.rm at skill://{name}", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("skill/remove");
-			let removed;
-			const ctx = {
-				db: {
-					get_run_by_alias: { get: async () => ({ id: "r1" }) },
-				},
-				projectAgent: {
-					entries: {
-						rm: async (p) => {
-							removed = p;
-						},
-					},
-				},
-			};
-			const result = await def.handler({ run: "alias", name: "foo" }, ctx);
-			assert.deepEqual(result, { status: "ok" });
-			assert.equal(removed.path, "skill://foo");
-		});
+		const core = makeCore();
+		new Skill(core);
+		const store = makeStore();
+		await core._handler()(
+			{
+				attributes: { path: "playbook" },
+				resultPath: "log://turn_0/skill/_",
+			},
+			rummyCtxFor(store, tmp),
+		);
+
+		const byPath = Object.fromEntries(
+			store.writes
+				.filter((w) => w.path?.startsWith("skill://"))
+				.map((w) => [w.path, w]),
+		);
+		assert.ok(byPath["skill://playbook"]);
+		assert.equal(byPath["skill://playbook"].visibility, "summarized");
+		assert.equal(byPath["skill://playbook/intro"].visibility, "archived");
+		assert.equal(byPath["skill://playbook/foo"].body, "foo root");
+		assert.equal(byPath["skill://playbook/foo"].visibility, "archived");
+		assert.equal(byPath["skill://playbook/foo/bar"].body, "foo bar");
 	});
 
-	describe("getSkills", () => {
-		it("throws when run missing", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("getSkills");
-			await assert.rejects(def.handler({}, {}), /run is required/);
-		});
-
-		it("lists skill entries with name + status", async () => {
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("getSkills");
-			const ctx = {
-				db: { get_run_by_alias: { get: async () => ({ id: "r1" }) } },
-				projectAgent: {
-					entries: {
-						getEntriesByPattern: async () => [
-							{ path: "skill://foo", status: "resolved" },
-							{ path: "skill://bar", status: "resolved" },
-						],
-					},
-				},
-			};
-			const result = await def.handler({ run: "alias" }, ctx);
-			assert.deepEqual(result, [
-				{ name: "foo", status: "resolved" },
-				{ name: "bar", status: "resolved" },
-			]);
-		});
-	});
-
-	describe("listSkills", () => {
-		it("returns [] when RUMMY_HOME not set", async () => {
-			delete process.env.RUMMY_HOME;
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("listSkills");
-			const result = await def.handler({}, {});
-			assert.deepEqual(result, []);
-		});
-
-		it("returns [{ name, path }] for each .md in skills dir", async () => {
-			const skillDir = join(tmpHome, "skills");
-			await mkdir(skillDir, { recursive: true });
-			await writeFile(join(skillDir, "a.md"), "a");
-			await writeFile(join(skillDir, "b.md"), "b");
-			await writeFile(join(skillDir, "ignored.txt"), "x");
-
-			const core = makeCore();
-			new Skill(core);
-			const def = core._method("listSkills");
-			const result = await def.handler({}, {});
-			assert.deepEqual(result.map((r) => r.name).toSorted(), ["a", "b"]);
-		});
+	it("emits not_found when relative path doesn't resolve", async () => {
+		const core = makeCore();
+		new Skill(core);
+		const store = makeStore();
+		await core._handler()(
+			{
+				attributes: { path: "nope.md" },
+				resultPath: "log://turn_0/skill/_",
+			},
+			rummyCtxFor(store, tmp),
+		);
+		const fail = store.writes.find((w) => w.state === "failed");
+		assert.ok(fail);
+		assert.equal(fail.outcome, "not_found");
 	});
 });

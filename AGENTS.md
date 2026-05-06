@@ -286,6 +286,26 @@ extraction adds a hop without separating concerns, it's ceremony
 
 ## Open Items
 
+- [x] **Persona modularization + Deep Skills refactor.** Landed
+  2026-05-06. Three pluggable layers in the model-facing context:
+  1. **Universal substrate** — `instructions-system.md` (Definitions)
+     + `instructions-user.md` (Instructions). Persona-agnostic.
+  2. **Persona** — `src/plugins/persona/default.md` (the 7D ladder)
+     injected by `AgentLoop.ensureRun` when the client passes no
+     `persona` option. 1:1 run:persona, immutable. Renders below
+     tooldocs. Persona plugin gutted to scheme + view registration —
+     no RPCs, no filesystem.
+  3. **Skills** — `<skill path="[path-or-url]"/>` tag. Handler walks
+     local file / folder / `.zip` (via `yauzl-promise`) or fetches
+     URL. Single `.md` → `skill://<name>` (summarized). Folder /
+     zip → root `index.md` summarized; rest archived;
+     `foo/index.md` collapses to `skill://<name>/foo`. Re-emit
+     overwrites. Authors link with absolute `skill://...` URIs (no
+     relative-link rewriting at archive time).
+  Old `skill/add`, `skill/remove`, `getSkills`, `listSkills` RPCs
+  removed. `~/.rummy/skills/` and `~/.rummy/personas/` conventions
+  retired.
+
 - [x] **Streaming-workflow architectural refactor (rummy way).** Landed
   2026-05-05. Async children (yolo's `<sh>` spawn) used to block
   termination via a `pendingChildren` Set + verdict-hold + (broken)

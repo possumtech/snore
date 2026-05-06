@@ -1,4 +1,19 @@
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import msg from "./messages.js";
+
+const DEFAULT_PERSONA_PATH = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"../plugins/persona/default.md",
+);
+let cachedDefaultPersona = null;
+async function loadDefaultPersona() {
+	if (cachedDefaultPersona == null) {
+		cachedDefaultPersona = await readFile(DEFAULT_PERSONA_PATH, "utf8");
+	}
+	return cachedDefaultPersona;
+}
 
 const HTTP_TO_RUN_STATE = {
 	100: "proposed",
@@ -119,10 +134,12 @@ export default class AgentLoop {
 		const {
 			fork: isFork = false,
 			temperature = null,
-			persona = null,
+			persona: personaOpt = null,
 			contextLimit = null,
 		} = options;
 		const requestedModel = model;
+		let persona = personaOpt;
+		if (!persona) persona = await loadDefaultPersona();
 
 		if (run && isFork) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });

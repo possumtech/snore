@@ -125,7 +125,7 @@ export default class Instructions {
 		let prompt = baseInstructions
 			.replace("[%TOOLS%]", tools)
 			.replace("[%TOOLDOCS%]", docsText);
-		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
+		prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;
 	}
 }

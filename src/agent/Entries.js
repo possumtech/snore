@@ -372,10 +372,22 @@ export default class Entries {
 			throw translateBodyOverflow(err, normalized, body);
 		}
 		const effectiveState = state === undefined ? "resolved" : state;
-		const effectiveVisibility =
-			visibility === undefined
-				? this.#defaultVisibility(scheme, category)
-				: visibility;
+		// Visibility resolution: explicit > preserve-existing > scheme-default.
+		// A body update without visibility= must NOT silently reset visibility
+		// to the scheme default — that would hide content the model just
+		// promoted (e.g. a model <get>'d file then <set> SEARCH/REPLACE
+		// would lose its visible status). Preserve what's there.
+		let effectiveVisibility;
+		if (visibility !== undefined) {
+			effectiveVisibility = visibility;
+		} else {
+			const existing = await this.getState(runId, normalized);
+			if (existing?.visibility) {
+				effectiveVisibility = existing.visibility;
+			} else {
+				effectiveVisibility = this.#defaultVisibility(scheme, category);
+			}
+		}
 		await this.#db.upsert_run_view.run({
 			run_id: runId,
 			entry_id: entry.id,

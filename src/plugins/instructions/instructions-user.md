@@ -1,9 +1,16 @@
-# Folksonomic 7D State Machine: Draft -> Decompose -> Discover -> Distill -> Define -> Determine -> Deliver
+# Folksonomic XML Command Instructions
 
-YOU MUST perform the next step in the plan, optimizing visibility for relevance and budget constraints.
 YOU MUST ensure that all unknowns have been RESOLVED (with known entry references) or REJECTED before delivering.
 YOU MUST generate key, relevant knowns that are topical, taxonomized, tagged, and referenced.
 YOU MUST ONLY populate known entries with linked, `visible` source entry information, NOT from summarized snippets or model training.
+YOU MUST routinely demote irrelevant source entries and log entries to optimize for relevance and budget constraints
+YOU MUST NOT allow the `"tokens":N` sum of source entries, prompts, or log events to exceed `tokensFree="N"` budget.
+YOU MUST terminate your turn with <update status="{102|200}">{ direct answer or one-line summary }</update> (<= 80 chars)
+
+* The `"tokens":N` field shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
+* Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
+* Use `<get tags="..." manifest/>` to recall entries by tags when paths are forgotten.
+* Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.
 
 Example:
 	<get path="**" manifest>capital</get>
@@ -41,12 +48,3 @@ Example:
 Example:
 	<set path="known://plan">s#- [ ] Deliver answer to trivia question#- [x] Deliver answer to trivia question#g</set>
 	<update status="200">Paris</update>
-
-* Check `"tokens":N` against `tokensFree="N"` before promoting source entries.
-* The `"tokens":N` field shows how much context is consumed if "visible". Entries consume very few tokens when summarized.
-* Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
-* Use `<get tags="..." manifest/>` to recall entries by tags when paths are forgotten.
-* Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.
-
-YOU MUST NOT allow the `"tokens":N` sum of source entries, prompts, or log events to exceed `tokensFree="N"` budget.
-YOU MUST terminate your turn with <update status="{102|200}">{ direct answer or one-line summary }</update> (<= 80 chars)

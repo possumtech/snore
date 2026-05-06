@@ -139,7 +139,7 @@ Every testable promise in SPEC.md mapped to a test.
 - [x] getModels lists aliases (E2E: rpc_methods)
 - [x] discover returns methods and notifications (E2E: rpc_methods)
 - [x] setTemperature/getTemperature round-trip (E2E: rpc_methods)
-- [x] skill/add, skill/remove, getSkills (E2E: rpc_methods)
+- [x] `<skill path="..."/>` tag ingest (Intg: skill_ingest)
 - [x] activate/readOnly/ignore/drop set file state (E2E: rpc_methods)
 - [x] fileStatus returns current state (E2E: rpc_methods)
 - [x] getModelInfo returns model metadata (E2E: rpc_methods)

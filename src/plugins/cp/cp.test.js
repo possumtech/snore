@@ -10,7 +10,7 @@ function stubCore() {
 	};
 }
 
-function makeStore({ bodies = {} } = {}) {
+function makeStore({ bodies = {}, attributes = {} } = {}) {
 	const calls = [];
 	return {
 		_calls: calls,
@@ -19,6 +19,9 @@ function makeStore({ bodies = {} } = {}) {
 		},
 		async getBody(_runId, path) {
 			return path in bodies ? bodies[path] : null;
+		},
+		async getAttributes(_runId, path) {
+			return path in attributes ? attributes[path] : null;
 		},
 	};
 }
@@ -117,6 +120,44 @@ describe("Cp", () => {
 			assert.equal(dest.state, "resolved");
 			const log = store._calls.find((c) => c.path === "log://turn_1/cp/x");
 			assert.equal(log.state, "resolved");
+		});
+
+		it("propagates source's tags to destination when no explicit tags=", async () => {
+			const plugin = new Cp(stubCore());
+			const store = makeStore({
+				bodies: { "known://draft": "body" },
+				attributes: { "known://draft": { tags: "geography,france" } },
+			});
+			await plugin.handler(
+				{
+					attributes: { path: "known://draft", to: "known://archive/draft" },
+					resultPath: "log://turn_1/cp/x",
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const dest = store._calls.find((c) => c.path === "known://archive/draft");
+			assert.equal(dest.attributes.tags, "geography,france");
+		});
+
+		it("explicit tags= on cp wins over source tags", async () => {
+			const plugin = new Cp(stubCore());
+			const store = makeStore({
+				bodies: { "known://draft": "body" },
+				attributes: { "known://draft": { tags: "old,tags" } },
+			});
+			await plugin.handler(
+				{
+					attributes: {
+						path: "known://draft",
+						to: "known://archive/draft",
+						tags: "new,tags",
+					},
+					resultPath: "log://turn_1/cp/x",
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const dest = store._calls.find((c) => c.path === "known://archive/draft");
+			assert.equal(dest.attributes.tags, "new,tags");
 		});
 	});
 

@@ -23,6 +23,7 @@ describe("Mv", () => {
 		const store = {
 			getBody: async (_r, p) =>
 				p === "known://draft" ? "draft body content" : null,
+			getAttributes: async () => null,
 			set: async (args) => upserted.push(args),
 			rm: async () => {
 				throw new Error("schemed→bare-path mv must not rm before accept");
@@ -50,6 +51,7 @@ describe("Mv", () => {
 		const removed = [];
 		const store = {
 			getBody: async (_r, p) => (p === "known://draft" ? "draft body" : null),
+			getAttributes: async () => null,
 			set: async (args) => upserted.push(args),
 			rm: async (args) => removed.push(args),
 		};
@@ -70,6 +72,52 @@ describe("Mv", () => {
 		);
 		const log = upserted.find((u) => u.path === entry.resultPath);
 		assert.equal(log.state, "resolved");
+	});
+
+	it("schemed → schemed: source tags propagate to destination", async () => {
+		const upserted = [];
+		const store = {
+			getBody: async (_r, p) => (p === "known://draft" ? "body" : null),
+			getAttributes: async (_r, p) =>
+				p === "known://draft" ? { tags: "geography,france" } : null,
+			set: async (args) => upserted.push(args),
+			rm: async () => {},
+		};
+		const rummy = { entries: store, sequence: 5, runId: 1, loopId: 1 };
+		await plugin.handler(
+			{
+				attributes: { path: "known://draft", to: "known://final" },
+				resultPath: "log://turn_5/mv/known___draft",
+			},
+			rummy,
+		);
+		const dest = upserted.find((u) => u.path === "known://final");
+		assert.equal(dest.attributes.tags, "geography,france");
+	});
+
+	it("schemed → schemed: explicit tags= overrides source tags", async () => {
+		const upserted = [];
+		const store = {
+			getBody: async (_r, p) => (p === "known://draft" ? "body" : null),
+			getAttributes: async (_r, p) =>
+				p === "known://draft" ? { tags: "old,tags" } : null,
+			set: async (args) => upserted.push(args),
+			rm: async () => {},
+		};
+		const rummy = { entries: store, sequence: 5, runId: 1, loopId: 1 };
+		await plugin.handler(
+			{
+				attributes: {
+					path: "known://draft",
+					to: "known://final",
+					tags: "new,tags",
+				},
+				resultPath: "log://turn_5/mv/known___draft",
+			},
+			rummy,
+		);
+		const dest = upserted.find((u) => u.path === "known://final");
+		assert.equal(dest.attributes.tags, "new,tags");
 	});
 
 	it("manifest: lists matched paths without moving or flipping visibility", async () => {

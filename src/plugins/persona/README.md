@@ -1,20 +1,18 @@
 # persona {#persona_plugin}
 
-Runtime persona management. A persona is free-form text that gets
-prepended to the model's system prompt for a run.
+Workflow specification rendered into the system prompt below the
+tooldocs. 1:1 run:persona — set at run creation, immutable thereafter.
 
 ## Files
 
-- **persona.js** — RPC registration and persona file loading.
+- **default.md** — default persona (7D state machine) injected when the
+  client supplies none.
+- **persona.js** — registers the `persona` scheme + view callbacks.
 
-## RPC Methods
+## Resolution
 
-| Method | Params | Notes |
-|--------|--------|-------|
-| `persona/set` | `{ run, name?, text? }` | Set persona by filename (`${RUMMY_HOME}/personas/<name>.md`) or raw text. Pass neither to clear. |
-| `listPersonas` | — | Return `[{name, path}]` for available persona files. |
-
-## Behavior
-
-Persona is stored on the run row (`runs.persona`). The instructions
-plugin reads it during system-prompt assembly.
+- Client supplies persona text via the run-creation RPC's `persona`
+  option.
+- If null, `AgentLoop.ensureRun` loads `default.md`.
+- Result persists to `runs.persona`; the instructions plugin reads it
+  during system-prompt assembly.
