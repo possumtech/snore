@@ -4,7 +4,6 @@ const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
 
-const CONTRACT_REMINDER = "Missing update";
 // Failure outcomes that don't accumulate strikes — they're findings
 // the model adapts to, not contract violations. See verdict() for usage.
 const SOFT_FAILURE_OUTCOMES = new Set(["not_found", "conflict"]);
@@ -182,10 +181,12 @@ export default class ErrorPlugin {
 						`Abandoned after ${state.streak} consecutive strikes.`,
 				};
 			}
-			return {
-				continue: true,
-				reason: CONTRACT_REMINDER,
-			};
+			// No reason on continue: the model sees the actual failure
+			// entries directly in <log> next turn. Hardcoding "Missing
+			// update" mislabels strikes that fire on validation /
+			// permission / dispatch failures or cycles, when the update
+			// itself was emitted correctly.
+			return { continue: true };
 		}
 
 		state.streak = 0;

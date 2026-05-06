@@ -442,12 +442,11 @@ export default class TurnExecutor {
 		if (cmd.path) rawTarget = cmd.path;
 		else if (cmd.command) rawTarget = cmd.command;
 		else if (cmd.question) rawTarget = cmd.question;
-		// Reject likely reasoning bleed: oversize or control chars in target.
-		// 2048 matches the DB CHECK constraint on entries.path; under
-		// normal use slugifier keeps logPath/slugPath under ~100 chars
-		// (80-char cap + integer tie-breaker), so hitting this guard
-		// signals raw paths from the model rather than slugifier output.
-		if (rawTarget.length > 2048 || /\p{Cc}/u.test(rawTarget)) {
+		// Reject reasoning-bleed in path-shaped fields only. cmd.command
+		// (sh/env shell scripts) and cmd.question (ask_user prose) are
+		// content fields where newlines/tabs/length are legitimate; the
+		// slugifier sanitizes them downstream when deriving the log path.
+		if (cmd.path && (cmd.path.length > 2048 || /\p{Cc}/u.test(cmd.path))) {
 			const rejectPath = await this.#entries.logPath(
 				runId,
 				turn,
@@ -458,7 +457,7 @@ export default class TurnExecutor {
 				runId,
 				turn,
 				path: rejectPath,
-				body: `Invalid path: too long or contains non-printing characters`,
+				body: "Invalid path.",
 				state: "failed",
 				outcome: "validation",
 				attributes: { action: scheme },

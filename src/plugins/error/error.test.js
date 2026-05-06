@@ -230,7 +230,7 @@ describe("error plugin: verdict", () => {
 			},
 		);
 		assert.equal(verdict.continue, true);
-		assert.match(verdict.reason, /Missing update/);
+		assert.equal(verdict.reason, undefined);
 	});
 
 	it("recorded HARD-failed entry (validation outcome) counts as strike", async () => {
@@ -259,7 +259,7 @@ describe("error plugin: verdict", () => {
 			},
 		);
 		assert.equal(verdict.continue, true);
-		assert.match(verdict.reason, /Missing update/);
+		assert.equal(verdict.reason, undefined);
 	});
 
 	it("recorded SOFT-failed entry (not_found outcome) does NOT strike", async () => {
@@ -456,9 +456,9 @@ describe("error plugin: verdict", () => {
 			);
 		}
 		// Cycle detected on the MIN_CYCLES-th call → struck → continue:true
-		// with Missing-update reminder (until MAX_STRIKES).
+		// (no reason: failure entries speak for themselves in <log>).
 		assert.equal(verdict.continue, true);
-		assert.match(verdict.reason, /Missing update/);
+		assert.equal(verdict.reason, undefined);
 	});
 
 	it("loop.completed clears state for the loopId", async () => {

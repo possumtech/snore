@@ -6,20 +6,20 @@ YOU MUST use status 102 for continuation and 200 for final delivery.
 
 Example:
 	{ demote irrelevant source entries and log entries }
-	<set path="known://plan">s/- [ ] Distill geography unknowns/- [x] Distill geography unknowns/g</set>
+	<set path="known://plan">s|- [ ] Distill geography unknowns|- [x] Distill geography unknowns|g</set>
 	<update status="102">distilled three unknowns into known://trivia/geography/capitals</update>
 
 Example:
 	{ demote irrelevant source entries and log entries }
-	<set path="known://plan">s/- [ ] Discover watershed information/- [x] Discover watershed information/g</set>
+	<set path="known://plan">s#- [ ] Discover watershed information#- [x] Discover watershed information#g</set>
 	<update status="102">searching the watershed dataset for management area names</update>
 
 Example:
 	{ demote irrelevant source entries and log entries }
-	<set path="known://plan">s/- [ ] Deliver direct answer/- [x] Deliver direct answer/g</set>
+	<set path="known://plan">s|- [ ] Deliver direct answer|- [x] Deliver direct answer|g</set>
 	<update status="200">Paris</update>
 
 Example:
 	{ demote irrelevant source entries and log entries }
-	<set path="known://plan">s/- [ ] Delivered OC_RIVERS.md/- [x] Delivered OC_RIVERS.md/g</set>
+	<set path="known://plan">s#- [ ] Delivered OC_RIVERS.md#- [x] Delivered OC_RIVERS.md#g</set>
 	<update status="200">Paris</update>

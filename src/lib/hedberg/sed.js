@@ -43,9 +43,7 @@ export function parseSed(input) {
 		const afterFlags = flagsMatch[2].replace(/^[\s;]+/, "");
 
 		if (afterFlags && !afterFlags.startsWith(prefix)) {
-			throw new Error(
-				`Malformed sed: extra content after ${prefix}SEARCH${delim}REPLACE${delim}FLAGS — likely an unescaped '${delim}' inside SEARCH or REPLACE. Use a different delimiter (e.g., s|old|new|g or s,old,new,g) or escape with \\${delim}.`,
-			);
+			throw new Error("Malformed sed.");
 		}
 
 		const unesc = (s) => s.replaceAll(escaped, delim);

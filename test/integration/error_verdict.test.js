@@ -383,9 +383,13 @@ describe("error verdict (@response_healing)", () => {
 		assert.strictEqual(
 			verdict.continue,
 			true,
-			"struck but under MAX_STRIKES → continue with reminder",
+			"struck but under MAX_STRIKES → continue without abandonment",
 		);
-		assert.ok(verdict.reason, "struck turns carry the contract reminder");
+		assert.strictEqual(
+			verdict.reason,
+			undefined,
+			"struck-but-continuing turns carry no reason — failure entries are visible in <log>",
+		);
 	});
 
 	it("reasoning-runaway: ContextExceeded errors accumulate strikes → 499", async () => {
