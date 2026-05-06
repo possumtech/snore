@@ -91,23 +91,32 @@ async function extractWorkspace() {
 }
 
 function buildPrompt() {
-	// Keep the prompt to two registers: task statement + protocol contract.
-	// Behavioral guidance (verify before done, probe the binary, etc.) is
-	// strategy — that belongs to the agent's general training, not this
-	// per-benchmark prompt. See AGENTS.md "Benchmark integrity."
+	// Aligned to the mini-swe-agent SWE-bench reference prompt structure
+	// — verbatim where possible, substituted only for the structural
+	// differences between the benchmarks (issue→task, repo→workspace,
+	// implicit git-diff submission → explicit compile.sh contract). See
+	// AGENTS.md "Benchmark integrity": this stays as protocol-bridging,
+	// not strategy-directing.
 	return [
-		"Reproduce the program in `./executable` from scratch.",
+		"We're currently reproducing the following program from scratch.",
 		"",
-		"Inputs:",
-		"- `./executable` — the compiled binary (executable-only)",
-		"- `./README.md`, `./*.1`, `./COPYING` — documentation",
-		"- `./data/` — runtime data files (if present)",
+		"The compiled binary `./executable` is the reference. You have access",
+		"to its documentation (`./README.md`, `./*.1`, `./COPYING`) and runtime",
+		"data files in `./data/` (if present). The binary itself is",
+		"executable-only — you cannot read or decompile it.",
 		"",
-		"Submission protocol:",
-		"- The eval runs `chmod +x ./compile.sh && ./compile.sh` to",
-		"  build your source, then tests the resulting `./executable`",
-		"  against a behavioral suite. Your submission must include",
-		"  `./compile.sh` and any source files it needs.",
+		"INSTRUCTIONS:",
+		"Now, you're going to reproduce this program on your own. Your session",
+		"has started and you're in the workspace's root directory. Edit all the",
+		"files you need to and run any checks or tests that you want.",
+		"",
+		"The eval will run `chmod +x ./compile.sh && ./compile.sh` to build your",
+		"submission, then test the resulting `./executable` against a behavioral",
+		"suite. Your submission must include `./compile.sh` and any source files",
+		"it needs.",
+		"",
+		"Try to reproduce the binary's observable behavior as faithfully as",
+		"possible.",
 	].join("\n");
 }
 
