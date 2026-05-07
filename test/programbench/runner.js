@@ -13,13 +13,10 @@
  * File ops (`<set>`/`<rm>`) write to host scratchDir; the bind-mount
  * makes them visible inside the container immediately.
  *
- * After the agent finishes, runner runs an eval-aligned acceptance gate
- * against the `task` image — `chmod +x ./compile.sh && ./compile.sh` in
- * the actual environment programbench eval will use. If the gate fails,
- * the runner reports failure regardless of the agent's self-reported
- * status. This catches hallucinated successes where the agent never
- * verified its build cleanly.
+ * Submission goes straight to `programbench eval` for verdict — the
+ * eval IS the verifier; the runner does not pre-judge.
  *
+
  * Usage:
  *   node test/programbench/runner.js --task <instance-id> [--model <alias>]
  *
@@ -79,7 +76,6 @@ const INSTANCE_ID = args.task.replace(/_1776_/g, "__");
 const DOCKER_SLUG = INSTANCE_ID.replace(/__/g, "_1776_");
 const MODEL = args.model || process.env.RUMMY_PROGRAMBENCH_MODEL || "grok";
 const CLEANROOM_IMAGE = `programbench/${DOCKER_SLUG}:task_cleanroom`;
-const TASK_IMAGE = `programbench/${DOCKER_SLUG}:task`;
 
 const runId = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const runRoot = args.out ? args.out : join(RESULTS_DIR, runId);
@@ -309,96 +305,6 @@ async function runAgent(taskMeta) {
 	});
 }
 
-// Acceptance gate: run the eval's exact compile sequence in a fresh
-// container off the `task` image (the same image programbench eval
-// uses). Tells us truthfully whether the agent's submission would
-// build under eval — independent of any "complete" status the agent
-// emitted in its own run.
-async function evalAcceptanceGate() {
-	console.error(`\nacceptance gate: pulling ${TASK_IMAGE}…`);
-	await ensureImage(TASK_IMAGE);
-	const gateContainer = `${containerName}_gate`;
-	console.error(`acceptance gate: building submission in ${TASK_IMAGE}…`);
-	let returncode;
-	let output;
-	try {
-		execFileSync(
-			"docker",
-			[
-				"run",
-				"-d",
-				"--rm",
-				"--network=none",
-				"--name",
-				gateContainer,
-				TASK_IMAGE,
-				"sleep",
-				"60",
-			],
-			{ stdio: "pipe" },
-		);
-		// Replicate eval's wipe + extract pattern.
-		execFileSync(
-			"docker",
-			[
-				"exec",
-				gateContainer,
-				"bash",
-				"-lc",
-				"rm -rf /workspace/* /workspace/.[!.]*",
-			],
-			{ stdio: "pipe" },
-		);
-		const submissionPath = join(runDir, "submission.tar.gz");
-		execFileSync(
-			"docker",
-			["cp", submissionPath, `${gateContainer}:/tmp/submission.tar.gz`],
-			{
-				stdio: "pipe",
-			},
-		);
-		execFileSync(
-			"docker",
-			[
-				"exec",
-				gateContainer,
-				"bash",
-				"-lc",
-				"cd /workspace && tar -xzf /tmp/submission.tar.gz",
-			],
-			{ stdio: "pipe" },
-		);
-		const result = execFileSync(
-			"docker",
-			[
-				"exec",
-				gateContainer,
-				"bash",
-				"-lc",
-				"chmod +x ./compile.sh && ./compile.sh",
-			],
-			{ encoding: "utf8", stdio: "pipe" },
-		);
-		returncode = 0;
-		output = result;
-	} catch (err) {
-		returncode = err.status ?? 1;
-		output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
-	} finally {
-		try {
-			execFileSync("docker", ["rm", "-f", gateContainer], { stdio: "ignore" });
-		} catch {}
-	}
-	if (returncode === 0) {
-		console.error("acceptance gate: ✓ compile.sh succeeded in task image");
-	} else {
-		console.error(
-			`acceptance gate: ✗ compile.sh failed (rc=${returncode}) in task image:\n${output.trim()}`,
-		);
-	}
-	return returncode === 0;
-}
-
 const taskMeta = readTaskMetadata();
 if (taskMeta) {
 	console.error(
@@ -429,7 +335,7 @@ await foldDbIntoWorkspace();
 const submitted = await tarSubmission();
 if (!submitted) process.exit(1);
 
-const gatePassed = await evalAcceptanceGate();
-// Exit reflects truth, not agent's self-report: a passed gate means
-// the submission would compile under programbench eval.
-process.exit(agentExit === 0 && gatePassed ? 0 : 1);
+// The runner does not pre-judge. Submission goes to programbench eval
+// for verdict; the agent's self-reported terminal status is captured
+// in the run audit, not used as a gate.
+process.exit(agentExit);

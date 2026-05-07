@@ -51,6 +51,15 @@ export default class ProjectAgent {
 					attributes: { sourcePath, outcome },
 					soft: SOFT_FAILURE_OUTCOMES.has(outcome),
 				}),
+			onSoftError: ({ runId, loopId, turn, message }) =>
+				hooks.error.log.emit({
+					store: this.#entries,
+					runId,
+					turn,
+					loopId,
+					message,
+					soft: true,
+				}),
 		});
 		this.#entries.loadSchemes(db);
 

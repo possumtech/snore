@@ -23,4 +23,20 @@ describe("AskUser", () => {
 			"What? → Yes",
 		);
 	});
+
+	it("summary caps question and answer separately, preserves arrow", () => {
+		const longQ = "Q".repeat(1000);
+		const longA = "A".repeat(1000);
+		const out = plugin.summary({
+			attributes: { question: longQ, answer: longA },
+		});
+		assert.ok(
+			out.includes(" → "),
+			"arrow separator survives even on huge inputs",
+		);
+		const [head, tail] = out.split(" → ");
+		assert.ok(head.length < longQ.length, "question side capped");
+		assert.ok(tail.length < longA.length, "answer side capped");
+		assert.ok(head.length > 0 && tail.length > 0, "both sides non-empty");
+	});
 });

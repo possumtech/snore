@@ -2,6 +2,13 @@ import slugify from "../sql/functions/slugify.js";
 import { EntryOverflowError, PermissionError } from "./errors.js";
 import encodeSegment from "./pathEncode.js";
 
+// Update entry bodies are promised ≤ 80 chars to clients (run summary
+// payload, model-facing <log> rendering). Mirror of SUMMARY_MAX_CHARS:
+// the boundary chops + emits a soft error so the violation is visible
+// without crashing the run. Lives here because Entries.update is the
+// canonical persistence boundary all callers fund-route through.
+const UPDATE_BODY_MAX = 80;
+
 // SQLite surfaces the CHECK as either err.code === "SQLITE_CONSTRAINT_CHECK"
 // or an Error whose message names the failing column. Both forms appear in
 // the wild depending on the driver build, so we match defensively.
@@ -36,6 +43,7 @@ export default class Entries {
 	#onChanged;
 	#onError;
 	#onFailed;
+	#onSoftError;
 	#schemes = new Map();
 	#schemesLoaded = null;
 	#seq = 0;
@@ -58,11 +66,20 @@ export default class Entries {
 	// the model to recognize as an error — failure encodes only as tiny
 	// JSON metadata indistinguishable from a successful entry. The
 	// callback wires to hooks.error.log.emit (see ProjectAgent).
-	constructor(db, { onChanged = null, onError = null, onFailed = null } = {}) {
+	constructor(
+		db,
+		{
+			onChanged = null,
+			onError = null,
+			onFailed = null,
+			onSoftError = null,
+		} = {},
+	) {
 		this.#db = db;
 		this.#onChanged = onChanged;
 		this.#onError = onError;
 		this.#onFailed = onFailed;
+		this.#onSoftError = onSoftError;
 	}
 
 	// Populate the scheme cache; idempotent, lazy on first need.
@@ -554,6 +571,9 @@ export default class Entries {
 	}
 
 	// update — once-per-turn lifecycle signal; see PLUGINS.md.
+	// Body chopped to UPDATE_BODY_MAX with a soft error fire so clients
+	// always receive ≤ 80 chars and the violation is visible to the model
+	// next turn. Applies to ALL callers — system, plugin, model.
 	async update({
 		runId,
 		turn = 0,
@@ -565,12 +585,24 @@ export default class Entries {
 	}) {
 		if (!runId) throw new Error("update: runId is required");
 		if (body == null) throw new Error("update: body is required");
-		const path = await this.logPath(runId, turn, "update", body);
+		let storedBody = body;
+		if (body.length > UPDATE_BODY_MAX) {
+			storedBody = body.slice(0, UPDATE_BODY_MAX);
+			if (this.#onSoftError) {
+				await this.#onSoftError({
+					runId,
+					turn,
+					loopId,
+					message: "error: YOU MUST keep the update body to <= 80 characters",
+				});
+			}
+		}
+		const path = await this.logPath(runId, turn, "update", storedBody);
 		await this.set({
 			runId,
 			turn,
 			path,
-			body,
+			body: storedBody,
 			state: "resolved",
 			loopId,
 			writer,

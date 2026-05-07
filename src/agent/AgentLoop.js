@@ -687,6 +687,43 @@ export default class AgentLoop {
 
 		const nextTurn = runRow.next_turn;
 
+		// Resolve the owning loop_id BEFORE writing the prompt entry so
+		// it lands with correct loop scope. Active run → reuse the
+		// running loop; otherwise enqueue the next loop and write the
+		// prompt with the new loop's id. Skipping this leaves
+		// run_views.loop_id NULL, which `archivePriorPromptArtifacts`
+		// then sweeps as fork-inherited collateral and the model never
+		// sees the new task.
+		let loopId;
+		if (this.#activeRuns.has(runRow.id)) {
+			// Active runs have exactly one loop at status=102 by the
+			// loops table invariant — trust the contract.
+			const currentLoop = await this.#db.get_current_loop.get({
+				run_id: runRow.id,
+			});
+			loopId = currentLoop.id;
+		} else {
+			const injectLoopSeq = await this.#db.next_loop.get({
+				run_id: runRow.id,
+			});
+			const enqueued = await this.#db.enqueue_loop.get({
+				run_id: runRow.id,
+				sequence: injectLoopSeq.sequence,
+				mode,
+				model: runRow.model,
+				prompt: message,
+				config: JSON.stringify({
+					noRepo,
+					noInteraction,
+					noWeb,
+					noProposals,
+					yolo,
+					temperature: options?.temperature,
+				}),
+			});
+			loopId = enqueued.id;
+		}
+
 		await this.#entries.set({
 			runId: runRow.id,
 			turn: nextTurn,
@@ -694,29 +731,13 @@ export default class AgentLoop {
 			body: message,
 			state: "resolved",
 			attributes: { mode },
+			loopId,
 			writer: "plugin",
 		});
 
 		if (this.#activeRuns.has(runRow.id)) {
 			return { run: runAlias, status: runRow.status, injected: "next_turn" };
 		}
-
-		const injectLoopSeq = await this.#db.next_loop.get({ run_id: runRow.id });
-		await this.#db.enqueue_loop.get({
-			run_id: runRow.id,
-			sequence: injectLoopSeq.sequence,
-			mode,
-			model: runRow.model,
-			prompt: message,
-			config: JSON.stringify({
-				noRepo,
-				noInteraction,
-				noWeb,
-				noProposals,
-				yolo,
-				temperature: options?.temperature,
-			}),
-		});
 
 		const projectId = runRow.project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });

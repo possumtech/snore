@@ -1,4 +1,12 @@
+import { SUMMARY_MAX_CHARS } from "../helpers.js";
 import docs from "./ask_userDoc.js";
+
+// Per-side cap for the "question → answer" summary projection. Splitting
+// before the arrow preserves the structural separator the model uses to
+// read the pair as a unit; a single trailing slice could lose the arrow
+// entirely when either side is large.
+const ARROW = " → ";
+const HALF = Math.floor((SUMMARY_MAX_CHARS - ARROW.length) / 2);
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
 
@@ -68,7 +76,9 @@ export default class AskUser {
 
 	summary(entry) {
 		const { question, answer } = entry.attributes;
-		if (answer) return `${question} → ${answer}`;
-		return question;
+		if (answer) {
+			return `${question.slice(0, HALF)}${ARROW}${answer.slice(0, HALF)}`;
+		}
+		return question.slice(0, SUMMARY_MAX_CHARS);
 	}
 }

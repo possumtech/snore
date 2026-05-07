@@ -331,7 +331,6 @@ extraction adds a hop without separating concerns, it's ceremony
   - **Verification hallucination is universal in US capable models.** grok variants + gfast variants all emit `<update status="200">` despite broken builds. THINK=1 makes them *faster*, not more self-skeptical.
   - **Protocol non-adoption clusters in non-US capable models** (ccp/mmax/qwen). Models emit beautifully structured tool calls in their *own* trained shape; rummy's `<update>` close convention isn't picked up from a single instruction read.
   - **xemma falsifies "openrouter as transport is the issue"** — Google's gemma-4-31b through openrouter adopts the protocol cleanly. The non-US protocol failure is **model-family-specific**, not transport-layer.
-  - **The harness-side acceptance gate is the only mechanism catching hallucinated completion.** Working perfectly across every run.
   - **gemma (local) is the best non-fake performer** — operates on the real task throughout, fails by capacity exhaustion under heavy prompt, not by faking compliance.
 
   **Two orthogonal failure axes (revised after broader sample):**
@@ -677,12 +676,13 @@ extraction adds a hop without separating concerns, it's ceremony
     whitelist override). Cleanroom workspaces typically commit their
     docs to a stub `.git`; the executable stays untracked + `0o111`
     unreadable, so it's invisible to the agent's read tools.
-  - After the agent finishes, runner runs an **acceptance gate**:
-    pulls the `task` image (eval's compile env), extracts the
-    submission tar, runs `chmod +x ./compile.sh && ./compile.sh`.
-    Reports pass/fail. Runner exits non-zero on gate failure even if
-    the agent self-reported success — protects against hallucinated
-    completion.
+  - The runner does not pre-judge the submission. Whatever the agent
+    leaves at `<task>/workspace/` is tarred verbatim into
+    `submission.tar.gz` and goes straight to `programbench eval` for
+    verdict. The agent's self-reported terminal status is captured in
+    the run audit, not used as a gate. Hallucinated completions land
+    in the eval as 0-score data points — that's the measurement, not
+    a failure mode to filter out.
   - Eval (separate step, runs the test suite):
     ```
     npm run test:programbench:eval -- results/<run-id>/
