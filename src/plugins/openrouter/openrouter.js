@@ -34,6 +34,7 @@ export default class OpenRouter {
 		// surface reasoning back to us? Always on — we pay for the tokens,
 		// we keep the telemetry. Orthogonal to RUMMY_THINK (model-side).
 		const body = { model, messages, include_reasoning: true };
+		if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

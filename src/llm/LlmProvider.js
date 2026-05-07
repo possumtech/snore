@@ -1,4 +1,5 @@
 import msg from "../agent/messages.js";
+import { countTokens } from "../agent/tokens.js";
 import {
 	ContextExceededError,
 	classifyTransient,
@@ -8,6 +9,20 @@ import { retryClassified } from "./retry.js";
 
 const LLM_DEADLINE = Number(process.env.RUMMY_LLM_DEADLINE);
 const LLM_MAX_BACKOFF = Number(process.env.RUMMY_LLM_MAX_BACKOFF);
+
+// Padding subtracted from `context_length - prompt_estimate` to absorb
+// tokenizer drift between our chars/RUMMY_TOKEN_DIVISOR estimate and the
+// provider's actual BPE-based count, plus message-envelope overhead the
+// estimate doesn't see (role tokens, separators). Industry typical:
+// 256-1024; smaller wastes budget, larger leaves headroom unused. 256
+// covers normal drift on chars/2 estimates without notable waste.
+const MAX_TOKENS_SAFETY_MARGIN = 256;
+// Floor on derived max_tokens. If prompt eats almost the entire context,
+// we still ask for at least this many output tokens so the model has
+// room to emit a usable terminal `<update>`. Below this and the run is
+// effectively dead; better to fail loudly via the existing context
+// guards than ship with no completion budget.
+const MAX_TOKENS_FLOOR = 1024;
 
 // Per-category retry policies. Gateway/server are bounded short because
 // upstream-down won't recover by waiting; warmup/rate_limit get the full
@@ -55,7 +70,24 @@ export default class LlmProvider {
 			(process.env.RUMMY_TEMPERATURE !== undefined
 				? Number.parseFloat(process.env.RUMMY_TEMPERATURE)
 				: undefined);
-		const resolvedOptions = { ...options, temperature };
+
+		// Derive max_tokens from the model's context window minus the
+		// estimated prompt footprint. Without this, providers fall back
+		// to conservative defaults (a few thousand) and the model's
+		// response truncates mid-`<set>` body before reaching `<update>`,
+		// surfacing as a misleading "no <update>" verdict. The standard
+		// formula `context_length - prompt - safety_margin` is what every
+		// production LLM client converges on.
+		const contextLength = await this.getContextSize(model);
+		const promptEstimate = messages.reduce(
+			(sum, m) => sum + countTokens(m.content),
+			0,
+		);
+		const maxTokens = Math.max(
+			MAX_TOKENS_FLOOR,
+			contextLength - promptEstimate - MAX_TOKENS_SAFETY_MARGIN,
+		);
+		const resolvedOptions = { ...options, temperature, maxTokens };
 
 		const provider = this.#selectProvider(resolvedModel);
 		if (!provider) {

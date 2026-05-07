@@ -38,7 +38,7 @@ describe("LlmProvider", () => {
 	it("completion: throws when no provider matches resolved model", async () => {
 		const db = {
 			get_model_by_alias: {
-				get: async () => ({ actual: "openai/gemma" }),
+				get: async () => ({ actual: "openai/gemma", context_length: 32000 }),
 			},
 		};
 		const provider = new LlmProvider(db, mockHooks([]));
@@ -51,7 +51,7 @@ describe("LlmProvider", () => {
 	it("completion: dispatches to matching provider with resolved model", async () => {
 		const db = {
 			get_model_by_alias: {
-				get: async () => ({ actual: "openai/gemma" }),
+				get: async () => ({ actual: "openai/gemma", context_length: 32000 }),
 			},
 		};
 		let captured;
@@ -77,7 +77,7 @@ describe("LlmProvider", () => {
 		process.env.RUMMY_TEMPERATURE = "0.42";
 		const db = {
 			get_model_by_alias: {
-				get: async () => ({ actual: "openai/gemma" }),
+				get: async () => ({ actual: "openai/gemma", context_length: 32000 }),
 			},
 		};
 		let captured;
@@ -98,7 +98,7 @@ describe("LlmProvider", () => {
 		process.env.RUMMY_TEMPERATURE = "0.5";
 		const db = {
 			get_model_by_alias: {
-				get: async () => ({ actual: "openai/gemma" }),
+				get: async () => ({ actual: "openai/gemma", context_length: 32000 }),
 			},
 		};
 		let captured;
@@ -118,7 +118,7 @@ describe("LlmProvider", () => {
 	it("completion: wraps context-exceeded errors as ContextExceededError", async () => {
 		const db = {
 			get_model_by_alias: {
-				get: async () => ({ actual: "openai/gemma" }),
+				get: async () => ({ actual: "openai/gemma", context_length: 32000 }),
 			},
 		};
 		const fakeProvider = {

@@ -59,6 +59,7 @@ export default class Xai {
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
 		const body = { model, messages };
+		if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

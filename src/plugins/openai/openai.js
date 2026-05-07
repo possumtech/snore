@@ -30,6 +30,7 @@ export default class OpenAi {
 
 	async #completion(messages, model, options = {}) {
 		const body = { model, messages, think: THINK };
+		if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
