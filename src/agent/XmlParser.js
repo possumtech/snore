@@ -114,32 +114,37 @@ function resolveCommand(name, a, rawBody) {
 		return { name, ...a, body, status };
 	}
 
+	// Body shorthand fallback: when the attribute is unset (undefined),
+	// fall back to the trimmed body. Empty-string attrs are preserved
+	// as-is — handlers validate. `||` would conflate the two cases.
+	const fromBody = trimmed === "" ? null : trimmed;
+
 	if (name === "get" || name === "rm") {
-		return { name, ...a, path: a.path || trimmed || null };
+		return { name, ...a, path: a.path ?? fromBody };
 	}
 
 	if (name === "search") {
-		const path = a.path || trimmed || null;
+		const path = a.path ?? fromBody;
 		const results = a.results ? Number(a.results) : null;
 		return { name, ...a, path, results };
 	}
 
 	if (name === "mv" || name === "cp") {
-		return { name, ...a, path: a.path, to: a.to || trimmed || null };
+		return { name, ...a, path: a.path, to: a.to ?? fromBody };
 	}
 
 	if (name === "sh" || name === "env") {
-		const command = a.command || trimmed || null;
+		const command = a.command ?? fromBody;
 		return { name, ...a, command };
 	}
 
 	if (name === "ask_user") {
-		const question = a.question || null;
-		const options = a.options || trimmed || null;
+		const question = a.question ?? null;
+		const options = a.options ?? fromBody;
 		return { name, ...a, question, options };
 	}
 
-	return { name, ...a, body: trimmed || a.body };
+	return { name, ...a, body: trimmed === "" ? a.body : trimmed };
 }
 
 const NAME_CHAR = /[a-zA-Z0-9_]/;

@@ -1,12 +1,20 @@
 // Outcomes that record a failure but don't strike — findings the model
 // adapts to, not contract violations. `not_found` (model acted on an
 // entry that doesn't exist) and `conflict` (SEARCH text didn't match
-// current body) are recoverable: read the new state, try again. Hard
-// outcomes (validation, permission, exit:N) DO strike. Shared between
-// error.js's verdict accumulator (recordedFailed gate) and Entries'
-// auto-failure hook (passes soft=true so error.log.emit skips turn
-// errors increment when the outcome is soft).
-export const SOFT_FAILURE_OUTCOMES = new Set(["not_found", "conflict"]);
+// current body) are recoverable: read the new state, try again.
+// `unparsed` (free text outside any tool tag — comments, "thinking
+// out loud" between tool calls) is non-actionable but not malicious;
+// the empty-turn failure mode is already caught by update plugin's
+// 422 "Missing update", so striking unparsed too is duplicative.
+// Hard outcomes (validation, permission, exit:N) DO strike. Shared
+// between error.js's verdict accumulator (recordedFailed gate) and
+// Entries' auto-failure hook (passes soft=true so error.log.emit
+// skips turn errors increment when the outcome is soft).
+export const SOFT_FAILURE_OUTCOMES = new Set([
+	"not_found",
+	"conflict",
+	"unparsed",
+]);
 
 // Writer tier excluded from scheme.writable_by; see SPEC writer_tiers.
 export class PermissionError extends Error {

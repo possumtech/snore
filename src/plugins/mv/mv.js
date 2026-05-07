@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { buildMerge } from "../../lib/hedberg/merge.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
@@ -92,13 +93,28 @@ export default class Mv {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
+			// Bare-file destination: build a whole-body-replace merge so
+			// set.js #materializeFile (gated on attrs.path + attrs.merge)
+			// writes the source content to disk on accept. Without this
+			// the source rm fired but the destination was never created.
+			// Same shape as cp's bare-file branch.
+			const existingDest = await store.getBody(runId, to);
+			const merge = buildMerge(existingDest, source);
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
 				body,
 				state: "proposed",
-				attributes: { from: path, to, isMove: true, warning },
+				attributes: {
+					from: path,
+					to,
+					isMove: true,
+					warning,
+					path: to,
+					merge,
+					visibility,
+				},
 				loopId,
 			});
 		} else {

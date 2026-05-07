@@ -193,6 +193,160 @@ describe("Handler dispatch", () => {
 			assert.equal(logState.state, "proposed", "bare-file edit is proposed");
 		});
 
+		// Regression: fuzzy-matched edits used to silently no-op at
+		// materialization. #processEdit ran fuzzy and produced a
+		// correct patch, but the stored attrs.merge used the original
+		// (pre-fuzzy) search/replace text. #materializeFile re-applied
+		// via String.replace which only does direct match — search not
+		// found → file unchanged. Now #processEdit also stores the
+		// authoritative patched body in attrs.patched, and
+		// #materializeFile uses it directly.
+		it("fuzzy-matched edits land on materialization (no silent no-op)", async () => {
+			// File body has 4-space indent.
+			const original = "function add(a, b) {\n    return a + b;\n}\n";
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/fuzzy.js",
+				body: original,
+				state: "resolved",
+			});
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const logPath = "log://turn_1/set/src%2Ffuzzy.js";
+			// SEARCH has tab indent (mismatched). Fuzzy matcher should heal.
+			const entry = {
+				scheme: "set",
+				path: logPath,
+				body: "",
+				attributes: {
+					path: "src/fuzzy.js",
+					blocks: [
+						{
+							search: "function add(a, b) {\n\treturn a + b;\n}",
+							replace: "function add(a, b) {\n\treturn a + b + 1;\n}",
+						},
+					],
+				},
+				state: "resolved",
+				resultPath: logPath,
+			};
+			await hooks.tools.dispatch("set", entry, rummy);
+
+			const attrs = await store.getAttributes(RUN_ID, logPath);
+			assert.ok(attrs.patched, "attrs.patched stored");
+			assert.ok(attrs.patched.includes("a + b + 1"), "patched has new content");
+
+			// Fire proposal.accepted to trigger #materializeFile.
+			await hooks.proposal.accepted.emit({
+				runId: RUN_ID,
+				attrs,
+				db: tdb.db,
+				entries: store,
+				path: logPath,
+				projectRoot: null,
+			});
+
+			const fileBody = await store.getBody(RUN_ID, "src/fuzzy.js");
+			assert.ok(
+				fileBody.includes("a + b + 1"),
+				`materialization produced patched body, got: ${fileBody}`,
+			);
+		});
+
+		// Regression: mv/cp from bare-file to bare-file used to materialize
+		// the destination only for cp (which built a merge attribute);
+		// mv's proposal omitted both `path: to` and `merge`, so
+		// #materializeFile's gate skipped it. mv's #onAccepted rm'd the
+		// source, leaving no trace of the file. Both now build a
+		// whole-body-replace merge that flows through the shared
+		// materializer; visibility= flows with the proposal too.
+		it("bare→bare mv materializes destination and honors visibility", async () => {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/old_name.js",
+				body: "const x = 1;\n",
+				state: "resolved",
+			});
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const logPath = "log://turn_1/mv/src%2Fold_name.js";
+			const entry = {
+				scheme: "mv",
+				path: logPath,
+				body: "",
+				attributes: {
+					path: "src/old_name.js",
+					to: "src/new_name.js",
+					visibility: "summarized",
+				},
+				state: "resolved",
+				resultPath: logPath,
+			};
+			await hooks.tools.dispatch("mv", entry, rummy);
+
+			const attrs = await store.getAttributes(RUN_ID, logPath);
+			await hooks.proposal.accepted.emit({
+				runId: RUN_ID,
+				attrs,
+				db: tdb.db,
+				entries: store,
+				path: logPath,
+				projectRoot: null,
+			});
+
+			const newBody = await store.getBody(RUN_ID, "src/new_name.js");
+			assert.equal(newBody, "const x = 1;\n", "destination materialized");
+			const oldBody = await store.getBody(RUN_ID, "src/old_name.js");
+			assert.equal(oldBody, null, "source removed");
+			const newState = await store.getState(RUN_ID, "src/new_name.js");
+			assert.equal(newState.visibility, "summarized", "visibility honored");
+		});
+
+		it("bare→bare cp materializes destination and honors visibility", async () => {
+			await store.set({
+				runId: RUN_ID,
+				turn: 1,
+				path: "src/source.js",
+				body: "const y = 2;\n",
+				state: "resolved",
+			});
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const logPath = "log://turn_1/cp/src%2Fsource.js";
+			const entry = {
+				scheme: "cp",
+				path: logPath,
+				body: "",
+				attributes: {
+					path: "src/source.js",
+					to: "src/copy.js",
+					visibility: "archived",
+				},
+				state: "resolved",
+				resultPath: logPath,
+			};
+			await hooks.tools.dispatch("cp", entry, rummy);
+
+			const attrs = await store.getAttributes(RUN_ID, logPath);
+			await hooks.proposal.accepted.emit({
+				runId: RUN_ID,
+				attrs,
+				db: tdb.db,
+				entries: store,
+				path: logPath,
+				projectRoot: null,
+			});
+
+			const copyBody = await store.getBody(RUN_ID, "src/copy.js");
+			assert.equal(copyBody, "const y = 2;\n", "destination materialized");
+			const srcBody = await store.getBody(RUN_ID, "src/source.js");
+			assert.equal(srcBody, "const y = 2;\n", "source preserved");
+			const copyState = await store.getState(RUN_ID, "src/copy.js");
+			assert.equal(copyState.visibility, "archived", "visibility honored");
+		});
+
 		it("two edits to the same file produce two independent proposals", async () => {
 			await store.set({
 				runId: RUN_ID,

@@ -82,6 +82,7 @@ export default class Cp {
 					warning,
 					path: to,
 					merge,
+					visibility,
 				},
 				loopId,
 			});

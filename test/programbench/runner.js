@@ -1,32 +1,37 @@
 /**
- * ProgramBench runner for Rummy. Single-task end-to-end:
- *   1. Pull `programbench/<task>:task_cleanroom` if missing.
- *   2. Extract /workspace into a scratch project root, preserving
- *      the executable's no-read permission.
- *   3. Run rummy-cli (act mode, noWeb, gemma) against the scratch
- *      dir with a task-shaped prompt.
- *   4. After the agent finishes, fold the run's `rummy.db` into the
- *      workspace and tar everything except the executable (which
- *      the eval rebuilds) and `.git` (clean stub). The submission
- *      includes the audit trail so a public reviewer can replay
- *      the agent's reasoning, not just inspect its output.
+ * ProgramBench runner for Rummy.
  *
- * Deviation from canonical mini-swe-agent harness: the agent runs on
- * host, not inside the cleanroom container, and operates the scratch
- * dir directly (no docker exec). `<sh>` therefore runs on the host
- * shell. Internet exfiltration is gated only by `RUMMY_NO_WEB=1`
- * (drops the `<search>` tool); the host does have generic network
- * reach. Documented exception per AGENTS.md ProgramBench note.
+ * Aligned with the upstream usage guide
+ * (https://github.com/facebookresearch/programbench/blob/main/docs/README.md):
+ * agent runs against the `task_cleanroom` image with `--network=none`;
+ * submission is the workspace's produced codebase as `submission.tar.gz`;
+ * eval runs the same `compile.sh` contract in the `task` image.
+ *
+ * Architecture: agent process lives on host (LLM API needs network).
+ * Tool execution (`<sh>`/`<env>`) is proxied via `docker exec` into the
+ * `task_cleanroom` container which is bind-mounted to host scratchDir.
+ * File ops (`<set>`/`<rm>`) write to host scratchDir; the bind-mount
+ * makes them visible inside the container immediately.
+ *
+ * After the agent finishes, runner runs an eval-aligned acceptance gate
+ * against the `task` image — `chmod +x ./compile.sh && ./compile.sh` in
+ * the actual environment programbench eval will use. If the gate fails,
+ * the runner reports failure regardless of the agent's self-reported
+ * status. This catches hallucinated successes where the agent never
+ * verified its build cleanly.
  *
  * Usage:
- *   node test/programbench/runner.js --task <task-image-slug>
+ *   node test/programbench/runner.js --task <instance-id> [--model <alias>]
  *
- * Example:
- *   node test/programbench/runner.js \
- *     --task abishekvashok_1776_cmatrix.5c082c6
+ * Examples:
+ *   node test/programbench/runner.js --task tomnomnom__gron.88a6234 --model grok
+ *   node test/programbench/runner.js --task tomnomnom_1776_gron.88a6234 --model grok
+ *
+ * Either form of slug is accepted; internally we normalize to canonical
+ * (`__`) for task data lookup and to Docker (`_1776_`) for image names.
  */
 import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +39,24 @@ import { parseArgs } from "node:util";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RESULTS_DIR = join(__dirname, "results");
+const PB_VENV = join(__dirname, ".venv");
+const TASKS_DATA_DIR = join(
+	PB_VENV,
+	"lib",
+	`python${detectPythonMajorMinor()}`,
+	"site-packages",
+	"programbench",
+	"data",
+	"tasks",
+);
+
+function detectPythonMajorMinor() {
+	const lib = join(PB_VENV, "lib");
+	if (!existsSync(lib)) return "python3.13";
+	const dirs = execSync(`ls ${lib} 2>/dev/null`).toString().trim().split("\n");
+	const match = dirs.find((d) => /^python\d+\.\d+$/.test(d));
+	return match || "python3.13";
+}
 
 const { values: args } = parseArgs({
 	options: {
@@ -45,45 +68,55 @@ const { values: args } = parseArgs({
 });
 
 if (!args.task) {
-	console.error("usage: node runner.js --task <task-image-slug>");
+	console.error("usage: node runner.js --task <instance-id> [--model <alias>]");
 	process.exit(2);
 }
 
-const TASK = args.task;
-const MODEL = args.model || process.env.RUMMY_PROGRAMBENCH_MODEL || "gemma";
-const IMAGE = `programbench/${TASK}:task_cleanroom`;
+// Slug normalization. Programbench's data dir + canonical instance id
+// uses `__`; Docker image names use `_1776_` (Docker disallows `__`).
+// Accept either form from the user.
+const INSTANCE_ID = args.task.replace(/_1776_/g, "__");
+const DOCKER_SLUG = INSTANCE_ID.replace(/__/g, "_1776_");
+const MODEL = args.model || process.env.RUMMY_PROGRAMBENCH_MODEL || "grok";
+const CLEANROOM_IMAGE = `programbench/${DOCKER_SLUG}:task_cleanroom`;
+const TASK_IMAGE = `programbench/${DOCKER_SLUG}:task`;
 
 const runId = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-const runDir = args.out ? args.out : join(RESULTS_DIR, runId, taskKey(TASK));
-// Layout mirrors tbench's diag-dir convention: workspace/ holds the
-// agent's project root (its `cwd`); agent/ holds the run's audit
-// artifacts (DB, future log files). Keeps admin files out of the
-// agent's filesystem-traversal range — `<sh>cd ..</sh>` from workspace
-// lands one dir above admin, not co-located with it.
+const runRoot = args.out ? args.out : join(RESULTS_DIR, runId);
+// Layout matches upstream: <run-root>/<instance>/submission.tar.gz.
+// Sibling `agent/` and `workspace/` dirs are admin/scratch — eval
+// ignores them, they exist for our audit + replay.
+const runDir = join(runRoot, INSTANCE_ID);
 const scratchDir = join(runDir, "workspace");
 const adminDir = join(runDir, "agent");
-
-function taskKey(slug) {
-	// Convert dockerhub `_1776_` back to canonical `__` instance id.
-	return slug.replace(/_1776_/, "__");
-}
 
 function sh(cmd, opts = {}) {
 	return execSync(cmd, { encoding: "utf8", stdio: "pipe", ...opts });
 }
 
-async function ensureImage() {
-	const have = sh(`docker images -q ${IMAGE}`).trim();
+function readTaskMetadata() {
+	const yamlPath = join(TASKS_DATA_DIR, INSTANCE_ID, "task.yaml");
+	if (!existsSync(yamlPath)) return null;
+	const text = readFileSync(yamlPath, "utf8");
+	const meta = {};
+	for (const line of text.split("\n")) {
+		const m = line.match(/^([a-z_]+):\s*(.+)$/);
+		if (m) meta[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+	}
+	return meta;
+}
+
+async function ensureImage(image) {
+	const have = sh(`docker images -q ${image}`).trim();
 	if (have) return;
-	console.error(`pulling ${IMAGE}…`);
-	execSync(`docker pull ${IMAGE}`, { stdio: "inherit" });
+	console.error(`pulling ${image}…`);
+	execSync(`docker pull ${image}`, { stdio: "inherit" });
 }
 
 async function extractWorkspace() {
 	await fs.mkdir(scratchDir, { recursive: true });
 	await fs.mkdir(adminDir, { recursive: true });
-	// Create a stopped container so we can `docker cp` /workspace out.
-	const cid = sh(`docker create ${IMAGE}`).trim();
+	const cid = sh(`docker create ${CLEANROOM_IMAGE}`).trim();
 	try {
 		execSync(`docker cp ${cid}:/workspace/. ${scratchDir}/`, {
 			stdio: "inherit",
@@ -97,17 +130,9 @@ async function extractWorkspace() {
 	if (existsSync(exePath)) await fs.chmod(exePath, 0o111);
 }
 
-// Container name: per-run unique, sweep-safe. Docker name regex is
-// [a-zA-Z0-9_.-]; sanitize the run-id and task slug to fit.
-const containerName = `programbench_${runId.replace(/[^a-zA-Z0-9_.-]/g, "_")}_${taskKey(TASK).replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
+const containerName = `programbench_${runId.replace(/[^a-zA-Z0-9_.-]/g, "_")}_${INSTANCE_ID.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
 
 async function startSandbox() {
-	// Long-lived cleanroom container with no network access. Bind-mount
-	// the host scratchDir → /workspace so the agent's host-side file ops
-	// and the container's docker-exec view stay in sync. `--network=none`
-	// satisfies ProgramBench's "agent must not have internet during
-	// inference" contract at the kernel level — a tool-list filter
-	// (RUMMY_NO_WEB) can't enforce this; the network namespace can.
 	execFileSync(
 		"docker",
 		[
@@ -121,7 +146,7 @@ async function startSandbox() {
 			`${scratchDir}:/workspace`,
 			"-w",
 			"/workspace",
-			IMAGE,
+			CLEANROOM_IMAGE,
 			"sleep",
 			"infinity",
 		],
@@ -135,64 +160,39 @@ async function stopSandbox() {
 	} catch {}
 }
 
-function buildPrompt() {
-	// Aligned to the mini-swe-agent SWE-bench reference prompt structure
-	// — verbatim where possible, substituted only for the structural
-	// differences between the benchmarks (issue→task, repo→workspace,
-	// implicit git-diff submission → explicit compile.sh contract). See
-	// AGENTS.md "Benchmark integrity": this stays as protocol-bridging,
-	// not strategy-directing.
-	return [
-		"We're currently reproducing the following program from scratch.",
-		"",
-		"The compiled binary `./executable` is the reference. You have access",
-		"to its documentation (`./README.md`, `./*.1`, `./COPYING`) and runtime",
-		"data files in `./data/` (if present). The binary itself is",
-		"executable-only — you cannot read or decompile it.",
-		"",
-		"INSTRUCTIONS:",
-		"Now, you're going to reproduce this program on your own. Your session",
-		"has started and you're in the workspace's root directory. Edit all the",
-		"files you need to and run any checks or tests that you want.",
-		"",
-		"The eval will run `chmod +x ./compile.sh && ./compile.sh` to build your",
-		"submission, then test the resulting `./executable` against a behavioral",
-		"suite. Your submission must include `./compile.sh` and any source files",
-		"it needs.",
-		"",
-		"Try to reproduce the binary's observable behavior as faithfully as",
-		"possible.",
-	].join("\n");
+// Prompt template lives in prompt.md so it's collaboratively editable
+// without code edits. `{{orientation}}` is the only template variable —
+// the conditional language/repo line is built here because simple
+// {{var}} substitution can't gracefully drop a sentence when fields
+// are missing in task.yaml.
+const PROMPT_TEMPLATE = readFileSync(join(__dirname, "prompt.md"), "utf8");
+
+function buildPrompt(taskMeta) {
+	const language = taskMeta?.language;
+	const repository = taskMeta?.repository;
+	const langLine = language
+		? `The reference is implemented in ${language}.`
+		: "";
+	const repoLine = repository
+		? `Upstream repository: https://github.com/${repository}.`
+		: "";
+	const orientation = [langLine, repoLine].filter(Boolean).join(" ");
+	return PROMPT_TEMPLATE.replace("{{orientation}}", orientation).trimEnd();
 }
 
 async function listProducedFiles() {
-	// Tar EVERYTHING in workspace except the original binary and the
-	// (clean) git stub. The agent may reference docs / data / man
-	// pages as part of its produced codebase (e.g., installing the
-	// man page in a Makefile target), so excluding inputs would risk
-	// shipping a submission that fails to build for missing assets.
-	// The eval rebuilds from the tar — extras don't hurt; missing
-	// files do.
 	const exclude = new Set(["executable", ".git"]);
 	const all = await fs.readdir(scratchDir);
 	return all.filter((name) => !exclude.has(name));
 }
 
 async function foldDbIntoWorkspace() {
-	// Copy rummy_programbench.db into the workspace so the submission
-	// tar contains the agent's full reasoning trace alongside the
-	// produced codebase. Public reviewers can `npm run dev:digest`
-	// against the extracted DB to see every turn the agent took.
 	const srcDb = join(adminDir, "rummy_programbench.db");
 	if (!existsSync(srcDb)) return;
 	const dstDb = join(scratchDir, "rummy_programbench.db");
-	// Use sqlite3 .backup so the copy is consistent even if the writer
-	// hasn't fully flushed WAL (matches dev:digest's pattern).
 	try {
 		execFileSync("sqlite3", [srcDb, `.backup ${dstDb}`], { stdio: "pipe" });
 	} catch {
-		// Fallback to plain copy if sqlite3 is unavailable; WAL may be
-		// missed but the main DB still has most data.
 		await fs.copyFile(srcDb, dstDb);
 	}
 }
@@ -204,44 +204,44 @@ async function tarSubmission() {
 		return false;
 	}
 	const submissionPath = join(runDir, "submission.tar.gz");
-	const args = ["-czf", submissionPath, "-C", scratchDir, ...produced];
-	execFileSync("tar", args, { stdio: "inherit" });
+	const tarArgs = ["-czf", submissionPath, "-C", scratchDir, ...produced];
+	execFileSync("tar", tarArgs, { stdio: "inherit" });
 	console.error(`wrote ${submissionPath}`);
 	return true;
 }
 
-async function runAgent() {
+async function runAgent(taskMeta) {
 	const env = {
 		...process.env,
-		RUMMY_PROMPT: buildPrompt(),
+		RUMMY_PROMPT: buildPrompt(taskMeta),
 		RUMMY_MODEL: MODEL,
 		RUMMY_MODE: "act",
 		RUMMY_NO_WEB: "1",
 		RUMMY_YOLO: "1",
-		// Per-run DB pinned to the run dir so `npm run dev:digest <path>`
-		// works mid-run for turn-by-turn observation, and so the file
-		// can be folded into the submission tar after the run for a
-		// fully-transparent record of the agent's reasoning trace.
 		RUMMY_DB_PATH: join(adminDir, "rummy_programbench.db"),
-		// Route yolo's <sh>/<env> exec through the per-task cleanroom
-		// container. Inside the container the agent has no network reach
-		// (--network=none) — required by ProgramBench. File ops continue
-		// to operate on the host scratchDir because the bind-mount keeps
-		// host and container views in sync.
+		// `--user` aligns container UID/GID with host so files created
+		// in the container (e.g. `<sh>touch src/foo.go</sh>`) are
+		// writable by the host process. Without this, container default
+		// is root → host's `set.js #materializeFile` writeFile gets
+		// EACCES on those files and the loop crashes mid-turn.
 		RUMMY_SHELL_ARGV: JSON.stringify([
 			"docker",
 			"exec",
+			"--user",
+			`${process.getuid()}:${process.getgid()}`,
 			"--workdir",
 			"/workspace",
 			containerName,
 			"bash",
 			"-lc",
 		]),
-		// Project surface: docs + data only. The executable is excluded
-		// from ingestion (perms `---x--x--x` would fail file reads); the
-		// model probes its behavior via `<sh>./executable …` instead.
-		// `.git` is also excluded (clean stub, but no benchmark value).
-		RUMMY_PROJECT_FILES: "README.md,COPYING,*.1,data/**",
+		// No RUMMY_PROJECT_FILES override: the default git-tracked-files
+		// scan picks up the workspace's actual docs (README.mkd, LICENSE,
+		// ADVANCED.mkd, etc.). The executable is left out by perms
+		// (0o111 unreadable) and by being untracked in the cleanroom's
+		// .git stub. Whitelisting `README.md,COPYING,*.1` (the prior
+		// hardcoded list) was non-portable across tasks — gron has
+		// `.mkd` not `.md`, no `COPYING`, no `*.1`.
 	};
 	const cliBin = join(__dirname, "..", "..", "src", "plugins", "cli", "bin.js");
 	return new Promise((resolve, reject) => {
@@ -255,19 +255,127 @@ async function runAgent() {
 	});
 }
 
-await ensureImage();
+// Acceptance gate: run the eval's exact compile sequence in a fresh
+// container off the `task` image (the same image programbench eval
+// uses). Tells us truthfully whether the agent's submission would
+// build under eval — independent of any "complete" status the agent
+// emitted in its own run.
+async function evalAcceptanceGate() {
+	console.error(`\nacceptance gate: pulling ${TASK_IMAGE}…`);
+	await ensureImage(TASK_IMAGE);
+	const gateContainer = `${containerName}_gate`;
+	console.error(`acceptance gate: building submission in ${TASK_IMAGE}…`);
+	let returncode;
+	let output;
+	try {
+		execFileSync(
+			"docker",
+			[
+				"run",
+				"-d",
+				"--rm",
+				"--network=none",
+				"--name",
+				gateContainer,
+				TASK_IMAGE,
+				"sleep",
+				"60",
+			],
+			{ stdio: "pipe" },
+		);
+		// Replicate eval's wipe + extract pattern.
+		execFileSync(
+			"docker",
+			[
+				"exec",
+				gateContainer,
+				"bash",
+				"-lc",
+				"rm -rf /workspace/* /workspace/.[!.]*",
+			],
+			{ stdio: "pipe" },
+		);
+		const submissionPath = join(runDir, "submission.tar.gz");
+		execFileSync(
+			"docker",
+			["cp", submissionPath, `${gateContainer}:/tmp/submission.tar.gz`],
+			{
+				stdio: "pipe",
+			},
+		);
+		execFileSync(
+			"docker",
+			[
+				"exec",
+				gateContainer,
+				"bash",
+				"-lc",
+				"cd /workspace && tar -xzf /tmp/submission.tar.gz",
+			],
+			{ stdio: "pipe" },
+		);
+		const result = execFileSync(
+			"docker",
+			[
+				"exec",
+				gateContainer,
+				"bash",
+				"-lc",
+				"chmod +x ./compile.sh && ./compile.sh",
+			],
+			{ encoding: "utf8", stdio: "pipe" },
+		);
+		returncode = 0;
+		output = result;
+	} catch (err) {
+		returncode = err.status ?? 1;
+		output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+	} finally {
+		try {
+			execFileSync("docker", ["rm", "-f", gateContainer], { stdio: "ignore" });
+		} catch {}
+	}
+	if (returncode === 0) {
+		console.error("acceptance gate: ✓ compile.sh succeeded in task image");
+	} else {
+		console.error(
+			`acceptance gate: ✗ compile.sh failed (rc=${returncode}) in task image:\n${output.trim()}`,
+		);
+	}
+	return returncode === 0;
+}
+
+const taskMeta = readTaskMetadata();
+if (taskMeta) {
+	console.error(
+		`task: ${INSTANCE_ID} (${taskMeta.language || "?"}, ${taskMeta.repository || "?"})`,
+	);
+} else {
+	console.error(
+		`task: ${INSTANCE_ID} (no task.yaml found — programbench data may not be installed)`,
+	);
+}
+
+await ensureImage(CLEANROOM_IMAGE);
 await extractWorkspace();
 console.error(`workspace ready at ${scratchDir}`);
 await startSandbox();
 console.error(`sandbox started: ${containerName} (--network=none)`);
-let exitCode;
+
+let agentExit;
 try {
-	exitCode = await runAgent();
+	agentExit = await runAgent(taskMeta);
 } finally {
 	await stopSandbox();
 	console.error(`sandbox stopped: ${containerName}`);
 }
-console.error(`rummy exited with code ${exitCode}`);
+console.error(`rummy exited with code ${agentExit}`);
+
 await foldDbIntoWorkspace();
-await tarSubmission();
-process.exit(exitCode);
+const submitted = await tarSubmission();
+if (!submitted) process.exit(1);
+
+const gatePassed = await evalAcceptanceGate();
+// Exit reflects truth, not agent's self-report: a passed gate means
+// the submission would compile under programbench eval.
+process.exit(agentExit === 0 && gatePassed ? 0 : 1);

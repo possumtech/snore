@@ -205,15 +205,57 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(result.body.includes("y\nz"));
 	});
 
-	it("glob with line/limit fails with validation outcome", async () => {
-		const store = makeStore([]);
+	// Regression: body content alongside line/limit on a single path
+	// used to be rejected as a "body filter" pattern. Models often
+	// pack explanatory text into the body tag — that's not a filter
+	// signal for slicing, just XML noise on a single path.
+	it("body content with line/limit on single path slices normally", async () => {
+		const body = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join(
+			"\n",
+		);
+		const store = makeStore([
+			{ path: "src/agent/AgentLoop.js", body, tokens: 200 },
+		]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ path: "src/**/*.js", line: "1", limit: "10" });
+		const entry = makeEntry({
+			line: "1",
+			limit: "5",
+			body: "looking for the imports",
+		});
 
 		await plugin.handler(entry, rummy);
 
-		assert.strictEqual(store.upserted[0].state, "failed");
-		assert.strictEqual(store.upserted[0].outcome, "validation");
+		assert.strictEqual(store.upserted.length, 1);
+		const result = store.upserted[0];
+		assert.strictEqual(result.state, "resolved");
+		assert.ok(result.body.includes("[lines 1–5 / 50 total]"));
+		assert.ok(result.body.includes("line 1"));
+	});
+
+	// Multi-match line/limit: emit one sliced section per match. Per
+	// getDoc, "line/limit works on any scheme" — the doc doesn't
+	// restrict to single targets. Glob + line/limit gives the model a
+	// way to scan the head of every match in one query.
+	it("glob with line/limit emits one slice section per match", async () => {
+		const body1 = Array.from({ length: 30 }, (_, i) => `a${i + 1}`).join("\n");
+		const body2 = Array.from({ length: 30 }, (_, i) => `b${i + 1}`).join("\n");
+		const store = makeStore([
+			{ path: "src/a.js", body: body1, tokens: 100 },
+			{ path: "src/b.js", body: body2, tokens: 100 },
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({ path: "src/*.js", line: "1", limit: "3" });
+
+		await plugin.handler(entry, rummy);
+
+		assert.strictEqual(store.upserted.length, 1);
+		const result = store.upserted[0];
+		assert.strictEqual(result.state, "resolved");
+		assert.ok(result.body.includes("src/a.js"));
+		assert.ok(result.body.includes("src/b.js"));
+		assert.ok(result.body.includes("a1\na2\na3"));
+		assert.ok(result.body.includes("b1\nb2\nb3"));
+		assert.strictEqual(result.attributes.matchCount, 2);
 	});
 
 	it("not found with line/limit resolves with not-found message", async () => {

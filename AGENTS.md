@@ -286,6 +286,165 @@ extraction adds a hop without separating concerns, it's ceremony
 
 ## Open Items
 
+- [ ] **Programbench prompt iteration — model behavior matrix
+  experiment.** In flight 2026-05-06/07. Iterating on
+  `test/programbench/prompt.md` (extracted to a flat file for
+  collaborative editing, runner.js does `{{orientation}}` substitution
+  for language/repo from task.yaml). Current prompt is the user's
+  "radical refactor" with five `### YOU MUST` workflow steps:
+  Draft SPEC.md → Design unit/integration/e2e tests → Modularize
+  with tag interpolation → Iterate against suite → Verify clean
+  compile. Single task: `tomnomnom__gron.88a6234`.
+
+  **Matrix runs on `gron` task with the radical-refactor prompt:**
+
+  | Model (alias) | Status | Turns | Cost | Result |
+  |---|---|---|---|---|
+  | grok (grok-4-1-fast-non-reasoning) | 200 | 14 | $0.06 | gate ✗ — `ParseStatements` redeclared. Hallucinated done. |
+  | grokR (grok-4-1-fast-reasoning) | 200 | 16 | $0.18 | gate ✗ — `#` in Go from over-literal tag interpolation. Reasoning didn't fix self-skepticism. |
+  | gfast (gemini-3.1-flash-lite-preview) | 200 | 17 | $0.05 | gate ✗ — no go.mod. Wrote SPEC.md as `known://spec/gron` (DB, not file). Used memory primitives. |
+  | gemma (local macher.gguf) | 499 | 30 | $0 | strike abandon — output-budget exhaustion under 5-step volume; emitting multi-file source per turn, hit max_tokens mid-emission, never reached `<update>`. Was *operating on the real task* throughout. |
+  | grok+THINK=1 | 200 | 9 | $0.035 | gate ✗. Faster, same hallucination. |
+  | gfast+THINK=1 | 200 | 10 | $0.027 | gate ✗ — unused import. Same hallucination, faster. |
+  | ccp (deepseek-v4-flash) | 499 | 3-5 | ~$0.002 | strike abandon ×3 runs. Emits well-formed `<get>`/`<set>` but inconsistently closes with `<update>`. Reasoning_content shows model planning task substantively without acknowledging the rejection error visible in its packet. **Knows the protocol (T2 proved it); doesn't integrate compliance with action-emission.** |
+  | ibm (granite-4.1-8b) | 200 | 3 | $0.001 | gate ✗. Answered the persona's France/capital example literally — emitted "Paris". Disqualifying: can't generalize from `Example:` blocks. |
+  | kimi (moonshotai/kimi-k2.6) | 499 | 16 | $0.42 | strike abandon. Most expensive run by far (30K reasoning tokens). Real artifacts produced (SPEC.md + testdata/ with 6 captured fixtures). Stalled in late turns then loop-detector fired. |
+  | mmax (minimax-m2.7) | 499 | 4 | $0.007 | strike abandon. Same protocol non-adoption as ccp. |
+  | qwen (qwen3.6-plus) | 499 | 6 | $0.02 | strike abandon. Has reasoning (3K tokens) but still hits protocol wall. |
+  | xemma (gemma-4-31b-it via openrouter) | running 30+ | $? | running. Strong showing — methodical workflow, real testdata captures, currently running `go test`. **Adopts protocol cleanly through openrouter** — falsifies "openrouter is the problem." |
+
+  **Pattern across runs:**
+  - **Verification hallucination is universal in US capable models.** grok variants + gfast variants all emit `<update status="200">` despite broken builds. THINK=1 makes them *faster*, not more self-skeptical.
+  - **Protocol non-adoption clusters in non-US capable models** (ccp/mmax/qwen). Models emit beautifully structured tool calls in their *own* trained shape; rummy's `<update>` close convention isn't picked up from a single instruction read.
+  - **xemma falsifies "openrouter as transport is the issue"** — Google's gemma-4-31b through openrouter adopts the protocol cleanly. The non-US protocol failure is **model-family-specific**, not transport-layer.
+  - **The harness-side acceptance gate is the only mechanism catching hallucinated completion.** Working perfectly across every run.
+  - **gemma (local) is the best non-fake performer** — operates on the real task throughout, fails by capacity exhaustion under heavy prompt, not by faking compliance.
+
+  **Two orthogonal failure axes (revised after broader sample):**
+
+  1. **Task-oriented vs protocol-rejecting** — does the model
+     adopt rummy's protocol and operate on the actual task?
+  2. **Self-skeptical vs self-confident-at-verify** — does the
+     model verify its work before declaring done, or trust its
+     own narrative?
+
+  Mapping the matrix:
+
+  | Model | Task-oriented? | Self-skeptical? | Result |
+  |---|---|---|---|
+  | grok-fast | ✓ | ✗ | Real impl, hallucinated verify |
+  | grokR | ✓ | ✗ | Real impl with bugs, hallucinated verify |
+  | gfast | ✓ (partial — SPEC in DB) | ✗ | Hallucinated verify |
+  | gemma | ✓ | ✓ | Capacity-bound; ran out before completing |
+  | xemma | ✓ | ✓ | **Best run** — actually iterating on test failures (80+ turns) |
+  | kimi | ✓ | ✗ | Stalled then strike-abandoned |
+  | glm | ✓ (partial) | ? | Every-other-turn protocol gap; uses memory primitives |
+  | ccp / mmax / qwen | ✗ | n/a | Never adopted protocol; emit own trained tool shape |
+  | ibm/granite | n/a | n/a | Confused example with task ("Paris") |
+
+  **grok-fast belongs in the task-oriented camp with gemma**, not
+  with the protocol-rejecters. Failure mode is verification
+  hallucination, separate from refusal to engage with the task.
+  Cost-efficiency: $0.06 producing a near-working submission vs
+  kimi's $0.42 producing strike-abandon.
+
+  **The "task-oriented + self-skeptical" cell** (gemma + xemma) is
+  the only cell that produces credible engagement. Both are gemma
+  family. Both are instruction-tuned without aggressive
+  tool-call-format RLHF. The hypothesis: **gemma's lineage is
+  uniquely calibrated for general tool-following** rather than for
+  any specific tool-call format, which keeps it amenable to
+  rummy's idiosyncratic XML conventions. xemma (gemma-4-31b
+  through openrouter) confirms this isn't a local-vs-cloud
+  artifact — it's the model family.
+
+  **Capable models trained on tool use have priors about tool-call
+  format that compete with prompt instructions.** RLHF on
+  function-calling, on Anthropic's `<tool_use>`, on OpenAI's JSON
+  schema, on Gemini's structured output, on Qwen's function-call
+  schema — produces strong priors that prompt-side instruction
+  can't fully override. The pattern is roughly inverted-U: models
+  with no tool-RLHF (small open weights) and models trained for
+  *general* tool-following (gemma family) sit at the bottom and
+  top of the curve respectively, both amenable to rummy. The
+  middle (specifically tool-RLHF'd models like Qwen, DeepSeek,
+  Minimax) defects to its trained shape and rejects rummy's.
+
+  **In-bounds prompt has hit its ceiling.** Out-of-bounds (per
+  AGENTS.md "Benchmark integrity") would be runner-level enforcement:
+  refuse-to-tar without a clean compile, or loop-on-fail with stderr
+  fed back. Both crossing the line we set. Also out-of-bounds: a
+  per-model protocol-adaptation layer in `rummy.web` translating
+  rummy's protocol to/from each model's trained tool-call shape.
+
+  **Files in flight:**
+  - `test/programbench/prompt.md` — collaboratively-edited prompt
+  - `test/programbench/runner.js` — substitutes `{{orientation}}`
+  - `.env`'s `RUMMY_MODEL_*` aliases name the matrix participants
+
+  **Forensic target for next session:** xemma's 80+-turn run dir
+  (`test/programbench/results/2026-05-07T03-51-59/`) regardless of
+  where it ends up. Real iterate-against-tests workflow execution.
+  Look at: how the test-fix loop actually worked turn-by-turn,
+  what triggered the runner_test.go compilation issue, what the
+  agent did to recover, whether memory primitives were used,
+  total token economy. This is the richest dataset in the matrix.
+
+  **Hypothesis for next prompt iteration: scale-specification
+  over process-prescription.** The current heavy "YOU MUST do X"
+  prompt reads as a checklist to capable models — they produce a
+  token of each step and tick the boxes. Replacing process
+  instructions with scale anchors might force the model to
+  *infer* what "enough work" looks like rather than satisfying
+  a checklist:
+
+  - Process: "YOU MUST design unit, integration, and e2e tests"
+    → model writes one of each, declares done
+  - Scale: "The eval runs ~200 behavioral tests across every
+    documented flag/mode/option. Real CLI tools at this caliber
+    expose 10-15 flags; submissions that handle only the happy
+    path fail systematically." → model has to figure out what
+    200-behavior coverage looks like, which is harder to satisfy
+    with token effort
+
+  Sketch (~150 words vs current ~400):
+
+  ```
+  We're reproducing this program from scratch. The compiled
+  binary `./executable` is the reference; you have its docs but
+  cannot read its bytes.
+
+  The eval rebuilds your submission via
+  `chmod +x ./compile.sh && ./compile.sh` from a clean
+  container, then runs ~200 behavioral tests against the
+  resulting binary. Tests cover every flag, mode, and option
+  the documentation names.
+
+  Real CLI tools at this caliber expose 10–15 flags.
+  Submissions that implement only the happy path fail every
+  test that exercises a flag they don't.
+
+  You have whatever process you choose. The deliverable is
+  `./compile.sh` plus source files that produce a binary
+  matching the reference's observable behavior across the full
+  documented surface.
+  ```
+
+  Tradeoff: less guarantee weaker models pick a sensible
+  workflow. But heavy process prescription didn't produce
+  sensible workflow either — most models satisfied the form
+  without the substance. Worth A/B'ing: same matrix, two prompt
+  variants, see which spread of outcomes is more useful.
+
+  **User assessment 2026-05-07 (end of session):** "We only
+  actually need one budget model to work well with it to serve
+  as a proof of concept, and I think we've found it." Gemma
+  family (gemma local + xemma openrouter) is the working proof
+  point. Frontier paid models (Gemini Pro / Opus) untested but
+  plausible high performers. Grok family owes a partial
+  apology — task-oriented in the gemma cluster, just bound by
+  verification hallucination rather than fundamental refusal.
+
 - [x] **Persona modularization + Deep Skills refactor.** Landed
   2026-05-06. Three pluggable layers in the model-facing context:
   1. **Universal substrate** — `instructions-system.md` (Definitions)
@@ -366,11 +525,63 @@ extraction adds a hop without separating concerns, it's ceremony
     actions rule, 999 turn cap, 24h watchdog
   - [x] Submission tarball includes `rummy_programbench.db` for audit
 
+  **Runbook — single-task run:**
+  ```
+  npm run test:programbench -- --task tomnomnom__gron.88a6234 --model grok
+  ```
+  - Slug accepts either `__` (canonical / programbench data form) or
+    `_1776_` (Docker form); runner normalizes both. Pass canonical for
+    readability — it matches programbench's data dir and instance ids.
+  - `--model grok` resolves via `.env`'s `RUMMY_MODEL_grok` →
+    `xai/grok-4-1-fast-non-reasoning`. `RUMMY_PROGRAMBENCH_MODEL` env
+    overrides default; default is `grok`.
+  - Runner reads `task.yaml` (`programbench/data/tasks/<id>/task.yaml`)
+    and surfaces `language` + `repository` to the agent's prompt so it
+    knows the target language and upstream repo.
+  - Project files default to git-tracked workspace contents (no
+    whitelist override). Cleanroom workspaces typically commit their
+    docs to a stub `.git`; the executable stays untracked + `0o111`
+    unreadable, so it's invisible to the agent's read tools.
+  - After the agent finishes, runner runs an **acceptance gate**:
+    pulls the `task` image (eval's compile env), extracts the
+    submission tar, runs `chmod +x ./compile.sh && ./compile.sh`.
+    Reports pass/fail. Runner exits non-zero on gate failure even if
+    the agent self-reported success — protects against hallucinated
+    completion.
+  - Eval (separate step, runs the test suite):
+    ```
+    npm run test:programbench:eval -- results/<run-id>/
+    ```
+    Path is relative to `test/programbench/` (script `cd`s in).
+    Output: `<run-id>/<instance>/<instance>.eval.json` per submission.
+
+  **Layout** — matches upstream usage guide
+  (`<run-root>/<instance_id>/submission.tar.gz`):
+  ```
+  results/<timestamp>/
+    <instance_id>/
+      submission.tar.gz   ← what programbench eval ingests
+      workspace/          ← scratch project root (admin)
+      agent/              ← rummy_programbench.db (audit/replay)
+  ```
+
   **Before any sweep:**
-  - [ ] Streaming-workflow refactor (see top Open Item) — blocks
-    sweep; current code is broken (`bonusTurnSpent` undeclared)
-  - [ ] Validate container arch end-to-end with one gron run under
-    the new code (just landed, untested)
+  - [x] Streaming-workflow refactor (`bonusTurnSpent`/`pendingChildren`
+    hacks removed; run.wake hook + dormant-run detection landed)
+  - [x] Validate container arch end-to-end with one gron run under
+    the new code (validated 2026-05-06 — see Runbook above)
+  - [x] **SEARCH/REPLACE delimiter leak.** (Fixed 2026-05-06.) Root
+    cause: fuzzy-matched edits stored `attrs.merge` with the
+    *original* search/replace text. `#materializeFile` re-applied
+    via direct `String.replace`, which silently no-op'd when the
+    fuzzy matcher had healed indentation in `#processEdit`. Across
+    multi-turn editing on the same file, this produced divergent
+    DB-vs-disk state and surfaced as `=======` markers in the
+    materialized output. Fix: `#processEdit` now stores the
+    authoritative patched body in `attrs.patched`;
+    `#materializeFile` uses it directly (falls back to applyMerge
+    for cp's whole-body-replace path). Regression test:
+    `handler_dispatch.test.js`.
   - [ ] Per-profile env files: `.env.programbench`,
     `.env.programbench.gemma`, `.env.programbench.xfast` (currently
     reuses `.env.tbench` — sloppy coupling)
@@ -421,20 +632,19 @@ extraction adds a hop without separating concerns, it's ceremony
   reported count for the loaded body. Whichever diverges identifies
   the bug.
 
-- [ ] **System auto-pruning.** On loop boundary or when log size
-  crosses threshold, archive `log://turn_{M}/**` where M < current -
-  `RUMMY_LOG_HORIZON`. Keeps the log bounded on long runs without
-  requiring model intervention.
+- [x] **System auto-pruning.** (Landed 2026-05-06.) `log` plugin
+  hooks `turn.started`: when `RUMMY_LOG_HORIZON` is set, archives
+  every `log://turn_M/..`, `env://turn_M/..`, `sh://turn_M/..`
+  where `M ≤ currentTurn - HORIZON`. Default in `.env.example` is
+  20 turns. Disabled when env var is unset or non-positive.
 
-- [ ] **resolveCommand `||` empty-string conflation.**
-  `src/agent/XmlParser.js` `resolveCommand` uses chains like
-  `a.path || trimmed || null` for path/command/options/etc. Empty
-  string is falsy, so `<get path=""/>` collapses to `path: null` —
-  conflating "explicit empty" with "unset." Probably benign for all
-  current callers (empty path is meaningless in every tool we ship)
-  but the pattern is fallback-shaped and worth a `??` pass when a
-  real caller surfaces the distinction. Cross-tool sweep, not a
-  one-liner.
+- [x] **resolveCommand `||` empty-string conflation.** (Fixed
+  2026-05-06.) `src/agent/XmlParser.js` `resolveCommand` swept to
+  `??` for body-shorthand fallback chains (get/rm path, search
+  path, mv/cp to, sh/env command, ask_user options, catch-all
+  body). Empty-string attrs now preserved as-is; handlers
+  validate. XmlParser.js is in the lint exclusion list for `??`,
+  so this fix uses nullish coalescing directly.
 
 ## Scope Discipline
 

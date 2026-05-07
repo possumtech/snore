@@ -71,16 +71,28 @@ export default class Set {
 		const existing = await entries.getBody(runId, attrs.path);
 		const isNewFile = existing === null;
 		const fileBody = isNewFile ? "" : existing;
-		const patched = applyMerge(fileBody, attrs.merge);
+		// Prefer the precomputed patched body when present. Re-applying
+		// attrs.merge here can diverge from #processEdit's result when the
+		// fuzzy matcher healed indentation or whitespace — applyMerge does
+		// only direct String.replace matching, so a fuzzy-matched edit
+		// silently no-ops at materialization. Storing the authoritative
+		// body keeps #materializeFile honest.
+		const patched =
+			attrs.patched != null ? attrs.patched : applyMerge(fileBody, attrs.merge);
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
-		// Preserve current visibility; default would wipe an earlier <get>'s promotion.
+		// Visibility precedence: explicit attrs.visibility (mv/cp pass
+		// the model's tag attribute through) > current entry visibility
+		// (preserves an earlier <get>'s promotion) > scheme default.
 		const existingState = await entries.getState(runId, attrs.path);
+		const visibility = attrs.visibility
+			? attrs.visibility
+			: existingState?.visibility;
 		await entries.set({
 			runId,
 			turn,
 			path: attrs.path,
 			body: patched,
-			visibility: existingState?.visibility,
+			visibility,
 		});
 		if (projectRoot) {
 			const { writeFile, mkdir } = await import("node:fs/promises");
@@ -397,10 +409,11 @@ export default class Set {
 		for (const match of matches) {
 			if (match.scheme === null) {
 				// Bare file: emit a "proposed" log entry whose attrs carry
-				// the merge. yolo (or manual accept) → proposal.accepted →
-				// materializeFile applies the merge and writes to disk.
-				// Each edit is its own proposal — predictable, parallel-
-				// friendly, no cross-turn canonical-entry state to leak.
+				// the merge AND the authoritative patched body. On accept,
+				// #materializeFile uses attrs.patched directly — no re-
+				// application that could diverge from what #processEdit
+				// computed (e.g., fuzzy-matched edits whose original
+				// search text doesn't direct-match).
 				const { patch, searchText, replaceText, warning, error } =
 					Set.#applyRevision(match.body, attrs);
 				const merge =
@@ -418,6 +431,7 @@ export default class Set {
 					attributes: {
 						path: match.path,
 						merge,
+						patched: patch,
 						beforeTokens,
 						afterTokens,
 						warning,

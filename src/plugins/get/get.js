@@ -90,20 +90,11 @@ export default class Get {
 		}
 
 		// Partial read: line slice in the log entry; no promotion.
+		// Per getDoc: "line/limit works on any scheme — files, sh
+		// stdout, knowns, urls." Multi-match (glob, tags, or body
+		// filter narrowing) emits one slice section per match —
+		// model can scope further with body filter or tighter path.
 		if (line !== null || limit !== null) {
-			if (isPattern) {
-				await store.set({
-					runId,
-					turn,
-					path: entry.resultPath,
-					body: "line/limit requires a single path, not a glob or body filter",
-					state: "failed",
-					outcome: "validation",
-					loopId,
-					attributes: { path: target },
-				});
-				return;
-			}
 			if (matches.length === 0) {
 				await store.set({
 					runId,
@@ -116,32 +107,25 @@ export default class Get {
 				});
 				return;
 			}
-			const allLines = matches[0].body.split("\n");
-			const total = allLines.length;
-			const startLine =
-				line == null
-					? 1
-					: line < 0
-						? Math.max(1, total + line + 1)
-						: Math.max(1, line);
-			const startIdx = startLine - 1;
-			const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
-			const slice = allLines.slice(startIdx, endIdx).join("\n");
-			const endLine = endIdx;
-			const header = `${target}\n[lines ${startLine}–${endLine} / ${total} total]`;
+			const sections = matches.map((match) => sliceSection(match, line, limit));
+			const body = sections.map((s) => s.text).join("\n\n");
+			const attributes = { path: target };
+			if (sections.length === 1) {
+				const only = sections[0];
+				attributes.lineStart = only.startLine;
+				attributes.lineEnd = only.endLine;
+				attributes.totalLines = only.total;
+			} else {
+				attributes.matchCount = sections.length;
+			}
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: `${header}\n${slice}`,
+				body,
 				state: "resolved",
 				loopId,
-				attributes: {
-					path: target,
-					lineStart: startLine,
-					lineEnd: endLine,
-					totalLines: total,
-				},
+				attributes,
 			});
 			return;
 		}
@@ -212,4 +196,20 @@ export default class Get {
 	summary() {
 		return "";
 	}
+}
+
+function sliceSection(match, line, limit) {
+	const allLines = match.body.split("\n");
+	const total = allLines.length;
+	const startLine =
+		line == null
+			? 1
+			: line < 0
+				? Math.max(1, total + line + 1)
+				: Math.max(1, line);
+	const startIdx = startLine - 1;
+	const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
+	const slice = allLines.slice(startIdx, endIdx).join("\n");
+	const text = `${match.path}\n[lines ${startLine}–${endIdx} / ${total} total]\n${slice}`;
+	return { text, startLine, endLine: endIdx, total };
 }
