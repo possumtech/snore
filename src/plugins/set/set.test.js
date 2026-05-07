@@ -92,6 +92,28 @@ describe("Set plugin", () => {
 			});
 			assert.match(out, /<<<<<<< SEARCH/);
 		});
+
+		it("conflict surfaces attempted merge AND current body so the model can author a delta", () => {
+			// EN-3: when SEARCH/REPLACE conflicts, the model needs (1) the
+			// error, (2) what it tried, (3) the actual current body — not
+			// just the error string. Without all three, the model retries
+			// the same patch verbatim (gemma26 ceiling case: 44× same
+			// failing patch against tests/runner_test.go turns 96-224).
+			const out = plugin.full({
+				attributes: {
+					path: "known://plan",
+					error: "Could not find the SEARCH block in the file.",
+					merge:
+						"<<<<<<< SEARCH\n- [ ] step 1\n=======\n- [x] step 1\n>>>>>>> REPLACE",
+					currentBody: "- [x] step 1\n- [ ] step 2",
+				},
+			});
+			assert.match(out, /Could not find the SEARCH block/);
+			assert.match(out, /--- attempted ---/);
+			assert.match(out, /<<<<<<< SEARCH/);
+			assert.match(out, /--- current body of known:\/\/plan ---/);
+			assert.match(out, /- \[x\] step 1\n- \[ \] step 2/);
+		});
 	});
 
 	describe("summary (compact projection)", () => {

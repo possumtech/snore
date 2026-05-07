@@ -151,8 +151,8 @@ const NAME_CHAR = /[a-zA-Z0-9_]/;
 const ATTR_KEY_CHAR = /[a-zA-Z0-9_:-]/;
 const WS = /\s/;
 
-// Tokenizer for rummy's closed set of tool tags. Strict body opacity, no
-// silent recovery on orphan closes.
+// Tokenizer for rummy's closed set of tool tags. Body opacity for closed
+// bodies; tail recovery for unclosed bodies.
 //
 // Design contract:
 //   - Tool tags (<get>, <set>, <sh>, ...) are the only syntactic special tags.
@@ -174,9 +174,18 @@ const WS = /\s/;
 //     makes the body span opaque. Closer can be IDENT alone on a line or
 //     IDENT</set> on the same line. Custom delimiter (any [A-Za-z_]\w*).
 //   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
-//     nested examples don't prematurely close the outer.
-//   - Unclosed openers capture body to EOF and emit a clear "Unclosed"
-//     warning. The model sees the failure and corrects on the next turn.
+//     nested examples don't prematurely close the outer. Same-name
+//     nesting also disables tail recovery — the model's intent is clearly
+//     opaque body content.
+//   - Unclosed openers (no matching close, no same-name nesting) try
+//     tail recovery: scan the captured body for the leftmost position
+//     whose suffix tokenizes cleanly into ≥1 well-formed tool calls
+//     with zero leftover text. If found, end the unclosed body there
+//     and let the trailing tags parse as proper siblings. The warning
+//     surfaces "Unclosed <name> — recovered N trailing tool call(s)"
+//     so the model can see what happened. If recovery finds nothing,
+//     capture body to EOF and emit "Unclosed <name> — content captured
+//     anyway".
 export default class XmlParser {
 	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS);
 
@@ -240,7 +249,13 @@ export default class XmlParser {
 			const result = XmlParser.#findBodyEnd(s, name, openerEnd);
 			const body = s.slice(openerEnd, result.bodyEnd);
 			if (result.unclosed) {
-				warnings.push(`Unclosed <${name}> tag — content captured anyway`);
+				if (result.recoveredTailCount) {
+					warnings.push(
+						`Unclosed <${name}> tag — recovered ${result.recoveredTailCount} trailing tool call(s)`,
+					);
+				} else {
+					warnings.push(`Unclosed <${name}> tag — content captured anyway`);
+				}
 			}
 			commands.push(resolveCommand(name, attrs, body));
 			i = result.afterClose;
@@ -383,6 +398,7 @@ export default class XmlParser {
 	// sees a clear failure and corrects on the next turn.
 	static #findBodyEnd(s, name, fromPos) {
 		let depth = 1;
+		let sameNameNested = false;
 		let i = fromPos;
 		// HEREDOC bypass: when the body starts with a shell-style heredoc
 		// opener, jump past the matching closer. Tag recognition does not
@@ -420,12 +436,58 @@ export default class XmlParser {
 			const opener = XmlParser.#matchOpener(s, i);
 			if (opener && opener.name === name && !opener.selfClose) {
 				depth++;
+				sameNameNested = true;
 				i = opener.end;
 				continue;
 			}
 			i++;
 		}
+		// Unclosed: try tail recovery, but only if the body never
+		// nested a same-name opener. Same-name nesting is the model
+		// deliberately using opaque body for examples (`<set>` writing
+		// docs about `<set>`); we trust the body content as authored.
+		// No nesting means a plain botched `</set>` — recovery is safe.
+		// If the body's tail is a clean sequence of one or more
+		// well-formed tool calls (zero leftover text), end the body
+		// at the start of that tail and let the outer tokenizer parse
+		// those calls as proper siblings. Closes the silent-swallow
+		// gap when a model botches `</set>` after SEARCH/REPLACE and
+		// emits trailing `<sh>` / `<update>`.
+		if (sameNameNested) {
+			return { bodyEnd: s.length, afterClose: s.length, unclosed: true };
+		}
+		const recovery = XmlParser.#findTailRecovery(s, fromPos);
+		if (recovery) {
+			return {
+				bodyEnd: recovery.tailStart,
+				afterClose: recovery.tailStart,
+				unclosed: true,
+				recoveredTailCount: recovery.commandCount,
+			};
+		}
 		return { bodyEnd: s.length, afterClose: s.length, unclosed: true };
+	}
+
+	// Scan body content for the leftmost position whose suffix tokenizes
+	// cleanly into ≥1 commands with no leftover non-whitespace text.
+	// Returns { tailStart, commandCount } or null. Only considers opener
+	// positions; treats the suffix as outer-level so backtick fences and
+	// tag recognition match the parent tokenizer's behavior.
+	static #findTailRecovery(s, fromPos) {
+		let best = null;
+		let i = fromPos;
+		while (i < s.length) {
+			if (s[i] === "<" && XmlParser.#matchOpener(s, i)) {
+				const suffix = s.slice(i);
+				const result = XmlParser.#tokenize(suffix, []);
+				if (result.commands.length > 0 && result.unparsed === "") {
+					best = { tailStart: i, commandCount: result.commands.length };
+					break;
+				}
+			}
+			i++;
+		}
+		return best;
 	}
 
 	// Translate native training-format tool calls into rummy XML silently.

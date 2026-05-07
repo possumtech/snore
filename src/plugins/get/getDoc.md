@@ -8,3 +8,5 @@ Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
 <!-- line/limit: read a slice without promoting. line=-50 tails the last 50 lines. -->
 Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200"/>
 <!-- URL slice. line/limit works on any scheme — files, sh stdout, knowns, urls. -->
+Example: <get path="*.md"/>
+<!-- One glob per call fans out. For unrelated paths, emit one `<get>` per path — `path` is a single entry or one pattern, not a space-separated list. -->

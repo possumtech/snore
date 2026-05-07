@@ -40,6 +40,18 @@ describe("Entries.normalizePath (static)", () => {
 		assert.equal(Entries.normalizePath("README.md"), "README.md");
 	});
 
+	it("strips a leading ./ on bare paths so ./main.go and main.go collide", () => {
+		// CC-17 path-form split: models that wrote `./main.go` were
+		// landing in a phantom entry separate from the scanner-
+		// registered `main.go`, so SEARCH/REPLACE edits couldn't see
+		// the original body.
+		assert.equal(Entries.normalizePath("./main.go"), "main.go");
+		assert.equal(Entries.normalizePath("./src/app.js"), "src/app.js");
+		// Don't touch parent-relative or absolute forms.
+		assert.equal(Entries.normalizePath("../parent.js"), "../parent.js");
+		assert.equal(Entries.normalizePath("/abs/path.js"), "/abs/path.js");
+	});
+
 	it("lowercases scheme", () => {
 		assert.equal(Entries.normalizePath("KNOWN://Foo"), "known://Foo");
 	});

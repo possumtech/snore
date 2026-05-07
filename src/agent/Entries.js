@@ -92,7 +92,16 @@ export default class Entries {
 	}
 
 	static normalizePath(path) {
-		if (!path?.includes("://")) return path;
+		if (!path) return path;
+		if (!path.includes("://")) {
+			// Bare file path: strip a single leading `./` for canonical
+			// form. `./main.go` and `main.go` must resolve to the same
+			// entry — otherwise SEARCH/REPLACE edits on `./main.go`
+			// land in a phantom entry while reads of `main.go` see the
+			// original, and the model can't reconcile.
+			if (path.startsWith("./")) return path.slice(2);
+			return path;
+		}
 		const sep = path.indexOf("://");
 		const scheme = path.slice(0, sep).toLowerCase();
 		const rest = path.slice(sep + 3);

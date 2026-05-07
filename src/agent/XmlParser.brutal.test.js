@@ -549,18 +549,22 @@ Validates dotted decimal IPv4.
 			assert.ok(commands[1].body?.includes("fn f<T>(x: T)"));
 		});
 
-		it("update inside unclosed set is body content (opacity wins)", () => {
-			// Body opacity: once <set> is open with content "broken", a
-			// subsequent <update> is body text, not a sibling command. The
-			// trailing </update> is the mismatched close that recovers the
-			// set with the entire embedded content as body.
+		it("trailing <update> after unclosed <set> is recovered as a sibling", () => {
+			// Body opacity is the contract for *closed* bodies. When
+			// `<set>` lacks its `</set>`, a clean trailing `<update>`
+			// is the model's terminal signal trapped in the swallow —
+			// recovery extracts it so the verdict layer sees the real
+			// emission instead of reporting "no <update>" misleadingly.
 			const input = '<set>broken<update status="200">recovered</update>';
 			const { commands, warnings } = parse(input);
-			assert.strictEqual(commands.length, 1);
+			assert.strictEqual(commands.length, 2);
 			assert.strictEqual(commands[0].name, "set");
 			assert.ok(commands[0].body?.includes("broken"));
-			assert.ok(commands[0].body?.includes('<update status="200">'));
-			assert.ok(warnings.some((w) => /mismatch|unclosed/i.test(w)));
+			assert.strictEqual(commands[1].name, "update");
+			assert.strictEqual(commands[1].status, 200);
+			assert.ok(
+				warnings.some((w) => w.includes("Unclosed") && w.includes("recovered")),
+			);
 		});
 	});
 

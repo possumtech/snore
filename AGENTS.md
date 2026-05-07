@@ -471,65 +471,6 @@ extraction adds a hop without separating concerns, it's ceremony
   enforced through existing strike + entries machinery, not
   through stronger pleading.
 
-- [x] **Persona modularization + Deep Skills refactor.** Landed
-  2026-05-06. Three pluggable layers in the model-facing context:
-  1. **Universal substrate** — `instructions-system.md` (Definitions)
-     + `instructions-user.md` (Instructions). Persona-agnostic.
-  2. **Persona** — `src/plugins/persona/default.md` (the 7D ladder)
-     injected by `AgentLoop.ensureRun` when the client passes no
-     `persona` option. 1:1 run:persona, immutable. Renders below
-     tooldocs. Persona plugin gutted to scheme + view registration —
-     no RPCs, no filesystem.
-  3. **Skills** — `<skill path="[path-or-url]"/>` tag. Handler walks
-     local file / folder / `.zip` (via `yauzl-promise`) or fetches
-     URL. Single `.md` → `skill://<name>` (summarized). Folder /
-     zip → root `index.md` summarized; rest archived;
-     `foo/index.md` collapses to `skill://<name>/foo`. Re-emit
-     overwrites. Authors link with absolute `skill://...` URIs (no
-     relative-link rewriting at archive time).
-  Old `skill/add`, `skill/remove`, `getSkills`, `listSkills` RPCs
-  removed. `~/.rummy/skills/` and `~/.rummy/personas/` conventions
-  retired.
-
-- [x] **Streaming-workflow architectural refactor (rummy way).** Landed
-  2026-05-05. Async children (yolo's `<sh>` spawn) used to block
-  termination via a `pendingChildren` Set + verdict-hold + (broken)
-  `bonusTurnSpent` flag — the harness was arbitrating the race between
-  model and child. The rummy way: when a loop terminates, the run is
-  dormant; a child that closes later writes a new prompt entry and
-  enqueues a fresh loop on the existing queue, exactly the flow the
-  neovim client already uses to drop continuation prompts.
-
-  **What landed:**
-  - `hooks.run.wake` event (`Hooks.js`). Fire-and-forget primitive any
-    plugin can emit with `{runAlias, body, mode}`. AgentLoop subscribes
-    in its constructor and routes to `inject()`.
-  - `src/plugins/stream/finalize.js` — single termination site for
-    streaming entries. Sets channel terminal states, rewrites log
-    entry body with command/exit/duration/channels, queries
-    `db.get_pending_loops` for dormancy, fires `run.wake` with
-    body `"Process complete"` + mode from `db.get_latest_completed_loop`
-    when dormant.
-  - `stream/completed` collapsed to a thin wrapper over `finalizeStream`.
-  - yolo's child-close handler collapsed: no more inline channel
-    state writes / log body rewrites — just calls `finalizeStream`.
-    Drops `closePromise` / `trackChild` / drain registration.
-  - Deleted: `pendingChildren` plumbing across AgentLoop / TurnExecutor
-    / RummyContext, the verdict-terminate-hold block, undeclared
-    `bonusTurnSpent`, `drainChildren(rummy)` test helper.
-  - `Entries.normalizePath()` applied to derived dataBase pattern in
-    finalize so `${dataBase}_*` matches the canonicalized stored
-    channel paths regardless of the form caller passes (`%20` vs `_`).
-
-  **Tests:** 889 unit, 245 integration, lint clean. New
-  `finalize.test.js` covers wake-on-dormant, no-wake-when-active,
-  no-wake-when-aborted, mode-inheritance, body shape.
-
-  **Known harmless noise:** the abort integration test logs
-  `[yolo] finalize failed: SqlRite instance is closed` at suite
-  teardown — child SIGTERM-close races with the `after()` DB close.
-  Production code path doesn't see this; cosmetic only.
-
 - [ ] **Forensic investigation: programbench 1298-error matrix → solution grind.**
   Forensic source: `errors.md` / `errors.json` at the sweep root,
   produced by `digest.js` (extended 2026-05-07 to emit cross-task
@@ -572,24 +513,21 @@ extraction adds a hop without separating concerns, it's ceremony
     `"README.mkd ADVANCED.mkd LICENSE"` as a single path attr.
     Tooldoc example reinforcing one-path-per-tag. **tooldoc.**
 
-  - **CC-16 — `<set known://X>` overwrite-as-conflict (91).** All
-    91 land on `known://plan` — same path, every run. Model
-    treats `<set>` as idempotent "update my plan"; harness flags
-    conflict. No worked example covers re-setting an existing
-    `known://`. Fix: known tooldoc adds the re-set path (rm-then-
-    set, or partial-update verb if grammar exists). **tooldoc.**
-
-  - **CC-17 — SEARCH/REPLACE retry-without-refetch (105).** When
-    SEARCH text doesn't match the file, conflict error echoes the
-    failing patch back — useless feedback. Model retries verbatim
-    (gemma26 ceiling case: 44× same patch turns 96-224 against
-    `tests/runner_test.go`). Sub-pattern: `./main.go` vs `main.go`
-    path-form split (24+12 occurrences) — verify
+  - **CC-17 — SEARCH/REPLACE retry-without-refetch (~196).** When
+    SEARCH text doesn't match the current entry body, conflict
+    error echoes the failing patch back — useless feedback. Model
+    retries verbatim. Combined file (105) and `known://` (91 — all
+    on `known://plan`) cases share the same root cause: model's
+    SEARCH text uses an old version of the body. The model is
+    using SEARCH/REPLACE to update the plan as work progresses,
+    but the plan keeps drifting and the SEARCH text drifts behind.
+    Gemma26 ceiling case: 44× same patch turns 96-224 against
+    `tests/runner_test.go`. File sub-pattern: `./main.go` vs
+    `main.go` path-form split (24+12 occurrences) — verify
     `Entries.normalizePath` strips leading `./` for file-scheme.
     **mixed:** tooldoc edit (read current first) + engine fix
-    (conflict body should include the current file region the
-    SEARCH matched fuzziest, or a 20-line window around the
-    file's actual content for that area). See EN-3.
+    via EN-3 (conflict body includes the current entry body so
+    the model can author a delta).
 
   - **CC-18 — Unparsed HTML-comment thinking (~17).** Models use
     `<!-- ... -->` as alt-think channel. Fix: think-plugin
@@ -614,12 +552,13 @@ extraction adds a hop without separating concerns, it's ceremony
     **engine.** Highest-leverage fix in the dataset.
 
   - **EN-3 — Conflict feedback verbosity.** Conflict error body
-    should include current entry body context, not just echo the
-    failing patch. SEARCH/REPLACE conflict: 20-line window around
-    where SEARCH text fuzzy-matches (or full file if small).
-    `known://` conflict: include current entry body so the model
-    can author a delta. Closes the loop for both CC-17 and CC-16.
-    **engine.**
+    should include the current entry body context, not just echo
+    the failing patch. SEARCH/REPLACE conflict on a file: 20-line
+    window around where SEARCH text fuzzy-matches (or full file
+    if small). Conflict on a non-file scheme entry (`known://`,
+    `unknown://`): include current entry body so the model can
+    author a delta. Closes the loop for CC-17 (both file and
+    scheme variants). **engine.**
 
   **Out of scope (do not address here):**
 
@@ -642,21 +581,31 @@ extraction adds a hop without separating concerns, it's ceremony
     gap, or does it just abandon the resistant model faster?
     Defer pending data. Don't grind here.
 
-  **Grind order proposal** (smallest blast radius first; each
-  block independently shippable):
+  **Grind order:**
 
-  1. CC-14 + CC-15 + CC-18 — tooldoc-only edits, batched in next
-     focused instruction-edit pass.
-  2. CC-16 — known tooldoc + verify grammar; small.
-  3. EN-1 — parser fix; isolated to `XmlParser.js`. Validate by
-     replaying the four T9-class packets and checking the
-     `<update>` reaches the verdict. Not a rail — a correctness
-     bug (verdict misreports what the model emitted).
-  4. EN-3 — error-body extension; touches the error plugin and
-     each conflict-emitting plugin (`set`, `known`). Not a rail
-     — better feedback so the model has what it needs to fix.
-  5. CC-17 path-form split — single fix in `Entries.normalizePath`
-     after CC-17 tooldoc lands.
+  1. EN-1 — parser tail-recovery for unclosed tag bodies. **DONE
+     2026-05-07** (`src/agent/XmlParser.js`). Recovers trailing
+     well-formed tool calls after a botched close, so the verdict
+     layer sees the model's `<update>` instead of swallowing it.
+  2. EN-3 — conflict error body includes current entry body and
+     the attempted merge. **DONE 2026-05-07** (`src/plugins/set/set.js`).
+     Closes the SEARCH/REPLACE retry-without-refetch loop.
+  3. CC-17 path-form split — `./main.go` vs `main.go`. **DONE
+     2026-05-07** (`src/agent/Entries.js#normalizePath` strips
+     leading `./` on bare file paths).
+  4. CC-14 — sh/env entry slug pollution by `./` segments.
+     **DONE 2026-05-07** (`src/sql/functions/slugify.js` drops
+     `.` and `..` segments). Diagnosis revised: not a fan-out
+     gap (`<set>` already fans out via `getEntriesByPattern` for
+     metadata-only ops); root cause was slug paths like
+     `sh://turn_N/./executable_--help` that picomatch globs
+     can't cross. Future entries slug clean.
+  5. CC-15 — one-path-per-tag reinforcement in `getDoc.md`.
+     **DONE 2026-05-07** (one example + comment line). CC-18
+     (HTML-comment thinking, ~17 errors) declined: the soft
+     unparsed turns are already caught by the existing missing-
+     `<update>` path; teaching against them would spend tokens
+     on a behavior the engine already handles.
 
 - [ ] **Engine-side rails: knowns/unknowns lifecycle strikes — DESIGN.**
   (Note: under philosophical question per the Out-of-scope rails
@@ -711,18 +660,6 @@ extraction adds a hop without separating concerns, it's ceremony
   coaching — task prompt is structurally aligned to the SWE-bench
   reference (`test/programbench/runner.js buildPrompt()`).
 
-  **Done:**
-  - [x] Container-isolated per-task `<sh>` (yolo's `RUMMY_SHELL_ARGV`)
-  - [x] `--network=none` enforced at kernel level (not tool-level)
-  - [x] Workspace/admin layout split (`<task>/workspace/`, `<task>/agent/`)
-  - [x] SWE-bench-aligned neutral prompt
-  - [x] Hardened harness: sandwich packet ordering, heredoc fences for
-    visible content (injection protection), sed validation
-    (fail-on-malformed not garbage-out), summary projection cap as
-    plugin contract, streaming + pending-children drain, no-update-no-
-    actions rule, 999 turn cap, 24h watchdog
-  - [x] Submission tarball includes `rummy_programbench.db` for audit
-
   **Runbook — single-task run:**
   ```
   npm run test:programbench -- --task tomnomnom__gron.88a6234 --model grok
@@ -764,22 +701,6 @@ extraction adds a hop without separating concerns, it's ceremony
   ```
 
   **Before any sweep:**
-  - [x] Streaming-workflow refactor (`bonusTurnSpent`/`pendingChildren`
-    hacks removed; run.wake hook + dormant-run detection landed)
-  - [x] Validate container arch end-to-end with one gron run under
-    the new code (validated 2026-05-06 — see Runbook above)
-  - [x] **SEARCH/REPLACE delimiter leak.** (Fixed 2026-05-06.) Root
-    cause: fuzzy-matched edits stored `attrs.merge` with the
-    *original* search/replace text. `#materializeFile` re-applied
-    via direct `String.replace`, which silently no-op'd when the
-    fuzzy matcher had healed indentation in `#processEdit`. Across
-    multi-turn editing on the same file, this produced divergent
-    DB-vs-disk state and surfaced as `=======` markers in the
-    materialized output. Fix: `#processEdit` now stores the
-    authoritative patched body in `attrs.patched`;
-    `#materializeFile` uses it directly (falls back to applyMerge
-    for cp's whole-body-replace path). Regression test:
-    `handler_dispatch.test.js`.
   - [ ] Per-profile env files: `.env.programbench`,
     `.env.programbench.gemma`, `.env.programbench.xfast` (currently
     reuses `.env.tbench` — sloppy coupling)
@@ -829,24 +750,6 @@ extraction adds a hop without separating concerns, it's ceremony
   Triage: replay the turn, compare `countTokens` to provider's
   reported count for the loaded body. Whichever diverges identifies
   the bug.
-
-- **System auto-pruning was a betrayal of "the model fully owns
-  what it sees" and was torn out 2026-05-07** — `RUMMY_LOG_HORIZON`,
-  the `turn.started` `#prune` subscription, and the
-  `archive-turn-N-on-horizon` machinery are all gone (`log.js`,
-  `log.test.js`, `.env.example`). Engine-side visibility mutation
-  outside the three legitimate enforcements (budget overflow,
-  repetition, missing `<update>`) violates the model-owns-context
-  contract. See `feedback_model_owns_context` memory; never
-  reintroduce.
-
-- [x] **resolveCommand `||` empty-string conflation.** (Fixed
-  2026-05-06.) `src/agent/XmlParser.js` `resolveCommand` swept to
-  `??` for body-shorthand fallback chains (get/rm path, search
-  path, mv/cp to, sh/env command, ask_user options, catch-all
-  body). Empty-string attrs now preserved as-is; handlers
-  validate. XmlParser.js is in the lint exclusion list for `??`,
-  so this fix uses nullish coalescing directly.
 
 ## Scope Discipline
 

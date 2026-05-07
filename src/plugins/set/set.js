@@ -14,6 +14,18 @@ function isSetProposal(path) {
 	return m?.[1] === "set";
 }
 
+// Cap the size of the current-body context surfaced on conflict. Big
+// enough for typical known:// entries (plans, notes) and a useful slice
+// of files; small enough that a 100k-line file doesn't blow the budget
+// on every conflict. The model can `<get>` the path for the full body.
+const CONFLICT_FEEDBACK_MAX_CHARS = 4000;
+function truncateForFeedback(body) {
+	if (body == null) return null;
+	if (body.length <= CONFLICT_FEEDBACK_MAX_CHARS) return body;
+	const head = body.slice(0, CONFLICT_FEEDBACK_MAX_CHARS);
+	return `${head}\n[truncated; ${body.length - CONFLICT_FEEDBACK_MAX_CHARS} more chars — <get> the path for full body]`;
+}
+
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
 	#core;
@@ -369,7 +381,16 @@ export default class Set {
 	full(entry) {
 		const attrs = entry.attributes;
 		const target = attrs.path || entry.path;
-		if (attrs.error) return `# set ${target}\n${attrs.error}`;
+		if (attrs.error) {
+			const lines = [`# set ${target}`, attrs.error];
+			if (attrs.merge) {
+				lines.push("", "--- attempted ---", attrs.merge);
+			}
+			if (attrs.currentBody != null) {
+				lines.push("", `--- current body of ${target} ---`, attrs.currentBody);
+			}
+			return lines.join("\n");
+		}
 		const tokens =
 			attrs.beforeTokens != null
 				? ` ${attrs.beforeTokens}→${attrs.afterTokens} tokens`
@@ -436,6 +457,7 @@ export default class Set {
 						afterTokens,
 						warning,
 						error,
+						currentBody: error ? truncateForFeedback(match.body) : null,
 					},
 					loopId,
 				});
@@ -469,6 +491,7 @@ export default class Set {
 					afterTokens,
 					warning,
 					error,
+					currentBody: error ? truncateForFeedback(match.body) : null,
 				},
 				loopId,
 			});

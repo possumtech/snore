@@ -356,18 +356,49 @@ I need to check the port.
 			assert.ok(unparsed.includes("I need to check the port"));
 		});
 
-		it("orphan close of a different name is body content (strict opacity)", () => {
-			// `</unknown>` after `<rm ...>` is not a typo we recover from —
-			// it's body content. The rm body extends until matching `</rm>`
-			// or EOF; here EOF wins and a single command emerges with an
-			// Unclosed warning the model can correct on the next turn.
+		it("unclosed tag with a clean sibling tail recovers the siblings", () => {
+			// `</unknown>` after `<rm ...>` is not a matching close, so
+			// the rm body is unclosed. With no same-name nesting in the
+			// body, tail recovery extracts the trailing `<update>` and
+			// `<search>` as proper top-level siblings rather than
+			// trapping them in the rm body. Otherwise the verdict layer
+			// would incorrectly report "no <update> emitted" when an
+			// <update> is right there in the packet.
 			const input = `<rm path="unknown://foo"></unknown>
 <update>Starting research.</update>
 <search>Mitch Hedberg cultural impact</search>`;
 			const { commands, warnings } = XmlParser.parse(input);
-			assert.strictEqual(commands.length, 1);
+			assert.strictEqual(commands.length, 3);
 			assert.strictEqual(commands[0].name, "rm");
-			assert.ok(warnings.some((w) => w.includes("Unclosed")));
+			assert.strictEqual(commands[1].name, "update");
+			assert.strictEqual(commands[2].name, "search");
+			assert.ok(
+				warnings.some((w) => w.includes("Unclosed") && w.includes("recovered")),
+			);
+		});
+
+		it("botched SEARCH/REPLACE without </set> recovers trailing <sh>/<update>", () => {
+			// Captured from a real model packet (gemma 5/6 T9): the second
+			// `<set known://plan>` lacks the `<<<<<<< SEARCH` head AND the
+			// `</set>` tail. Without recovery the trailing `<sh>` and
+			// `<update>` get trapped in the unclosed body; the verdict
+			// reports a missing `<update>` even though one was emitted.
+			const input = `<set path="known://plan">
+- [ ] go.mod w/ deps
+=======
+- [x] go.mod w/ deps
+>>>>>>> REPLACE
+<sh>chmod +x ./compile.sh && ./compile.sh</sh>
+<update status="102">go.mod created; deps ready</update>`;
+			const { commands, warnings } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 3);
+			assert.strictEqual(commands[0].name, "set");
+			assert.strictEqual(commands[1].name, "sh");
+			assert.strictEqual(commands[2].name, "update");
+			assert.strictEqual(commands[2].status, 102);
+			assert.ok(
+				warnings.some((w) => w.includes("Unclosed") && w.includes("recovered")),
+			);
 		});
 
 		it("ignores tool tags inside markdown code spans", () => {

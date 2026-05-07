@@ -18,7 +18,7 @@ uses one of these words, it should mean exactly what's written here.
 | **loop** | One `ask` or `act` invocation and all its continuation turns until terminal `<update>`, abandonment, or abort. A run can contain multiple loops if a fresh prompt arrives on an existing run. |
 | **turn** | One round-trip with the LLM: one assembled prompt sent, one response parsed. A loop is a sequence of turns. |
 | **mode** | `ask` (read-only — no proposals, no `<sh>`, no edits) or `act` (full tool surface). Per loop, set at the entry point. |
-| **phase** | "Two-phase turn execution" — the RECORD→DISPATCH split within a single turn (see [dispatch_path](#dispatch_path)). AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones; that's a separate use. **No FCRM phases.** Earlier drafts of rummy split work into status-coded states (104/105/106/107); that machine has been retired. The model-facing workflow is the 7D ladder in `persona/default.md` — Draft → Decompose → Discover → Distill → Define → Determine → Deliver — and is a persona convention, not a status-keyed engine state. |
+| **phase** | The RECORD→DISPATCH split within a single turn (see [dispatch_path](#dispatch_path)). AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones; that's a separate use of the word. The model-facing workflow lives in `persona/default.md` as the 7D ladder — Draft → Decompose → Discover → Distill → Define → Determine → Deliver — a persona convention, not a status-keyed engine state. |
 | **proposal** | A tool-call entry at status 202 awaiting client resolution (accept/reject). Side-effecting actions (`<sh>`, `<env>`, file `<set>`, file `<rm>`/`<mv>`/`<cp>`, `<ask_user>`) emit proposals. YOLO mode auto-accepts. |
 | **verdict** | The end-of-turn ruling from `hooks.turn.verdict.filter` — a generic filter chain. Returns `{continue, status, reason}`. The error plugin is the canonical subscriber today; future plugins (cycle-detection, budget-overflow termination) can join the chain to vote without touching error.js or AgentLoop. Decides whether the loop continues to another turn or terminates. |
 | **strike** | A turn whose verdict counts toward `MAX_STRIKES`. A strike fires when `turnErrors > 0` (any `error.log` entry that turn) or when cycle detection trips silently. The streak counter resets on a clean turn (no errors, no cycle); reaches `MAX_STRIKES` → loop abandons at 499. |
@@ -912,9 +912,7 @@ A **loop** is one `ask` or `act` invocation and all its continuation
 turns until `<update status="200">`, fail, or abort. A run may
 contain many loops; pending loops queue FIFO via the loops table.
 
-**No `<previous>` or `<performed>` blocks.** Cross-loop continuity
-is carried by the entry store itself, not by dedicated packet
-sections:
+Cross-loop continuity is carried by the entry store itself:
 
 - **Knowns, files, unknowns** persist across loop boundaries with
   whatever visibility the model left them at. They render in
@@ -926,14 +924,12 @@ sections:
   `<log>` in chronological order.
 - **The active prompt** is extracted from its chronological
   position and rendered as `<prompt>` at priority 30 (front);
-  prior prompts demote into `<log>` automatically as later
-  prompts arrive.
+  prior prompts render in `<log>` like any other logging entry.
 
 When a new prompt arrives on an existing run, the prior loop's
-`prompt://N` entry remains in the store; on the next assembly it
+`prompt://N` entry stays in the store; on the next assembly it
 falls out of `<prompt>` (replaced by the new prompt) and into
-`<log>`. There is no relocation between named blocks — only
-visibility-driven re-rendering of the same entry rows.
+`<log>` — visibility-driven re-rendering of the same entry rows.
 
 ### Key Entries {#key_entries}
 
@@ -1272,7 +1268,7 @@ connected clients). `stream/cancel` also handles stale 102 cleanup.
 
 #### Skills & Personas
 
-No RPC surface. Both attach to a run via the entry grammar:
+Both attach to a run via the entry grammar.
 
 - **Skills** — model emits `<skill path="[path-or-url]"/>`.
   Handler walks local file/folder/`.zip` (via `yauzl-promise`) or
@@ -1280,12 +1276,12 @@ No RPC surface. Both attach to a run via the entry grammar:
   (summarized); folder/zip registers root `index.md` summarized,
   rest archived; `foo/index.md` collapses to `skill://<name>/foo`.
   Re-emit overwrites. Authors link with absolute `skill://...` URIs.
-- **Personas** — `ask`/`act`/`startRun` accept `persona` as a run
-  attribute. The persona plugin renders the persona body inside
-  the system prompt (below tooldocs) on first turn; if no
-  `persona` is passed, `AgentLoop.ensureRun` defaults to
-  `src/plugins/persona/default.md`. 1:1 run:persona, immutable
-  for the run's lifetime.
+- **Personas** — `ask` / `act` / `startRun` accept `persona` as a
+  run attribute. The persona plugin renders the persona body inside
+  the system prompt (below tooldocs) on first turn; if no `persona`
+  is passed, `AgentLoop.ensureRun` defaults to
+  `src/plugins/persona/default.md`. 1:1 run:persona, immutable for
+  the run's lifetime.
 
 ### Notifications {#notifications}
 
@@ -1727,7 +1723,7 @@ Full reference is `.env.example` — these are the load-bearing vars.
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `PORT` | 3044 | WebSocket port |
-| `RUMMY_HOME` | `~/.rummy` | Local config root (telemetry; reserved for future per-user state). Not used for skills or personas — those attach via the entry grammar; see [rpc_methods](#rpc_methods) Skills & Personas. |
+| `RUMMY_HOME` | `~/.rummy` | Local config root. Used by telemetry; available for future per-user state. |
 | `RUMMY_DB_PATH` | `rummy.db` | SQLite path |
 | `RUMMY_MMAP_MB` | 0 | SQLite mmap hint (MB; 0 disables) |
 | `RUMMY_DEBUG` | false | Verbose logging |

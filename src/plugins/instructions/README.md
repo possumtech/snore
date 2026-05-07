@@ -31,9 +31,7 @@ run.
   persona body is appended below at resolve time.
 - `instructions-user.md` — the per-turn imperative reminder
   rendered as `<instructions>` in the user message. Same bytes
-  every turn — no phase keying, no status-driven selection.
-- `instructions_108.md` — empty placeholder retained for
-  symmetry; not referenced by current code.
+  every turn.
 - `protocol.js` / `protocol.test.js` — pass-through stub on
   `entry.recording` (priority 1) reserved for future
   deterministic protocol rule enforcement.

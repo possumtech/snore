@@ -10,7 +10,12 @@ export const deterministic = true;
 // `unknown://geography/x` slugs as `unknown___geography/x` instead of
 // dropping a slash via `filter(Boolean)`.
 //
-// commas→/, then encode-per-segment so / survives as separator.
+// commas→/, then encode-per-segment so / survives as separator. Drop `.`
+// and `..` segments — they're shell path-navigation noise that has no
+// addressing value AND breaks picomatch globs (literal `.` is treated
+// as a directory marker that `**` won't match across), so a command
+// like `./executable --help` previously slugged to `./executable_--help`
+// and made `sh://turn_N/**` queries miss it.
 // encodeSegment handles spaces→_ + URL-encode (single rule, used everywhere).
 export default function slugify(text) {
 	if (!text) return "";
@@ -19,7 +24,7 @@ export default function slugify(text) {
 		.replace(/:\/\//g, "___")
 		.replace(/,/g, "/")
 		.split("/")
-		.filter(Boolean)
+		.filter((seg) => seg && seg !== "." && seg !== "..")
 		.map(encodeSegment)
 		.join("/");
 }

@@ -47,6 +47,20 @@ describe("slugify", () => {
 		assert.equal(slugify("//path"), "path");
 	});
 
+	it("drops `.` and `..` path-navigation segments", () => {
+		// CC-14: shell commands like `./executable --help` previously
+		// slugged to `./executable_--help` because `.split("/").filter(Boolean)`
+		// preserved the literal `.`. Picomatch then treats `.` as a
+		// directory marker that `**` won't cross, so the model emitting
+		// `<get path="sh://turn_N/**"/>` missed every `./X` entry.
+		assert.equal(slugify("./executable --help"), "executable_--help");
+		assert.equal(slugify("../parent/file"), "parent/file");
+		assert.equal(slugify("./a/./b"), "a/b");
+		// Plain leading dots (hidden files etc.) survive — only the
+		// pure-`.` and pure-`..` segments are dropped.
+		assert.equal(slugify(".env.example"), ".env.example");
+	});
+
 	it("truncates to 80 characters before transformation", () => {
 		const long = "a".repeat(100);
 		assert.ok(slugify(long).length <= 80);
