@@ -76,25 +76,6 @@ async function render(rows) {
 	return out;
 }
 
-function makeRummy(entries, sequence) {
-	const archived = new Map();
-	return {
-		runId: 1,
-		sequence,
-		entries: {
-			getEntriesByPattern: async () =>
-				entries.map((e) => ({
-					path: e.path,
-					visibility: archived.get(e.path) ?? e.visibility,
-				})),
-			set: async ({ path, visibility }) => {
-				if (visibility) archived.set(path, visibility);
-			},
-		},
-		_archived: archived,
-	};
-}
-
 describe("log plugin tokens= invariant", () => {
 	it("<get> tokens= reports target's full tokens, not log stub tokens", async () => {
 		const target = dataRow({
@@ -308,51 +289,5 @@ describe("log plugin tokens= invariant", () => {
 			4418 + 3298 + 1166,
 			"get tokens match target bodies (8882), not stub tokens (90)",
 		);
-	});
-});
-
-describe("log plugin auto-prune (RUMMY_LOG_HORIZON)", () => {
-	it("archives logging entries older than horizon at turn.started", async () => {
-		const original = process.env.RUMMY_LOG_HORIZON;
-		process.env.RUMMY_LOG_HORIZON = "5";
-		try {
-			const hooks = makeHooks();
-			const entries = [
-				{ path: "log://turn_1/get/x", visibility: "visible" },
-				{ path: "log://turn_3/set/y", visibility: "visible" },
-				{ path: "env://turn_2/foo", visibility: "summarized" },
-				{ path: "log://turn_8/update/z", visibility: "visible" },
-				{ path: "log://turn_10/set/w", visibility: "visible" },
-				{ path: "known://fact", visibility: "visible" },
-			];
-			const rummy = makeRummy(entries, 10);
-			await hooks.turn.started.emit({ rummy });
-			// threshold = 10 - 5 = 5; entries at turn ≤5 archived.
-			assert.equal(rummy._archived.get("log://turn_1/get/x"), "archived");
-			assert.equal(rummy._archived.get("log://turn_3/set/y"), "archived");
-			assert.equal(rummy._archived.get("env://turn_2/foo"), "archived");
-			// Newer entries untouched.
-			assert.equal(rummy._archived.get("log://turn_8/update/z"), undefined);
-			assert.equal(rummy._archived.get("log://turn_10/set/w"), undefined);
-			// Non-logging entries (known://) untouched.
-			assert.equal(rummy._archived.get("known://fact"), undefined);
-		} finally {
-			if (original === undefined) delete process.env.RUMMY_LOG_HORIZON;
-			else process.env.RUMMY_LOG_HORIZON = original;
-		}
-	});
-
-	it("disabled when RUMMY_LOG_HORIZON unset", async () => {
-		const original = process.env.RUMMY_LOG_HORIZON;
-		delete process.env.RUMMY_LOG_HORIZON;
-		try {
-			const hooks = makeHooks();
-			const entries = [{ path: "log://turn_1/get/x", visibility: "visible" }];
-			const rummy = makeRummy(entries, 100);
-			await hooks.turn.started.emit({ rummy });
-			assert.equal(rummy._archived.size, 0, "no archives when horizon unset");
-		} finally {
-			if (original !== undefined) process.env.RUMMY_LOG_HORIZON = original;
-		}
 	});
 });

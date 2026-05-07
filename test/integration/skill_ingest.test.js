@@ -2,6 +2,8 @@
  * Skill plugin integration: <skill path="..."/> tag dispatched through
  * the real plugin pipeline. Covers single-file, folder, index.md
  * collapsing, archived/summarized visibility, and re-emit overwrite.
+ *
+ * Covers @skill_plugin.
  */
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

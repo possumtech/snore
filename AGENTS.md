@@ -549,14 +549,24 @@ extraction adds a hop without separating concerns, it's ceremony
 
   **Findings + solutions to grind. Status legend: tooldoc / engine / mixed.**
 
-  - **CC-14 — History-glob `not_found` (~673).** Models emit
+  - **CC-14 — Glob-on-`<set>` `not_found` (~673).** Models emit
     `<set path="log://turn_N/*"/>`, `sh://turn_N/**`,
-    `env://turn_*"` trying to manually prune past-turn artifacts.
-    `RUMMY_LOG_HORIZON` already auto-prunes after 20 turns.
-    Concrete shape (gemma 5/6 T9): `<set path="env://turn_[2-5]/**"
-    visibility="archived"/>` + 4 siblings. Fix: instructions say
-    "logs/sh/env auto-prune after N turns; don't manually demote."
-    Possibly extend to `<get>`/`<rm>` semantics too. **tooldoc.**
+    `env://turn_*"` trying to bulk-demote past-turn artifacts.
+    `<get>` and `<rm>` support globs (per their tooldoc examples);
+    `<set>` does not. Models infer the natural extension and the
+    harness rejects. Concrete shape (gemma 5/6 T9):
+    `<set path="env://turn_[2-5]/**" visibility="archived"/>` + 4
+    siblings. The model is doing exactly what the
+    `<set visibility="archived"/>` tooldoc tells it to (per
+    `rmDoc.md` "Prefer `<set path="..." visibility="archived"/>`
+    to preserve for later retrieval"); the grammar gap is that
+    metadata-only `<set>` should fan out across the glob like
+    `<rm>` does. Fix is paradigm-aligned: extend `<set>` to fan
+    out on globs when the operation is metadata-only (visibility,
+    tags, summary). Body-write `<set>` with a glob remains an
+    error (no body fan-out semantics). **mixed:** engine extension
+    + tooldoc reinforcement of "one-path or glob with metadata-
+    only" once the engine supports it.
 
   - **CC-15 — Multi-path-in-attr `not_found` (~22).** Model sends
     `"README.mkd ADVANCED.mkd LICENSE"` as a single path attr.
@@ -603,17 +613,6 @@ extraction adds a hop without separating concerns, it's ceremony
     parser, don't paper over with verbose error prose.
     **engine.** Highest-leverage fix in the dataset.
 
-  - **EN-2 — Zero-emission strike (unparsed prose).** ~85
-    `unparsed` errors are pure conversational prose ("Looking at
-    the logs, I can see...", "Let me start by...") with no tags.
-    Capable models (Claude family especially) fall out of
-    tag-discipline under stress (e.g., container-down recovery
-    state). Fold into the proposed knowns/unknowns lifecycle
-    strikes: one strike when a turn's parsed top-level emission
-    count is zero AND assistant body has > N words. Pairs with
-    EN-1 — only strikes when EN-1 doesn't already catch it.
-    **engine.**
-
   - **EN-3 — Conflict feedback verbosity.** Conflict error body
     should include current entry body context, not just echo the
     failing patch. SEARCH/REPLACE conflict: 20-line window around
@@ -631,6 +630,17 @@ extraction adds a hop without separating concerns, it's ceremony
     tracked separately as "Single-turn budget escape" below.
   - `exit:127` errors — agent calling commands not installed in
     container; benchmark-task-specific, not harness.
+  - **Discipline rails for prose-only / zero-emission turns
+    (~85 unparsed prose errors).** Capable models (Claude family
+    especially) fall out of tag-discipline under stress. Tempting
+    to add a zero-emission strike, but per
+    `feedback_protocol_over_enforcement`: strikes catch repeated
+    failures, they don't reform models that have structural
+    resistance to the protocol. Open philosophical question
+    (also frames the existing knowns/unknowns lifecycle strikes
+    item below): does *any* engine-side rail close the discipline
+    gap, or does it just abandon the resistant model faster?
+    Defer pending data. Don't grind here.
 
   **Grind order proposal** (smallest blast radius first; each
   block independently shippable):
@@ -640,18 +650,20 @@ extraction adds a hop without separating concerns, it's ceremony
   2. CC-16 — known tooldoc + verify grammar; small.
   3. EN-1 — parser fix; isolated to `XmlParser.js`. Validate by
      replaying the four T9-class packets and checking the
-     `<update>` reaches the verdict.
+     `<update>` reaches the verdict. Not a rail — a correctness
+     bug (verdict misreports what the model emitted).
   4. EN-3 — error-body extension; touches the error plugin and
-     each conflict-emitting plugin (`set`, `known`).
+     each conflict-emitting plugin (`set`, `known`). Not a rail
+     — better feedback so the model has what it needs to fix.
   5. CC-17 path-form split — single fix in `Entries.normalizePath`
      after CC-17 tooldoc lands.
-  6. EN-2 — zero-emission strike; fold into the existing
-     knowns/unknowns lifecycle strikes design (next item).
 
 - [ ] **Engine-side rails: knowns/unknowns lifecycle strikes — DESIGN.**
-  Three deterministic checks against existing entries
-  infrastructure, FCRM-safe (lifecycle handling, no content
-  judgment):
+  (Note: under philosophical question per the Out-of-scope rails
+  block above. Defer pending data on whether *any* engine-side rail
+  closes the discipline gap.) Three deterministic checks against
+  existing entries infrastructure — lifecycle-only, never content
+  judgment:
 
   1. **Turn 1 must create unknowns.** No entries at any visibility
      → strike "Unknowns must be defined." Protocol expects
@@ -818,11 +830,15 @@ extraction adds a hop without separating concerns, it's ceremony
   reported count for the loaded body. Whichever diverges identifies
   the bug.
 
-- [x] **System auto-pruning.** (Landed 2026-05-06.) `log` plugin
-  hooks `turn.started`: when `RUMMY_LOG_HORIZON` is set, archives
-  every `log://turn_M/..`, `env://turn_M/..`, `sh://turn_M/..`
-  where `M ≤ currentTurn - HORIZON`. Default in `.env.example` is
-  20 turns. Disabled when env var is unset or non-positive.
+- **System auto-pruning was a betrayal of "the model fully owns
+  what it sees" and was torn out 2026-05-07** — `RUMMY_LOG_HORIZON`,
+  the `turn.started` `#prune` subscription, and the
+  `archive-turn-N-on-horizon` machinery are all gone (`log.js`,
+  `log.test.js`, `.env.example`). Engine-side visibility mutation
+  outside the three legitimate enforcements (budget overflow,
+  repetition, missing `<update>`) violates the model-owns-context
+  contract. See `feedback_model_owns_context` memory; never
+  reintroduce.
 
 - [x] **resolveCommand `||` empty-string conflation.** (Fixed
   2026-05-06.) `src/agent/XmlParser.js` `resolveCommand` swept to

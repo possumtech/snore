@@ -4,46 +4,12 @@ import { renderEntry } from "../helpers.js";
 // sh/env span multiple channels; channels render their own tokens in <visible>.
 const STREAM_NO_TOKENS = new Set(["sh", "env"]);
 
-// log://turn_N/.., env://turn_N/.., sh://turn_N/..  — three logging
-// schemes carry the time-indexed turn marker in their path.
-const TURN_IN_PATH = /^(?:log|env|sh):\/\/turn_(\d+)/;
-
 export default class Log {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
 		core.filter("assembly.user", this.assembleLog.bind(this), 100);
-		core.on("turn.started", this.#prune.bind(this));
-	}
-
-	// Auto-prune: archive logging entries older than RUMMY_LOG_HORIZON
-	// turns ago. Bounds long runs without requiring model intervention;
-	// the model can still <get> archived entries to promote them.
-	// Disabled when the env var is unset or non-positive.
-	async #prune({ rummy }) {
-		const horizon = Number(process.env.RUMMY_LOG_HORIZON);
-		if (!Number.isFinite(horizon) || horizon < 1) return;
-		const currentTurn = rummy.sequence;
-		const threshold = currentTurn - horizon;
-		if (threshold < 1) return;
-		const entries = await rummy.entries.getEntriesByPattern(
-			rummy.runId,
-			"**",
-			null,
-		);
-		for (const entry of entries) {
-			if (entry.visibility === "archived") continue;
-			const m = TURN_IN_PATH.exec(entry.path);
-			if (!m) continue;
-			const entryTurn = Number(m[1]);
-			if (entryTurn > threshold) continue;
-			await rummy.entries.set({
-				runId: rummy.runId,
-				path: entry.path,
-				visibility: "archived",
-			});
-		}
 	}
 
 	async assembleLog(content, ctx) {

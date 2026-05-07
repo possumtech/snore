@@ -20,8 +20,11 @@ Rummy is a **headless service**. It exposes a JSON-RPC over WebSocket interface,
 ### Extensible Plugin Architecture
 Rummy is built for integration. Every `<tag>` the model sees is a plugin. Every URI scheme (`known://`, `unknown://`, `sh://`) is registered by its owner. Developers can drop custom logic into `src/plugins/` to add new tools, filters, or event hooks. See [PLUGINS.md](PLUGINS.md) for details.
 
-### The FCRM Kernel
-The **Folksonomic Context Relevance Maximization (FCRM)** state machine is the Rummy Kernel. It enforces a rigorous lifecycle for information, moving the agent through four distinct stages: **Decomposition, Distillation, Demotion, and Deployment**. 
+### The Six Primitives
+Every operation in Rummy reduces to one of six verbs over a single entry contract: `set` / `get` / `rm` / `mv` / `cp` / `update`. Tools (`<sh>`, `<search>`, `<known>`, `<unknown>`, …) are plugins that compose these primitives. Three actor surfaces — model XML tags, plugin RummyContext methods, JSON-RPC client calls — speak the same grammar at the store layer.
+
+### The Model Owns Its Context
+Visibility (`visible` / `summarized` / `archived`) is the model's exclusive lever. The engine never silently mutates an entry's visibility behind the model's back; the only enforcements that touch visibility (Turn Demotion at budget overflow, Prompt Demotion at context-exceeded) surface through `error://` so the model sees the trigger. No chat-waterfall horizon, no auto-prune — the model controls what it sees and what it doesn't.
 
 ### Apophatic Reasoning (The Rumsfeld Loop)
 Rummy turns "Not Knowing" into a formal state to be processed. By mapping **Unknowns** (`unknown://`) into verified **Knowns** (`known://`), Rummy provides a transparent, auditable trail of how the agent arrived at its conclusion.
@@ -51,13 +54,13 @@ Start the service and connect your preferred client. The server defaults to port
 
 *   **Official Client:** [rummy.nvim](https://github.com/possumtech/rummy.nvim) (Neovim interface)
 *   **In-process CLI:** `rummy-cli` (one-shot ask/act invocations against a project; see `src/plugins/cli/`)
-*   **Diagnostic Suite:** [TBENCH](TBENCH_AUDIT.md) (Autonomous diagnostic and benchmarking harness)
+*   **Diagnostic Suite:** `test/tbench/` and `test/programbench/` (autonomous diagnostic and benchmarking harnesses)
 
 ## Documentation
 
 | Document | Contents |
 |----------|----------|
-| [SPEC.md](SPEC.md) | Technical Specification: K/V store, FCRM stages, and packet structure. |
+| [SPEC.md](SPEC.md) | Technical Specification: K/V store, packet structure, dispatch path, and lifecycle contracts. |
 | [PLUGINS.md](PLUGINS.md) | Extensibility: Hook registry, event filtering, and custom scheme registration. |
 | [src/plugins/](src/plugins/**/README.md) | **Plugin Reference:** Internal documentation for each scheme and toolset. |
 | [AGENTS.md](AGENTS.md) | Project roadmap, planning history, and architectural lessons. |

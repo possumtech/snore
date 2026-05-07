@@ -182,7 +182,7 @@ is a superset of what's below.
 | Event | Payload | Purpose |
 |-------|---------|---------|
 | `"handler"` | `(entry, rummy)` | Tool handler — called when model/client invokes this tool |
-| `"visible"` | `(entry)` | Visible-visibility projection — body shown in `<knowns>` / `<performed>` |
+| `"visible"` | `(entry)` | Visible-visibility projection — body shown in `<visible>` (data) or `<log>` (logging) |
 | `"summarized"` | `(entry)` | Summarized-visibility projection — path + summary only (body hidden) |
 | `"turn.started"` | `({rummy, mode, prompt, loopIteration, isContinuation})` | Turn beginning — plugins write prompt/instructions entries |
 | `"turn.response"` | `({rummy, turn, result, responseMessage, content, commands, ...})` | LLM responded — write audit entries, commit usage |
@@ -692,11 +692,12 @@ spots — these are projections, not orchestration leaks:
   job; the assembler is the measurement instrument.
 
 **DB tokens vs assembled tokens:** The `tokens` column on `entries`
-is strictly for DISPLAY — showing token costs in `<knowns>` tags so
-the model can reason about entry sizes. It is NEVER used for budget
-decisions. Budget math uses only assembled message token counts.
-These are two separate numbers that must never be conflated. See
-See [budget_enforcement](SPEC.md#budget_enforcement) for the three-measure table.
+is strictly for DISPLAY — showing token costs on entry tags in
+`<summary>` / `<visible>` so the model can reason about entry
+sizes. It is NEVER used for budget decisions. Budget math uses only
+assembled message token counts. These are two separate numbers that
+must never be conflated. See
+[budget_enforcement](SPEC.md#budget_enforcement) for the three-measure table.
 
 ### Client Notifications {#plugins_client_notifications}
 
@@ -805,31 +806,31 @@ pure RPC plumbing shared across all streaming producers.
 |--------|------|-------------|
 | `get` | Core tool | Load file/entry into context |
 | `set` | Core tool | Edit file/entry, visibility control |
-| `known` | Core tool + Assembly | Save knowledge, render `<knowns>` section |
+| `known` | Core tool + Assembly | Save knowledge; renders `<summary>` (priority 50) and `<visible>` (priority 75) for all category=data entries |
 | `rm` | Core tool | Delete permanently |
 | `mv` | Core tool | Move entry |
 | `cp` | Core tool | Copy entry |
 | `sh` | Core tool | Shell command (act mode only). Streaming producer — see [plugins_streaming_entries](#plugins_streaming_entries) |
-| `env` | Core tool | Exploratory command. Streaming producer — see §8.1 |
+| `env` | Core tool | Exploratory command. Streaming producer — see [plugins_streaming_entries](#plugins_streaming_entries) |
 | `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
 | `update` | Structural | Status report + lifecycle signal. `status="200\|204\|422"` terminates; `status="102"` continues. Exposes `hooks.update.resolve` for TurnExecutor. |
-| `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
-| `previous` | Assembly | Render `<previous>` loop history |
-| `performed` | Assembly | Render `<performed>` active loop work |
-| `prompt` | Assembly | Render `<prompt tokensFree="N" tokenUsage="M">` tag (with `warn=` in ask mode) |
+| `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` (priority 150) |
+| `log` | Assembly | Render `<log>` (priority 100) — all logging-category entries plus pre-latest prompts |
+| `prompt` | Assembly | Render `<prompt tokensFree="N" tokenUsage="M">` (priority 30, front of user message) |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
-| `instructions` | Internal | Preamble + tool docs + persona assembly; exposes `hooks.instructions.resolveSystemPrompt` |
+| `instructions` | Internal | System prompt assembly (`instructions-system.md` + `[%TOOLS%]` + `[%TOOLDOCS%]` + persona); renders `<instructions>` (priority 165) from `instructions-user.md`; exposes `hooks.instructions.resolveSystemPrompt` |
 | `file` | Internal | File entry projections and constraints (`scheme IS NULL`) |
 | `rpc` | Internal | RPC method registration + tool-fallback dispatch |
 | `telemetry` | Internal | Audit entries, usage stats, reasoning_content |
-| `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Subscribes to `turn.beforeDispatch` (filter) + `turn.dispatched` (event) + `assembly.user` (filter). |
+| `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Subscribes to `turn.beforeDispatch` (filter) + `turn.dispatched` (event) + `assembly.user` (filter, priority 175 — renders `<budget>`). |
 | `policy` | Internal | Ask-mode per-invocation rejections via `entry.recording` filter |
 | `error` | Internal | `error.log` hook → `error://` entries |
 | `think` | Tool | Private reasoning tag; contributes to `reasoning_content` via the `llm.reasoning` filter |
 | `openai` / `ollama` / `xai` / `openrouter` | LLM provider | Register with `hooks.llm.providers`; handle `{prefix}/...` model aliases. Silently inert if their env isn't configured. |
-| `persona` / `skill` | Internal | Runtime persona/skill management via RPC |
+| `persona` | Internal | Renders the persona body inside the system prompt; default at `persona/default.md`. Run-attribute `persona` overrides per run (1:1, immutable for the run's lifetime). |
+| `skill` | Internal | `<skill path="..."/>` tag handler + `skill://` scheme. Walks file/folder/`.zip` (local or URL); registers content under `skill://<name>/...`. |
 
 ## External Plugins
 
@@ -921,9 +922,7 @@ dedicated verbs with 1:1 plugin-API equivalents.
 | `file/constraint` | `{ pattern, visibility }` | Project-scoped: set overlay. `visibility ∈ {active, readonly, ignore}`. Patterns can be globs. `readonly` is enforced on `set://` accept in `AgentLoop.resolve()`. |
 | `file/drop` | `{ pattern }` | Project-scoped: remove overlay row. |
 | `getConstraints` | — | Project-scoped: returns `[{pattern, visibility}]`. |
-| `skill/add` / `skill/remove` / `getSkills` / `listSkills` | | Skill management |
-| `persona/set` / `listPersonas` | | Persona management |
-| `stream` / `stream/completed` / `stream/aborted` / `stream/cancel` | | Streaming RPC (§8.1) |
+| `stream` / `stream/completed` / `stream/aborted` / `stream/cancel` | | Streaming RPC — see [plugins_streaming_entries](#plugins_streaming_entries) |
 
 **Why file constraints are typed RPCs and not `set` entries:** they
 are project-scoped (no `run`), persist across runs, and `readonly`

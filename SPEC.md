@@ -1,9 +1,9 @@
 # RUMMY: Architecture Specification
 
 The authoritative reference for Rummy's design. The instructions
-plugin (`instructions.md` + phase-specific `instructions_10N.md` +
-tool docs) defines model-facing behavior. This document defines
-everything else.
+plugin (`instructions-system.md` + `instructions-user.md` + tool
+docs) and the persona plugin (`persona/default.md`) define model-
+facing behavior. This document defines everything else.
 
 ---
 
@@ -18,8 +18,7 @@ uses one of these words, it should mean exactly what's written here.
 | **loop** | One `ask` or `act` invocation and all its continuation turns until terminal `<update>`, abandonment, or abort. A run can contain multiple loops if a fresh prompt arrives on an existing run. |
 | **turn** | One round-trip with the LLM: one assembled prompt sent, one response parsed. A loop is a sequence of turns. |
 | **mode** | `ask` (read-only — no proposals, no `<sh>`, no edits) or `act` (full tool surface). Per loop, set at the entry point. |
-| **phase** | (Primary, FCRM sense.) One of four FCRM states selected by `<update status="1XY">`: 104=Decomposition, 105=Distillation, 106=Demotion, 107=Deployment. Maps to `instructions_10N.md` rendered in `<instructions>`. **The model-facing instructions call these "stages"** — same concept, dual vocabulary kept for the model's surface stability. Two non-FCRM uses of "phase" coexist in the codebase and AGENTS.md: (1) "two-phase turn execution" refers to RECORD→DISPATCH within a single turn; (2) AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones (Schema, Primitives, etc.) — neither is the FCRM phase. Context disambiguates; if it doesn't, it's a doc bug. |
-| **stage** | Model-facing synonym for **phase**. Lives in `instructions_*.md` and tooldocs. |
+| **phase** | "Two-phase turn execution" — the RECORD→DISPATCH split within a single turn (see [dispatch_path](#dispatch_path)). AGENTS.md "Phase 1 / Phase 2 / ..." entries refer to project-development milestones; that's a separate use. **No FCRM phases.** Earlier drafts of rummy split work into status-coded states (104/105/106/107); that machine has been retired. The model-facing workflow is the 7D ladder in `persona/default.md` — Draft → Decompose → Discover → Distill → Define → Determine → Deliver — and is a persona convention, not a status-keyed engine state. |
 | **proposal** | A tool-call entry at status 202 awaiting client resolution (accept/reject). Side-effecting actions (`<sh>`, `<env>`, file `<set>`, file `<rm>`/`<mv>`/`<cp>`, `<ask_user>`) emit proposals. YOLO mode auto-accepts. |
 | **verdict** | The end-of-turn ruling from `hooks.turn.verdict.filter` — a generic filter chain. Returns `{continue, status, reason}`. The error plugin is the canonical subscriber today; future plugins (cycle-detection, budget-overflow termination) can join the chain to vote without touching error.js or AgentLoop. Decides whether the loop continues to another turn or terminates. |
 | **strike** | A turn whose verdict counts toward `MAX_STRIKES`. A strike fires when `turnErrors > 0` (any `error.log` entry that turn) or when cycle detection trips silently. The streak counter resets on a clean turn (no errors, no cycle); reaches `MAX_STRIKES` → loop abandons at 499. |
@@ -124,11 +123,12 @@ hooks-and-filters system. Plugins subscribe to events (fire-and-forget
 side effects) and filters (transformation chains that thread a value
 through subscribers in priority order).
 
-**Every `<tag>` the model sees is a plugin.** `<knowns>` → known
-plugin. `<unknowns>` → unknown plugin. `<performed>` → performed
-plugin. `<previous>` → previous plugin. `<prompt>` → prompt plugin.
-No monolithic assembler decides what goes where. Each plugin filters
-for its own data from the shared row set, renders its section, returns.
+**Every `<tag>` the model sees is a plugin.** `<summary>` /
+`<visible>` → known plugin. `<unknowns>` → unknown plugin. `<log>`
+→ log plugin. `<instructions>` → instructions plugin. `<prompt>` →
+prompt plugin. `<budget>` → budget plugin. No monolithic assembler
+decides what goes where. Each plugin filters for its own data from
+the shared row set, renders its section, returns.
 
 **Plugins compose, they don't coordinate.** A plugin subscribes to a
 filter at a priority, receives the accumulator value, appends its
@@ -815,18 +815,24 @@ Two messages per turn. System = stable truth. User = active task.
 
 ```
 [system message]
-    instructions text
-        (instructions.md base template + tool docs injected via
-         instructions.toolDocs filter; optional persona appended)
-[user message]
+    instructions-system.md text (with [%TOOLS%] / [%TOOLDOCS%]
+    expansions) + persona body. Resolved by the instructions
+    plugin's hooks.instructions.resolveSystemPrompt — single-owner,
+    cache-stable across all turns within a run. The assembly.system
+    filter chain exists but currently has no subscribers; the
+    system message is the resolved system prompt verbatim.
+[user message]                     (sandwich ordering — see below)
+    <prompt tokenUsage="N" tokensFree="M">user prompt</prompt>
+        (prompt.js, assembly.user priority 30 — front, cacheable
+         across the run within a loop)
     <summary>
         one entry per category=data entry whose visibility is visible
         or summarized. Each entry renders under its scheme tag with
-        its summarized projection as the tag body — this is the
-        compact-but-informative view produced by the plugin's summary()
-        hook (e.g. truncated knowns, code symbols for files, page
-        abstracts for URLs). Identity-keyed, slow-mutating: only grows
-        when a new entry lands. Archived entries — including prompts —
+        its summarized projection as the tag body — the compact-but-
+        informative view produced by the plugin's summarized() hook
+        (truncated knowns, code symbols for files, page abstracts
+        for URLs). Identity-keyed, slow-mutating: only grows when a
+        new entry lands. Archived entries — including prompts —
         are filtered out uniformly. There is no instruction-side
         guard against archiving the active prompt — if the model
         archives it, the next turn renders without a <prompt> tag
@@ -844,33 +850,51 @@ Two messages per turn. System = stable truth. User = active task.
         (known.js, assembly.user priority 75)
     </visible>
     <log>
-        action history — log:// entries + pre-latest prompts
+        action history — all logging-category entries (log:// audit
+        records, error://, update://) plus pre-latest prompt://
+        entries (the active prompt is extracted to <prompt>).
         (log.js, assembly.user priority 100)
     </log>
     <unknowns>
-        (open questions at category=unknown, unknown.js priority 200)
+        open questions at category=unknown, rendered under <unknown>
+        children with their bodies as questions. (unknown.js,
+        assembly.user priority 150)
     </unknowns>
     <instructions>
-        current phase directive — one of instructions_104.md …
-        instructions_108.md, selected by the latest <update status="1XY">
-        emission (instructions.js, assembly.user priority 250)
+        instructions-user.md text. Per-turn imperative reminders.
+        Same bytes every turn — no phase keying, no status-driven
+        selection. (instructions.js, assembly.user priority 165)
     </instructions>
-    <prompt tokenUsage="N" tokensFree="M">user prompt</prompt>
+    <budget tokenUsage="N" tokensFree="M">…breakdown table…</budget>
+        (budget.js, assembly.user priority 175 — last, recency for
+         the live accounting at the action site)
 ```
 
 **System** = stable world state the model operates within (identity,
-tools, tool docs). Stable across turns within a run, which keeps
-prompt caching intact. **User** = active work (what the model is
-doing right now): the project's data surface, history, open questions,
-current phase, and current prompt. Both phase-specific
-`<instructions>` and the codebase blocks (`<summary>` / `<visible>`)
-live in the user message because they change turn-to-turn — putting
-mutable state in system would invalidate the cache on every promote
-or phase transition.
+tools, tool docs, persona). Stable across turns within a run, which
+keeps prompt caching intact. **User** = active work: the project's
+data surface, history, open questions, current task, and live
+accounting. The user message changes turn-to-turn so it sits outside
+the prefix-cacheable region; both `<instructions>` and the codebase
+blocks (`<summary>` / `<visible>`) live here because they mutate at
+turn cadence — putting mutable state in system would invalidate the
+cache on every promote.
+
+**Sandwich ordering.** User-message blocks are arranged
+`<prompt>` (30, front) → `<summary>` (50) → `<visible>` (75) →
+`<log>` (100) → `<unknowns>` (150) → `<instructions>` (165) →
+`<budget>` (175, last). The prompt sits at the front (cacheable
+across turns of a loop, since it doesn't change within a loop); the
+instructions and budget sit at the tail so the rules and live
+accounting have recency at the action site. An earlier front-loaded
+ordering (instructions first for max cache) regressed terminal-
+`<update>` discipline in e2e — the model lost the rule when it sat
+3K tokens upstream of the action. Recency at the action site beats
+cache savings when the action depends on remembering a rule.
 
 **Why two blocks instead of one `<context>`.** Promote/demote is the
-dominant intra-phase operation. Today's single-block render
-invalidates the entire data surface every time. With the split,
+dominant intra-loop operation. A single-block render would
+invalidate the entire data surface on every promote. With the split,
 `<summary>` mutates only when a new entry lands (slow); `<visible>`
 mutates on every promote/demote (fast). Ordering slow-above-fast
 preserves the prefix cache for `<summary>` across the common case.
@@ -878,29 +902,38 @@ Cognitively: `<summary>` is "what I know exists" (identity);
 `<visible>` is "what I'm reading right now" (working memory).
 
 The `<prompt>` tag is present on every turn — first turn and
-continuations alike. The model always sees its task. The active prompt
-is extracted from its chronological position and placed last for maximum
-recency. The `<prompt>` element carries `tokenUsage` / `tokensFree`
-attributes so the model can do budget arithmetic in-line with the cause.
+continuations alike. The model always sees its task. The
+`tokenUsage` / `tokensFree` attributes also appear on `<budget>` so
+the model can do budget arithmetic at both ends of the user message.
 
-### Loops, Previous, and Performed {#loops_previous_performed}
+### Loops and Cross-Loop Continuity {#loops_previous_performed}
 
 A **loop** is one `ask` or `act` invocation and all its continuation
-turns until `<update status="200">`, fail, or abort.
+turns until `<update status="200">`, fail, or abort. A run may
+contain many loops; pending loops queue FIFO via the loops table.
 
-**Previous** = all completed loops on this run. The user prompt, model
-responses, tool results, agent warnings — the full chronicle in order.
-Lives in the system message as established history. Omitted on the
-first turn of the first loop.
+**No `<previous>` or `<performed>` blocks.** Cross-loop continuity
+is carried by the entry store itself, not by dedicated packet
+sections:
 
-**Performed** = the active loop's work so far. Model responses, tool
-results, agent warnings — in order. Does NOT include the user prompt
-(one per loop, extracted to `<prompt>`). Lives in the user
-message as immediate context. Empty on the first turn of a loop.
+- **Knowns, files, unknowns** persist across loop boundaries with
+  whatever visibility the model left them at. They render in
+  `<summary>` / `<visible>` per visibility, regardless of which
+  loop wrote them.
+- **Log entries** (action audit, errors, updates) accumulate at
+  `log://turn_N/...` for every turn of every loop; `log.js`
+  renders all logging-category entries plus pre-latest prompts in
+  `<log>` in chronological order.
+- **The active prompt** is extracted from its chronological
+  position and rendered as `<prompt>` at priority 30 (front);
+  prior prompts demote into `<log>` automatically as later
+  prompts arrive.
 
 When a new prompt arrives on an existing run, the prior loop's
-`<performed>` content plus its prompt move to `<previous>`. When a loop
-continues (next turn), new results append to `<performed>`.
+`prompt://N` entry remains in the store; on the next assembly it
+falls out of `<prompt>` (replaced by the new prompt) and into
+`<log>`. There is no relocation between named blocks — only
+visibility-driven re-rendering of the same entry rows.
 
 ### Key Entries {#key_entries}
 
@@ -922,23 +955,33 @@ Each turn:
 
 1. Write `instructions://system` (empty body, attributes = { persona, toolSet })
 2. Emit `turn.started` — plugins write prompt/instructions entries
-3. Resolve the instructions system prompt (`hooks.instructions.resolveSystemPrompt`)
+3. Resolve the instructions system prompt
+   (`hooks.instructions.resolveSystemPrompt` — single-owner; see
+   AGENTS.md "Architectural exceptions"). Returns
+   `instructions-system.md` with `[%TOOLS%]` / `[%TOOLDOCS%]`
+   expanded, persona body appended.
 4. Query `v_model_context` VIEW → visible entries (joined from
    `run_views` + `entries` + `schemes`)
 5. Project each entry through its scheme's `visible`/`summarized` projection
 6. Insert projected rows into `turn_context`
-7. Invoke `assembly.system` filter chain (instructions text as base):
-   - Known plugin (priority 100) → `<knowns>` section
-   - Previous plugin (priority 200) → `<previous>` section
+7. Invoke `assembly.system` filter chain — currently no
+   subscribers, so the system message is the resolved system
+   prompt verbatim.
 8. Invoke `assembly.user` filter chain (empty string as base):
-   - Performed plugin (priority 100) → `<performed>` section
-   - Unknown plugin (priority 200) → `<unknowns>` section
-   - Prompt plugin (priority 300) → `<prompt>` element (carries
-     `tokenUsage` / `tokensFree` attrs when `contextSize` is set)
+   - Prompt plugin (priority 30) → `<prompt>` element (carries
+     `tokenUsage` / `tokensFree` attrs)
+   - Known plugin (priority 50) → `<summary>` section
+   - Known plugin (priority 75) → `<visible>` section
+   - Log plugin (priority 100) → `<log>` section
+   - Unknown plugin (priority 150) → `<unknowns>` section
+   - Instructions plugin (priority 165) → `<instructions>` section
+     (renders `instructions-user.md`)
+   - Budget plugin (priority 175) → `<budget>` element (carries
+     `tokenUsage` / `tokensFree` and per-scheme breakdown)
 9. Store as `system://N` and `user://N` audit entries (telemetry plugin)
 
 The VIEW determines visibility from `visibility` and `status`:
-- `visibility = 'visible'` → full body visible in `<knowns>` / `<performed>`.
+- `visibility = 'visible'` → full body visible in `<visible>` (data) or `<log>` (logging).
 - `visibility = 'summarized'` → summarized projection visible (typically path +
   summary attr). Promote with `<get>` to expand.
 - `visibility = 'archived'` → invisible. Discoverable via pattern search
@@ -957,6 +1000,29 @@ Model controls visibility via `<set>` attributes:
 `visibility="archived|summarized|visible"`. The `summary="..."` attribute
 attaches a description (≤ 80 chars) that persists across visibility
 changes.
+
+### Filesystem Freshness {#filesystem_freshness}
+
+After any mutation of a file or scheme entry, the next turn's
+assembled context reflects the post-mutation body AND visibility,
+without the model needing a fresh `<get>` to recover its own
+changes. The model's view of the entry store is always a faithful
+projection of current state — there is no read-after-write skew.
+
+The invariant has two parts:
+
+1. **Body freshness** — a write that changes the entry body shows
+   the new body on the next assembly's `<visible>` (when visible)
+   or under `<get>` (when summarized/archived).
+2. **Visibility freshness** — a write that explicitly sets
+   `visibility=...` honors the requested level on the next
+   assembly. Edit-path side effects (e.g., a SEARCH/REPLACE accept
+   silently downgrading visibility) violate the invariant; the
+   model would answer the next turn from memory of pre-edit state
+   while the new body sits invisible.
+
+Enforcement: `test/integration/file_freshness.test.js` exercises
+write-through for both file and scheme entries.
 
 ### Token Accounting {#token_accounting}
 
@@ -1159,9 +1225,9 @@ on `get` also sets a project-level file constraint (operator privilege).
 
 | Method | Params |
 |--------|--------|
-| `startRun` | `{ model, temperature?, persona?, contextLimit? }` |
-| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noRepo?, noInteraction?, noWeb?, fork? }` |
-| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noRepo?, noInteraction?, noWeb?, fork? }` |
+| `startRun` | `{ model, temperature?, persona?, contextLimit?, yolo? }` |
+| `ask` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noRepo?, noInteraction?, noWeb?, noProposals?, yolo?, fork? }` |
+| `act` | `{ prompt, model, run?, temperature?, persona?, contextLimit?, noRepo?, noInteraction?, noWeb?, noProposals?, yolo?, fork? }` |
 | `run/resolve` | `{ run, resolution: { path, action, output? } }` |
 | `run/abort` | `{ run }` |
 | `run/rename` | `{ run, name }` |
@@ -1173,6 +1239,10 @@ on `get` also sets a project-level file constraint (operator privilege).
 be added explicitly by the client).
 `noInteraction` removes `ask_user` from the tool list.
 `noWeb` removes `search` from the tool list.
+`noProposals` removes `ask_user` / `env` / `sh` from the tool list
+(no proposals at all).
+`yolo` opts the run into server-side proposal auto-accept and
+in-process sh/env execution — see [yolo_mode](#yolo_mode).
 
 #### Streaming (see [streaming_entries](#streaming_entries))
 
@@ -1202,17 +1272,20 @@ connected clients). `stream/cancel` also handles stale 102 cleanup.
 
 #### Skills & Personas
 
-| Method | Params |
-|--------|--------|
-| `skill/add` | `{ run, name }` |
-| `skill/remove` | `{ run, name }` |
-| `getSkills` | `{ run }` |
-| `listSkills` | — |
-| `persona/set` | `{ run, name?, text? }` |
-| `listPersonas` | — |
+No RPC surface. Both attach to a run via the entry grammar:
 
-Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
-`RUMMY_HOME/personas/{name}.md`.
+- **Skills** — model emits `<skill path="[path-or-url]"/>`.
+  Handler walks local file/folder/`.zip` (via `yauzl-promise`) or
+  fetches a URL. Single `.md` registers as `skill://<name>`
+  (summarized); folder/zip registers root `index.md` summarized,
+  rest archived; `foo/index.md` collapses to `skill://<name>/foo`.
+  Re-emit overwrites. Authors link with absolute `skill://...` URIs.
+- **Personas** — `ask`/`act`/`startRun` accept `persona` as a run
+  attribute. The persona plugin renders the persona body inside
+  the system prompt (below tooldocs) on first turn; if no
+  `persona` is passed, `AgentLoop.ensureRun` defaults to
+  `src/plugins/persona/default.md`. 1:1 run:persona, immutable
+  for the run's lifetime.
 
 ### Notifications {#notifications}
 
@@ -1654,7 +1727,7 @@ Full reference is `.env.example` — these are the load-bearing vars.
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `PORT` | 3044 | WebSocket port |
-| `RUMMY_HOME` | `~/.rummy` | Skills, personas, local config |
+| `RUMMY_HOME` | `~/.rummy` | Local config root (telemetry; reserved for future per-user state). Not used for skills or personas — those attach via the entry grammar; see [rpc_methods](#rpc_methods) Skills & Personas. |
 | `RUMMY_DB_PATH` | `rummy.db` | SQLite path |
 | `RUMMY_MMAP_MB` | 0 | SQLite mmap hint (MB; 0 disables) |
 | `RUMMY_DEBUG` | false | Verbose logging |
