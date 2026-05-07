@@ -145,11 +145,21 @@ and emits the appropriate layout — single-run (tbench) writes
 - `digest_skipped` — empty file, written when `agent/rummy.db` is
   absent (exfil-fail). Tells future passes "we tried, no data."
 
-**Sweep-wide artifact** (at sweep root):
+**Sweep-wide artifacts** (at sweep root):
 
 - `index.csv` — one row per task: `task,reward,status,turns,
   prompt_tokens,completion_tokens,cached_tokens,cost,wall_seconds,
   markers`. Standard triage front door.
+- `errors.md` / `errors.json` — cross-task error report. Header
+  counts by outcome, by task. Top signatures (recurring failures
+  grouped by `outcome :: source-path-pattern :: body-prefix`) with
+  compressed turn-lists and the originating action body for each.
+  Per-task chronological tail with full body + source body for
+  every error. When `digest.js` is invoked on a single task dir
+  these land alongside the per-task artifacts instead of at sweep
+  root. Use this to surface recurring patterns the per-task
+  waterfall truncates (e.g., gemma26's 44× SEARCH/REPLACE retry
+  against `tests/runner_test.go` turns 96-224).
 
 **Marker taxonomy** (auto-classified, semicolon-joined in `markers`
 column):
@@ -182,7 +192,8 @@ column):
 - Open one task's digest: `cat <task-dir>/digest.md`
 - Reasoning on a specific turn:
   `awk '/^## Turn 8$/,/^## Turn /' <task-dir>/reasoning.md`
-- Cross-task error grep:
+- Cross-task error report (preferred): read `errors.md` at sweep root.
+- Cross-task error grep (fallback for ad-hoc digging):
   `grep -rh "✗ error:" */digest.md | sort | uniq -c | sort -rn`
 
 **Output-dir control.** `test/tbench/runner.js` accepts `--out
@@ -311,7 +322,10 @@ extraction adds a hop without separating concerns, it's ceremony
   | kimi (moonshotai/kimi-k2.6) | 499 | 16 | $0.42 | strike abandon. Most expensive run by far (30K reasoning tokens). Real artifacts produced (SPEC.md + testdata/ with 6 captured fixtures). Stalled in late turns then loop-detector fired. |
   | mmax (minimax-m2.7) | 499 | 4 | $0.007 | strike abandon. Same protocol non-adoption as ccp. |
   | qwen (qwen3.6-plus) | 499 | 6 | $0.02 | strike abandon. Has reasoning (3K tokens) but still hits protocol wall. |
-  | xemma (gemma-4-31b-it via openrouter) | running 30+ | $? | running. Strong showing — methodical workflow, real testdata captures, currently running `go test`. **Adopts protocol cleanly through openrouter** — falsifies "openrouter is the problem." |
+  | xemma (gemma-4-31b-it via openrouter) | 200 | 80+ | $? | gate ✗ — reference binary destroyed (model copied executable AFTER first build, not before). Adopted protocol cleanly through openrouter — falsifies "openrouter is the problem." |
+  | opus (anthropic/opus-4) | 200 | 60+59 phantom | $24.70 | gate ✗. Read explicit `### YOU MUST copy and perfectly reverse engineer the inspiration executable`, skipped step 1 anyway. Reference destroyed. **Orphaned-child harness bug:** parent kill left rummy-cli reparented to init, racked up 59 phantom LLM turns. Fixed (detached spawn + process-group signaling). |
+  | haiku (anthropic/claude-haiku-latest) | 200 | 7 | $0.20 | gate ✗ — `declared and not used: i`. Single unused-var away from clean compile. Tier-appropriate strong showing — followed step 1, drafted SPEC.md, modularized into `cmd/`, almost passed. |
+  | gemma26 (gemma-4-26b-a4b-it via openrouter) | running 54+ | $0.10 so far | running. Methodical small-step at 4B-active. Produced compile.sh + src/ + tests/, currently iterating against test failures on bracket-notation core walk logic. **Determine step in flight — the one frontier models skip.** |
 
   **Pattern across runs:**
   - **Verification hallucination is universal in US capable models.** grok variants + gfast variants all emit `<update status="200">` despite broken builds. THINK=1 makes them *faster*, not more self-skeptical.
@@ -436,14 +450,26 @@ extraction adds a hop without separating concerns, it's ceremony
   without the substance. Worth A/B'ing: same matrix, two prompt
   variants, see which spread of outcomes is more useful.
 
-  **User assessment 2026-05-07 (end of session):** "We only
-  actually need one budget model to work well with it to serve
-  as a proof of concept, and I think we've found it." Gemma
-  family (gemma local + xemma openrouter) is the working proof
-  point. Frontier paid models (Gemini Pro / Opus) untested but
-  plausible high performers. Grok family owes a partial
-  apology — task-oriented in the gemma cluster, just bound by
-  verification hallucination rather than fundamental refusal.
+  **State 2026-05-07 morning:**
+  - Gemma family thesis confirmed at 4B-active. Gemma26 produces
+    real artifacts and iterates against tests at $0.10 / 50+ turns.
+    Protocol functions as bricklayer's scaffold for small-active-
+    parameter models — they can't outrun their working memory, so
+    the rails are infrastructure they actually use.
+  - **Frontier-model failure is discipline-bounded, not capability-
+    bounded.** Opus on the same task: $24.70 / 60+ turns / no clean
+    artifact. Read explicit YOU MUST instructions and skipped step 1
+    anyway. The synthesize-and-ship RLHF prior dominates surface
+    persona/prompt strengthening.
+  - The frontier-paid hypothesis (Gemini Pro / Opus as plausible
+    high performers) was wrong for opus. Gemini Pro untested.
+  - Grok family owes partial apology — task-oriented in the gemma
+    cluster, just bound by verification hallucination.
+
+  **Path forward:** engine-side rails (see Open Items below).
+  Surface prompt-strengthening hit ceiling; discipline must be
+  enforced through existing strike + entries machinery, not
+  through stronger pleading.
 
 - [x] **Persona modularization + Deep Skills refactor.** Landed
   2026-05-06. Three pluggable layers in the model-facing context:
@@ -503,6 +529,166 @@ extraction adds a hop without separating concerns, it's ceremony
   `[yolo] finalize failed: SqlRite instance is closed` at suite
   teardown — child SIGTERM-close races with the `after()` DB close.
   Production code path doesn't see this; cosmetic only.
+
+- [ ] **Forensic investigation: programbench 1298-error matrix → solution grind.**
+  Forensic source: `errors.md` / `errors.json` at the sweep root,
+  produced by `digest.js` (extended 2026-05-07 to emit cross-task
+  error report + handle programbench's `rummy_programbench.db`).
+  Corpus: 43 programbench gron runs across 2026-05-06/07, 1298
+  total errors (273 strike, 1025 soft). Distribution:
+
+  | Outcome | Count | Class |
+  |---|---|---|
+  | `not_found` | 687 | tooldoc gap |
+  | `conflict` | 197 | tooldoc + engine |
+  | `status:422` | 125 | engine (parser-swallow) |
+  | `unparsed` | 105 | engine + persona |
+  | `exit:127` | 60 | (cmd not installed; out of scope) |
+  | `validation` | 36 | (per-plugin; not yet investigated) |
+  | other | 88 | tail |
+
+  **Findings + solutions to grind. Status legend: tooldoc / engine / mixed.**
+
+  - **CC-14 — History-glob `not_found` (~673).** Models emit
+    `<set path="log://turn_N/*"/>`, `sh://turn_N/**`,
+    `env://turn_*"` trying to manually prune past-turn artifacts.
+    `RUMMY_LOG_HORIZON` already auto-prunes after 20 turns.
+    Concrete shape (gemma 5/6 T9): `<set path="env://turn_[2-5]/**"
+    visibility="archived"/>` + 4 siblings. Fix: instructions say
+    "logs/sh/env auto-prune after N turns; don't manually demote."
+    Possibly extend to `<get>`/`<rm>` semantics too. **tooldoc.**
+
+  - **CC-15 — Multi-path-in-attr `not_found` (~22).** Model sends
+    `"README.mkd ADVANCED.mkd LICENSE"` as a single path attr.
+    Tooldoc example reinforcing one-path-per-tag. **tooldoc.**
+
+  - **CC-16 — `<set known://X>` overwrite-as-conflict (91).** All
+    91 land on `known://plan` — same path, every run. Model
+    treats `<set>` as idempotent "update my plan"; harness flags
+    conflict. No worked example covers re-setting an existing
+    `known://`. Fix: known tooldoc adds the re-set path (rm-then-
+    set, or partial-update verb if grammar exists). **tooldoc.**
+
+  - **CC-17 — SEARCH/REPLACE retry-without-refetch (105).** When
+    SEARCH text doesn't match the file, conflict error echoes the
+    failing patch back — useless feedback. Model retries verbatim
+    (gemma26 ceiling case: 44× same patch turns 96-224 against
+    `tests/runner_test.go`). Sub-pattern: `./main.go` vs `main.go`
+    path-form split (24+12 occurrences) — verify
+    `Entries.normalizePath` strips leading `./` for file-scheme.
+    **mixed:** tooldoc edit (read current first) + engine fix
+    (conflict body should include the current file region the
+    SEARCH matched fuzziest, or a 20-line window around the
+    file's actual content for that area). See EN-3.
+
+  - **CC-18 — Unparsed HTML-comment thinking (~17).** Models use
+    `<!-- ... -->` as alt-think channel. Fix: think-plugin
+    absorb-or-filter `<!--` (already does so for `<think>`); or
+    tooldoc points at `<think>` as the answer. **mixed.**
+
+  - **EN-1 — 422 verdict misleads when parser swallows `<update>`
+    (load-bearing).** When `<set>` containing SEARCH/REPLACE is
+    malformed (missing `<<<<<<< SEARCH` head OR missing `</set>`
+    tail), XmlParser absorbs every following tag — including
+    `<update>` — as nested body. The 422 fires "no <update>
+    emitted" but the model emitted one; the parser can't see it.
+    Confirmed at packet level on 5/6 14:39 T9: malformed second
+    `<set known://plan>` with no `</set>` swallowed `<sh>` and
+    `<update status="102">` at end-of-stream. Two paths:
+    (a) parser closes parent at next sibling-shaped top-level
+    tag; (b) verdict body changes to "Unclosed `<set>` swallowed
+    your `<update>` — check SEARCH/REPLACE markers and `</set>`"
+    so model gets accurate feedback. Per
+    `feedback_no_specificity_to_model`: prefer (a) — fix the
+    parser, don't paper over with verbose error prose.
+    **engine.** Highest-leverage fix in the dataset.
+
+  - **EN-2 — Zero-emission strike (unparsed prose).** ~85
+    `unparsed` errors are pure conversational prose ("Looking at
+    the logs, I can see...", "Let me start by...") with no tags.
+    Capable models (Claude family especially) fall out of
+    tag-discipline under stress (e.g., container-down recovery
+    state). Fold into the proposed knowns/unknowns lifecycle
+    strikes: one strike when a turn's parsed top-level emission
+    count is zero AND assistant body has > N words. Pairs with
+    EN-1 — only strikes when EN-1 doesn't already catch it.
+    **engine.**
+
+  - **EN-3 — Conflict feedback verbosity.** Conflict error body
+    should include current entry body context, not just echo the
+    failing patch. SEARCH/REPLACE conflict: 20-line window around
+    where SEARCH text fuzzy-matches (or full file if small).
+    `known://` conflict: include current entry body so the model
+    can author a delta. Closes the loop for both CC-17 and CC-16.
+    **engine.**
+
+  **Out of scope (do not address here):**
+
+  - Mode-collapse degenerate sampling (e.g., 130k-char loop of
+    `setPath,main,...` filling completion budget). Sampler escape
+    on small models; not a harness concern.
+  - Mid-emission truncation by completion-tokens budget — already
+    tracked separately as "Single-turn budget escape" below.
+  - `exit:127` errors — agent calling commands not installed in
+    container; benchmark-task-specific, not harness.
+
+  **Grind order proposal** (smallest blast radius first; each
+  block independently shippable):
+
+  1. CC-14 + CC-15 + CC-18 — tooldoc-only edits, batched in next
+     focused instruction-edit pass.
+  2. CC-16 — known tooldoc + verify grammar; small.
+  3. EN-1 — parser fix; isolated to `XmlParser.js`. Validate by
+     replaying the four T9-class packets and checking the
+     `<update>` reaches the verdict.
+  4. EN-3 — error-body extension; touches the error plugin and
+     each conflict-emitting plugin (`set`, `known`).
+  5. CC-17 path-form split — single fix in `Entries.normalizePath`
+     after CC-17 tooldoc lands.
+  6. EN-2 — zero-emission strike; fold into the existing
+     knowns/unknowns lifecycle strikes design (next item).
+
+- [ ] **Engine-side rails: knowns/unknowns lifecycle strikes — DESIGN.**
+  Three deterministic checks against existing entries
+  infrastructure, FCRM-safe (lifecycle handling, no content
+  judgment):
+
+  1. **Turn 1 must create unknowns.** No entries at any visibility
+     → strike "Unknowns must be defined." Protocol expects
+     discovery-first; absence is wrong setup.
+  2. **Attempted status=200 with no knowns at any visibility** →
+     strike "Knowns must be distilled from Unknowns before
+     Completion."
+  3. **Attempted status=200 with unknowns still at visible
+     fidelity** → strike "Unknowns must be resolved and demoted
+     before Completion."
+
+  One strike per turn (existing machinery). Multiple striking
+  errors stack on the attempt; earliest-violation message wins so
+  the model gets walked through the protocol in order. Rules 2/3
+  fire before the 200 lands — the strike is on the attempt, not
+  after the run terminates.
+
+  **Why paradigm-aligned, not accretion:** uses existing
+  knowns/unknowns infrastructure + existing strike machinery. No
+  new tags, no new rules in the prompt, no thou-shalt accretion.
+  The discipline-pressure compartmentalizes to one load-bearing
+  decision (knowns/unknowns) and one transition (completion). The
+  rest of the protocol cascades from there.
+
+  **Validation experiment:** opus-with-rails on the same gron
+  task, compared against opus's $24.70/no-artifact baseline. Tells
+  us whether the rails close the discipline gap or whether the
+  synthesize-and-ship prior breaks through. Defer implementation
+  until current gemma26 baseline run completes (data cleanliness).
+
+  **Open implementation questions:**
+  - Where does the 200-validation actually live? Need to scope
+    before writing.
+  - Calibration risk: too-tight strikes corner opus into gemma26-
+    style mode-collapse (high protocol fidelity, low artifact).
+    Triggers must fire on *handling* (sequence, demotion proof,
+    premature resolution), not on *content*.
 
 - [ ] **ProgramBench sweep readiness.** Integration mirrors
   mini-swe-agent's reference: agent runs on host, every `<sh>` is
@@ -837,6 +1023,30 @@ extraction adds a hop without separating concerns, it's ceremony
   the verifier is run via `<sh>` but its source isn't an entry the
   model engages with. Mirror this carve-out for any benchmark
   where the agent has filesystem write access to test code.
+- **Detached spawn + process-group signaling for runner-side child
+  management.** Spawn without `detached: true` plus a parent kill
+  leaves the child reparented to init, where it continues making
+  LLM calls invisibly. Cost the user $24.70 on opus (60 expected
+  turns + 59 phantom turns post-kill). Fix: spawn with
+  `detached: true`, install SIGTERM/SIGINT propagators on the
+  runner that signal `-child.pid` (process group), with 5s SIGKILL
+  escalation. Apply this pattern anywhere a node script spawns
+  long-running children that the user might Ctrl-C. The earlier
+  watchdog only handled container-disappears; orphaned-child was
+  the missing half. (`test/programbench/runner.js`, 2026-05-07.)
+
+- **Frontier models including opus default to one-shot synthesis
+  even with explicit `YOU MUST` instructions.** Capability does
+  not equal result. The protocol's job is to prevent any model
+  from outrunning its own working memory; frontier models think
+  they don't need it; the data says they do. A 4B-active model
+  obeying the rails out-executes opus on the same task at 1/240th
+  the cost. This is why engine-side rails matter more than prompt
+  strengthening — surface persona ("you are the rule-follower
+  mayor of FollowsRulesville") doesn't override the synthesize-
+  and-ship RLHF prior. Build forcing functions, don't write
+  stronger prose.
+
 - **Benchmark task containers are heterogeneous.** Tbench: tasks
   span Ubuntu Jammy (22.04) and Noble (24.04, t64-renamed libs).
   Apt package names diverge across the t64 transition. Use stable

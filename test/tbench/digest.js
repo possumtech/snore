@@ -1,31 +1,44 @@
 /**
- * tbench digest tool. Walks a sweep dir (or a single task dir),
- * reads each task's rummy.db + rummy.txt + verifier/reward.txt, and
- * emits four artifacts per task plus one sweep-wide index:
+ * tbench/programbench digest tool. Walks a sweep dir (or a single task
+ * dir), reads each task's agent DB (rummy.db for tbench, rummy_program-
+ * bench.db for programbench) + rummy.txt + verifier/reward.txt, and
+ * emits per-task and sweep-wide forensic artifacts:
  *
  *   <task-dir>/digest.md      Waterfall: per-turn one-liner with status,
  *                             update body, and indented emission list.
  *                             Human + agent scan target.
  *   <task-dir>/digest.json    Same data, machine-queryable. Markers,
- *                             counts, paths.
+ *                             counts, paths, and a flat error record list.
  *   <task-dir>/reasoning.md   Per-turn reasoning_content bracketed by
  *                             `## Turn N` headers. Drill-down anchor
  *                             when the waterfall raises a question.
- *   <task-dir>/digest_skipped Empty file. Written when rummy.db is
- *                             absent (exfil-fail, harbor crash before
- *                             agent ran). Tells future passes "we
+ *   <task-dir>/packets.md     Per-turn assembled wire packets (system,
+ *                             user, assistant, model wrapper, reasoning).
+ *   <task-dir>/digest_skipped Empty file. Written when no rummy*.db is
+ *                             present in agent/ (exfil-fail / crash
+ *                             before agent ran). Tells future passes "we
  *                             tried, no data."
  *
- *   <sweep-dir>/index.csv     One row per task: name, reward, status,
+ *   <sweep>/index.csv         One row per task: name, reward, status,
  *                             turns, tokens, cost, wall, markers.
  *                             Greppable triage front door.
+ *   <sweep>/errors.md         Cross-task error report. Aggregates by
+ *                             outcome, by task, and by signature (top
+ *                             recurring failures with turn-list and
+ *                             source-action body). Per-task chronology
+ *                             tail with full body + originating action
+ *                             body for each error.
+ *   <sweep>/errors.json       Same data, machine-queryable.
+ *
+ * When invoked on a single task dir (rather than a sweep), `errors.md`
+ * + `errors.json` land in the task dir itself; `index.csv` is sweep-only.
  *
  * The digest is a read-only derivative; never source-of-truth. Safe
  * to re-run on the same input.
  *
  * Usage:
- *   node test/tbench/digest.js <sweep-dir>           # sweep + index
- *   node test/tbench/digest.js <task-dir>            # single task
+ *   node test/tbench/digest.js <sweep-dir>           # sweep + index + errors
+ *   node test/tbench/digest.js <task-dir>            # single task + errors
  *   node test/tbench/digest.js                       # latest sweep
  */
 
@@ -49,8 +62,38 @@ const RESULTS_DIR = join(__dirname, "results");
 const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS) || 99;
 const REASONING_RUNAWAY_CHARS = 8000;
 
+// Locate the agent's sqlite DB inside a task dir's agent/ folder. Tbench
+// writes `rummy.db`; programbench writes `rummy_programbench.db` (so the
+// host-side audit DB is segregated from any project-internal `rummy.db`
+// the agent might create). Returns absolute path or null. Empty stubs
+// (zero-length leftovers from aborted runs) are ignored.
+function findAgentDb(taskDir) {
+	const agentDir = join(taskDir, "agent");
+	if (!existsSync(agentDir)) return null;
+	let names;
+	try {
+		names = readdirSync(agentDir);
+	} catch {
+		return null;
+	}
+	const candidates = names
+		.filter((n) => /^rummy.*\.db$/.test(n))
+		.map((n) => join(agentDir, n))
+		.filter((p) => {
+			try {
+				return statSync(p).size > 0;
+			} catch {
+				return false;
+			}
+		});
+	if (candidates.length === 0) return null;
+	const canonical = candidates.find((p) => p.endsWith("/rummy.db"));
+	if (canonical) return canonical;
+	return candidates.toSorted((a, b) => statSync(b).size - statSync(a).size)[0];
+}
+
 function isTaskDir(dir) {
-	return existsSync(join(dir, "agent", "rummy.db"));
+	return findAgentDb(dir) != null;
 }
 
 function findTaskDirs(sweepDir) {
@@ -255,6 +298,8 @@ function buildTurns(turns, logEntries) {
 				body: e.body,
 				attrs,
 				slug: pathSlug(e.path),
+				state: e.state,
+				outcome: e.outcome,
 			});
 		} else {
 			row.emissions.push({
@@ -485,6 +530,254 @@ function digestJson({
 	};
 }
 
+// Build rich error records from a run's turn rows + log entries. Each
+// record carries enough forensic context to read the failure without
+// drilling into the DB: the originating action's path/body (the thing
+// the model tried), the verdict status/outcome, soft-vs-strike, and a
+// signature for cross-task aggregation.
+function collectErrors(turnRows, logEntries, runIdent) {
+	const byPath = new Map();
+	for (const e of logEntries) byPath.set(e.path, e);
+	const records = [];
+	for (const row of turnRows) {
+		for (const err of row.errors) {
+			const sourcePath = err.attrs?.sourcePath ?? null;
+			const sourceEntry = sourcePath ? byPath.get(sourcePath) : null;
+			const sourceAttrs = sourceEntry ? parseAttrs(sourceEntry.attributes) : {};
+			const semanticOutcome = err.attrs?.outcome ?? err.outcome ?? null;
+			records.push({
+				run: runIdent,
+				turn: row.turn,
+				status: err.attrs?.status ?? null,
+				outcome: semanticOutcome,
+				rvOutcome: err.outcome ?? null,
+				state: err.state ?? null,
+				soft: err.state === "resolved",
+				sourcePath,
+				sourceAction: sourceEntry
+					? {
+							path: sourcePath,
+							action: actionFromPath(sourcePath),
+							targetPath: sourceAttrs.path ?? null,
+							body: sourceEntry.body ?? "",
+							state: sourceEntry.state ?? null,
+							outcome: sourceEntry.outcome ?? null,
+						}
+					: null,
+				body: err.body ?? "",
+				bodySig: errorSignature({
+					outcome: semanticOutcome,
+					sourcePath,
+					body: err.body,
+				}),
+			});
+		}
+	}
+	return records;
+}
+
+// Group key for cross-task aggregation. Same outcome + same source-path
+// shape (turn-stripped) + same body prefix collapses repeats. The 80-char
+// body prefix accommodates "<<<<<<< SEARCH\n<context-line>" patterns
+// without bleeding into the divergent tail.
+const SIG_BODY_CHARS = 80;
+function errorSignature({ outcome, sourcePath, body }) {
+	const out = outcome ?? "—";
+	const src = sourcePath ? sourcePath.replace(/turn_\d+/, "turn_*") : "—";
+	const flat = (body ?? "").replace(/\s+/g, " ").trim();
+	const head =
+		flat.length > SIG_BODY_CHARS ? `${flat.slice(0, SIG_BODY_CHARS)}…` : flat;
+	return `${out} :: ${src} :: ${head}`;
+}
+
+function aggregateErrors(allErrors) {
+	const total = allErrors.length;
+	let strikes = 0;
+	let soft = 0;
+	const byOutcome = new Map();
+	const byTask = new Map();
+	const bySig = new Map();
+	for (const er of allErrors) {
+		if (er.soft) soft++;
+		else strikes++;
+		const oc = er.outcome ?? "—";
+		byOutcome.set(oc, (byOutcome.get(oc) ?? 0) + 1);
+		const taskKey = er.run.task;
+		byTask.set(taskKey, (byTask.get(taskKey) ?? 0) + 1);
+		if (!bySig.has(er.bodySig)) {
+			bySig.set(er.bodySig, {
+				sig: er.bodySig,
+				count: 0,
+				outcome: er.outcome,
+				sourcePathPattern: er.sourcePath
+					? er.sourcePath.replace(/turn_\d+/, "turn_*")
+					: null,
+				turns: new Set(),
+				tasks: new Set(),
+				exemplar: null,
+			});
+		}
+		const g = bySig.get(er.bodySig);
+		g.count++;
+		g.turns.add(er.turn);
+		g.tasks.add(taskKey);
+		if (g.exemplar == null) g.exemplar = er;
+	}
+	const topSignatures = [...bySig.values()]
+		.toSorted((a, b) => b.count - a.count)
+		.map((g) => ({
+			sig: g.sig,
+			count: g.count,
+			outcome: g.outcome,
+			sourcePathPattern: g.sourcePathPattern,
+			turns: [...g.turns].toSorted((a, b) => a - b),
+			tasks: [...g.tasks].toSorted(),
+			exemplar: g.exemplar,
+		}));
+	return {
+		total,
+		strikes,
+		soft,
+		byOutcome: Object.fromEntries(
+			[...byOutcome.entries()].toSorted((a, b) => b[1] - a[1]),
+		),
+		byTask: Object.fromEntries(
+			[...byTask.entries()].toSorted((a, b) => b[1] - a[1]),
+		),
+		topSignatures,
+	};
+}
+
+function indentBlock(text, indent = "    ") {
+	if (!text) return "";
+	return text
+		.split("\n")
+		.map((line) => `${indent}${line}`)
+		.join("\n");
+}
+
+// Compress runs of consecutive turn numbers into "first-last" form so a
+// 25-occurrence error spanning turns 96-120 reads as `96-120` instead of
+// hogging a line. Mixed sparse + run sequences come out as
+// `1, 4, 96-120`.
+function compressTurns(turns) {
+	if (turns.length === 0) return "";
+	const sorted = [...turns].toSorted((a, b) => a - b);
+	const out = [];
+	let runStart = sorted[0];
+	let prev = sorted[0];
+	for (let i = 1; i <= sorted.length; i++) {
+		const cur = sorted[i];
+		if (cur === prev + 1) {
+			prev = cur;
+			continue;
+		}
+		out.push(runStart === prev ? `${runStart}` : `${runStart}-${prev}`);
+		runStart = cur;
+		prev = cur;
+	}
+	return out.join(", ");
+}
+
+function renderErrorsMarkdown(scopeName, allErrors, summary) {
+	const lines = [];
+	lines.push(`# Errors: ${scopeName}`);
+	lines.push("");
+	if (allErrors.length === 0) {
+		lines.push("No errors recorded.");
+		return lines.join("\n");
+	}
+	lines.push(
+		`${summary.total} errors across ${Object.keys(summary.byTask).length} task(s) — ${summary.strikes} strike, ${summary.soft} soft.`,
+	);
+	lines.push("");
+	lines.push("## Counts by outcome");
+	lines.push("");
+	for (const [oc, n] of Object.entries(summary.byOutcome)) {
+		lines.push(`- \`${oc}\` × ${n}`);
+	}
+	lines.push("");
+	lines.push("## Counts by task");
+	lines.push("");
+	for (const [task, n] of Object.entries(summary.byTask)) {
+		lines.push(`- \`${task}\` × ${n}`);
+	}
+	lines.push("");
+	lines.push("## Top signatures");
+	lines.push("");
+	for (const g of summary.topSignatures) {
+		lines.push(
+			`### ×${g.count} — \`${g.outcome ?? "—"}\`${g.sourcePathPattern ? ` @ \`${g.sourcePathPattern}\`` : ""}`,
+		);
+		lines.push("");
+		lines.push(`turns: ${compressTurns(g.turns)}`);
+		if (g.tasks.length > 1) {
+			lines.push(`tasks: ${g.tasks.map((t) => `\`${t}\``).join(", ")}`);
+		}
+		lines.push("");
+		lines.push("error body:");
+		lines.push("");
+		lines.push("```");
+		lines.push(g.exemplar.body);
+		lines.push("```");
+		if (g.exemplar.sourceAction) {
+			const sa = g.exemplar.sourceAction;
+			lines.push("");
+			lines.push(
+				`source action (\`${sa.action}\`${sa.targetPath ? ` → \`${sa.targetPath}\`` : ""}):`,
+			);
+			lines.push("");
+			lines.push("```");
+			lines.push(sa.body);
+			lines.push("```");
+		}
+		lines.push("");
+	}
+	lines.push("## Chronological");
+	lines.push("");
+	const byTask = new Map();
+	for (const er of allErrors) {
+		const k = er.run.task + (er.run.alias ? `/${er.run.alias}` : "");
+		if (!byTask.has(k)) byTask.set(k, []);
+		byTask.get(k).push(er);
+	}
+	for (const [taskKey, errs] of byTask) {
+		lines.push(`### ${taskKey}`);
+		lines.push("");
+		for (const er of errs) {
+			const stateTag = er.soft ? "soft" : "strike";
+			const oc = er.outcome ?? "—";
+			const src = er.sourcePath ? ` @ \`${er.sourcePath}\`` : "";
+			lines.push(`- T${er.turn} \`${oc}\`/${stateTag}${src}`);
+			lines.push("");
+			lines.push(indentBlock(er.body, "  > "));
+			lines.push("");
+			if (er.sourceAction) {
+				const sa = er.sourceAction;
+				lines.push(
+					`  source: \`${sa.action}\`${sa.targetPath ? ` → \`${sa.targetPath}\`` : ""}`,
+				);
+				lines.push("");
+				lines.push(indentBlock(sa.body, "  > "));
+				lines.push("");
+			}
+		}
+	}
+	return lines.join("\n");
+}
+
+function writeErrorsArtifacts(outDir, scopeName, allErrors) {
+	const summary = aggregateErrors(allErrors);
+	writeFileSync(
+		join(outDir, "errors.md"),
+		`${renderErrorsMarkdown(scopeName, allErrors, summary)}\n`,
+	);
+	writeFileSync(
+		join(outDir, "errors.json"),
+		`${JSON.stringify({ scope: scopeName, summary, errors: allErrors }, null, 2)}\n`,
+	);
+}
+
 // Synthesize a run-summary from the DB for runs that lack the harbor-side
 // rummy.txt `__RUMMY_RUN_SUMMARY__` line (e2e tests, primarily). Token
 // counts come from the turns table; status from the runs table.
@@ -513,8 +806,8 @@ function processTask(taskDir) {
 		.split("/")
 		.pop()
 		.replace(/__[A-Za-z0-9]+$/, "");
-	const rummyDb = join(taskDir, "agent", "rummy.db");
-	if (!existsSync(rummyDb)) {
+	const rummyDb = findAgentDb(taskDir);
+	if (rummyDb == null) {
 		closeSync(openSync(join(taskDir, "digest_skipped"), "w"));
 		return [
 			{
@@ -529,6 +822,7 @@ function processTask(taskDir) {
 				markers: ["exfil_fail"],
 				prompt: null,
 				turnRows: [],
+				errors: [],
 			},
 		];
 	}
@@ -578,6 +872,10 @@ function processTask(taskDir) {
 			reward,
 			turnRows,
 			markers,
+		});
+		digest.errors = collectErrors(turnRows, logEntries, {
+			task: taskName,
+			alias: multiRun ? run.alias : null,
 		});
 		writeFileSync(
 			join(outDir, "digest.json"),
@@ -651,13 +949,18 @@ if (!existsSync(entry)) {
 
 if (isTaskDir(entry)) {
 	const digests = processTask(entry);
+	const allErrors = digests.flatMap((d) => d.errors ?? []);
+	writeErrorsArtifacts(entry, entry.split("/").pop(), allErrors);
 	for (const d of digests) {
 		console.log(`wrote digest for ${d.task}: ${d.markers.join(", ")}`);
 	}
+	console.log(
+		`wrote errors.md + errors.json (${allErrors.length} errors) → ${entry}/`,
+	);
 } else {
 	const taskDirs = findTaskDirs(entry);
 	if (taskDirs.length === 0) {
-		console.error(`no task dirs (with agent/rummy.db) under ${entry}`);
+		console.error(`no task dirs (with agent/rummy*.db) under ${entry}`);
 		process.exit(2);
 	}
 	const digests = [];
@@ -681,11 +984,14 @@ if (isTaskDir(entry)) {
 				markers: ["digest_failed"],
 				prompt: null,
 				turnRows: [],
+				errors: [],
 			});
 		}
 	}
 	writeIndex(entry, digests);
+	const allErrors = digests.flatMap((d) => d.errors ?? []);
+	writeErrorsArtifacts(entry, entry.split("/").pop(), allErrors);
 	console.log(
-		`wrote ${digests.length} digests + index.csv → ${entry}/index.csv`,
+		`wrote ${digests.length} digests + index.csv + errors.md (${allErrors.length} errors) → ${entry}/`,
 	);
 }

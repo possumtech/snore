@@ -13,40 +13,24 @@ source files it needs.
 
 {{orientation}}
 
-## Recommended Workflow
+## Required Deliverables
 
-### YOU MUST copy and perfectly reverse engineer the inspiration executable
-Perform `cp ./executable ./inspiration && chmod +x ./inspiration` right
-away so that the required compile step, `chmod +x ./compile.sh && ./compile.sh`,
-doesn't erase and replace their inspiration with your implementation.
+- [ ] `SPEC.md` - Complete specification of `executable`, with topical @tags for ALL functionality
+- [ ] `implement.sh` - Compiles all four deliverable executables and test `implementation` against all three tests
+- [ ] `implementation` - Perfect reimplementation of `executable`
+- [ ] `test/unit` - Unit testing of all `SPEC.md` @tags
+- [ ] `test/intg` - Integration testing of all `SPEC.md` @tags
+- [ ] `test/e2e` - End to end testing of all `SPEC.md` @tags
+- [ ] `compile.sh` - Copy of `implement.sh` which overwrites `executable` (Final Delivery Step)
 
-### YOU MUST draft a SPEC.md.
-Run `./inspiration --help` and probe the executable with representative
-inputs, then create the first draft of a comprehensive and complete SPEC.md
-that fully documents the functionality in tagged sections (e.g. #flag_b,
-#arg2, etc...) and also attempts to discern the design and structure of the
-inspiration binary internals.
+* Begin with `./executable --help`, then experimentally probe for ALL functionality
+* All three tests must be written in the same language as the implementation
+* Iteratively test against both `./executable` and `./implementation` (test the tests)
+* Apply modular design principles, including the `SPEC.md` @tags in comments
 
-### YOU MUST design unit, integration, and e2e tests
-Design them against the pre-existing binary, including the section tags
-in code comments, ensuring perfect 1:1:1 alignment between inspiration,
-specification, and testing. All of the testing infrastructure must be in
-the same language the implementation will be in.
+## Final Delivery Step: YOU MUST NOT perform before all is implemented and passing
 
-### YOU MUST modularize
-After designing a testing suite that delivers 100% coverage and passage
-of the inspiration binary, wireframe the anticipated file and folder
-structure of the implementation. Then implement it, interpolating the
-specification tags throughout the comments.
-
-### YOU MUST iterate
-Rapidly and routinely iterate the implementation against the testing suite,
-revising the specification and testing suite as more correct and complete
-practices are learned and discovered. Also, continue testing the inspiration
-binary against the test suite to defend against degenerating tests. You cannot
-deliver until achieving perfect 1:1:1:1 alignment between implementation,
-inspiration, specification, and testing.
-
-### YOU MUST NOT deliver unless you achieve a perfect 1:1:1:1 compilation
-If `chmod +x ./compile.sh && ./compile.sh` doesn't produce a clean compilation
-that passes your testing suite, it won't pass theirs.
+If (and only if) `implement.sh` successfully compiles `implementation` and
+it passes all three compiled tests, copy `implement.sh` to `compile.sh`, change
+its compilation target to `executable`, confirm that the new executable also
+passes the tests. Only then have you delivered and you may complete.
