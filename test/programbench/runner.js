@@ -245,13 +245,67 @@ async function runAgent(taskMeta) {
 	};
 	const cliBin = join(__dirname, "..", "..", "src", "plugins", "cli", "bin.js");
 	return new Promise((resolve, reject) => {
+		// `detached: true` puts the child in its own process group so we
+		// can signal-kill the entire group (not just the head) when
+		// runner.js itself receives SIGTERM/SIGINT. Without this, killing
+		// runner.js leaves the rummy-cli child reparented to PID 1 and
+		// continuing to make LLM calls until MAX_STRIKES — opus burned
+		// $24.70 over 59 post-kill turns this way; xemma burned $1.50.
 		const child = spawn("node", [cliBin], {
 			cwd: scratchDir,
 			env,
 			stdio: "inherit",
+			detached: true,
 		});
-		child.on("error", reject);
-		child.on("exit", (code) => resolve(code ?? 1));
+		// Forward SIGTERM/SIGINT from runner.js → child's process group.
+		// Without this, parent death orphans the child instead of
+		// stopping it.
+		const propagate = (signal) => {
+			try {
+				process.kill(-child.pid, signal);
+			} catch {}
+			// Give child up to 5s to clean up, then SIGKILL the group.
+			setTimeout(() => {
+				try {
+					process.kill(-child.pid, "SIGKILL");
+				} catch {}
+			}, 5000);
+		};
+		const onSigterm = () => propagate("SIGTERM");
+		const onSigint = () => propagate("SIGINT");
+		process.on("SIGTERM", onSigterm);
+		process.on("SIGINT", onSigint);
+		// Sandbox-health watchdog: if the container vanishes (external
+		// kill, crash, host pressure), every `<sh>` call hangs or fails.
+		// Without this, the agent loop keeps running on host — emitting
+		// LLM-priced inferences that can't act — until MAX_STRIKES finally
+		// fires. Polling every 15s keeps the detection floor at one
+		// wasted inference per check, not 100+.
+		const healthCheck = setInterval(() => {
+			try {
+				const running = execSync(
+					`docker inspect -f '{{.State.Running}}' ${containerName} 2>/dev/null`,
+					{ encoding: "utf8" },
+				).trim();
+				if (running !== "true") throw new Error("not running");
+			} catch {
+				console.error(`sandbox ${containerName} vanished — terminating agent`);
+				clearInterval(healthCheck);
+				try {
+					process.kill(-child.pid, "SIGTERM");
+				} catch {
+					child.kill("SIGTERM");
+				}
+			}
+		}, 15000);
+		child.on("error", (err) => {
+			clearInterval(healthCheck);
+			reject(err);
+		});
+		child.on("exit", (code) => {
+			clearInterval(healthCheck);
+			resolve(code ?? 1);
+		});
 	});
 }
 
