@@ -1505,14 +1505,6 @@ Surgical in-place edits. `SEARCH` must be immediately followed by
 Multiple pairs in one `<set>` body apply in order against the
 progressively-edited body.
 
-### Plain Body (No Markers)
-
-A `<set>` body containing no `<<:::IDENT` markers is treated as a
-full-body REPLACE — the body literal is the new entry content. This
-preserves the natural shape for short writes:
-
-    <set path="known://fact">The Earth is round</set>
-
 ### Errors
 
 | Condition | Outcome |
@@ -1520,7 +1512,9 @@ preserves the natural shape for short writes:
 | `SEARCH` content not found in current body | conflict (soft) |
 | `DELETE` content not found in current body | conflict (soft) |
 | Lone `SEARCH` (no following `REPLACE`) | parse error |
-| Unknown `IDENT` prefix (not in the table above) | falls back to plain-body — markers parse as literal content |
+| Unclosed marker (opener with no matching `:::IDENT` closer) | parse error |
+| Non-keyword `IDENT` (e.g. `<<:::EOF`, `<<:::file.txt`) | routes to REPLACE — inner content becomes the new body |
+| `<set>` body with no `<<:::` markers at all | full-body REPLACE (tolerated; not demonstrated to models) |
 
 ### Pattern Matching
 

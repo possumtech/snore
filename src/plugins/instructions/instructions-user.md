@@ -16,14 +16,14 @@ Example:
 	
 	<set path="trivia/capitals.csv" visibility="visible"/>
 	
-	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia">
-		# Related
-		[trivia question](prompt://3)
-		[unknown resolving](unknown://countries/france/capital)
-		[source entry](trivia/capitals.csv)
-	
-		{ relevant information derived from the linked, visible source entry }
-	</set>
+	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia"><<:::NEW
+	# Related
+	[trivia question](prompt://3)
+	[unknown resolving](unknown://countries/france/capital)
+	[source entry](trivia/capitals.csv)
+
+	{ relevant information derived from the linked, visible source entry }
+	:::NEW</set>
 	
 	<set path="known://plan"><<:::SEARCH
 	- [ ] Discover key, relevant information
