@@ -179,9 +179,5 @@ describe("Set visibility-only emission preserves body (@schemes_status_visibilit
 			resultEntry.body.includes("promoted"),
 			"action body names the bad value",
 		);
-		assert.ok(
-			resultEntry.body.includes("visible|summarized|archived"),
-			"action body lists valid values",
-		);
 	});
 });

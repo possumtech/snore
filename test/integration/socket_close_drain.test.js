@@ -9,6 +9,9 @@
  * completes its `after` hook within the runner timeout).
  */
 import assert from "node:assert";
+import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
@@ -18,15 +21,22 @@ const N_RUNS = 5;
 const TERMINAL = new Set([200, 204, 413, 422, 499, 500]);
 
 describe("SocketServer close() drains in-flight runs (@run_state_machine)", () => {
-	let tdb, tserver;
+	let tdb, tserver, inFlight, projectRoot;
 
 	before(async () => {
 		tdb = await TestDb.create("close_drain");
+		inFlight = { count: 0 };
+		// Empty isolated tempdir as project root. Walking /tmp directly
+		// would ingest thousands of files and dominate dispatch latency.
+		projectRoot = await fs.mkdtemp(join(tmpdir(), "rummy_close_drain_"));
 
 		// Stub provider whose completion hangs until the AbortSignal fires.
 		// Lets us start runs that won't resolve on their own; close() must
 		// abort them via the chain server.close → conn.shutdown →
 		// projectAgent.shutdown → agentLoop.abortAll.
+		// `inFlight.count` increments when completion is reached and decrements
+		// on abort — gives the test a deterministic signal that dispatch has
+		// progressed past startup into the LLM-call hang.
 		tdb.hooks.llm.providers.push({
 			name: "stub-hang",
 			matches: (wire) => wire === "stub-hang",
@@ -36,9 +46,13 @@ describe("SocketServer close() drains in-flight runs (@run_state_machine)", () =
 						reject(new Error("aborted"));
 						return;
 					}
+					inFlight.count++;
 					signal?.addEventListener(
 						"abort",
-						() => reject(new Error("aborted")),
+						() => {
+							inFlight.count--;
+							reject(new Error("aborted"));
+						},
 						{ once: true },
 					);
 				}),
@@ -56,6 +70,7 @@ describe("SocketServer close() drains in-flight runs (@run_state_machine)", () =
 
 	after(async () => {
 		await tdb?.cleanup();
+		if (projectRoot) await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
 	it(`close() awaits in-flight runs and brings ${N_RUNS} all to terminal`, async () => {
@@ -67,7 +82,7 @@ describe("SocketServer close() drains in-flight runs (@run_state_machine)", () =
 			await client.connect();
 			await client.call("rummy/hello", {
 				name: `drain-${i}`,
-				projectRoot: "/tmp",
+				projectRoot,
 				clientVersion: "2.0.0",
 			});
 			const res = await client.call("set", {
@@ -79,18 +94,29 @@ describe("SocketServer close() drains in-flight runs (@run_state_machine)", () =
 			clients.push(client);
 		}
 
-		// Let dispatch reach the LLM call (where it'll hang on the stub).
-		await new Promise((r) => setTimeout(r, 200));
+		// Wait until every run has reached the LLM-call hang (deterministic,
+		// not timing-based). Without this, close() may race past dispatch
+		// startup before runs are genuinely in-flight, draining nothing.
+		const deadline = Date.now() + 5000;
+		while (inFlight.count < N_RUNS && Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 10));
+		}
+		assert.strictEqual(
+			inFlight.count,
+			N_RUNS,
+			`only ${inFlight.count}/${N_RUNS} runs reached LLM-call hang within 5s`,
+		);
 
-		// Close mid-flight. Should await every run's drain, not return
-		// while runs are still resolving.
-		const closeStart = Date.now();
+		// Close mid-flight. Must abort each run's AbortSignal, await the
+		// stub rejection, and transition every run to a terminal status.
 		await tserver.stop();
-		const closeDuration = Date.now() - closeStart;
 
-		// Every run must have reached terminal status. abortAll triggered
-		// each run's AbortSignal, the stub provider rejected, and the
-		// AgentLoop transitioned each run to a terminal HTTP status.
+		// Drain contract: every signal was fired and every run terminated.
+		assert.strictEqual(
+			inFlight.count,
+			0,
+			`${inFlight.count} runs still in-flight after close()`,
+		);
 		for (const alias of aliases) {
 			const row = await tdb.db.get_run_by_alias.get({ alias });
 			assert.ok(row, `run ${alias} exists`);
@@ -99,12 +125,6 @@ describe("SocketServer close() drains in-flight runs (@run_state_machine)", () =
 				`run ${alias} status ${row.status} not terminal`,
 			);
 		}
-
-		// close() did real work (drain), not a no-op fast path.
-		assert.ok(
-			closeDuration > 0,
-			`close() returned in ${closeDuration}ms — expected real drain`,
-		);
 
 		for (const c of clients) c.close();
 	});
