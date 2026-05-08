@@ -124,7 +124,7 @@ describe("parseMarkerBody — errors", () => {
 		const body = "<<:::SEARCH\nold\n:::SEARCH";
 		const r = parseMarkerBody(body);
 		assert.equal(r.ops, null);
-		assert.match(r.error, /SEARCH must be immediately followed by REPLACE/);
+		assert.match(r.error, /lone SEARCH/);
 	});
 
 	it("SEARCH followed by non-REPLACE op → parse error", () => {
@@ -133,7 +133,7 @@ describe("parseMarkerBody — errors", () => {
 		);
 		const r = parseMarkerBody(body);
 		assert.equal(r.ops, null);
-		assert.match(r.error, /SEARCH must be immediately followed by REPLACE/);
+		assert.match(r.error, /lone SEARCH/);
 	});
 
 	it("unclosed marker → parse error names the IDENT", () => {

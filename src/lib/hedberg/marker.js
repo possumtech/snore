@@ -104,10 +104,7 @@ export function parseMarkerBody(body) {
 		if (cur.op === "search") {
 			const next = raw[j + 1];
 			if (!next || next.op !== "replace") {
-				return {
-					ops: null,
-					error: "SEARCH must be immediately followed by REPLACE",
-				};
+				return { ops: null, error: "lone SEARCH (no REPLACE)" };
 			}
 			ops.push({
 				op: "search_replace",

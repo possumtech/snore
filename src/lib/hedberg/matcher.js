@@ -99,8 +99,7 @@ export default class HeuristicMatcher {
 			return {
 				patch: null,
 				warning: null,
-				error:
-					"SEARCH blocks are matched literally, not as a pattern. Could not find the SEARCH block in the file.",
+				error: "SEARCH text not found in current body.",
 			};
 		}
 

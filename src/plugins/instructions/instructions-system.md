@@ -30,7 +30,7 @@ Example: <set path="file_on_disk.txt" tags="searchable,tags,internal,useful">Ent
 
 ### tags: Enhance your memory with folksonomic tagging of entries
 
-* The `set` command sets tags. The other Core XML Commands filter by tags
+* The `set` command's "tags" attribute sets tags. The other Core XML Commands filter by tags
 
 ### manifest
 

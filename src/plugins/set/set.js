@@ -151,7 +151,7 @@ export default class Set {
 				turn,
 				loopId,
 				path: entry.resultPath,
-				body: `Invalid visibility "${attrs.visibility}" on <set path="${attrs.path}"/>. Use visibility="visible|summarized|archived".`,
+				body: `Invalid visibility "${attrs.visibility}"`,
 				state: "failed",
 				outcome: "validation",
 				attributes: { path: attrs.path },
