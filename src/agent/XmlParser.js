@@ -3,8 +3,7 @@ import { parseMarkerBody } from "../lib/hedberg/marker.js";
 // `<<:::IDENT...:::IDENT` body opacity. When `#findBodyEnd` is scanning
 // a `<set>` body and hits `<<:::`, jump past the matching `:::IDENT`
 // closer so tag-shaped content inside the marker (`</set>`, `<get/>`,
-// etc.) doesn't trigger structural recovery. Same role HEREDOC played
-// previously, generalized to the edit-syntax marker family.
+// etc.) doesn't trigger structural recovery.
 function skipEditMarker(s, pos) {
 	const m = s.slice(pos).match(/^<<:::([A-Za-z_][A-Za-z0-9_./-]*)/);
 	if (!m) return null;
@@ -43,8 +42,9 @@ function resolveCommand(name, a, rawBody) {
 		// Edit syntax (SPEC.md "Edit Syntax"): walks the body for
 		// `<<:::IDENT...:::IDENT` markers and returns an ordered op
 		// list. No markers → plain body, treated as full-replace.
-		// Path-flavored or otherwise non-keyword IDENTs route to
-		// REPLACE so any HEREDOC-shaped body just works.
+		// Non-keyword IDENTs (path-flavored, identifier-flavored)
+		// route to REPLACE so the model gets a working write whatever
+		// IDENT it picks.
 		const { ops, error } = parseMarkerBody(rawBody);
 		if (error) return { name, ...a, error };
 		if (ops) return { name, ...a, operations: ops };
@@ -111,13 +111,15 @@ const WS = /\s/;
 //     suppress tag recognition AT THE OUTER LEVEL ONLY (between tool
 //     calls). Documentation prose with backticked tag examples doesn't
 //     get parsed as commands. Inside tool bodies backticks are content;
-//     bodies that need opacity for tag-like content use HEREDOC, which
-//     has no false-positive failure modes (unlike inside-body backtick
+//     bodies that need opacity for tag-like content use the edit-syntax
+//     marker family (see SPEC.md "Edit Syntax"), which has no
+//     false-positive failure modes (unlike inside-body backtick
 //     tracking, which would suppress closing tags on bodies with stray
 //     unbalanced backticks).
-//   - HEREDOC body shape (set only): `<set path="x"><<EOF\n...\nEOF\n</set>`
-//     makes the body span opaque. Closer can be IDENT alone on a line or
-//     IDENT</set> on the same line. Custom delimiter (any [A-Za-z_]\w*).
+//   - Edit-syntax marker opacity (set only): `<<:::IDENT...:::IDENT`
+//     spans inside a `<set>` body are skipped during tag detection so
+//     content with `</set>` literals or marker-shaped text stays as
+//     body. Multiple markers per body supported; see marker.js.
 //   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
 //     nested examples don't prematurely close the outer. Same-name
 //     nesting also disables tail recovery — the model's intent is clearly

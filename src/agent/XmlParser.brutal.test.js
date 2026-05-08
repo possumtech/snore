@@ -736,24 +736,16 @@ Validates dotted decimal IPv4: each octet 0-255.
 			assert.strictEqual(commands[0].name, "update");
 		});
 
-		it("set with diff-style merge body (existing convention)", () => {
-			const input = `<set path="src/x.js"><<<<<<< SEARCH
+		it("set with SEARCH/REPLACE marker pair routes to operations[0]", () => {
+			const input = `<set path="src/x.js"><<:::SEARCH
 old
-=======
+:::SEARCH<<:::REPLACE
 new
->>>>>>> REPLACE</set>`;
+:::REPLACE</set>`;
 			expectOne(input, "set", (c) => {
-				// resolveCommand routes merge-block content through
-				// parseEditContent, which returns a blocks array. Single-block
-				// content also surfaces as top-level search/replace via the
-				// jsonEdit/sed paths. Accept either, or raw body fallback.
-				const block = c.blocks?.[0];
-				assert.ok(
-					c.search === "old" ||
-						block?.search === "old" ||
-						c.body?.includes("<<<<<<< SEARCH"),
-					`merge block lost: search=${c.search} blocks=${JSON.stringify(c.blocks)} body=${c.body}`,
-				);
+				assert.strictEqual(c.operations?.[0]?.op, "search_replace");
+				assert.strictEqual(c.operations[0].search, "old");
+				assert.strictEqual(c.operations[0].replace, "new");
 			});
 		});
 	});

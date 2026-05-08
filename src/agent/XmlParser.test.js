@@ -387,10 +387,10 @@ I need to check the port.
 		});
 
 		it("botched SEARCH/REPLACE without </set> recovers trailing <sh>/<update>", () => {
-			// Captured from a real model packet (gemma 5/6 T9): the second
-			// `<set known://plan>` lacks the `<<<<<<< SEARCH` head AND the
-			// `</set>` tail. Without recovery the trailing `<sh>` and
-			// `<update>` get trapped in the unclosed body; the verdict
+			// Reduction of a real model failure pattern: a `<set>` whose
+			// body botches its edit shape AND lacks the `</set>` tail.
+			// Without recovery the trailing `<sh>` and `<update>` get
+			// trapped in the unclosed body; the verdict
 			// reports a missing `<update>` even though one was emitted.
 			const input = `<set path="known://plan">
 - [ ] go.mod w/ deps
