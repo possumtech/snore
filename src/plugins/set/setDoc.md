@@ -1,4 +1,4 @@
-## <set path="{path}" tags="{topical,searchable,internal,tags}">[content or edit]</set> - Create, edit, or update an entry or file
+## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}">[content or edit]</set> - Create, edit, or update an entry or file
 
 * The <set/> command requires HEREDOC string literal syntax
 * The <set/> command's SEARCH/REPLACE string literal syntax uses HEREDOC instead of git conflict markers
