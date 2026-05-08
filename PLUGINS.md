@@ -478,13 +478,12 @@ handles all exclusions:
 ## Hedberg {#plugins_hedberg}
 
 Hedberg has two faces. The implementation is a **library** at
-`src/lib/hedberg/` — pattern matching, sed parsing, edit detection,
+`src/lib/hedberg/` — pattern matching, fuzzy literal replacement,
 unified-diff generation. Internal plugins import these utilities
 directly:
 
 ```js
 import { hedmatch, hedsearch } from "../../lib/hedberg/patterns.js";
-import { parseSed } from "../../lib/hedberg/sed.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 ```
 
@@ -494,18 +493,21 @@ separate packages (`rummy.repo`, `rummy.web`, etc.) that can't reach
 into rummy/main's internals via direct import.
 
 ```js
-const { match, search, replace, parseSed, parseEdits,
-    generatePatch } = core.hooks.hedberg;
+const { match, search, replace, generatePatch } = core.hooks.hedberg;
 ```
 
 | Method | Purpose |
 |--------|---------|
 | `match(pattern, string)` | Full-string pattern match (glob, regex, literal) |
 | `search(pattern, string)` | Substring search |
-| `replace(body, search, replacement, opts?)` | Apply replacement |
-| `parseSed(input)` | Parse sed syntax (any delimiter) |
-| `parseEdits(content)` | Detect edit format (merge conflict, udiff, sed) |
+| `replace(body, search, replacement)` | Fuzzy literal replacement (whitespace-tolerant) |
 | `generatePatch(path, old, new)` | Generate unified diff |
+
+Edit-shape parsing for `<set>` bodies (the `<<:::IDENT...:::IDENT`
+marker family — see SPEC.md "Edit Syntax") lives in
+`src/lib/hedberg/marker.js` and is invoked by the XmlParser at
+`<set>` resolution time. It's not on `core.hooks.hedberg` because no
+external plugin needs to re-parse model output.
 
 **The split is intentional.** `src/lib/` is for stateless utility
 modules anyone in the project can import. `src/plugins/` is for

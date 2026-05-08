@@ -1634,10 +1634,9 @@ htmlparser2 dropped. Close current, open new, emit recovery warning.
 attributes on the open tag *and* body text inside the tag. If the
 canonical attribute is missing, the body silently fills it. The
 shape per tool:
-- `set` — structured edit detection (merge-conflict markers, udiff,
-  Claude `<old_text>` XML, JSON `{search,replace}`, sed `s/.../.../`,
-  attribute-mode `search=`/`replace=`, body-as-search-when-`body=`
-  attr-set, plain write).
+- `set` — body parsed via `parseMarkerBody` (see "Edit Syntax"
+  above): `<<:::IDENT...:::IDENT` markers route to `operations`
+  list; bodies without markers are plain-body REPLACE.
 - `update` — body fills `body`, status defaults to 102 if absent.
 - `get` / `rm` — attr `path` or body fills target. Spread `a` so
   `line` / `limit` / `visibility` / future attrs reach the handler.

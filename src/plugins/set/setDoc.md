@@ -1,24 +1,33 @@
 ## <set path="[path]">[content or edit]</set> - Create, edit, or update an entry or file
 
-Example: <set path="src/config.js">s|port = 3000|port = 8080|g;s|We're almost done|We're done.|g</set>
-<!-- Sed: single-line substitutions, chain with semicolons. Pick any non-alphanumeric delimiter; the first unescaped delimiter ends each part, so choose one that doesn't appear in SEARCH or REPLACE. -->
-Example: <set path="src/api.js">s,baseUrl = "/api/v1",baseUrl = "/api/v2",g</set>
-<!-- Pick a delimiter that doesn't appear in SEARCH or REPLACE. Comma reads clean here because the content has slashes. -->
-Example:
-	<set path="src/app.js">
-	<<<<<<< SEARCH
-	literal old text
-	=======
-	literal new text
-	>>>>>>> REPLACE
-	</set>
-<!-- SEARCH/REPLACE: multi-line edits anchored against surrounding context. SEARCH must match the existing body literally (whitespace, punctuation, all). -->
-Example: <set path="example.md" tags="example,docs">Full file content here</set>
-<!-- Body without an edit shape replaces the entire entry. -->
-Example:
-	<set path="OPUS_NOTES.md"><<EOF
-	# Arbitrary literal content here
-	Anything between the opener and closer is body — including `</set>`.
-	EOF
-	</set>
-<!-- HEREDOC body for content with delimiter-conflicting characters. Pick any `[A-Za-z_]\w*` opener; closer is the opener alone on a line. -->
+Example: <set path="known://fact">The Earth is round</set>
+<!-- Plain body creates or replaces the entry. -->
+
+Example: <set path="src/main.go"><<:::NEW
+package main
+
+func main() {}
+:::NEW</set>
+<!-- NEW: create with multi-line content. -->
+
+Example: <set path="known://plan"><<:::APPEND
+- [ ] new task
+:::APPEND</set>
+<!-- APPEND adds to the end; PREPEND to the start. -->
+
+Example: <set path="src/main.go"><<:::SEARCH
+old line
+:::SEARCH<<:::REPLACE
+new line
+:::REPLACE</set>
+<!-- SEARCH/REPLACE: surgical edit, fuzzy on whitespace. Multiple pairs in one body apply in order. -->
+
+Example: <set path="src/main.go"><<:::DELETE
+deprecated_function()
+:::DELETE</set>
+<!-- DELETE: remove a literal-matching region. -->
+
+Example: <set path="docs/guide.md"><<:::GUIDE
+The pair is <<:::SEARCH ... :::SEARCH<<:::REPLACE ... :::REPLACE.
+:::GUIDE</set>
+<!-- Any IDENT brackets opaque body. Use a custom IDENT (GUIDE, EOF, DOC, file paths, etc.) for bodies that contain `<<:::` literally. -->
