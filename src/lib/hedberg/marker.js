@@ -1,44 +1,49 @@
-// Edit-syntax marker parser. Recognizes `<<:::IDENT...:::IDENT` body
-// shapes inside `<set>` content and routes by IDENT to one of six
-// operations: NEW, PREPEND, APPEND, REPLACE, DELETE, SEARCH. Path- or
-// identifier-flavored IDENTs (e.g. `OC_RIVERS.md`, mirroring how the
-// packet itself renders entry bodies) are accepted and treated as
-// REPLACE — the content between markers becomes the full new body.
+// Edit-syntax marker parser. Recognizes bash-heredoc-shaped
+// `<<IDENT...IDENT` body markers inside `<set>` content and routes
+// by IDENT prefix to one of six operations: NEW, PREPEND, APPEND,
+// REPLACE, DELETE, SEARCH. Non-keyword IDENTs (e.g. `<<DOC`, `<<EOF`)
+// route to REPLACE — the content between markers becomes the full
+// new body.
 //
-// IDENT pattern: [A-Za-z_][A-Za-z0-9_./-]*. Covers normal identifiers
-// AND path-shaped tokens. Operation detection is strict: IDENT must
-// match `keyword[suffix]` where suffix is `[A-Za-z0-9_]*` (alphanumeric
-// only, no dots/slashes/hyphens). Anything else is a non-keyword
-// IDENT and routes to REPLACE.
+// Grammar:
+//   - Opener: `<<IDENT` where IDENT matches `[A-Z][A-Za-z0-9_]*`.
+//     Boundary: preceded by start-of-body, whitespace, or `>` (so
+//     `vec<<SEARCH` mid-token does not false-trigger).
+//   - Closer: bare IDENT (matching opener exactly) with non-word
+//     boundaries — preceded by whitespace/start, followed by
+//     whitespace, `<`, `>`, or end.
+//   - SEARCH must be immediately followed by REPLACE; the pair maps
+//     to one search_replace op. Lone SEARCH is a parse error.
+//   - Trailing alphanumeric suffix on the IDENT is opaque to routing
+//     (`<<SEARCH1` and `<<SEARCH` both route to SEARCH). Suffix
+//     exists so nested markers can disambiguate, same convention as
+//     bash heredoc `<<EOF1` vs `<<EOF`. When a body literally
+//     contains the bare keyword (`SEARCH` in prose or code), the
+//     model picks a suffix so the inner literal does not prematurely
+//     close the outer marker.
 //
-// The trailing alphanumeric suffix on keyword IDENTs is opaque to
-// routing — it exists so nested markers can disambiguate (same
-// convention as bash heredoc `<<EOF1` vs `<<EOF`).
+// The bare `<<IDENT` shape is visibly distinct from the engine's
+// packet-rendering shape `<<:::IDENT` (see plugins/helpers.js). Edit
+// syntax is bare-only: a body with `<<:::IDENT` does NOT match this
+// parser and falls through to plain-body REPLACE with the markers
+// preserved as literal content. Keep the two grammars distinct so
+// model emissions and engine renderings can never be confused.
 //
 // Returns:
 //   { ops: null,    error: null }   — no markers found, treat body as plain.
 //   { ops: [{...}], error: null }   — well-formed marker(s).
 //   { ops: null,    error: "..." }  — parse failure (lone SEARCH, unclosed).
-//
-// Where each op is:
-//   { op: "new" | "prepend" | "append" | "replace" | "delete", content }
-//   { op: "search_replace", search, replace }
-//
-// SEARCH must be immediately followed by REPLACE; the parser pairs
-// adjacent SEARCH+REPLACE into one search_replace op. A lone SEARCH
-// (no following REPLACE) is a parse error.
 
 const KEYWORD_RE =
 	/^(NEW|PREPEND|APPEND|REPLACE|DELETE|SEARCH)([A-Za-z0-9_]*)$/;
 
-const OPENER_RE = /<<:::([A-Za-z_][A-Za-z0-9_./-]*)/;
+// Opener: `<<IDENT` preceded by start-of-input, whitespace, or `>`.
+const OPENER_RE = /(?<=^|[\s>])<<([A-Z][A-Za-z0-9_]*)/;
 
 function operationFromIdent(ident) {
 	const m = ident.match(KEYWORD_RE);
 	if (m) return m[1].toLowerCase();
-	// Non-keyword IDENT (path-flavored, identifier-flavored, anything
-	// that isn't keyword-prefix-with-alphanumeric-suffix) — treat as
-	// REPLACE. The content between markers becomes the full new body.
+	// Non-keyword IDENT — treat as REPLACE.
 	return "replace";
 }
 
@@ -54,11 +59,12 @@ function findOpener(body, startIdx) {
 }
 
 function findCloser(body, startIdx, ident) {
-	// Closer is `:::IDENT` followed by non-word boundary or end-of-input.
-	// IDENT must match exactly; an inner `<<:::IDENT_NESTED ... :::IDENT_NESTED`
-	// won't accidentally close the outer because IDENT differs.
 	const escIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const re = new RegExp(`:::${escIdent}(?![A-Za-z0-9_])`);
+	// Closer: bare IDENT with non-word boundaries — preceded by
+	// whitespace or start-of-input, followed by whitespace, `<`, `>`,
+	// or end. The trailing `<` lets the SEARCH closer adjoin an
+	// immediately-following `<<REPLACE` opener (`SEARCH<<REPLACE`).
+	const re = new RegExp(`(?<=^|\\s)${escIdent}(?=[\\s<>]|$)`);
 	const slice = body.slice(startIdx);
 	const match = slice.match(re);
 	if (!match) return null;
@@ -77,7 +83,7 @@ function trimMarkerNewlines(content) {
 
 export function parseMarkerBody(body) {
 	// Cheap rejection — most `<set>` bodies don't contain markers.
-	if (!body.includes("<<:::")) return { ops: null, error: null };
+	if (!/<<[A-Z]/.test(body)) return { ops: null, error: null };
 
 	const raw = [];
 	let i = 0;
@@ -87,7 +93,7 @@ export function parseMarkerBody(body) {
 		const op = operationFromIdent(opener.ident);
 		const closer = findCloser(body, opener.openerEnd, opener.ident);
 		if (!closer) {
-			return { ops: null, error: `unclosed <<:::${opener.ident}` };
+			return { ops: null, error: `unclosed <<${opener.ident}` };
 		}
 		const content = trimMarkerNewlines(
 			body.slice(opener.openerEnd, closer.closerStart),

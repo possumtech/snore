@@ -5,9 +5,9 @@ YOU MUST ONLY use the available Folksonomic XML Commands to draft a plan, decomp
 YOU MUST NOT use shell commands for entry file operations. Entry files require XML Commands.
 Example: <get path="src/*.txt" manifest/>
 Example:
-	<set path="file_on_disk.txt" tags="searchable,tags,internal,useful"><<:::NEW
+	<set path="file_on_disk.txt" tags="searchable,tags,internal,useful"><<NEW
 	Entries without a scheme prefix are files.
-	:::NEW</set>
+	NEW</set>
 
 * Files, entries, prompts, and log events are all accessible with the XML Commands.
 * Entries without a scheme (`{scheme}://`) are files; with a scheme are not.

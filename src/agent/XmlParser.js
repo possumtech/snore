@@ -1,10 +1,29 @@
 import { parseMarkerBody } from "../lib/hedberg/marker.js";
 
-// `<<:::IDENT...:::IDENT` body opacity. When `#findBodyEnd` is scanning
-// a `<set>` body and hits `<<:::`, jump past the matching `:::IDENT`
-// closer so tag-shaped content inside the marker (`</set>`, `<get/>`,
-// etc.) doesn't trigger structural recovery.
-function skipEditMarker(s, pos) {
+// Edit-marker body opacity. When `#findBodyEnd` is scanning a `<set>`
+// body and hits an opener, jump past the matching closer so tag-shaped
+// content inside the marker (`</set>`, `<get/>`, etc.) doesn't trigger
+// structural recovery.
+//
+// Two opener shapes are recognized for opacity:
+//   - `<<IDENT` — current edit syntax (parsed by marker.js).
+//   - `<<:::IDENT` — packet-rendering shape (engine emits via
+//     plugins/helpers.js). A model copy-pasting the packet shape into
+//     a `<set>` body should still get clean opacity even though
+//     marker.js routes such bodies to plain-body REPLACE.
+function skipBareMarker(s, pos) {
+	const m = s.slice(pos).match(/^<<([A-Z][A-Za-z0-9_]*)/);
+	if (!m) return null;
+	const ident = m[1];
+	const openerEnd = pos + m[0].length;
+	const escIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const closerRe = new RegExp(`(?<=^|\\s)${escIdent}(?=[\\s<>]|$)`);
+	const cm = s.slice(openerEnd).match(closerRe);
+	if (!cm) return null;
+	return openerEnd + cm.index + cm[0].length;
+}
+
+function skipPacketMarker(s, pos) {
 	const m = s.slice(pos).match(/^<<:::([A-Za-z_][A-Za-z0-9_./-]*)/);
 	if (!m) return null;
 	const ident = m[1];
@@ -14,6 +33,11 @@ function skipEditMarker(s, pos) {
 	const cm = s.slice(openerEnd).match(closerRe);
 	if (!cm) return null;
 	return openerEnd + cm.index + cm[0].length;
+}
+
+function skipEditMarker(s, pos) {
+	if (s.startsWith("<<:::", pos)) return skipPacketMarker(s, pos);
+	return skipBareMarker(s, pos);
 }
 
 const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
@@ -348,11 +372,16 @@ export default class XmlParser {
 		let sameNameNested = false;
 		let i = fromPos;
 		while (i < s.length) {
-			// Edit-syntax marker opacity: <<:::IDENT...:::IDENT spans are
-			// opaque — tag detection skips them so inner `</set>` and
-			// other tag-shaped content stays as body. Multiple markers
-			// per `<set>` body are supported; check on every iteration.
-			if (name === "set" && s.startsWith("<<:::", i)) {
+			// Edit-syntax marker opacity: marker spans (bare `<<IDENT` or
+			// packet-shaped `<<:::IDENT`) are opaque — tag detection
+			// skips them so inner `</set>` and other tag-shaped content
+			// stays as body. Multiple markers per `<set>` body are
+			// supported; check on every iteration.
+			if (
+				name === "set" &&
+				(s.startsWith("<<:::", i) ||
+					(s.startsWith("<<", i) && /^[A-Z]/.test(s[i + 2] ?? "")))
+			) {
 				const skipTo = skipEditMarker(s, i);
 				if (skipTo != null) {
 					i = skipTo;

@@ -64,11 +64,12 @@ describe("XmlParser", () => {
 		});
 
 		it("parses set with SEARCH/REPLACE marker pair", () => {
-			const input = `<set path="src/config.js"><<:::SEARCH
+			const input = `<set path="src/config.js"><<SEARCH
 const port = 3000;
-:::SEARCH<<:::REPLACE
+SEARCH
+<<REPLACE
 const port = 8080;
-:::REPLACE</set>`;
+REPLACE</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "src/config.js");
@@ -85,16 +86,18 @@ const port = 8080;
 		});
 
 		it("parses set with multiple SEARCH/REPLACE pairs", () => {
-			const input = `<set path="src/config.js"><<:::SEARCH
+			const input = `<set path="src/config.js"><<SEARCH
 const port = 3000;
-:::SEARCH<<:::REPLACE
+SEARCH
+<<REPLACE
 const port = 8080;
-:::REPLACE
-<<:::SEARCH
+REPLACE
+<<SEARCH
 const host = "localhost";
-:::SEARCH<<:::REPLACE
+SEARCH
+<<REPLACE
 const host = "0.0.0.0";
-:::REPLACE</set>`;
+REPLACE</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].operations.length, 2);
 			assert.strictEqual(commands[0].operations[0].op, "search_replace");
@@ -110,9 +113,9 @@ const host = "0.0.0.0";
 		});
 
 		it("parses set with NEW marker (explicit creation)", () => {
-			const input = `<set path="src/new.js"><<:::NEW
+			const input = `<set path="src/new.js"><<NEW
 export default {};
-:::NEW</set>`;
+NEW</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].operations.length, 1);
 			assert.strictEqual(commands[0].operations[0].op, "new");
@@ -123,18 +126,18 @@ export default {};
 		});
 
 		it("parses set with APPEND marker", () => {
-			const input = `<set path="known://plan"><<:::APPEND
+			const input = `<set path="known://plan"><<APPEND
 - [ ] new task
-:::APPEND</set>`;
+APPEND</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].operations[0].op, "append");
 			assert.strictEqual(commands[0].operations[0].content, "- [ ] new task");
 		});
 
 		it("parses set with DELETE marker", () => {
-			const input = `<set path="src/main.go"><<:::DELETE
+			const input = `<set path="src/main.go"><<DELETE
 deprecated_function()
-:::DELETE</set>`;
+DELETE</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].operations[0].op, "delete");
 		});
@@ -442,11 +445,11 @@ I need to check the port.
 
 		it("non-keyword marker IDENT preserves arbitrary content including </set> literals", () => {
 			const input = [
-				'<set path="docs.md"><<:::EOF',
+				'<set path="docs.md"><<EOF',
 				"# Heading",
 				"Tag examples: <env>x</env>, <set path='y'>z</set>",
 				"Even </set> in prose is opaque inside the marker.",
-				":::EOF</set>",
+				"EOF</set>",
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(
@@ -468,11 +471,11 @@ I need to check the port.
 			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
 		});
 
-		it("custom IDENT (any non-keyword identifier or path) routes to REPLACE", () => {
+		it("custom IDENT (any non-keyword identifier) routes to REPLACE", () => {
 			const input = [
-				'<set path="x.md"><<:::MARKER_42',
+				'<set path="x.md"><<MARKER_42',
 				"content with EOF and END as words but they aren't the closer",
-				":::MARKER_42</set>",
+				"MARKER_42</set>",
 			].join("\n");
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
@@ -483,19 +486,25 @@ I need to check the port.
 			);
 		});
 
-		it("path-flavored IDENT (mirrors packet rendering of entry bodies)", () => {
-			// Models see entries rendered as `<<:::path/to/file ::: path/to/file`
-			// in their context and may mimic. Path-flavored IDENT routes to
-			// REPLACE with the marker content as the new body.
+		it("packet-shape `<<:::path` falls through to plain-body REPLACE", () => {
+			// Edit syntax is bare-only (`<<IDENT...IDENT`). The engine's
+			// packet-rendering shape (`<<:::path...:::path`) is engine-emit
+			// only — a body echoing it from a model becomes literal content
+			// for plain-body REPLACE, with the markers preserved verbatim.
+			// Tag-shaped content inside is still opaque to body scanning
+			// because XmlParser.skipEditMarker recognizes both shapes.
 			const input = [
 				'<set path="OC_RIVERS.md"><<:::OC_RIVERS.md',
 				"# Hydrology",
+				"<env>x</env> stays opaque to set body scanner",
 				":::OC_RIVERS.md</set>",
 			].join("\n");
-			const { commands } = XmlParser.parse(input);
+			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].operations[0].op, "replace");
-			assert.strictEqual(commands[0].operations[0].content, "# Hydrology");
+			assert.ok(!commands[0].operations, "no edit-syntax ops");
+			assert.match(commands[0].body, /<<:::OC_RIVERS\.md/);
+			assert.match(commands[0].body, /# Hydrology/);
+			assert.deepEqual(warnings, []);
 		});
 
 		it("opus-regression: markdown documentation table inside marker body", () => {
@@ -503,12 +512,12 @@ I need to check the port.
 			// The markdown table has unclosed `<ask_user>` and stray `</mv>`
 			// references; under marker opacity none of them are tokens.
 			const input = [
-				'<set path="OPUS_ANALYSIS.md"><<:::DOC',
+				'<set path="OPUS_ANALYSIS.md"><<DOC',
 				"# rummy commands",
 				"| `<env/>` | `<env>git log</env>` |",
 				'| `<ask_user/>` | `<ask_user question="Which?">` |',
 				'| `<mv/>` | `<mv path="known://draft">known://final</mv>` |',
-				":::DOC</set>",
+				"DOC</set>",
 				'<update status="200">notes written</update>',
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);

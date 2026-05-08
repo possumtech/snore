@@ -737,11 +737,12 @@ Validates dotted decimal IPv4: each octet 0-255.
 		});
 
 		it("set with SEARCH/REPLACE marker pair routes to operations[0]", () => {
-			const input = `<set path="src/x.js"><<:::SEARCH
+			const input = `<set path="src/x.js"><<SEARCH
 old
-:::SEARCH<<:::REPLACE
+SEARCH
+<<REPLACE
 new
-:::REPLACE</set>`;
+REPLACE</set>`;
 			expectOne(input, "set", (c) => {
 				assert.strictEqual(c.operations?.[0]?.op, "search_replace");
 				assert.strictEqual(c.operations[0].search, "old");

@@ -16,41 +16,37 @@ Example:
 	
 	<set path="trivia/capitals.csv" visibility="visible"/>
 	
-	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia"><<:::NEW
+	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia"><<NEW
 	# Related
 	[trivia question](prompt://3)
 	[unknown resolving](unknown://countries/france/capital)
 	[source entry](trivia/capitals.csv)
 
 	{ relevant information derived from the linked, visible source entry }
-	:::NEW</set>
+	NEW</set>
 	
-	<set path="known://plan"><<:::SEARCH
+	<set path="known://plan"><<SEARCH
 	- [ ] Discover key, relevant information
-	:::SEARCH<<:::REPLACE
+	SEARCH<<REPLACE
 	- [ ] Discover key, relevant information about French capital
 	   - [ ] Locate authoritative capital source
 	   - [ ] Cross-check with secondary source
-	:::REPLACE</set>
+	REPLACE</set>
 	
 	<set path="prompt://3" visibility="summarized"/>
 	<set path="unknown://countries/france/capital" tags="RESOLVED" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
     { summarizing entries that may be relevant again, archiving what probably won't be, deleting what definitely won't be }
 	
-	<set path="known://plan"><<:::SEARCH
-	- [ ] Find the capital of France
-	:::SEARCH<<:::REPLACE
-	- [x] Find the capital of France
-	:::REPLACE</set>
+	<set path="known://plan"><<SEARCH - [ ] Find the capital of France SEARCH<<REPLACE - [x] Find the capital of France REPLACE</set>
 	<update status="102">distilled the capital of France into known entry; demoted the source</update>
 
 Example:
-	<set path="known://plan"><<:::SEARCH
+	<set path="known://plan"><<SEARCH
 	- [ ] Deliver answer to trivia question
-	:::SEARCH<<:::REPLACE
+	SEARCH<<REPLACE
 	- [x] Deliver answer to trivia question
-	:::REPLACE</set>
+	REPLACE</set>
 	<update status="200">Paris</update>
 
 YOU MUST NOT allow the `"tokens":N` sum of source entries, prompts, or log events to exceed `tokensFree="N"` budget.

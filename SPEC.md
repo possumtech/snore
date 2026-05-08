@@ -1463,22 +1463,36 @@ are universal — not a feature of any single tool.
 
 The model expresses entry writes through `<set path="..."><body></set>`.
 The body shape determines the operation. All shaped operations use a
-single HEREDOC-flavored marker family that mirrors the packet's own
-`<<:::IDENT ::: IDENT` rendering.
+bash-heredoc-flavored marker family.
 
 ### Marker Grammar
 
-    <<:::IDENT
+    <<IDENT
     body content
-    :::IDENT
+    IDENT
 
 Where `IDENT` matches `[A-Z][A-Za-z0-9_]*`. The leading keyword of
 `IDENT` selects the operation; any trailing alphanumeric suffix is
 opaque to operation routing and exists to disambiguate nested markers
-(same convention as bash heredoc `<<EOF1` vs `<<EOF` for nesting).
+or avoid collisions when the body literally contains the bare keyword
+(same convention as bash heredoc `<<EOF1` vs `<<EOF`).
+
+The opener `<<IDENT` must be preceded by start-of-body, whitespace,
+or `>` (so `vec<<SEARCH` mid-token does not false-trigger). The
+closer is bare `IDENT` with whitespace boundaries on both sides.
 
 Newline-tolerant: the multi-line shape above and the single-line
-`<<:::IDENT body :::IDENT` form parse identically.
+`<<IDENT body IDENT` form parse identically.
+
+### Distinct from Packet Rendering
+
+The engine renders entry bodies in context using a different marker
+shape: `<<:::path...:::path` (see `plugins/helpers.js`). Edit syntax
+is the bare `<<IDENT` form; packet rendering keeps the `:::` sentinel.
+The two grammars are visibly distinct so model emissions and engine
+renderings can never be confused. A `<set>` body echoing the packet
+shape is NOT treated as edit syntax — it falls through to plain-body
+REPLACE with the markers preserved as literal content.
 
 ### Operations
 
@@ -1496,14 +1510,28 @@ Newline-tolerant: the multi-line shape above and the single-line
 Surgical in-place edits. `SEARCH` must be immediately followed by
 `REPLACE` (no intervening operation):
 
-    <set path="src/main.go"><<:::SEARCH
+    <set path="src/main.go"><<SEARCH
     old line
-    :::SEARCH<<:::REPLACE
+    SEARCH
+    <<REPLACE
     new line
-    :::REPLACE</set>
+    REPLACE</set>
 
 Multiple pairs in one `<set>` body apply in order against the
 progressively-edited body.
+
+### Suffix for Body Collisions
+
+When the body content literally contains a marker keyword (`SEARCH`
+in prose, `<<` in code), the model appends a digit or alphanumeric
+suffix to the IDENT so the inner literal does not prematurely close
+the outer marker:
+
+    <set path="docs/grammar.md"><<DOC1
+    The opener is <<SEARCH and the closer is bare SEARCH alone on
+    a line. Use <<SEARCH1 ... SEARCH1 if your body contains literal
+    SEARCH or <<SEARCH tokens.
+    DOC1</set>
 
 ### Errors
 
@@ -1512,9 +1540,9 @@ progressively-edited body.
 | `SEARCH` content not found in current body | conflict (soft) |
 | `DELETE` content not found in current body | conflict (soft) |
 | Lone `SEARCH` (no following `REPLACE`) | parse error |
-| Unclosed marker (opener with no matching `:::IDENT` closer) | parse error |
-| Non-keyword `IDENT` (e.g. `<<:::EOF`, `<<:::file.txt`) | routes to REPLACE — inner content becomes the new body |
-| `<set>` body with no `<<:::` markers at all | full-body REPLACE (tolerated; not demonstrated to models) |
+| Unclosed marker (opener with no matching `IDENT` closer) | parse error |
+| Non-keyword `IDENT` (e.g. `<<EOF`, `<<DOC`) | routes to REPLACE — inner content becomes the new body |
+| `<set>` body with no `<<IDENT` markers at all | full-body REPLACE (tolerated; not demonstrated to models) |
 
 ### Pattern Matching
 

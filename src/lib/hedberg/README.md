@@ -8,7 +8,7 @@ Pattern matching (`hedmatch`, `hedsearch`) auto-detects glob, regex
 does fuzzy literal substitution — exact substring first, falling
 through to heuristic whitespace-tolerant matching when the literal
 miss is plausibly indentation drift. Edit-shape parsing
-(`<<:::IDENT...:::IDENT` markers in `<set>` bodies) lives in
+(`<<IDENT...IDENT` markers in `<set>` bodies) lives in
 `marker.js` and is invoked by the XmlParser at `<set>` resolution
 time; see SPEC.md "Edit Syntax".
 
@@ -49,7 +49,7 @@ For regex matching, use the explicit `/pattern/flags` syntax via
 ## Files
 
 - **hedberg.js** — plugin class, `replace()` method
-- **marker.js** — edit-syntax marker parser (`<<:::IDENT...:::IDENT`)
+- **marker.js** — edit-syntax marker parser (`<<IDENT...IDENT`)
 - **patterns.js** — pattern type detection (regex, glob, jsonpath, xpath, literal)
 - **matcher.js** — heuristic fuzzy matching, diff generation
 
