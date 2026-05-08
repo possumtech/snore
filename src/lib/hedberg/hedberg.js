@@ -1,9 +1,9 @@
-import { parseEditContent } from "./edits.js";
 import HeuristicMatcher, { generatePatch } from "./matcher.js";
 import { hedmatch, hedsearch } from "./patterns.js";
-import { parseSed } from "./sed.js";
 
-// Stochastic→deterministic boundary; exposes pattern/edit utilities on core.hedberg. SPEC #hedberg.
+// Stochastic→deterministic boundary; exposes pattern utilities on
+// core.hedberg. SPEC #hedberg. Edit-shape parsing lives in marker.js
+// and is invoked from XmlParser at <set> resolution time.
 export default class Hedberg {
 	#core;
 
@@ -14,8 +14,6 @@ export default class Hedberg {
 			match: hedmatch,
 			search: hedsearch,
 			replace: Hedberg.replace,
-			parseSed,
-			parseEdits: parseEditContent,
 			generatePatch,
 		};
 	}

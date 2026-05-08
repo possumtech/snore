@@ -6,11 +6,9 @@
 // Internal plugins should import from `src/lib/hedberg/` directly —
 // the hook namespace is for plugins shipped in separate packages.
 
-import { parseEditContent } from "../../lib/hedberg/edits.js";
 import Hedberg from "../../lib/hedberg/hedberg.js";
 import { generatePatch } from "../../lib/hedberg/matcher.js";
 import { hedmatch, hedsearch } from "../../lib/hedberg/patterns.js";
-import { parseSed } from "../../lib/hedberg/sed.js";
 
 export default class HedbergPlugin {
 	#core;
@@ -21,8 +19,6 @@ export default class HedbergPlugin {
 			match: hedmatch,
 			search: hedsearch,
 			replace: Hedberg.replace,
-			parseSed,
-			parseEdits: parseEditContent,
 			generatePatch,
 		};
 	}

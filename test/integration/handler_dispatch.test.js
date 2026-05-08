@@ -164,8 +164,12 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
-					blocks: [
-						{ search: "const port = 3000;", replace: "const port = 8080;" },
+					operations: [
+						{
+							op: "search_replace",
+							search: "const port = 3000;",
+							replace: "const port = 8080;",
+						},
 					],
 				},
 				state: "resolved",
@@ -176,31 +180,25 @@ describe("Handler dispatch", () => {
 			await hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
 			// Bare-file edits land as a `proposed` log entry at the
-			// dispatch's resultPath. The body carries the canonicalized
-			// SEARCH/REPLACE merge for the materializer; attrs.path names
-			// the target file. Acceptance applies the merge to the file
+			// dispatch's resultPath. attrs.patched carries the
+			// authoritative new file body for the materializer; attrs.path
+			// names the target file. Acceptance writes that body to disk
 			// (proposal.accepted handler), not the dispatch.
 			const logPath = "log://turn_1/set/src%2Fedit_me.js";
 			const attrs = await store.getAttributes(RUN_ID, logPath);
 			assert.equal(attrs.path, "src/edit_me.js");
-			assert.ok(
-				attrs.merge.includes("<<<<<<< SEARCH"),
-				"attributes.merge has SEARCH/REPLACE format",
-			);
-			assert.ok(attrs.merge.includes("8080"), "merge has new content");
+			assert.ok(attrs.patched.includes("8080"), "patched has new content");
+			assert.ok(attrs.patch, "udiff patch stored for telemetry");
 
 			const logState = await store.getState(RUN_ID, logPath);
 			assert.equal(logState.state, "proposed", "bare-file edit is proposed");
 		});
 
-		// Regression: fuzzy-matched edits used to silently no-op at
-		// materialization. #processEdit ran fuzzy and produced a
-		// correct patch, but the stored attrs.merge used the original
-		// (pre-fuzzy) search/replace text. #materializeFile re-applied
-		// via String.replace which only does direct match — search not
-		// found → file unchanged. Now #processEdit also stores the
-		// authoritative patched body in attrs.patched, and
-		// #materializeFile uses it directly.
+		// Fuzzy-matched edits land via attrs.patched: the handler runs
+		// Hedberg.replace (whitespace-fuzzy) against the current body and
+		// stores the resulting body in attrs.patched; #materializeFile
+		// writes attrs.patched directly to disk on accept. No re-application
+		// path that could diverge from the handler's computed result.
 		it("fuzzy-matched edits land on materialization (no silent no-op)", async () => {
 			// File body has 4-space indent.
 			const original = "function add(a, b) {\n    return a + b;\n}\n";
@@ -221,8 +219,9 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/fuzzy.js",
-					blocks: [
+					operations: [
 						{
+							op: "search_replace",
 							search: "function add(a, b) {\n\treturn a + b;\n}",
 							replace: "function add(a, b) {\n\treturn a + b + 1;\n}",
 						},
@@ -366,8 +365,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					search: "7 - a = ",
-					replace: "7 - a = 5",
+					operations: [
+						{
+							op: "search_replace",
+							search: "7 - a = ",
+							replace: "7 - a = 5",
+						},
+					],
 				},
 				state: "resolved",
 				resultPath: path1,
@@ -380,8 +384,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					search: "a + b = ",
-					replace: "a + b = 14",
+					operations: [
+						{
+							op: "search_replace",
+							search: "a + b = ",
+							replace: "a + b = 14",
+						},
+					],
 				},
 				state: "resolved",
 				resultPath: path2,
@@ -392,18 +401,18 @@ describe("Handler dispatch", () => {
 
 			// Each edit is its own proposal — predictable, parallel-friendly,
 			// no cross-dispatch canonical-entry state. Materialization (on
-			// proposal.accepted) applies merges to the actual file.
+			// proposal.accepted) writes the patched body to the actual file.
 			const a1 = await store.getAttributes(RUN_ID, path1);
 			assert.equal(a1.path, "src/math.txt");
 			assert.ok(
-				a1.merge.includes("7 - a = 5"),
+				a1.patched.includes("7 - a = 5"),
 				"first proposal has first edit",
 			);
 
 			const a2 = await store.getAttributes(RUN_ID, path2);
 			assert.equal(a2.path, "src/math.txt");
 			assert.ok(
-				a2.merge.includes("a + b = 14"),
+				a2.patched.includes("a + b = 14"),
 				"second proposal has second edit",
 			);
 
@@ -429,8 +438,9 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "known://config",
-					search: "3000",
-					replace: "8080",
+					operations: [
+						{ op: "search_replace", search: "3000", replace: "8080" },
+					],
 				},
 				state: "resolved",
 				resultPath: "set://known%3A%2F%2Fconfig",

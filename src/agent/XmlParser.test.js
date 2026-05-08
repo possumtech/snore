@@ -128,10 +128,7 @@ export default {};
 :::APPEND</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].operations[0].op, "append");
-			assert.strictEqual(
-				commands[0].operations[0].content,
-				"- [ ] new task",
-			);
+			assert.strictEqual(commands[0].operations[0].content, "- [ ] new task");
 		});
 
 		it("parses set with DELETE marker", () => {
@@ -461,9 +458,7 @@ I need to check the port.
 			assert.strictEqual(commands[0].path, "docs.md");
 			assert.strictEqual(commands[0].operations[0].op, "replace");
 			assert.ok(
-				commands[0].operations[0].content.includes(
-					"</set> in prose is opaque",
-				),
+				commands[0].operations[0].content.includes("</set> in prose is opaque"),
 				"literal </set> inside marker is content",
 			);
 			assert.ok(

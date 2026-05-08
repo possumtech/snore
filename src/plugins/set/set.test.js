@@ -404,9 +404,7 @@ describe("Set plugin", () => {
 	});
 
 	describe("bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
-		const editOps = [
-			{ op: "search_replace", search: "old", replace: "new" },
-		];
+		const editOps = [{ op: "search_replace", search: "old", replace: "new" }];
 
 		it("successful edit on bare file yields state=proposed with attrs.path + attrs.patched", async () => {
 			const plugin = new Set(stubCore());

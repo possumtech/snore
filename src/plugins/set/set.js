@@ -41,7 +41,7 @@ export default class Set {
 		});
 		core.filter("proposal.accepting", this.#vetoReadonly.bind(this));
 		core.filter("proposal.content", this.#preferExistingBody.bind(this));
-		// Materialization is shape-coupled (attrs.path + attrs.merge), not
+		// Materialization is shape-coupled (attrs.path + attrs.patched), not
 		// path-coupled. Any plugin emitting a proposal in that shape
 		// (set, cp, future tools) gets fs materialization for free.
 		core.on("proposal.accepted", this.#materializeFile.bind(this));
