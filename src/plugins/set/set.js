@@ -1,7 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
-import { applyMerge, buildMerge } from "../../lib/hedberg/merge.js";
 import File from "../file/file.js";
 import { SUMMARY_MAX_CHARS, storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -76,21 +75,13 @@ export default class Set {
 		const { attrs, runId, projectId, projectRoot, db, entries } = ctx;
 		// Shape gate, not path gate: any accepted proposal whose
 		// attributes describe a file materialization (target path +
-		// SEARCH/REPLACE merge) lands a fresh file body and writes to
-		// disk. Lets cp/set/future tools share one materializer.
-		if (!attrs?.path || !attrs?.merge) return;
+		// authoritative patched body) lands a fresh file body and writes
+		// to disk. Lets cp/set/future tools share one materializer.
+		if (!attrs?.path || attrs?.patched == null) return;
 
 		const existing = await entries.getBody(runId, attrs.path);
 		const isNewFile = existing === null;
-		const fileBody = isNewFile ? "" : existing;
-		// Prefer the precomputed patched body when present. Re-applying
-		// attrs.merge here can diverge from #processEdit's result when the
-		// fuzzy matcher healed indentation or whitespace — applyMerge does
-		// only direct String.replace matching, so a fuzzy-matched edit
-		// silently no-ops at materialization. Storing the authoritative
-		// body keeps #materializeFile honest.
-		const patched =
-			attrs.patched != null ? attrs.patched : applyMerge(fileBody, attrs.merge);
+		const patched = attrs.patched;
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
 		// Visibility precedence: explicit attrs.visibility (mv/cp pass
 		// the model's tag attribute through) > current entry visibility
@@ -260,22 +251,68 @@ export default class Set {
 			return;
 		}
 
-		// Edit: sed patterns or SEARCH/REPLACE blocks
-		if (attrs.blocks || attrs.search != null) {
-			await this.#processEdit(rummy, entry, attrs);
-		} else {
-			// Write content
-			const target = attrs.path;
-			if (!target) return;
+		// Build the new content. Either from the marker-parsed operation
+		// list (NEW / PREPEND / APPEND / REPLACE / DELETE / SEARCH+REPLACE)
+		// or from the plain body (full-replace shorthand).
+		const target = attrs.path;
+		if (!target) return;
+		let newContent;
+		if (attrs.operations) {
+			const existing = await store.getBody(runId, target);
+			const requiresExisting = attrs.operations.some(
+				(op) => op.op === "search_replace" || op.op === "delete",
+			);
+			if (requiresExisting && existing === null) {
+				await store.set({
+					runId,
+					turn,
+					loopId,
+					path: entry.resultPath,
+					body: `${target} not found in context`,
+					state: "failed",
+					outcome: "not_found",
+					attributes: {
+						path: target,
+						error: `${target} not found in context`,
+					},
+				});
+				return;
+			}
+			const result = Set.#applyOperations(
+				existing == null ? "" : existing,
+				attrs.operations,
+			);
+			if (result.error) {
+				await store.set({
+					runId,
+					turn,
+					loopId,
+					path: entry.resultPath,
+					body: existing == null ? "" : existing,
+					state: "failed",
+					outcome: "conflict",
+					attributes: {
+						path: target,
+						error: result.error,
+						attempted: result.attempted,
+						currentBody: truncateForFeedback(existing),
+					},
+				});
+				return;
+			}
+			newContent = result.body;
+		} else if (entry.body) {
+			newContent = entry.body;
+		}
 
+		if (newContent !== undefined) {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
-				// File write — diff against existing content
+				// File write — emit a "proposed" entry; #materializeFile
+				// writes to disk on accept.
 				const existing = await store.getBody(runId, target);
-				const oldContent = existing === null ? "" : existing;
-				const newContent = entry.body;
+				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
-				const merge = buildMerge(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 				await store.set({
@@ -287,7 +324,7 @@ export default class Set {
 					attributes: {
 						path: target,
 						patch: udiff,
-						merge,
+						patched: newContent,
 						beforeTokens,
 						afterTokens,
 						tags: tagsText,
@@ -295,7 +332,9 @@ export default class Set {
 					loopId,
 				});
 			} else if (attrs.filter || target.includes("*")) {
-				// Pattern update
+				// Pattern body-update: write the same body to every matching
+				// entry. Operations don't apply here (this is a bulk
+				// metadata-flavored body assignment).
 				const matches = await store.getEntriesByPattern(
 					runId,
 					target,
@@ -304,7 +343,7 @@ export default class Set {
 				await store.set({
 					runId: runId,
 					path: target,
-					body: entry.body,
+					body: newContent,
 					bodyFilter: attrs.filter === undefined ? null : attrs.filter,
 				});
 				await storePatternResult(
@@ -320,10 +359,8 @@ export default class Set {
 			} else {
 				// Direct scheme write; same diff-against-existing shape as file writes.
 				const existing = await store.getBody(runId, target);
-				const oldContent = existing === null ? "" : existing;
-				const newContent = entry.body;
+				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
-				const merge = buildMerge(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
@@ -333,7 +370,6 @@ export default class Set {
 					path: target,
 					body: newContent,
 					state: "resolved",
-					// Scheme writes default visible; the model wrote it.
 					visibility: visibilityAttr ? visibilityAttr : "visible",
 					attributes: tagsText ? { tags: tagsText } : null,
 					loopId,
@@ -348,7 +384,6 @@ export default class Set {
 					attributes: {
 						path: target,
 						patch: udiff,
-						merge,
 						beforeTokens,
 						afterTokens,
 						tags: tagsText,
@@ -383,8 +418,8 @@ export default class Set {
 		const target = attrs.path || entry.path;
 		if (attrs.error) {
 			const lines = [`# set ${target}`, attrs.error];
-			if (attrs.merge) {
-				lines.push("", "--- attempted ---", attrs.merge);
+			if (attrs.attempted) {
+				lines.push("", "--- attempted ---", attrs.attempted);
 			}
 			if (attrs.currentBody != null) {
 				lines.push("", `--- current body of ${target} ---`, attrs.currentBody);
@@ -395,8 +430,8 @@ export default class Set {
 			attrs.beforeTokens != null
 				? ` ${attrs.beforeTokens}→${attrs.afterTokens} tokens`
 				: "";
-		if (!attrs.merge) return `# set ${target}${tokens}`;
-		return `# set ${target}${tokens}\n${attrs.merge}`;
+		if (!attrs.patch) return `# set ${target}${tokens}`;
+		return `# set ${target}${tokens}\n${attrs.patch}`;
 	}
 
 	summary(entry) {
@@ -408,163 +443,33 @@ export default class Set {
 		return entry.body.slice(0, SUMMARY_MAX_CHARS);
 	}
 
-	async #processEdit(rummy, entry, attrs) {
-		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const target = attrs.path;
-		const matches = await store.getEntriesByPattern(runId, target, attrs.body);
-
-		if (matches.length === 0) {
-			await store.set({
-				runId,
-				turn,
-				path: entry.resultPath,
-				body: "",
-				state: "failed",
-				outcome: "not_found",
-				attributes: { path: target, error: `${target} not found in context` },
-				loopId,
-			});
-			return;
-		}
-
-		for (const match of matches) {
-			if (match.scheme === null) {
-				// Bare file: emit a "proposed" log entry whose attrs carry
-				// the merge AND the authoritative patched body. On accept,
-				// #materializeFile uses attrs.patched directly — no re-
-				// application that could diverge from what #processEdit
-				// computed (e.g., fuzzy-matched edits whose original
-				// search text doesn't direct-match).
-				const { patch, searchText, replaceText, warning, error } =
-					Set.#applyRevision(match.body, attrs);
-				const merge =
-					searchText != null ? buildMerge(searchText, replaceText) : null;
-				const beforeTokens = match.tokens;
-				const afterTokens = patch ? countTokens(patch) : beforeTokens;
-				const logState = error ? "failed" : "proposed";
-				await store.set({
-					runId,
-					turn,
-					path: entry.resultPath,
-					body: merge ?? (patch || `edit to ${match.path}`),
-					state: logState,
-					outcome: error ? "conflict" : null,
-					attributes: {
-						path: match.path,
-						merge,
-						patched: patch,
-						beforeTokens,
-						afterTokens,
-						warning,
-						error,
-						currentBody: error ? truncateForFeedback(match.body) : null,
-					},
-					loopId,
-				});
-				return;
-			}
-
-			const { patch, searchText, replaceText, warning, error } =
-				Set.#applyRevision(match.body, attrs);
-
-			const state = error ? "failed" : "resolved";
-			const outcome = error ? "conflict" : null;
-			const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
-			const merge =
-				searchText != null ? buildMerge(searchText, replaceText) : null;
-			const beforeTokens = match.tokens;
-			const afterTokens = patch ? countTokens(patch) : beforeTokens;
-
-			// Log entry at log://turn_N/set/<target> records the action.
-			await store.set({
-				runId,
-				turn,
-				path: entry.resultPath,
-				body: patch ?? match.body,
-				state,
-				outcome,
-				attributes: {
-					path: match.path,
-					patch: udiff,
-					merge,
-					beforeTokens,
-					afterTokens,
-					warning,
-					error,
-					currentBody: error ? truncateForFeedback(match.body) : null,
-				},
-				loopId,
-			});
-
-			if (state === "resolved" && patch) {
-				await store.set({
-					runId,
-					turn,
-					path: match.path,
-					body: patch,
-					state: match.state,
-					loopId,
-				});
+	// Walk the parsed marker operation list against a starting body, returning
+	// the final body or the first error. SEARCH/REPLACE and DELETE go through
+	// Hedberg.replace (fuzzy whitespace match); NEW/REPLACE/PREPEND/APPEND
+	// are direct string operations.
+	static #applyOperations(currentBody, operations) {
+		let body = currentBody;
+		for (const op of operations) {
+			if (op.op === "new" || op.op === "replace") {
+				body = op.content;
+			} else if (op.op === "append") {
+				body = body + op.content;
+			} else if (op.op === "prepend") {
+				body = op.content + body;
+			} else if (op.op === "delete") {
+				const result = Hedberg.replace(body, op.content, "");
+				if (result.error) {
+					return { body, error: result.error, attempted: op.content };
+				}
+				body = result.patch;
+			} else if (op.op === "search_replace") {
+				const result = Hedberg.replace(body, op.search, op.replace);
+				if (result.error) {
+					return { body, error: result.error, attempted: op.search };
+				}
+				body = result.patch;
 			}
 		}
-	}
-
-	// Missing `replace` = delete the match; normalize to empty string.
-	static #resolveReplace(attrs) {
-		return attrs.replace === undefined ? "" : attrs.replace;
-	}
-
-	static #applyRevision(body, attrs) {
-		if (attrs.search != null) {
-			return Hedberg.replace(body, attrs.search, Set.#resolveReplace(attrs), {
-				sed: attrs.sed,
-				flags: attrs.flags,
-			});
-		}
-		// Empty SEARCH section = creation form. Replace is the entire new
-		// body; no matching against existing content.
-		if (attrs.blocks?.length > 0 && !attrs.blocks[0].search) {
-			return {
-				patch: attrs.blocks[0].replace,
-				searchText: null,
-				replaceText: attrs.blocks[0].replace,
-				warning: null,
-				error: null,
-			};
-		}
-		if (body && attrs.blocks?.length > 0) {
-			if (attrs.blocks.length === 1) {
-				const block = attrs.blocks[0];
-				return Hedberg.replace(body, block.search, block.replace, {
-					sed: block.sed,
-					flags: block.flags,
-				});
-			}
-			let current = body;
-			let lastWarning = null;
-			for (const block of attrs.blocks) {
-				const result = Hedberg.replace(current, block.search, block.replace, {
-					sed: block.sed,
-					flags: block.flags,
-				});
-				if (result.error) return result;
-				if (result.warning) lastWarning = result.warning;
-				if (result.patch) current = result.patch;
-			}
-			return {
-				patch: current !== body ? current : null,
-				searchText: null,
-				replaceText: null,
-				warning: lastWarning,
-				error: null,
-			};
-		}
-		return {
-			patch: null,
-			searchText: null,
-			replaceText: null,
-			warning: null,
-			error: null,
-		};
+		return { body, error: null, attempted: null };
 	}
 }

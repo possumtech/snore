@@ -1,34 +1,20 @@
-import { parseEditContent } from "../lib/hedberg/edits.js";
-import { parseSed } from "../lib/hedberg/sed.js";
+import { parseMarkerBody } from "../lib/hedberg/marker.js";
 
-// Shell-style HEREDOC opener at the start of a `<set>` body. Models have
-// strong training prior for this shape: <<IDENT, <<-IDENT, <<'IDENT',
-// <<"IDENT". Returns positions for the inner content span and the
-// position after the closer line, or null. Only invoked for <set>.
-function matchHeredoc(s, pos) {
-	const slice = s.slice(pos);
-	// Allow leading whitespace before the opener (model may format the
-	// body with a newline after the open tag).
-	const lead = slice.match(/^\s*/);
-	const start = pos + lead[0].length;
-	const m = s.slice(start).match(/^<<-?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\n/);
+// `<<:::IDENT...:::IDENT` body opacity. When `#findBodyEnd` is scanning
+// a `<set>` body and hits `<<:::`, jump past the matching `:::IDENT`
+// closer so tag-shaped content inside the marker (`</set>`, `<get/>`,
+// etc.) doesn't trigger structural recovery. Same role HEREDOC played
+// previously, generalized to the edit-syntax marker family.
+function skipEditMarker(s, pos) {
+	const m = s.slice(pos).match(/^<<:::([A-Za-z_][A-Za-z0-9_./-]*)/);
 	if (!m) return null;
-	const ident = m[2];
-	const openerEnd = start + m[0].length;
-	const remaining = s.slice(openerEnd);
-	// Closer = newline + optional indent + IDENT, followed by either:
-	// whitespace + </set> (compact form), a newline (closer on own line),
-	// or end of input. Indent always allowed (forgiving — covers <<- form).
+	const ident = m[1];
+	const openerEnd = pos + m[0].length;
 	const escIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const closerRe = new RegExp(`\\n[\\t ]*${escIdent}(?=\\s*</set\\s*>|\\n|$)`);
-	const cm = remaining.match(closerRe);
+	const closerRe = new RegExp(`:::${escIdent}(?![A-Za-z0-9_])`);
+	const cm = s.slice(openerEnd).match(closerRe);
 	if (!cm) return null;
-	return {
-		ident,
-		innerStart: openerEnd,
-		innerEnd: openerEnd + cm.index,
-		afterCloser: openerEnd + cm.index + cm[0].length,
-	};
+	return openerEnd + cm.index + cm[0].length;
 }
 
 const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
@@ -46,65 +32,24 @@ function resolveCommand(name, a, rawBody) {
 	const trimmed = rawBody.trim();
 
 	if (name === "set") {
-		// search/replace as attributes was an edit shape that nothing in
-		// the protocol now teaches; strip them so they can't sneak past
-		// via the attribute spread.
+		// `search`/`replace` as attributes is no longer in the grammar;
+		// strip them so they can't sneak past via the attribute spread.
 		const { search: _s, replace: _r, ...rest } = a;
 		a = rest;
 
 		// Self-close / no-body: visibility/metadata op.
 		if (!trimmed) return { name, ...a, body: a.body || "" };
 
-		// HEREDOC body: extract inner content. Tag-like text, backticks,
-		// and SEARCH/REPLACE markers inside the heredoc are stored
-		// verbatim — opaque body shape for arbitrary content.
-		const heredoc = matchHeredoc(rawBody, 0);
-		if (heredoc) {
-			return {
-				name,
-				...a,
-				body: rawBody.slice(heredoc.innerStart, heredoc.innerEnd),
-			};
-		}
+		// Edit syntax (SPEC.md "Edit Syntax"): walks the body for
+		// `<<:::IDENT...:::IDENT` markers and returns an ordered op
+		// list. No markers → plain body, treated as full-replace.
+		// Path-flavored or otherwise non-keyword IDENTs route to
+		// REPLACE so any HEREDOC-shaped body just works.
+		const { ops, error } = parseMarkerBody(rawBody);
+		if (error) return { name, ...a, error };
+		if (ops) return { name, ...a, operations: ops };
 
-		// Sed shorthand: `s/old/new/`, `s|old|new|`, `s,old,new,`, or chained.
-		// Gate matches any non-alphanumeric delimiter, mirroring parseSed.
-		// On malformed sed (e.g., unescaped delimiter inside SEARCH or
-		// REPLACE), parseSed throws — surface it as a parse error so set's
-		// handler fails the entry rather than silently applying a corrupted
-		// edit, or worse, falling through to body-replace and overwriting
-		// the target with the literal sed text.
-		if (/^s[^\w\s]/.test(trimmed)) {
-			let blocks;
-			try {
-				blocks = parseSed(trimmed);
-			} catch (err) {
-				return { name, ...a, error: err.message };
-			}
-			if (blocks?.length === 1) {
-				return {
-					name,
-					...a,
-					search: blocks[0].search,
-					replace: blocks[0].replace,
-					flags: blocks[0].flags,
-					sed: true,
-				};
-			}
-			if (blocks?.length > 1) {
-				return { name, ...a, blocks };
-			}
-		}
-
-		// SEARCH/REPLACE blocks (edit existing content; empty SEARCH = create).
-		const blocks = parseEditContent(rawBody);
-		if (blocks.length > 0) {
-			return { name, ...a, blocks };
-		}
-
-		// Raw body — direct create / overwrite. The most common shape for
-		// short scheme entries (unknown://, known://) and any deliverable
-		// where the model isn't editing pre-existing content.
+		// No markers — plain body, full-replace.
 		return { name, ...a, body: trimmed };
 	}
 
@@ -400,17 +345,18 @@ export default class XmlParser {
 		let depth = 1;
 		let sameNameNested = false;
 		let i = fromPos;
-		// HEREDOC bypass: when the body starts with a shell-style heredoc
-		// opener, jump past the matching closer. Tag recognition does not
-		// run inside the heredoc range — `</set>`, examples, anything is
-		// body content. HEREDOC is the principled opacity mechanism;
-		// inside-body backtick tracking would only create new failure
-		// modes (unbalanced backticks suppressing legitimate close tags).
-		if (name === "set") {
-			const heredoc = matchHeredoc(s, fromPos);
-			if (heredoc) i = heredoc.afterCloser;
-		}
 		while (i < s.length) {
+			// Edit-syntax marker opacity: <<:::IDENT...:::IDENT spans are
+			// opaque — tag detection skips them so inner `</set>` and
+			// other tag-shaped content stays as body. Multiple markers
+			// per `<set>` body are supported; check on every iteration.
+			if (name === "set" && s.startsWith("<<:::", i)) {
+				const skipTo = skipEditMarker(s, i);
+				if (skipTo != null) {
+					i = skipTo;
+					continue;
+				}
+			}
 			if (s[i] !== "<") {
 				i++;
 				continue;

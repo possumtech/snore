@@ -63,51 +63,42 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].options, "PG, SQLite");
 		});
 
-		it("parses set with search/replace block", () => {
-			const input = `<set path="src/config.js">
-<<<<<<< SEARCH
+		it("parses set with SEARCH/REPLACE marker pair", () => {
+			const input = `<set path="src/config.js"><<:::SEARCH
 const port = 3000;
-=======
+:::SEARCH<<:::REPLACE
 const port = 8080;
->>>>>>> REPLACE
-</set>`;
+:::REPLACE</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "src/config.js");
-			assert.strictEqual(commands[0].blocks.length, 1);
-			assert.strictEqual(commands[0].blocks[0].search, "const port = 3000;");
-			assert.strictEqual(commands[0].blocks[0].replace, "const port = 8080;");
+			assert.strictEqual(commands[0].operations.length, 1);
+			assert.strictEqual(commands[0].operations[0].op, "search_replace");
+			assert.strictEqual(
+				commands[0].operations[0].search,
+				"const port = 3000;",
+			);
+			assert.strictEqual(
+				commands[0].operations[0].replace,
+				"const port = 8080;",
+			);
 		});
 
-		it("parses set with multiple merge blocks", () => {
-			const input = `<set path="src/config.js">
-<<<<<<< SEARCH
+		it("parses set with multiple SEARCH/REPLACE pairs", () => {
+			const input = `<set path="src/config.js"><<:::SEARCH
 const port = 3000;
-=======
+:::SEARCH<<:::REPLACE
 const port = 8080;
->>>>>>> REPLACE
-<<<<<<< SEARCH
+:::REPLACE
+<<:::SEARCH
 const host = "localhost";
-=======
+:::SEARCH<<:::REPLACE
 const host = "0.0.0.0";
->>>>>>> REPLACE
-</set>`;
+:::REPLACE</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].blocks.length, 2);
-		});
-
-		it("parses merge with flexible marker length", () => {
-			const input = `<set path="src/app.js">
-<<<<< SEARCH
-old
-=====
-new
->>>>> REPLACE
-</set>`;
-			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].blocks.length, 1);
-			assert.strictEqual(commands[0].blocks[0].search, "old");
-			assert.strictEqual(commands[0].blocks[0].replace, "new");
+			assert.strictEqual(commands[0].operations.length, 2);
+			assert.strictEqual(commands[0].operations[0].op, "search_replace");
+			assert.strictEqual(commands[0].operations[1].op, "search_replace");
 		});
 
 		it("parses set with raw body (create / overwrite)", () => {
@@ -115,19 +106,40 @@ new
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].path, "src/new.js");
 			assert.strictEqual(commands[0].body, "export default {};");
-			assert.ok(!commands[0].blocks);
+			assert.ok(!commands[0].operations);
 		});
 
-		it("parses set for new file (empty-SEARCH form, optional)", () => {
-			const input = `<set path="src/new.js">
-<<<<<<< SEARCH
-=======
+		it("parses set with NEW marker (explicit creation)", () => {
+			const input = `<set path="src/new.js"><<:::NEW
 export default {};
->>>>>>> REPLACE
-</set>`;
+:::NEW</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].blocks[0].search, "");
-			assert.strictEqual(commands[0].blocks[0].replace, "export default {};");
+			assert.strictEqual(commands[0].operations.length, 1);
+			assert.strictEqual(commands[0].operations[0].op, "new");
+			assert.strictEqual(
+				commands[0].operations[0].content,
+				"export default {};",
+			);
+		});
+
+		it("parses set with APPEND marker", () => {
+			const input = `<set path="known://plan"><<:::APPEND
+- [ ] new task
+:::APPEND</set>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands[0].operations[0].op, "append");
+			assert.strictEqual(
+				commands[0].operations[0].content,
+				"- [ ] new task",
+			);
+		});
+
+		it("parses set with DELETE marker", () => {
+			const input = `<set path="src/main.go"><<:::DELETE
+deprecated_function()
+:::DELETE</set>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands[0].operations[0].op, "delete");
 		});
 
 		it("parses multiple commands in one response", () => {
@@ -431,14 +443,13 @@ I need to check the port.
 			assert.ok(commands[0].body.includes("<get"));
 		});
 
-		it("HEREDOC body: <<EOF ... EOF preserves arbitrary content including </set> literals", () => {
+		it("non-keyword marker IDENT preserves arbitrary content including </set> literals", () => {
 			const input = [
-				'<set path="docs.md"><<EOF',
+				'<set path="docs.md"><<:::EOF',
 				"# Heading",
 				"Tag examples: <env>x</env>, <set path='y'>z</set>",
-				"Even </set> in prose is opaque inside heredoc.",
-				"EOF",
-				"</set>",
+				"Even </set> in prose is opaque inside the marker.",
+				":::EOF</set>",
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(
@@ -448,88 +459,71 @@ I need to check the port.
 			);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "docs.md");
+			assert.strictEqual(commands[0].operations[0].op, "replace");
 			assert.ok(
-				commands[0].body.includes("</set> in prose is opaque"),
-				"literal </set> inside heredoc is body content",
+				commands[0].operations[0].content.includes(
+					"</set> in prose is opaque",
+				),
+				"literal </set> inside marker is content",
 			);
 			assert.ok(
-				commands[0].body.includes("<env>x</env>"),
-				"tag examples inside heredoc are body content",
-			);
-			assert.ok(
-				!commands[0].body.includes("EOF"),
-				"closer line is stripped from body",
+				commands[0].operations[0].content.includes("<env>x</env>"),
+				"tag examples inside marker are content",
 			);
 			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
 		});
 
-		it("HEREDOC: custom delimiter (model picks any [A-Za-z_]\\w*)", () => {
+		it("custom IDENT (any non-keyword identifier or path) routes to REPLACE", () => {
 			const input = [
-				'<set path="x.md"><<MARKER_42',
+				'<set path="x.md"><<:::MARKER_42',
 				"content with EOF and END as words but they aren't the closer",
-				"MARKER_42",
-				"</set>",
+				":::MARKER_42</set>",
 			].join("\n");
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.match(commands[0].body, /content with EOF and END/);
+			assert.strictEqual(commands[0].operations[0].op, "replace");
+			assert.match(
+				commands[0].operations[0].content,
+				/content with EOF and END/,
+			);
 		});
 
-		it("HEREDOC: compact closer (IDENT</set> on same line)", () => {
+		it("path-flavored IDENT (mirrors packet rendering of entry bodies)", () => {
+			// Models see entries rendered as `<<:::path/to/file ::: path/to/file`
+			// in their context and may mimic. Path-flavored IDENT routes to
+			// REPLACE with the marker content as the new body.
 			const input = [
-				'<set path="x.md"><<EOF',
-				"compact body",
-				"EOF</set>",
+				'<set path="OC_RIVERS.md"><<:::OC_RIVERS.md',
+				"# Hydrology",
+				":::OC_RIVERS.md</set>",
 			].join("\n");
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].body, "compact body");
+			assert.strictEqual(commands[0].operations[0].op, "replace");
+			assert.strictEqual(commands[0].operations[0].content, "# Hydrology");
 		});
 
-		it("HEREDOC: dash form <<-EOF accepted (closer indentation tolerated)", () => {
+		it("opus-regression: markdown documentation table inside marker body", () => {
+			// Reproduction of the opus failure case under the marker family.
+			// The markdown table has unclosed `<ask_user>` and stray `</mv>`
+			// references; under marker opacity none of them are tokens.
 			const input = [
-				'<set path="x.md"><<-EOF',
-				"\tindented content",
-				"\tEOF",
-				"</set>",
-			].join("\n");
-			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands.length, 1);
-			assert.match(commands[0].body, /indented content/);
-		});
-
-		it("HEREDOC: quoted forms <<'EOF' and <<\"EOF\" accepted", () => {
-			for (const opener of ["<<'EOF'", '<<"EOF"']) {
-				const input = `<set path="x.md">${opener}\nbody\nEOF\n</set>`;
-				const { commands } = XmlParser.parse(input);
-				assert.strictEqual(commands.length, 1, `opener ${opener} parsed`);
-				assert.strictEqual(commands[0].body, "body");
-			}
-		});
-
-		it("HEREDOC opus-regression: markdown documentation table inside body", () => {
-			// Reproduction of the opus failure case using HEREDOC instead
-			// of bare body. The markdown table has unclosed `<ask_user>`
-			// and stray `</mv>` references; under HEREDOC opacity none of
-			// them are tokens.
-			const input = [
-				'<set path="OPUS_ANALYSIS.md"><<DOC',
+				'<set path="OPUS_ANALYSIS.md"><<:::DOC',
 				"# rummy commands",
 				"| `<env/>` | `<env>git log</env>` |",
 				'| `<ask_user/>` | `<ask_user question="Which?">` |',
 				'| `<mv/>` | `<mv path="known://draft">known://final</mv>` |',
-				"DOC",
-				"</set>",
+				":::DOC</set>",
 				'<update status="200">notes written</update>',
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 2, "set + update");
 			assert.strictEqual(commands[0].path, "OPUS_ANALYSIS.md");
 			assert.ok(
-				commands[0].body.includes(
+				commands[0].operations[0].content.includes(
 					'<mv path="known://draft">known://final</mv>',
 				),
-				"full table preserved in body",
+				"full table preserved in marker content",
 			);
 			assert.strictEqual(commands[1].body, "notes written");
 			assert.deepEqual(warnings, []);
@@ -703,105 +697,6 @@ I need to check the port.
 			);
 			assert.strictEqual(commands.length, 0);
 			assert.ok(unparsed.includes("Just some text"));
-		});
-	});
-
-	describe("sed syntax", () => {
-		it("parses s/search/replace/", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="config.js">s/3000/8080/</set>',
-			);
-			assert.strictEqual(commands[0].search, "3000");
-			assert.strictEqual(commands[0].replace, "8080");
-		});
-
-		it("parses s/search/replace/g", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="config.js">s/localhost/0.0.0.0/g</set>',
-			);
-			assert.strictEqual(commands[0].search, "localhost");
-			assert.strictEqual(commands[0].replace, "0.0.0.0");
-		});
-
-		it("parses s/search/replace without trailing slash", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="config.js">s/old/new</set>',
-			);
-			assert.strictEqual(commands[0].search, "old");
-			assert.strictEqual(commands[0].replace, "new");
-		});
-
-		it("parses sed with spaces in search/replace", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="hw.txt">s/7 - a = /7 - a = 5/g</set>',
-			);
-			assert.strictEqual(commands[0].search, "7 - a = ");
-			assert.strictEqual(commands[0].replace, "7 - a = 5");
-		});
-
-		it("parses sed with empty replace (deletion)", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="f.js">s/debugger;//</set>',
-			);
-			assert.strictEqual(commands[0].search, "debugger;");
-			assert.strictEqual(commands[0].replace, "");
-		});
-
-		it("parses chained seds with semicolon", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="f.js">s/foo/bar/g;s/baz/qux/g</set>',
-			);
-			assert.strictEqual(commands[0].blocks.length, 2);
-			assert.strictEqual(commands[0].blocks[0].search, "foo");
-			assert.strictEqual(commands[0].blocks[0].replace, "bar");
-			assert.strictEqual(commands[0].blocks[1].search, "baz");
-			assert.strictEqual(commands[0].blocks[1].replace, "qux");
-		});
-
-		it("parses chained seds with space separator", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="f.js">s/old/new/ s/foo/bar/</set>',
-			);
-			assert.strictEqual(commands[0].blocks.length, 2);
-			assert.strictEqual(commands[0].blocks[0].search, "old");
-			assert.strictEqual(commands[0].blocks[0].replace, "new");
-			assert.strictEqual(commands[0].blocks[1].search, "foo");
-			assert.strictEqual(commands[0].blocks[1].replace, "bar");
-		});
-
-		it("parses chained seds with newline separator", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="f.js">s/a/b/\ns/c/d/</set>',
-			);
-			assert.strictEqual(commands[0].blocks.length, 2);
-			assert.strictEqual(commands[0].blocks[0].search, "a");
-			assert.strictEqual(commands[0].blocks[1].search, "c");
-		});
-
-		it("parses sed with escaped slashes", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="hw.txt">s/b \\/ 4 = 3/12 \\/ 4 = 3/</set>',
-			);
-			assert.strictEqual(commands[0].search, "b / 4 = 3");
-			assert.strictEqual(commands[0].replace, "12 / 4 = 3");
-		});
-
-		it("parses chained seds with escaped slashes", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="hw.txt">s/a + 4 = 6/2 + 4 = 6/ s/b \\/ 4 = 3/12 \\/ 4 = 3/</set>',
-			);
-			assert.strictEqual(commands[0].blocks.length, 2);
-			assert.strictEqual(commands[0].blocks[0].search, "a + 4 = 6");
-			assert.strictEqual(commands[0].blocks[1].search, "b / 4 = 3");
-			assert.strictEqual(commands[0].blocks[1].replace, "12 / 4 = 3");
-		});
-
-		it("parses sed with regex anchors as literal text", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="hw.txt">s/7 - a =$/7 - a = 5/</set>',
-			);
-			assert.strictEqual(commands[0].search, "7 - a =$");
-			assert.strictEqual(commands[0].replace, "7 - a = 5");
 		});
 	});
 

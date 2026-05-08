@@ -35,7 +35,7 @@ describe("Cp", () => {
 	});
 
 	describe("handler — bare-file destination materialization", () => {
-		it("emits proposed entry with attrs.path + attrs.merge for shared materializer", async () => {
+		it("emits proposed entry with attrs.path + attrs.patched for shared materializer", async () => {
 			const plugin = new Cp(stubCore());
 			const store = makeStore({
 				bodies: { "https://x.example/page": "fetched body content" },
@@ -51,18 +51,14 @@ describe("Cp", () => {
 			assert.ok(proposal);
 			assert.equal(proposal.state, "proposed");
 			assert.equal(proposal.attributes.path, "src/out.c");
-			assert.ok(
-				proposal.attributes.merge.includes("fetched body content"),
-				"merge carries the source body",
-			);
-			assert.match(
-				proposal.attributes.merge,
-				/^<<<<<<< SEARCH\n=======\nfetched body content\n>>>>>>> REPLACE$/,
-				"new file → empty SEARCH, source body in REPLACE",
+			assert.equal(
+				proposal.attributes.patched,
+				"fetched body content",
+				"patched carries the source body",
 			);
 		});
 
-		it("when destination already exists, merge replaces existing body with source", async () => {
+		it("when destination already exists, patched holds the source body that overwrites", async () => {
 			const plugin = new Cp(stubCore());
 			const store = makeStore({
 				bodies: {
@@ -78,15 +74,11 @@ describe("Cp", () => {
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
-			assert.match(
-				proposal.attributes.merge,
-				/^<<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE$/,
-				"existing body in SEARCH, new body in REPLACE",
-			);
+			assert.equal(proposal.attributes.patched, "new");
 			assert.match(proposal.attributes.warning, /Overwrote/);
 		});
 
-		it("preserves existing from/to/isMove attrs alongside path/merge", async () => {
+		it("preserves existing from/to/isMove attrs alongside path/patched", async () => {
 			const plugin = new Cp(stubCore());
 			const store = makeStore({ bodies: { "src/a": "content" } });
 			await plugin.handler(

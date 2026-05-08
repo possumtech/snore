@@ -1459,18 +1459,94 @@ are universal — not a feature of any single tool.
 
 ---
 
-## Hedberg Editing Syntax {#hedberg}
+## Edit Syntax
 
-The model picks its preferred edit format. The parser understands all of them:
+The model expresses entry writes through `<set path="..."><body></set>`.
+The body shape determines the operation. All shaped operations use a
+single HEREDOC-flavored marker family that mirrors the packet's own
+`<<:::IDENT ::: IDENT` rendering.
 
-1. Git merge conflict: `<<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE`
-2. Replace-only: `======= ... >>>>>>> REPLACE`
-3. Unified diff: `@@ -1,3 +1,3 @@` with `-`/`+` lines
-4. Sed syntax: `s/old/new/flags`
-5. Claude XML: `<old_text>old</old_text><new_text>new</new_text>`
-6. JSON body: `{"search": "old", "replace": "new"}` or `{search="old", replace="new"}`
-7. XML attributes: `<set search="old" replace="new"/>`
-8. Full replacement: anything else becomes the new content
+### Marker Grammar
+
+    <<:::IDENT
+    body content
+    :::IDENT
+
+Where `IDENT` matches `[A-Z][A-Za-z0-9_]*`. The leading keyword of
+`IDENT` selects the operation; any trailing alphanumeric suffix is
+opaque to operation routing and exists to disambiguate nested markers
+(same convention as bash heredoc `<<EOF1` vs `<<EOF` for nesting).
+
+Newline-tolerant: the multi-line shape above and the single-line
+`<<:::IDENT body :::IDENT` form parse identically.
+
+### Operations
+
+| IDENT prefix | Effect |
+|---|---|
+| `NEW` | Create the entry. Behaves identically to `REPLACE` on existing entries — named separately to align with model intent. |
+| `PREPEND` | Prepend body content to the existing entry. Creates the entry if it doesn't exist. |
+| `APPEND` | Append body content to the existing entry. Creates the entry if it doesn't exist. |
+| `REPLACE` | Replace the entire entry body with the marker content. Standalone (not preceded by `SEARCH`). |
+| `DELETE` | Remove a literal-matching region from the existing entry body. The marker content is the region to remove. |
+| `SEARCH` | Match a literal region in the existing entry body. Must be immediately followed by a `REPLACE` block; the pair is an in-place edit. |
+
+### SEARCH / REPLACE Pairs
+
+Surgical in-place edits. `SEARCH` must be immediately followed by
+`REPLACE` (no intervening operation):
+
+    <set path="src/main.go"><<:::SEARCH
+    old line
+    :::SEARCH<<:::REPLACE
+    new line
+    :::REPLACE</set>
+
+Multiple pairs in one `<set>` body apply in order against the
+progressively-edited body.
+
+### Plain Body (No Markers)
+
+A `<set>` body containing no `<<:::IDENT` markers is treated as a
+full-body REPLACE — the body literal is the new entry content. This
+preserves the natural shape for short writes:
+
+    <set path="known://fact">The Earth is round</set>
+
+### Errors
+
+| Condition | Outcome |
+|---|---|
+| `SEARCH` content not found in current body | conflict (soft) |
+| `DELETE` content not found in current body | conflict (soft) |
+| Lone `SEARCH` (no following `REPLACE`) | parse error |
+| Unknown `IDENT` prefix (not in the table above) | falls back to plain-body — markers parse as literal content |
+
+### Pattern Matching
+
+The literal-match semantics used by `SEARCH` and `DELETE` are
+delegated to the Hedberg pattern library — see [hedberg](#hedberg).
+Matching is fuzzy on whitespace and indentation; an exact-byte match
+is not required.
+
+---
+
+## Hedberg Pattern Library {#hedberg}
+
+The pattern library exposed to every plugin through `core.hooks.hedberg`.
+Used internally by the Edit Syntax (above) for `SEARCH` / `DELETE`
+matching and by `<get>` / `<rm>` for path globs.
+
+| Function | Purpose |
+|---|---|
+| `match(pattern, string)` | Full-string match — paths, equality. |
+| `search(pattern, string)` | Substring search — content filtering. |
+| `replace(text, search, replace, options)` | Patch application; fuzzy on whitespace and indentation. |
+| `generatePatch(path, oldBody, newBody)` | Unified-diff rendering for telemetry. |
+
+Pattern types: glob (picomatch-backed, with `**` cross-slash and
+`!()` negation), regex (`/pattern/flags`), xpath, jsonpath. Detection
+is by syntactic shape — see `src/lib/hedberg/patterns.js`.
 
 ---
 

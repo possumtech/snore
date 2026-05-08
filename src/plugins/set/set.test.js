@@ -86,31 +86,30 @@ describe("Set plugin", () => {
 			assert.match(out, /bad pattern/);
 		});
 
-		it("appends merge body when present", () => {
+		it("appends udiff patch body when present", () => {
 			const out = plugin.full({
-				attributes: { path: "x", merge: "<<<<<<< SEARCH" },
+				attributes: { path: "x", patch: "@@ -1,3 +1,3 @@" },
 			});
-			assert.match(out, /<<<<<<< SEARCH/);
+			assert.match(out, /@@ -1,3 \+1,3 @@/);
 		});
 
-		it("conflict surfaces attempted merge AND current body so the model can author a delta", () => {
-			// EN-3: when SEARCH/REPLACE conflicts, the model needs (1) the
-			// error, (2) what it tried, (3) the actual current body — not
-			// just the error string. Without all three, the model retries
-			// the same patch verbatim (gemma26 ceiling case: 44× same
-			// failing patch against tests/runner_test.go turns 96-224).
+		it("conflict surfaces attempted text AND current body so the model can author a delta", () => {
+			// EN-3: when SEARCH/REPLACE or DELETE conflicts, the model needs
+			// (1) the error, (2) what it tried, (3) the actual current body
+			// — not just the error string. Without all three, the model
+			// retries the same patch verbatim (gemma26 ceiling case: 44×
+			// same failing patch against tests/runner_test.go turns 96-224).
 			const out = plugin.full({
 				attributes: {
 					path: "known://plan",
 					error: "Could not find the SEARCH block in the file.",
-					merge:
-						"<<<<<<< SEARCH\n- [ ] step 1\n=======\n- [x] step 1\n>>>>>>> REPLACE",
+					attempted: "- [ ] step 1",
 					currentBody: "- [x] step 1\n- [ ] step 2",
 				},
 			});
 			assert.match(out, /Could not find the SEARCH block/);
 			assert.match(out, /--- attempted ---/);
-			assert.match(out, /<<<<<<< SEARCH/);
+			assert.match(out, /- \[ \] step 1/);
 			assert.match(out, /--- current body of known:\/\/plan ---/);
 			assert.match(out, /- \[x\] step 1\n- \[ \] step 2/);
 		});
@@ -257,7 +256,7 @@ describe("Set plugin", () => {
 			assert.deepEqual(store._calls, []);
 		});
 
-		it("scheme write: stores resolved body + log entry with patch+merge", async () => {
+		it("scheme write: stores resolved body + log entry with udiff patch", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -277,10 +276,10 @@ describe("Set plugin", () => {
 			const log = store._calls.find(
 				(c) => c.path === "log://turn_1/set/known%3A//x",
 			);
-			assert.ok(log.attributes.merge.includes("<<<<<<< SEARCH"));
+			assert.ok(log.attributes.patch);
 		});
 
-		it("file write (no scheme on path) issues a `proposed` log entry with patch", async () => {
+		it("file write (no scheme on path) issues a `proposed` log entry with patched body", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -298,7 +297,8 @@ describe("Set plugin", () => {
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
-			assert.match(log.attributes.merge, /<<<<<<< SEARCH/);
+			assert.equal(log.attributes.patched, "new content");
+			assert.ok(log.attributes.patch);
 		});
 	});
 
@@ -403,8 +403,12 @@ describe("Set plugin", () => {
 		});
 	});
 
-	describe("processEdit — bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
-		it("successful edit on bare file yields state=proposed with attrs.path + attrs.merge", async () => {
+	describe("bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
+		const editOps = [
+			{ op: "search_replace", search: "old", replace: "new" },
+		];
+
+		it("successful edit on bare file yields state=proposed with attrs.path + attrs.patched", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("src/app.js", {
@@ -417,7 +421,7 @@ describe("Set plugin", () => {
 					body: "",
 					path: "log://turn_1/set/src%2Fapp.js",
 					resultPath: "log://turn_1/set/src%2Fapp.js",
-					attributes: { path: "src/app.js", search: "old", replace: "new" },
+					attributes: { path: "src/app.js", operations: editOps },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
@@ -427,7 +431,8 @@ describe("Set plugin", () => {
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/app.js");
-			assert.match(log.attributes.merge, /^<<<<<<< SEARCH\nold\n=======\nnew/);
+			assert.equal(log.attributes.patched, "new line");
+			assert.ok(log.attributes.patch);
 		});
 
 		it("does not write a set:// canonical entry (no detour)", async () => {
@@ -443,7 +448,7 @@ describe("Set plugin", () => {
 					body: "",
 					path: "log://turn_1/set/src%2Fapp.js",
 					resultPath: "log://turn_1/set/src%2Fapp.js",
-					attributes: { path: "src/app.js", search: "old", replace: "new" },
+					attributes: { path: "src/app.js", operations: editOps },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
@@ -468,8 +473,9 @@ describe("Set plugin", () => {
 					resultPath: "log://turn_1/set/src%2Fapp.js",
 					attributes: {
 						path: "src/app.js",
-						search: "absent",
-						replace: "x",
+						operations: [
+							{ op: "search_replace", search: "absent", replace: "x" },
+						],
 					},
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },

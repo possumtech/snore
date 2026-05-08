@@ -1,5 +1,4 @@
 import Entries from "../../agent/Entries.js";
-import { buildMerge } from "../../lib/hedberg/merge.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
@@ -59,16 +58,12 @@ export default class Cp {
 
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
-			// Bare-file destination: build a whole-body-replace merge so
-			// the shared materializer (set.js #materializeFile, gated on
-			// attrs.path + attrs.merge) writes the source content to disk
-			// on accept. Without this, the proposal accepted but no file
-			// landed — the model's strategy of "<cp src dest> then <set
-			// dest> SEARCH/REPLACE" silently no-op'd.
-			// existing === null means brand-new file — buildMerge already
-			// produces an empty-SEARCH block when its first arg is falsy,
-			// so passing null straight through is the right contract.
-			const merge = buildMerge(existing, source);
+			// Bare-file destination: hand the shared materializer (set.js
+			// #materializeFile, gated on attrs.path + attrs.patched) the
+			// authoritative new body so it writes the source content to
+			// disk on accept. Without this the proposal accepted but no
+			// file landed — the model's "<cp src dest> then <set dest>
+			// SEARCH/REPLACE" sequence silently no-op'd at materialize.
 			await store.set({
 				runId,
 				turn,
@@ -81,7 +76,7 @@ export default class Cp {
 					isMove: false,
 					warning,
 					path: to,
-					merge,
+					patched: source,
 					visibility,
 				},
 				loopId,

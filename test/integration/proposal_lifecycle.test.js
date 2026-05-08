@@ -73,7 +73,7 @@ describe("proposal lifecycle (@resolution)", () => {
 				state: "proposed",
 				attributes: {
 					path: "a.md",
-					merge: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`,
+					patched: newContent,
 				},
 			});
 
@@ -119,7 +119,7 @@ describe("proposal lifecycle (@resolution)", () => {
 				state: "proposed",
 				attributes: {
 					path: "locked.md",
-					merge: "<<<<<<< SEARCH\n=======\nshould not land\n>>>>>>> REPLACE",
+					patched: "should not land",
 				},
 			});
 
@@ -335,7 +335,7 @@ describe("proposal lifecycle (@resolution)", () => {
 				state: "proposed",
 				attributes: {
 					path: "x.md",
-					merge: "<<<<<<< SEARCH\n=======\n# X\n\n>>>>>>> REPLACE",
+					patched: "# X\n",
 				},
 			});
 
@@ -396,7 +396,7 @@ describe("proposal lifecycle (@resolution)", () => {
 				state: "proposed",
 				attributes: {
 					path: "z.md",
-					merge: "<<<<<<< SEARCH\n=======\n# Z\n\n>>>>>>> REPLACE",
+					patched: "# Z\n",
 				},
 			});
 

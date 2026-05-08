@@ -86,8 +86,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				state: "proposed",
 				attributes: {
 					path: "src/app.js",
-					merge:
-						"<<<<<<< SEARCH\n// TODO: stuff\n=======\n// stuff handled\n>>>>>>> REPLACE",
+					patched: "const x = 1;\n// stuff handled\n",
 				},
 			});
 
@@ -135,8 +134,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				state: "proposed",
 				attributes: {
 					path: "src/app.js",
-					merge:
-						"<<<<<<< SEARCH\n// TODO: stuff\n=======\n// stuff handled\n>>>>>>> REPLACE",
+					patched: "const x = 1;\n// stuff handled\n",
 				},
 			});
 
@@ -178,8 +176,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				state: "proposed",
 				attributes: {
 					path: "src/app.js",
-					merge:
-						"<<<<<<< SEARCH\n// TODO: stuff\n=======\n// stuff handled\n>>>>>>> REPLACE",
+					patched: "const x = 1;\n// stuff handled\n",
 				},
 			});
 
@@ -212,7 +209,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				state: "proposed",
 				attributes: {
 					path: "src/new.js",
-					merge: "<<<<<<< SEARCH\n=======\nconst y = 2;\n>>>>>>> REPLACE",
+					patched: "const y = 2;",
 				},
 			});
 

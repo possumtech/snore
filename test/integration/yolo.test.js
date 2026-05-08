@@ -54,7 +54,7 @@ async function seedSetProposal(entries, runId, turn, relPath, content) {
 		state: "proposed",
 		attributes: {
 			path: relPath,
-			merge: `<<<<<<< SEARCH\n=======\n${content}\n>>>>>>> REPLACE`,
+			patched: content,
 		},
 	});
 	return proposalPath;

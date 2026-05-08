@@ -606,6 +606,63 @@ extraction adds a hop without separating concerns, it's ceremony
      `<update>` path; teaching against them would spend tokens
      on a behavior the engine already handles.
 
+- [ ] **Edit syntax migration: `<<:::IDENT...:::IDENT` family.**
+  Replaces the seven legacy edit shapes (sed, merge-conflict markers,
+  unified diff, Claude XML, JSON `{search,replace}`, attribute-mode,
+  raw body) with a single HEREDOC-flavored marker family expressing
+  six named operations: `NEW`, `PREPEND`, `APPEND`, `REPLACE`,
+  `DELETE`, `SEARCH`. Driven by data showing dominant SEARCH/REPLACE
+  failures are model contortions for intents that aren't actually
+  search/replace (append-via-fake-SEARCH, create-via-empty-SEARCH).
+
+  Contract: SPEC.md "Edit Syntax" section (anchor added in Phase 3
+  alongside its tests). Pattern-matching delegated to Hedberg
+  (@hedberg).
+
+  **Phase 1 — parser + handler:**
+  - [ ] New `src/lib/hedberg/marker.js` — recognizes `<<:::IDENT`
+    openers, matches `:::IDENT` closers (newline-tolerant, IDENT
+    pattern `[A-Z][A-Za-z0-9_]*`), routes by leading keyword.
+  - [ ] `XmlParser.resolveCommand` `<set>` branch consumes new
+    parser; the eight-shape switch collapses to one detection.
+  - [ ] `set.js` handler walks the ordered operation list; each op
+    applies in sequence against progressively-edited body.
+  - [ ] `Hedberg.replace` stays (fuzzy literal-match for SEARCH /
+    DELETE); `parseSed` and `parseEdits` retired.
+
+  **Phase 2 — sacred surface (explicit go required):**
+  - [ ] `setDoc.md` rewrite: one example per named op, plus
+    multi-pair SEARCH/REPLACE.
+  - [ ] `instructions-user.md` canonical edit example to new shape.
+  - [ ] `persona/default.md` audit for legacy edit shapes.
+
+  **Phase 3 — tests + cleanup:**
+  - [ ] Migrate `XmlParser.test.js` (~30 set-edit assertions).
+  - [ ] Migrate `XmlParser.brutal.test.js` (~30 legacy-shape tests).
+  - [ ] Migrate `set.test.js` handler dispatch tests.
+  - [ ] Migrate integration: `handler_dispatch.test.js`,
+    `file_freshness.test.js`, e2e stories.
+  - [ ] Delete `edits.js`, `edits.test.js`, `sed.js`, `sed.test.js`.
+  - [ ] `hedberg_api.test.js` no longer asserts `parseSed` /
+    `parseEdits` exposed.
+  - [ ] `plugins/hedberg/hedberg.js` stops registering the retired
+    parsers on `core.hooks.hedberg`.
+  - [ ] PLUGINS.md cross-reference updated; AGENTS.md `[x]` entry
+    collapses to one line.
+
+  **Out of phase 1-3 scope (deferred until core proves out):**
+  - No-IDENT one-liner SEARCH/REPLACE (`<<:::OLD:::NEW:::`).
+    Plausible model inference; ship if observed demand.
+
+  **Validation:**
+  - Lint, all tests green, spec-coverage clean.
+  - Re-run gemma / grokR / xemma on gron task; observe whether
+    SEARCH/REPLACE-flavored conflicts drop. Baseline (post-EN-3,
+    pre-marker-migration): 24 conflicts across the three runs,
+    18 of them xemma's `known://plan` retry loop. Target: ≪ 24.
+
+  **Estimated net code delta:** −300 to −400 lines.
+
 - [ ] **Engine-side rails: knowns/unknowns lifecycle strikes — DESIGN.**
   (Note: under philosophical question per the Out-of-scope rails
   block above. Defer pending data on whether *any* engine-side rail
